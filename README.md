@@ -1,3 +1,5 @@
 # hypergumbo
 
-Local-first repo behavior map generator (MVP)
+Local-first CLI that profiles a repo and emits an agent-friendly “repo behavior map” JSON.
+
+Status: MVP in progress.
