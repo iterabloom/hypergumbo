@@ -7,10 +7,36 @@ from .schema import new_behavior_map
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    # TODO: implement capsule initialization
-    print(f"[hypergumbo init] repo_root={Path(args.path).resolve()} "
-          f"capabilities={args.capabilities} assistant={args.assistant} "
-          f"llm_input={args.llm_input}")
+    repo_root = Path(args.path).resolve()
+    capsule_dir = repo_root / ".hypergumbo"
+    capsule_dir.mkdir(parents=True, exist_ok=True)
+
+    capsule_path = capsule_dir / "capsule.json"
+
+    # Normalize capabilities into a list
+    capabilities = [
+        c.strip()
+        for c in (args.capabilities or "").split(",")
+        if c.strip()
+    ]
+
+    capsule = {
+        "repo_root": str(repo_root),
+        "assistant": args.assistant,
+        "llm_input": args.llm_input,
+        "capabilities": capabilities,
+    }
+
+    capsule_path.write_text(json.dumps(capsule, indent=2))
+
+    print(
+        "[hypergumbo init] "
+        f"repo_root={repo_root} "
+        f"capabilities={','.join(capabilities)} "
+        f"assistant={args.assistant} "
+        f"llm_input={args.llm_input}"
+    )
+
     return 0
 
 
