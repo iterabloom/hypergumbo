@@ -1304,7 +1304,7 @@ def calculate_evidence_confidence(
 * Analysis: Categorize by type (false positive, false negative, missing edge)
 
 **Pre-registration:**
-Protocol published at https://hypergumbo.dev/eval/a before data collection starts.
+Protocol published at https://hypergumbo.iterabloom.com/eval/a before data collection starts.
 Prevents cherry-picking results.
 
 **Use:** These metrics feed into decision whether to proceed with advanced capabilities.
@@ -1314,7 +1314,7 @@ Prevents cherry-picking results.
 * ✅ **Recall**: >0.70 on detectable edges (AST-visible calls, not dynamic dispatch)
 * ✅ **Confidence calibration**: Edges with confidence >0.9 have <5% false positive rate
 
-Pre-register evaluation protocol at https://hypergumbo.dev/eval before collecting results.
+Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval before collecting results.
 
 ### Quality
 * ✅ Zero crashes on 50+ real-world repos
@@ -1632,7 +1632,7 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 
 ### Transparency
 * Telemetry code is open source (can audit exactly what's sent)
-* Privacy policy published at https://hypergumbo.dev/privacy
+* Privacy policy published at https://hypergumbo.iterabloom.com/privacy
 * Opt-in status shown in `hypergumbo config --show`
 
 ### LLM API usage
@@ -2519,7 +2519,7 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 * Deliverable: `benchmarks/electron/repos.json`
 
 **Pre-registration (Month -1):**
-* Publish evaluation protocol: https://hypergumbo.dev/eval/b0
+* Publish evaluation protocol: https://hypergumbo.iterabloom.com/eval/b0
 * Include:
   - Test repo names (no changes after publication)
   - Metrics definitions (precision, recall formulas)
@@ -2683,7 +2683,7 @@ profile = {
 **Critical:** Define how we'll measure success **before** running experiments (prevents cherry-picking).
 
 **Pre-registration:**
-1. Publish evaluation protocol at https://hypergumbo.dev/eval/b0
+1. Publish evaluation protocol at https://hypergumbo.iterabloom.com/eval/b0
 2. Specify: Test repos (names), metrics (formulas), thresholds (numbers)
 3. Commit to protocol (no changes after data collection starts)
 
@@ -3355,7 +3355,7 @@ If all fallbacks unacceptable:
   - Measured: Token count, edit correctness (human eval), hallucination rate
   - Target: >30% token reduction, >80% correctness (maintained), <20% hallucination rate (vs. >40% baseline)
   - Sample size: 50 tasks across 3 agents
-  - Pre-register protocol at https://hypergumbo.dev/eval/b1
+  - Pre-register protocol at https://hypergumbo.iterabloom.com/eval/b1
 
 **Quality:**
 * ✅ Zero breaking changes to Spec A compatibility
