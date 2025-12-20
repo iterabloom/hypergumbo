@@ -1,0 +1,25 @@
+from hypergumbo.schema import new_behavior_map
+
+
+def test_new_behavior_map_has_required_top_level_fields():
+    bm = new_behavior_map()
+
+    # Fixed identifiers
+    assert bm["schema_version"] == "0.1.0"
+    assert bm["view"] == "behavior_map"
+    assert bm["confidence_model"] == "hypergumbo-evidence-v1"
+    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v1"
+    assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v1"
+    assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
+
+    # Basic structure
+    assert bm["analysis_incomplete"] is False
+    assert isinstance(bm["analysis_runs"], list)
+    assert isinstance(bm["profile"], dict)
+    assert isinstance(bm["nodes"], list)
+    assert isinstance(bm["edges"], list)
+    assert isinstance(bm["features"], list)
+    assert isinstance(bm["metrics"], dict)
+    assert isinstance(bm["limits"], dict)
+    assert "generated_at" in bm
+
