@@ -5,6 +5,7 @@ from . import __version__
 from .schema import new_behavior_map
 
 
+
 def cmd_init(args: argparse.Namespace) -> int:
     # TODO: implement capsule initialization
     print(f"[hypergumbo init] repo_root={Path(args.path).resolve()} "
@@ -14,9 +15,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    # TODO: implement capsule execution
-    print(f"[hypergumbo run] repo_root={Path(args.path).resolve()} "
-          f"out={args.out}")
+    # The positional argument for `run` is called `path` in the parser below.
+    repo_root = Path(args.path).resolve()
+    out_path = Path(args.out)
+
+    run_behavior_map(repo_root=repo_root, out_path=out_path)
     return 0
 
 
