@@ -18,6 +18,12 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+]
+
 [project.scripts]
 hypergumbo = "hypergumbo.cli:main"
 
