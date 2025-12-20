@@ -1,6 +1,8 @@
 import argparse
+import json
 from pathlib import Path
 from . import __version__
+from .schema import new_behavior_map
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -131,6 +133,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_export.set_defaults(func=cmd_export_capsule)
 
     return p
+
+
+def run_behavior_map(repo_root: Path, out_path: Path) -> None:
+    """
+    Run the behavior_map analysis for a repo and write JSON to out_path.
+
+    For now this is a stub that just emits a well-formed, empty behavior_map
+    using the schema helper. Later we'll plug in real analysis.
+    """
+    behavior_map = new_behavior_map()
+
+    # Ensure parent directory exists (even if caller gives nested paths later)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    out_path.write_text(json.dumps(behavior_map, indent=2))
 
 
 def main(argv=None) -> int:
