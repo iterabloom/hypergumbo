@@ -16,3 +16,11 @@ build/
 .hypergumbo/
 hypergumbo_capsule/
 hypergumbo.results.json
+
+# Agent configuration
+**/*.local.json
+**/*.local.md
+**/.claude/cache/
+**/.gemini/cache/
+**/.cursor/state/
+**/*-session/
