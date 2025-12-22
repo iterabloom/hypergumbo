@@ -13,18 +13,17 @@ pip install -e .[dev]
 hypergumbo --version
 ```
 
-## CLI (MVP stub)
-
-Right now the CLI subcommands are wired up as stubs:
+## CLI
 
 ```bash
-hypergumbo init            # prints planned init params
-hypergumbo run             # prints planned run params
-hypergumbo catalog         # prints a placeholder catalog header
-hypergumbo export-capsule  # prints planned export params
+hypergumbo init [path]       # creates .hypergumbo/capsule.json with config
+hypergumbo run [path]        # writes hypergumbo.results.json (empty behavior map for now)
+hypergumbo slice --entry X   # stub: will produce reduced behavior slice
+hypergumbo catalog           # stub: will list available passes/packs
+hypergumbo export-capsule    # stub: will export shareable capsule
 ```
 
-They don’t yet perform real analysis; we’re building that incrementally with tests.
+`init` and `run` are functional but emit minimal output — real analysis is being built incrementally with tests.
 
 ## Running tests
 
