@@ -1,9 +1,66 @@
 # One pattern per line.
 # Blank lines and lines starting with # are ignored.
 
-FanDuel
-DraftKings
-BetMGM
+OpenAI
+Anthropic
+Google
+DeepMind
+Meta
+Microsoft
+Amazon
+AWS
+IBM
+xAI
+Mistral
+Cohere
+AI21
+Alibaba
+Baidu
+Tencent
+DeepSeek
+Technology Innovation Institute
+TII
+Databricks
+Mosaic
+Stability
+Zhipu
+Z.ai
+01.AI
+Huawei
+NAVER
+Snowflake
+ByteDance
+GPT
+o-series
+o1
+o3
+Claude
+Gemini
+Gemma
+Grok
+Command
+Aya
+Titan
+Nova
+Phi
+Granite
+Llama
+Mixtral
+Qwen
+Qianwen
+ERNIE
+GLM
+Hunyuan
+Kimi
+Pangu
+CLOVA
+Stable
+Falcon
+DBRX
+Arctic
+Jamba
+Doubao
+Seed-Coder
 
 # Optional: raw regex lines (YOU ensure portability across bash/perl/python):
 # re:Bet\s*MGM
