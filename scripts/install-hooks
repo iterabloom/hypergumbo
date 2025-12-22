@@ -34,9 +34,11 @@ cd "$repo_root"
 
 hooks_path=".githooks"
 commit_msg_hook="$hooks_path/commit-msg"
+prepare_hook="$hooks_path/prepare-commit-msg"
 
 [[ -d "$hooks_path" ]]    || die "expected $hooks_path/ directory at repo root"
 [[ -f "$commit_msg_hook" ]] || die "expected hook file $commit_msg_hook"
+[[ -f "$prepare_hook" ]]    || die "expected hook file $prepare_hook"
 
 # -----------------------------
 # Dependency checks for commit-msg hook

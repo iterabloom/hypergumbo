@@ -11,7 +11,11 @@
 - **100% Coverage:** No code may be committed without full test coverage. Verify with: `pytest --cov=src --cov-fail-under=100`
 - **Golden Masters:** Output must match existing golden files in `tests/fixtures/`.
 - **Linting:** Ensure code adheres to PEP 8.
-- **Signing:** All commits must be signed (`git commit -s`) to satisfy the DCO.
+- **Signing & Identity:**
+  1. Check `git config user.name` and `git config user.email` **before** creating any commit.
+  2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
+     `git config --global user.name "Your Name" && git config --global user.email "you@example.com"`
+  3. Once configured, all commits must use `git commit -s` to satisfy the DCO.
 
 ## Workflow (Trunk-Based XP)
 - **Primary Goal:** Keep `main` green and deployable at all times.
@@ -37,4 +41,4 @@
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2025-12-20-tbd -->
+<!-- CANARY: agents-policy-v2025-12-22-tbd -->

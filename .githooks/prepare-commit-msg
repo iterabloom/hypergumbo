@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------------
+# prepare-commit-msg
+# Automatically appends 'Signed-off-by' to meet DCO requirements.
+# ------------------------------------------------------------------
+
+msg_file="$1"
+source_type="${2:-}"
+# commit_sha="$3" (unused)
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# 1. Get User Identity
+#    If not configured, we exit silently and let git commit fail naturally later.
+name="$(git config user.name || true)"
+email="$(git config user.email || true)"
+
+if [[ -z "$name" || -z "$email" ]]; then
+  exit 0
+fi
+
+sob_line="Signed-off-by: $name <$email>"
+
+# 2. Check if already signed off
+#    (Prevents duplicate lines if you run 'git commit -s' or amend)
+if grep -qF "$sob_line" "$msg_file"; then
+  exit 0
+fi
+
+# 3. Apply the Trailer
+#    We prefer `git interpret-trailers` because it handles edge cases:
+#    - Puts SOB *before* git comments (lines starting with #)
+#    - Ensures proper spacing with existing paragraphs
+#    - Groups it with other trailers (e.g., Co-authored-by)
+
+if have git && git interpret-trailers --help >/dev/null 2>&1; then
+  # The "git way" (Robust)
+  git interpret-trailers --in-place --trailer "$sob_line" "$msg_file"
+else
+  # The "fallback way" (if git is ancient)
+  # Simple append. Note: This might place SOB after comments in an interactive
+  # editor session, which git would then strip out.
+  # But for `git commit -m`, this works perfectly.
+  printf "\n%s\n" "$sob_line" >> "$msg_file"
+fi
