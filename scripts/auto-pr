@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------------
+# Load secrets from .env if present
+# ------------------------------------------------------------------
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  set -o allexport
+  source "$REPO_ROOT/.env"
+  set +o allexport
+fi
+
+TOKEN="${FORGEJO_TOKEN:-}"
+if [[ -z "$TOKEN" ]]; then
+  echo "Error: FORGEJO_TOKEN environment variable is not set."
+  exit 1
+fi
+
+BRANCH="$(git branch --show-current)"
+if [[ "$BRANCH" == "main" ]]; then
+  echo "Error: You are on 'main'. Please create a feature branch first."
+  exit 1
+fi
+
+REMOTE_URL="$(git remote get-url origin)"
+# Extract owner/repo (strips .git suffix, takes last two components separated by / or :)
+REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
+LOCAL_SHA="$(git rev-parse HEAD)"
+
+echo "🚀 Target: $REPO_SLUG"
+echo "🌿 Branch: $BRANCH"
+echo "🔑 Commit: ${LOCAL_SHA:0:7}"
+
+# 1. PUSH
+echo "---------------------------------------------------"
+echo "📤 Pushing to Codeberg..."
+TITLE="${1:-$(git log -1 --pretty=%s)}"
+DESC="${2:-$(git log -1 --pretty=%b)}"
+
+git push origin "HEAD:refs/for/main/$BRANCH" \
+  -o title="$TITLE" \
+  -o description="$DESC" \
+  -o force-push=true
+
+echo "---------------------------------------------------"
+echo "🔍 Identifying Pull Request..."
+
+API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+sleep 2
+
+PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
+
+# Match by SHA instead of Ref/Branch Name
+PR_INDEX=$(echo "$PR_DATA" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    target = '$LOCAL_SHA'
+    found = next((p for p in data if p['head']['sha'].startswith(target)), None)
+    if found:
+        print(found['number'])
+        print(found['head']['sha'])
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+") || { echo "❌ Could not find open PR for commit $LOCAL_SHA"; exit 1; }
+
+PR_NUM=$(echo "$PR_INDEX" | head -n1)
+HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+
+echo "✅ Found PR #$PR_NUM"
+echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+
+# 2. POLL
+echo "---------------------------------------------------"
+echo "⏳ Polling CI Status..."
+
+while true; do
+  STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
+  
+  STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
+  
+  if [[ "$STATE" == "success" ]]; then
+    echo -e "\n✅ CI Passed!"
+    break
+  elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
+    # Robust context extraction (handles missing keys safe)
+    CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    statuses = data.get('statuses', [])
+    failed = []
+    for s in statuses:
+        # Check 'state' or 'status' to be safe
+        st = s.get('state') or s.get('status')
+        if st in ['failure', 'error']:
+            failed.append(s.get('context', 'unknown'))
+    print(', '.join(failed))
+except Exception:
+    print('unknown error')
+")
+    echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
+    exit 1
+  fi
+  
+  printf "."
+  sleep 10
+done
+
+# 3. MERGE
+echo "---------------------------------------------------"
+echo "🔀 Merging PR #$PR_NUM..."
+
+MERGE_RESP=$(curl -s -X POST -H "Authorization: token $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"Do": "merge", "MergeMessageField": "Auto-merged via auto-pr", "delete_branch_after_merge": true}' \
+     "$API_BASE/pulls/$PR_NUM/merge")
+
+if echo "$MERGE_RESP" | grep -q "Pull request has been merged"; then
+  echo "✅ Successfully Merged!"
+  echo "---------------------------------------------------"
+  echo "🧹 Cleaning up local branch..."
+  git checkout main
+  git pull origin main
+  git branch -d "$BRANCH"
+else
+  echo "❌ Merge failed:"
+  echo "$MERGE_RESP"
+  exit 1
+fi
