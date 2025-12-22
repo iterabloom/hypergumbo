@@ -1,0 +1,433 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="${1:-}"
+if [[ -z "$msg_file" || ! -f "$msg_file" ]]; then
+  echo "commit-msg hook: missing commit message file path" >&2
+  exit 1
+fi
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# -----------------------------
+# Portable helpers
+# -----------------------------
+
+sha256_hex() {
+  # Reads from stdin, writes lowercase hex digest to stdout
+  if have sha256sum; then
+    sha256sum | awk '{print $1}'
+  elif have shasum; then
+    shasum -a 256 | awk '{print $1}'
+  elif have openssl; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  elif have python3; then
+    python3 - <<'PY'
+import sys, hashlib
+data = sys.stdin.buffer.read()
+sys.stdout.write(hashlib.sha256(data).hexdigest())
+PY
+  else
+    echo "commit-msg hook: need sha256sum, shasum, openssl, or python3 for SHA-256" >&2
+    exit 1
+  fi
+}
+
+gen_secret_base64_32bytes() {
+  # Emits a base64 string (with trailing newline) representing 32 random bytes
+  if have openssl; then
+    openssl rand -base64 32
+  elif have base64; then
+    head -c 32 /dev/urandom | base64
+  elif have python3; then
+    python3 - <<'PY'
+import os, base64, sys
+sys.stdout.write(base64.b64encode(os.urandom(32)).decode("ascii") + "\n")
+PY
+  else
+    echo "commit-msg hook: need openssl, base64, or python3 to generate secret" >&2
+    exit 1
+  fi
+}
+
+slugify() {
+  # Lowercase, non [a-z0-9] => '-', squeeze repeats, trim leading/trailing '-'
+  local s
+  s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+  s="${s#-}"
+  s="${s%-}"
+  printf '%s' "$s"
+}
+
+# -----------------------------
+# Brand patterns (external file)
+# -----------------------------
+
+escape_regex_basic() {
+  # Escape regex metacharacters so a line is treated literally.
+  # Prefer sed; fallback to perl/python3 if needed.
+  if have sed; then
+    # Escape: ] [ ( ) { } . ^ $ * + ? | \
+    printf '%s' "$1" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g'
+  elif have perl; then
+    perl -e 'my $s = join("", <STDIN>); chomp($s); print quotemeta($s);' <<<"$1"
+  elif have python3; then
+    python3 - <<'PY'
+import re, sys
+s = sys.stdin.read()
+s = s[:-1] if s.endswith("\n") else s
+sys.stdout.write(re.escape(s))
+PY
+  else
+    echo "commit-msg hook: need sed, perl, or python3 to escape patterns" >&2
+    exit 1
+  fi
+}
+
+join_with_pipe() {
+  local out="" first=1
+  for s in "$@"; do
+    if (( first )); then
+      out="$s"
+      first=0
+    else
+      out="${out}|${s}"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+load_brand_regex() {
+  # Reads brand patterns from file. Lines:
+  #   - default: literal string (escaped)
+  #   - prefix "re:" => raw regex (use with care)
+  local file="$1"
+  local pats=() line p
+
+  if [[ -f "$file" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -z "$line" ]] && continue
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+      # trim leading/trailing whitespace
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      [[ -z "$line" ]] && continue
+
+      if [[ "$line" == re:* ]]; then
+        p="${line#re:}"
+      else
+        p="$(escape_regex_basic "$line")"
+      fi
+
+      [[ -z "$p" ]] && continue
+      pats+=( "$p" )
+    done < "$file"
+  fi
+
+  if (( ${#pats[@]} == 0 )); then
+    # fallback defaults (as literals)
+    pats+=( "$(escape_regex_basic "FanDuel")" )
+    pats+=( "$(escape_regex_basic "DraftKings")" )
+    pats+=( "$(escape_regex_basic "BetMGM")" )
+  fi
+
+  printf '(%s)' "$(join_with_pipe "${pats[@]}")"
+}
+
+brands_file="${HOOK_BRANDS_FILE:-$hook_dir/brand-patterns.txt}"
+brand_re="$(load_brand_regex "$brands_file")"
+
+# Case-insensitive replace using perl (fast) or python3 fallback.
+replace_brands_ci() {
+  # usage: replace_brands_ci "replacement" "input"
+  local repl="$1"
+  local in="$2"
+
+  if have perl; then
+    REPL="$repl" BRAND_RE="$brand_re" perl -pe 's{$ENV{BRAND_RE}}{$ENV{REPL}}ig' <<<"$in"
+  elif have python3; then
+    REPL="$repl" BRAND_RE="$brand_re" python3 - <<'PY'
+import os, re, sys
+repl = os.environ["REPL"]
+pat  = os.environ["BRAND_RE"]
+s = sys.stdin.read()
+sys.stdout.write(re.sub(pat, repl, s, flags=re.I))
+PY
+  else
+    echo "commit-msg hook: need perl or python3 for case-insensitive replacement" >&2
+    exit 1
+  fi
+}
+
+# -----------------------------
+# Read message into array (one entry per line) - bash 3 compatible
+# -----------------------------
+lines=()
+while IFS= read -r line || [[ -n "$line" ]]; do
+  lines+=( "$line" )
+done < "$msg_file"
+n=${#lines[@]}
+
+# ---- Trailer detection (robust to trailing blank lines) ----
+last=$n
+while (( last > 0 )) && [[ -z "${lines[$((last-1))]}" ]]; do
+  ((last--))
+done
+
+trailer_re='^[A-Za-z0-9][A-Za-z0-9-]*: '
+trailer_start=$((last+1))
+
+i=$last
+while (( i >= 1 )); do
+  line="${lines[$((i-1))]}"
+  [[ -z "$line" ]] && break
+  if [[ "$line" =~ $trailer_re ]]; then
+    trailer_start=$i
+    ((i--))
+    continue
+  fi
+  break
+done
+
+# ---- Split: subject + body + trailers ----
+subject_line=""
+body_lines=()
+trailers=()
+
+if (( n > 0 )); then
+  subject_line="${lines[0]}"
+fi
+
+body_end=$((trailer_start-1))
+
+if (( body_end > 1 )); then
+  body_lines=( "${lines[@]:1:$((body_end-1))}" )
+fi
+
+if (( trailer_start <= last )); then
+  len=$(( last - trailer_start + 1 ))
+  trailers=( "${lines[@]:$((trailer_start-1)):$len}" )
+fi
+
+# ---- Case-insensitive brand matching in bash ----
+nocase_was_enabled=0
+if shopt -q nocasematch; then nocase_was_enabled=1; fi
+shopt -s nocasematch
+
+# ---- Phrase selection (keyed; outsiders can't reproduce without your local secret) ----
+phrases_file="${HOOK_PHRASES_FILE:-$hook_dir/absurd-phrases.txt}"
+
+secret_file="${BRAND_SCRUB_SECRET_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/brand-scrub.key}"
+if [[ ! -f "$secret_file" ]]; then
+  mkdir -p "$(dirname "$secret_file")"
+  ( umask 077; gen_secret_base64_32bytes > "$secret_file" )
+  chmod 600 "$secret_file" 2>/dev/null || true
+fi
+secret="$(cat "$secret_file")"
+
+# Load phrases (fallback list if file missing/empty)
+phrases=()
+if [[ -f "$phrases_file" ]]; then
+  while IFS= read -r pline || [[ -n "$pline" ]]; do
+    [[ -z "$pline" ]] && continue
+    [[ "$pline" =~ ^[[:space:]]*# ]] && continue
+
+    # trim leading/trailing whitespace
+    pline="${pline#"${pline%%[![:space:]]*}"}"
+    pline="${pline%"${pline##*[![:space:]]}"}"
+    [[ -z "$pline" ]] && continue
+
+    phrases+=( "$pline" )
+  done < "$phrases_file"
+fi
+
+if (( ${#phrases[@]} == 0 )); then
+  phrases=(
+    "a walrus conducting an orchestra of penguins"
+    "an octopus painting a self-portrait with all eight arms"
+    "a giraffe playing the violin on a tightrope"
+    "a parrot steering a pirate ship made of spaghetti"
+    "a raccoon juggling watermelons while surfing"
+  )
+fi
+
+pick_phrase_private() {
+  local seed="$1" h idx
+  h="$(printf '%s|%s' "$secret" "$seed" | sha256_hex)"
+  idx=$(( 16#${h:0:8} % ${#phrases[@]} ))
+  printf '%s' "${phrases[$idx]}"
+}
+
+replacement_out="$(pick_phrase_private "$subject_line")"
+replacement_in="$(slugify "$replacement_out")"
+
+# 0) Scrub the SUBJECT line if it contains a brand (do NOT remove the subject)
+if [[ "$subject_line" =~ $brand_re ]]; then
+  subject_line="$(replace_brands_ci "$replacement_out" "$subject_line")"
+fi
+
+# 1) Remove ONLY body lines containing the brands
+filtered_body=()
+for l in "${body_lines[@]}"; do
+  if [[ "$l" =~ $brand_re ]]; then
+    continue
+  fi
+  filtered_body+=( "$l" )
+done
+
+out_body=( "$subject_line" "${filtered_body[@]}" )
+
+# Trim trailing blank lines in body (bash 3 safe: no negative indices)
+while (( ${#out_body[@]} > 0 )); do
+  last_idx=$(( ${#out_body[@]} - 1 ))
+  [[ -z "${out_body[$last_idx]}" ]] || break
+  unset "out_body[$last_idx]"
+done
+
+# 2) Rewrite ANY trailer value:
+#    - replace brands anywhere in the value (case-insensitive, global)
+#    - outside <...>: replacement_out (human-readable)
+#    - inside  <...>: replacement_in  (slug-ish for emails/domains)
+
+rewrite_trailer_value_smartass() {
+  local v="$1"
+  local out="" prefix angle rest inner
+
+  while [[ "$v" =~ ^([^<]*)(<[^>]*>)(.*)$ ]]; do
+    prefix="${BASH_REMATCH[1]}"
+    angle="${BASH_REMATCH[2]}"
+    rest="${BASH_REMATCH[3]}"
+
+    prefix="$(replace_brands_ci "$replacement_out" "$prefix")"
+
+    inner="${angle:1:${#angle}-2}"
+    inner="$(replace_brands_ci "$replacement_in" "$inner")"
+
+    out+="${prefix}<${inner}>"
+    v="$rest"
+  done
+
+  v="$(replace_brands_ci "$replacement_out" "$v")"
+  out+="$v"
+
+  printf '%s' "$out"
+}
+
+out_trailers=()
+for t in "${trailers[@]}"; do
+  if [[ "$t" =~ ^([A-Za-z0-9][A-Za-z0-9-]*:)([[:space:]]*)(.*)$ ]]; then
+    key="${BASH_REMATCH[1]}"
+    ws="${BASH_REMATCH[2]}"
+    val="${BASH_REMATCH[3]}"
+
+    if [[ "$val" =~ $brand_re ]]; then
+      val="$(rewrite_trailer_value_smartass "$val")"
+    fi
+    t="${key}${ws}${val}"
+  fi
+  out_trailers+=( "$t" )
+done
+
+if (( nocase_was_enabled == 0 )); then
+  shopt -u nocasematch
+fi
+
+# ---- Write back: body + blank line + trailers ----
+{
+  if (( ${#out_body[@]} > 0 )); then
+    printf "%s\n" "${out_body[@]}"
+  fi
+
+  if (( ${#out_trailers[@]} > 0 )); then
+    printf "\n"
+    printf "%s\n" "${out_trailers[@]}"
+  fi
+} > "$msg_file"
+```
+
+---
+
+## `scripts/install-hooks`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+have() { command -v "$1" >/dev/null 2>&1; }
+die()  { echo "error: $*" >&2; exit 1; }
+
+require_cmd() {
+  local c="$1"
+  have "$c" || die "missing required command: $c"
+}
+
+# Ensure at least one of the provided commands exists.
+require_one_of() {
+  local label="$1"; shift
+  local found=()
+  local c
+  for c in "$@"; do
+    if have "$c"; then found+=( "$c" ); fi
+  done
+  if (( ${#found[@]} == 0 )); then
+    die "missing dependency: need one of [$*] for $label"
+  fi
+}
+
+# -----------------------------
+# Repo checks
+# -----------------------------
+require_cmd git
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[[ -n "$repo_root" ]] || die "not inside a git repository"
+
+cd "$repo_root"
+
+hooks_path=".githooks"
+commit_msg_hook="$hooks_path/commit-msg"
+
+[[ -d "$hooks_path" ]]    || die "expected $hooks_path/ directory at repo root"
+[[ -f "$commit_msg_hook" ]] || die "expected hook file $commit_msg_hook"
+
+# -----------------------------
+# Dependency checks for commit-msg hook
+# -----------------------------
+# 1) SHA-256 provider
+require_one_of "SHA-256 hashing" sha256sum shasum openssl python3
+
+# sha256_hex() uses awk when using sha256sum/shasum/openssl branches.
+# Since the hook prefers those branches if present, enforce awk when any are available.
+if have sha256sum || have shasum || have openssl; then
+  require_cmd awk
+fi
+
+# 2) Secret generation provider
+require_one_of "secret generation" openssl base64 python3
+# If the secret generation falls back to base64, it uses /dev/urandom and head.
+if have base64 && ! have openssl && ! have python3; then
+  [[ -r /dev/urandom ]] || die "need readable /dev/urandom for base64 secret generation fallback"
+  require_cmd head
+fi
+
+# 3) Regex escaping for literal brand lines
+require_one_of "brand pattern escaping" sed perl python3
+
+# 4) Case-insensitive replacement engine
+require_one_of "case-insensitive replacement" perl python3
+
+# -----------------------------
+# Install hooks
+# -----------------------------
+chmod +x "$commit_msg_hook" 2>/dev/null || true
+chmod +x "$hooks_path"/* 2>/dev/null || true
+
+git config --local core.hooksPath "$hooks_path"
+
+echo "✅ Git hooks installed for this clone"
+echo "   core.hooksPath=$(git config --local --get core.hooksPath)"
+echo "   Dependencies look OK for commit-msg hook."
+echo "   Secret will be auto-generated on first commit by commit-msg hook."
