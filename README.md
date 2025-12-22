@@ -10,6 +10,7 @@ Status: MVP in progress.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
+./scripts/install-hooks
 hypergumbo --version
 ```
 
