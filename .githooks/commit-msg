@@ -346,3 +346,10 @@ fi
     printf "%s\n" "${out_trailers[@]}"
   fi
 } > "$msg_file"
+
+# DCO Check
+if ! grep -q "^Signed-off-by: " "$msg_file"; then
+  echo "Error: DCO Sign-off missing." >&2
+  echo "Please commit with 'git commit -s' or add 'Signed-off-by: Name <email>'." >&2
+  exit 1
+fi
