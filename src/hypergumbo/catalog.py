@@ -1,0 +1,161 @@
+"""Catalog of available analysis passes and packs.
+
+The catalog provides a registry of all analysis components available in
+hypergumbo. Each component is either:
+
+- **core**: Always available, included in base installation
+- **extra**: Requires optional dependencies (e.g., tree-sitter for JS/TS)
+
+How It Works
+------------
+The catalog is a static registry defined in code. Each Pass represents
+a single analyzer (e.g., python-ast-v1), while Packs bundle multiple
+passes for common use cases (e.g., python-fastapi combines Python AST
+analysis with FastAPI-specific route detection).
+
+Availability checking uses importlib to probe for optional dependencies
+without importing them, keeping the base install lightweight.
+
+Why This Design
+---------------
+- Static registry avoids filesystem scanning or plugin discovery complexity
+- Core/extra distinction lets users see what's possible without installing
+  everything
+- Packs provide curated combinations for common frameworks
+"""
+from __future__ import annotations
+
+import importlib.util
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class Pass:
+    """An analysis pass that can be applied to source code.
+
+    Attributes:
+        id: Unique identifier (e.g., 'python-ast-v1')
+        description: Human-readable description
+        availability: 'core' (always available) or 'extra' (requires deps)
+        requires: Optional package requirement for extras
+    """
+
+    id: str
+    description: str
+    availability: str  # 'core' or 'extra'
+    requires: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dict."""
+        d: Dict[str, Any] = {
+            "id": self.id,
+            "description": self.description,
+            "availability": self.availability,
+        }
+        if self.requires:
+            d["requires"] = self.requires
+        return d
+
+
+@dataclass
+class Pack:
+    """A bundle of passes for a specific use case.
+
+    Attributes:
+        id: Unique identifier (e.g., 'python-fastapi')
+        description: Human-readable description
+        passes: List of pass IDs included in this pack
+    """
+
+    id: str
+    description: str
+    passes: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dict."""
+        return {
+            "id": self.id,
+            "description": self.description,
+            "passes": self.passes,
+        }
+
+
+@dataclass
+class Catalog:
+    """Registry of available passes and packs.
+
+    Attributes:
+        passes: List of available analysis passes
+        packs: List of available pass bundles
+    """
+
+    passes: List[Pass] = field(default_factory=list)
+    packs: List[Pack] = field(default_factory=list)
+
+    def get_core_passes(self) -> List[Pass]:
+        """Return only core passes (always available)."""
+        return [p for p in self.passes if p.availability == "core"]
+
+    def get_extra_passes(self) -> List[Pass]:
+        """Return only extra passes (require optional deps)."""
+        return [p for p in self.passes if p.availability == "extra"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dict."""
+        return {
+            "passes": [p.to_dict() for p in self.passes],
+            "packs": [p.to_dict() for p in self.packs],
+        }
+
+
+def is_available(p: Pass) -> bool:
+    """Check if a pass is available in the current environment.
+
+    Core passes are always available. Extra passes require their
+    dependency to be importable.
+    """
+    if p.availability == "core":
+        return True
+
+    # Check for tree-sitter dependency
+    if p.requires and "javascript" in p.requires:
+        return importlib.util.find_spec("tree_sitter") is not None
+
+    return False
+
+
+def get_default_catalog() -> Catalog:
+    """Return the default catalog with all known passes and packs."""
+    return Catalog(
+        passes=[
+            Pass(
+                id="python-ast-v1",
+                description="Python AST parser",
+                availability="core",
+            ),
+            Pass(
+                id="html-pattern-v1",
+                description="HTML script tag parser",
+                availability="core",
+            ),
+            Pass(
+                id="javascript-ts-v1",
+                description="JS/TS via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[javascript]",
+            ),
+        ],
+        packs=[
+            Pack(
+                id="python-fastapi",
+                description="FastAPI route detection + call graph",
+                passes=["python-ast-v1"],
+            ),
+            Pack(
+                id="electron-app",
+                description="Main/renderer split + IPC detection",
+                passes=["javascript-ts-v1", "html-pattern-v1"],
+            ),
+        ],
+    )

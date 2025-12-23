@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from . import __version__
 from .analyze.html import analyze_html
 from .analyze.py import analyze_python
+from .catalog import get_default_catalog, is_available
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, Span
 from .limits import Limits
@@ -208,8 +209,35 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
 
 def cmd_catalog(args: argparse.Namespace) -> int:
-    # TODO: implement catalog listing
-    print("[hypergumbo catalog] show_all=" + str(args.show_all))
+    """Display available passes and packs."""
+    catalog = get_default_catalog()
+
+    # Filter passes based on --show-all
+    if args.show_all:
+        passes = catalog.passes
+    else:
+        passes = catalog.get_core_passes()
+
+    print("Available Passes:")
+    for p in passes:
+        avail = is_available(p)
+        status = "" if avail else " [not installed]"
+        if p.availability == "core":
+            print(f"  - {p.id} (core): {p.description}{status}")
+        else:
+            print(f"  - {p.id} (extra: {p.requires}): {p.description}{status}")
+
+    print()
+    print("Available Packs:")
+    for pack in catalog.packs:
+        print(f"  - {pack.id}: {pack.description}")
+
+    if not args.show_all:
+        extras = catalog.get_extra_passes()
+        if extras:
+            print()
+            print(f"Use --show-all to see {len(extras)} additional extra(s)")
+
     return 0
 
 

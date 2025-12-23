@@ -20,8 +20,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | File discovery + exclude logic | [x] | `discovery.py` |
 | JSON writer (IR → views compilation) | [x] | `cli.py` |
 | ID generation (stable_id, shape_id) | [x] | `analyze/py.py` |
-| Pass interface and registry | [ ] | No formal pass registration |
-| Catalog system (catalog.json schema) | [ ] | `hypergumbo catalog` is stub |
+| Pass interface and registry | [x] | `catalog.py` - Pass, Pack, Catalog classes |
+| Catalog system (catalog.json schema) | [x] | `catalog.py` - get_default_catalog() |
 | Capsule Plan (plan.json, validation) | [ ] | No plan infrastructure |
 
 ## Week 2: Python Analyzer
@@ -61,7 +61,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` |
 | Template-based plan generation | [ ] | |
 | LLM-assisted plan generation | [ ] | Optional enhancement |
-| `hypergumbo catalog` command | [stub] | Prints placeholder |
+| `hypergumbo catalog` command | [x] | Lists passes and packs |
 | `hypergumbo export-capsule` command | [stub] | Prints placeholder |
 
 ## CLI Commands
@@ -72,7 +72,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo init [path]` | [x] | Initialize capsule |
 | `hypergumbo run [path]` | [x] | Run analysis |
 | `hypergumbo slice --entry X` | [x] | Produce reduced slice |
-| `hypergumbo catalog` | [stub] | List passes/packs |
+| `hypergumbo catalog` | [x] | List passes/packs |
 | `hypergumbo export-capsule` | [stub] | Export shareable capsule |
 
 ## Output Schema Compliance
