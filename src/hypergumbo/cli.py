@@ -1,4 +1,5 @@
 import argparse
+import ast
 import json
 from pathlib import Path
 from . import __version__
@@ -167,11 +168,29 @@ def build_parser() -> argparse.ArgumentParser:
 def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
-
-    For now this is a stub that just emits a well-formed, empty behavior_map
-    using the schema helper. Later we'll plug in real analysis.
     """
     behavior_map = new_behavior_map()
+    nodes = []
+
+    # Find and analyze Python files
+    for py_file in repo_root.rglob("*.py"):
+        try:
+            source = py_file.read_text()
+            tree = ast.parse(source, filename=str(py_file))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                nodes.append({
+                    "name": node.name,
+                    "kind": "function",
+                    "language": "python",
+                    "path": str(py_file),
+                    "line": node.lineno,
+                })
+
+    behavior_map["nodes"] = nodes
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
