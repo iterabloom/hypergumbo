@@ -9,6 +9,7 @@ from .analyze.html import analyze_html
 from .analyze.py import analyze_python
 from .catalog import get_default_catalog, is_available
 from .entrypoints import detect_entrypoints
+from .export import export_capsule
 from .ir import Symbol, Edge, Span
 from .limits import Limits
 from .metrics import compute_metrics
@@ -259,9 +260,24 @@ def cmd_catalog(args: argparse.Namespace) -> int:
 
 
 def cmd_export_capsule(args: argparse.Namespace) -> int:
-    # TODO: implement export-capsule
-    print(f"[hypergumbo export-capsule] shareable={args.shareable} "
-          f"out={args.out}")
+    """Export the capsule as a tarball."""
+    repo_root = Path(args.path).resolve()
+    out_path = Path(args.out)
+    capsule_dir = repo_root / ".hypergumbo"
+
+    # Check if capsule exists
+    if not capsule_dir.exists():
+        print(f"Error: No capsule found at {capsule_dir}", file=sys.stderr)
+        print("Run 'hypergumbo init' first to create a capsule.", file=sys.stderr)
+        return 1
+
+    export_capsule(repo_root, out_path, shareable=args.shareable)
+
+    mode = "shareable" if args.shareable else "full"
+    print(f"[hypergumbo export-capsule] Exported {mode} capsule to {out_path}")
+    if args.shareable:
+        print("  Privacy redactions applied (see SHAREABLE.txt in archive)")
+
     return 0
 
 
@@ -384,7 +400,13 @@ def build_parser() -> argparse.ArgumentParser:
     # hypergumbo export-capsule
     p_export = sub.add_parser(
         "export-capsule",
-        help="[stub] Export capsule in shareable format",
+        help="Export capsule in shareable format",
+    )
+    p_export.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Path to repo root (default: current directory)",
     )
     p_export.add_argument(
         "--shareable",

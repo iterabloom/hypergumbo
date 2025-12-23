@@ -62,7 +62,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Template-based plan generation | [x] | `plan.py` - generates from profile + catalog |
 | LLM-assisted plan generation | [ ] | Optional enhancement |
 | `hypergumbo catalog` command | [x] | Lists passes and packs |
-| `hypergumbo export-capsule` command | [stub] | Prints placeholder |
+| `hypergumbo export-capsule` command | [x] | `export.py` - tarball with privacy redactions |
 
 ## CLI Commands
 
@@ -73,7 +73,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo run [path]` | [x] | Run analysis |
 | `hypergumbo slice --entry X` | [x] | Produce reduced slice |
 | `hypergumbo catalog` | [x] | List passes/packs |
-| `hypergumbo export-capsule` | [stub] | Export shareable capsule |
+| `hypergumbo export-capsule` | [x] | Export shareable capsule |
 
 ## Output Schema Compliance
 
