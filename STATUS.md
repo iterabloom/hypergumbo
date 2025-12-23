@@ -22,7 +22,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | ID generation (stable_id, shape_id) | [x] | `analyze/py.py` |
 | Pass interface and registry | [x] | `catalog.py` - Pass, Pack, Catalog classes |
 | Catalog system (catalog.json schema) | [x] | `catalog.py` - get_default_catalog() |
-| Capsule Plan (plan.json, validation) | [ ] | No plan infrastructure |
+| Capsule Plan (plan.json, validation) | [x] | `plan.py` - generate_plan(), validate_plan() |
 
 ## Week 2: Python Analyzer
 
@@ -58,8 +58,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` |
-| Template-based plan generation | [ ] | |
+| `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` + `capsule_plan.json` |
+| Template-based plan generation | [x] | `plan.py` - generates from profile + catalog |
 | LLM-assisted plan generation | [ ] | Optional enhancement |
 | `hypergumbo catalog` command | [x] | Lists passes and packs |
 | `hypergumbo export-capsule` command | [stub] | Prints placeholder |
