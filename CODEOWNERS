@@ -1,0 +1,13 @@
+# Governance files - require human (jgstern) review
+# Agent account (jgstern-agent) cannot self-approve changes to these
+
+# Git hooks and installation
+\.githooks/.* @jgstern
+scripts/install-hooks @jgstern
+
+# Automation scripts
+scripts/validate-agents\.sh @jgstern
+scripts/auto-pr @jgstern
+
+# This file itself (prevents governance bypass)
+CODEOWNERS @jgstern
