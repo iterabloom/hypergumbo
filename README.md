@@ -18,13 +18,31 @@ hypergumbo --version
 
 ```bash
 hypergumbo init [path]       # creates .hypergumbo/capsule.json with config
-hypergumbo run [path]        # writes hypergumbo.results.json (empty behavior map for now)
+hypergumbo run [path]        # analyzes repo and writes hypergumbo.results.json
 hypergumbo slice --entry X   # stub: will produce reduced behavior slice
 hypergumbo catalog           # stub: will list available passes/packs
 hypergumbo export-capsule    # stub: will export shareable capsule
 ```
 
-`init` and `run` are functional but emit minimal output — real analysis is being built incrementally with tests.
+## What It Does
+
+`hypergumbo run` analyzes Python files and outputs a behavior map with:
+- **Nodes**: Functions and classes with name, kind, location, and unique IDs
+- **Edges**: Call relationships between functions (who calls whom)
+
+Example output:
+```json
+{
+  "schema_version": "0.1.0",
+  "nodes": [
+    {"id": "python:app.py:1-2:helper:function", "name": "helper", "kind": "function", ...},
+    {"id": "python:app.py:4-5:main:function", "name": "main", "kind": "function", ...}
+  ],
+  "edges": [
+    {"source": "python:app.py:4-5:main:function", "target": "python:app.py:1-2:helper:function", "kind": "calls", "line": 5}
+  ]
+}
+```
 
 ## Running tests
 
