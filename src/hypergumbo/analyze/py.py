@@ -37,24 +37,89 @@ class FileAnalysis:
     tree: ast.AST | None = None
 
 
-def _extract_imports(tree: ast.AST) -> dict[str, tuple[str, str]]:
-    """Extract import mappings from AST.
+def _module_name_from_path(py_file: Path, repo_root: Path) -> str:
+    """Convert a file path to a module name.
 
-    Returns a dict mapping local name -> (module_name, original_name).
+    E.g., /repo/utils.py -> 'utils', /repo/pkg/mod.py -> 'pkg.mod'
+    """
+    try:
+        rel_path = py_file.relative_to(repo_root)
+    except ValueError:
+        rel_path = py_file
+    # Remove .py extension and convert path separators to dots
+    return str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
+
+
+def _resolve_relative_import(
+    module: str | None, level: int, importing_module: str
+) -> str:
+    """Resolve a relative import to an absolute module name.
+
+    Args:
+        module: The module part of the import (e.g., 'utils' in 'from ..utils import X')
+        level: The number of dots (0 for absolute, 1 for '.', 2 for '..', etc.)
+        importing_module: The fully qualified name of the importing module
+
+    Returns:
+        The resolved absolute module name.
+
+    Example:
+        _resolve_relative_import('utils', 2, 'pkg.sub.main') -> 'pkg.utils'
+    """
+    if level == 0:
+        # Absolute import
+        return module or ""
+
+    # Split the importing module into parts
+    parts = importing_module.split(".")
+
+    # Go up 'level' levels (level=1 means same package, level=2 means parent, etc.)
+    # We go up (level) levels from the module's package (excluding the module name itself)
+    # So for 'pkg.sub.main' with level=2, we go up 2 from 'pkg.sub' -> 'pkg'
+    if level > len(parts):
+        # Can't go up that many levels, return as-is
+        return module or ""
+
+    base_parts = parts[:-level] if level <= len(parts) else []
+    if module:
+        base_parts.append(module)
+
+    return ".".join(base_parts)
+
+
+def _extract_imports(
+    tree: ast.AST, importing_module: str
+) -> dict[str, tuple[str, str]]:
+    """Extract import mappings from AST with relative import resolution.
+
+    Args:
+        tree: The parsed AST
+        importing_module: The fully qualified name of the importing module
+
+    Returns a dict mapping local name -> (resolved_module_name, original_name).
     For 'from utils import helper', returns {'helper': ('utils', 'helper')}.
-    For 'from utils import helper as h', returns {'h': ('utils', 'helper')}.
+    For 'from ..utils import helper' in 'pkg.sub.main', returns {'helper': ('pkg.utils', 'helper')}.
     """
     imports: dict[str, tuple[str, str]] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            for alias in node.names:
-                local_name = alias.asname if alias.asname else alias.name
-                imports[local_name] = (node.module, alias.name)
+        if isinstance(node, ast.ImportFrom):
+            resolved_module = _resolve_relative_import(
+                node.module, node.level, importing_module
+            )
+            if resolved_module:  # Skip if we couldn't resolve
+                for alias in node.names:
+                    local_name = alias.asname if alias.asname else alias.name
+                    imports[local_name] = (resolved_module, alias.name)
     return imports
 
 
-def _extract_file_analysis(py_file: Path) -> FileAnalysis | None:
+def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> FileAnalysis | None:
     """Extract symbols and imports from a single file.
+
+    Args:
+        py_file: Path to the Python file
+        repo_root: Repository root for resolving relative imports. If None,
+                   relative imports won't be fully resolved.
 
     Returns None if the file cannot be parsed.
     """
@@ -95,7 +160,12 @@ def _extract_file_analysis(py_file: Path) -> FileAnalysis | None:
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
 
-    imports = _extract_imports(tree)
+    # Compute module name for import resolution
+    if repo_root is not None:
+        importing_module = _module_name_from_path(py_file, repo_root)
+    else:
+        importing_module = py_file.stem  # Fallback to just filename
+    imports = _extract_imports(tree, importing_module)
     return FileAnalysis(symbols=symbols, symbol_by_name=symbol_by_name, imports=imports, tree=tree)
 
 
@@ -149,19 +219,6 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     return AnalysisResult(symbols=file_analysis.symbols, edges=edges)
 
 
-def _module_name_from_path(py_file: Path, repo_root: Path) -> str:
-    """Convert a file path to a module name.
-
-    E.g., /repo/utils.py -> 'utils', /repo/pkg/mod.py -> 'pkg.mod'
-    """
-    try:
-        rel_path = py_file.relative_to(repo_root)
-    except ValueError:
-        rel_path = py_file
-    # Remove .py extension and convert path separators to dots
-    return str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
-
-
 def analyze_python(repo_root: Path) -> AnalysisResult:
     """
     Analyze all Python files in a repository.
@@ -172,7 +229,7 @@ def analyze_python(repo_root: Path) -> AnalysisResult:
     # First pass: collect all symbols and imports from all files
     file_analyses: dict[Path, FileAnalysis] = {}
     for py_file in find_python_files(repo_root):
-        analysis = _extract_file_analysis(py_file)
+        analysis = _extract_file_analysis(py_file, repo_root)
         if analysis is not None:
             file_analyses[py_file] = analysis
 
