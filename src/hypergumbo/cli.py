@@ -125,7 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
-    p_slice = sub.add_parser("slice", help="Produce a reduced behavior slice")
+    p_slice = sub.add_parser("slice", help="[stub] Produce a reduced behavior slice")
     p_slice.add_argument(
         "--entry",
         required=True,
@@ -139,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_slice.set_defaults(func=cmd_slice)
 
     # hypergumbo catalog
-    p_catalog = sub.add_parser("catalog", help="Show available passes/packs")
+    p_catalog = sub.add_parser("catalog", help="[stub] Show available passes/packs")
     p_catalog.add_argument(
         "--show-all",
         action="store_true",
@@ -150,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     # hypergumbo export-capsule
     p_export = sub.add_parser(
         "export-capsule",
-        help="Export capsule in shareable format",
+        help="[stub] Export capsule in shareable format",
     )
     p_export.add_argument(
         "--shareable",
