@@ -41,7 +41,9 @@ git config user.name && git config user.email
 # 2. Run tests with coverage (must be 100%)
 pytest --cov=src --cov-fail-under=100
 
-# 3. Commit with sign-off
+# 3. Update STATUS.md if feature status changed
+
+# 4. Commit with sign-off
 git commit -s -m "feat: description"
 ```
 
