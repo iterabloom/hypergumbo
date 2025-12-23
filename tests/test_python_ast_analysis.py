@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from hypergumbo.cli import run_behavior_map
-from hypergumbo.analyze.py import extract_nodes, _module_name_from_path
+from hypergumbo.analyze.py import extract_nodes, _module_name_from_path, _resolve_relative_import
 
 
 def test_run_detects_python_function(tmp_path: Path) -> None:
@@ -209,3 +209,63 @@ def test_module_name_from_path_outside_repo(tmp_path: Path) -> None:
     repo_root.mkdir()
     result = _module_name_from_path(py_file, repo_root)
     assert "external" in result
+
+
+def test_resolve_relative_import_too_high() -> None:
+    """_resolve_relative_import should handle going up too many levels gracefully."""
+    # Trying to go up 5 levels from 'pkg.mod' (only 2 levels) should return module as-is
+    result = _resolve_relative_import("utils", 5, "pkg.mod")
+    assert result == "utils"
+
+    # With no module part, should return empty string
+    result = _resolve_relative_import(None, 5, "pkg.mod")
+    assert result == ""
+
+
+def test_run_detects_relative_import_calls(tmp_path: Path) -> None:
+    """Running analysis should detect calls via relative imports (from ..X import Y)."""
+    # Create a package structure:
+    # pkg/
+    #   __init__.py
+    #   utils.py      -> def helper(): pass
+    #   sub/
+    #     __init__.py
+    #     main.py     -> from ..utils import helper; def run(): helper()
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+
+    utils_file = pkg / "utils.py"
+    utils_file.write_text("def helper():\n    pass\n")
+
+    sub = pkg / "sub"
+    sub.mkdir()
+    (sub / "__init__.py").write_text("")
+
+    main_file = sub / "main.py"
+    main_file.write_text(
+        "from ..utils import helper\n"
+        "\n"
+        "def run():\n"
+        "    helper()\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have two function nodes (helper in utils, run in main)
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 2
+
+    # Should have one cross-file edge: run -> helper
+    assert len(data["edges"]) == 1
+    edge = data["edges"][0]
+    assert edge["kind"] == "calls"
+    assert "run" in edge["source"]
+    assert "helper" in edge["target"]
+    # The target should reference utils.py, not main.py
+    assert "utils.py" in edge["target"]
