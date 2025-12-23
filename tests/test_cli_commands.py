@@ -73,18 +73,242 @@ def test_cmd_run_creates_behavior_map(tmp_path: Path) -> None:
     assert data["schema_version"] == "0.1.0"
 
 
-def test_cmd_slice_stub(capsys) -> None:
+def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
+    """Test that slice command produces a valid slice file."""
+    # Create a simple Python file to analyze
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def hello():\n    pass\n")
+
     args = FakeArgs()
-    args.entry = "my_function"
-    args.out = "slice.json"
+    args.path = str(tmp_path)
+    args.entry = "hello"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    out_path = tmp_path / "slice.json"
+    assert out_path.exists()
+
+    data = json.loads(out_path.read_text())
+    assert data["view"] == "slice"
+    assert "feature" in data
+    assert data["feature"]["name"] == "hello"
+
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo slice]" in out
+
+
+def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
+    """Test slice command reading from existing behavior map."""
+    # Create a behavior map file
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    assert len(data["feature"]["node_ids"]) == 1
+
+
+def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
+    """Test slice command with missing input file."""
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(tmp_path / "nonexistent.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+
+    result = cmd_slice(args)
+
+    assert result == 1  # Error exit code
+
+
+def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
+    """Test slice command reads from existing hypergumbo.results.json."""
+    # Create a behavior map file at the default location
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "bar"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None  # Should auto-detect existing results
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    assert len(data["feature"]["node_ids"]) == 1
+
+
+def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
+    """Test slice command prints limits hit."""
+    # Create a chain that will hit hop limit
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:a.py:1-2:a:function",
+                "name": "a",
+                "kind": "function",
+                "language": "python",
+                "path": "a.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 5},
+            },
+            {
+                "id": "python:b.py:1-2:b:function",
+                "name": "b",
+                "kind": "function",
+                "language": "python",
+                "path": "b.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 5},
+            },
+            {
+                "id": "python:c.py:1-2:c:function",
+                "name": "c",
+                "kind": "function",
+                "language": "python",
+                "path": "c.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 5},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:a.py:1-2:a:function",
+                "dst": "python:b.py:1-2:b:function",
+                "type": "calls",
+                "confidence": 0.9,
+                "meta": {"evidence_type": "ast_call_direct"},
+            },
+            {
+                "id": "edge:2",
+                "src": "python:b.py:1-2:b:function",
+                "dst": "python:c.py:1-2:c:function",
+                "type": "calls",
+                "confidence": 0.9,
+                "meta": {"evidence_type": "ast_call_direct"},
+            },
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "a"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 1  # Only allow 1 hop to trigger limit
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
 
     result = cmd_slice(args)
 
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "[hypergumbo slice]" in out
-    assert "my_function" in out
+    assert "limits hit: hop_limit" in out
+
+
+def test_edge_from_dict_defaults(tmp_path: Path) -> None:
+    """Test _edge_from_dict uses defaults for missing fields."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {},  # Empty span to test defaults
+            }
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-2:foo:function",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                # No line, no confidence, no meta - should use defaults
+            },
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+
+    result = cmd_slice(args)
+
+    assert result == 0
 
 
 def test_cmd_catalog_stub(capsys) -> None:
@@ -141,9 +365,13 @@ def test_main_with_run(tmp_path: Path) -> None:
     assert out_file.exists()
 
 
-def test_main_with_slice() -> None:
-    result = main(["slice", "--entry", "foo"])
+def test_main_with_slice(tmp_path: Path) -> None:
+    # Create a simple Python file
+    (tmp_path / "main.py").write_text("def foo():\n    pass\n")
+    out_file = tmp_path / "slice.json"
+    result = main(["slice", str(tmp_path), "--entry", "foo", "--out", str(out_file)])
     assert result == 0
+    assert out_file.exists()
 
 
 def test_main_with_catalog() -> None:
