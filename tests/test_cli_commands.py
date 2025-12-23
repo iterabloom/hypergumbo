@@ -478,7 +478,8 @@ def test_cmd_slice_auto_entry_no_entrypoints(tmp_path: Path, capsys) -> None:
     assert "No entrypoints detected" in err
 
 
-def test_cmd_catalog_stub(capsys) -> None:
+def test_cmd_catalog_show_all(capsys) -> None:
+    """Catalog with --show-all shows all passes including extras."""
     args = FakeArgs()
     args.show_all = True
 
@@ -487,11 +488,15 @@ def test_cmd_catalog_stub(capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "[hypergumbo catalog]" in out
-    assert "True" in out
+    assert "Available Passes:" in out
+    assert "python-ast-v1" in out
+    assert "html-pattern-v1" in out
+    assert "javascript-ts-v1" in out  # extra included with --show-all
+    assert "Available Packs:" in out
 
 
-def test_cmd_catalog_stub_default(capsys) -> None:
+def test_cmd_catalog_default(capsys) -> None:
+    """Catalog without --show-all shows only core passes."""
     args = FakeArgs()
     args.show_all = False
 
@@ -500,7 +505,10 @@ def test_cmd_catalog_stub_default(capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "False" in out
+    assert "Available Passes:" in out
+    assert "python-ast-v1" in out
+    assert "javascript-ts-v1" not in out  # extras hidden by default
+    assert "Use --show-all" in out  # hint about extras
 
 
 def test_cmd_export_capsule_stub(capsys) -> None:
