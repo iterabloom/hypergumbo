@@ -28,6 +28,12 @@
   2. If Green, push to a short-lived branch (e.g., `tmp/task-name`).
   3. **CI Check:** Wait for remote CI to pass.
   4. **Merge:** If CI is Green, merge immediately. Do not wait for human review unless you are unsure of architecture.
+- **PR Pending Gate:**
+  - Before starting new work, check: `test -f .git/PR_PENDING && echo "WAIT"`
+  - If `.git/PR_PENDING` exists, **STOP**. A PR is awaiting CI/merge.
+  - Do NOT create new branches, start new features, or make unrelated changes.
+  - Wait for `./scripts/auto-pr` to complete, or run `./scripts/auto-pr --status` to check.
+  - Only proceed after the file is removed (merge confirmed).
 - **Fixing Build:** If `main` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
