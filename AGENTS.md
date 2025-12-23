@@ -18,6 +18,32 @@
      `git config --global user.name "Your Name" && git config --global user.email "you@example.com"`
   3. Once configured, all commits must use `git commit -s` to satisfy the DCO.
 
+## Pre-Work Checklist
+Run these checks before starting any new feature or task:
+```bash
+# 1. Ensure no PR is in flight
+test -f .git/PR_PENDING && echo "STOP: PR awaiting merge" && exit 1
+
+# 2. Sync with main
+git checkout main && git pull origin main
+
+# 3. Check current progress
+cat STATUS.md
+```
+
+## Pre-Commit Checklist
+Run these checks before every commit:
+```bash
+# 1. Verify git identity is configured
+git config user.name && git config user.email
+
+# 2. Run tests with coverage (must be 100%)
+pytest --cov=src --cov-fail-under=100
+
+# 3. Commit with sign-off
+git commit -s -m "feat: description"
+```
+
 ## Workflow (Trunk-Based XP)
 - **Primary Goal:** Keep `main` green and deployable at all times.
 - **TDD Protocol:**
