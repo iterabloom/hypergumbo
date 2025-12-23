@@ -85,8 +85,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `nodes[]` with span, stable_id, shape_id | [x] | |
 | `edges[]` with id, confidence, meta | [x] | |
 | `features[]` | [x] | Via slice command output |
-| `metrics` | [ ] | Optional counts |
-| `limits` | [ ] | Explicit gaps |
+| `metrics` | [x] | `metrics.py` - counts, avg confidence, per-language |
+| `limits` | [x] | `limits.py` - failed files, skipped langs, known gaps |
 
 ## Analysis Passes
 
