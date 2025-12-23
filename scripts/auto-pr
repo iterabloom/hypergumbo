@@ -28,6 +28,39 @@ REMOTE_URL="$(git remote get-url origin)"
 REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
 LOCAL_SHA="$(git rev-parse HEAD)"
 
+# ------------------------------------------------------------------
+# Cleanup function with retry for SSH timeouts
+# ------------------------------------------------------------------
+cleanup_local() {
+  git checkout main
+  
+  local max_attempts=3
+  local attempt=1
+  
+  while [[ $attempt -le $max_attempts ]]; do
+    if git pull origin main; then
+      git branch -d "$BRANCH" 2>/dev/null || true
+      return 0
+    fi
+    
+    echo ""
+    echo "⚠️  Git pull failed (attempt $attempt/$max_attempts)"
+    
+    if [[ $attempt -lt $max_attempts ]]; then
+      read -p "Retry? [Y/n] " -n 1 -r REPLY
+      echo ""
+      if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        ((attempt++))
+        continue
+      fi
+    fi
+    
+    echo "ℹ️  Skipping cleanup. Run manually later:"
+    echo "   git pull origin main && git branch -D $BRANCH"
+    return 0
+  done
+}
+
 echo "🚀 Target: $REPO_SLUG"
 echo "🌿 Branch: $BRANCH"
 echo "🔑 Commit: ${LOCAL_SHA:0:7}"
@@ -124,9 +157,7 @@ if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
   echo "✅ Successfully Merged!"
   echo "---------------------------------------------------"
   echo "🧹 Cleaning up local branch..."
-  git checkout main
-  git pull origin main
-  git branch -d "$BRANCH"
+  cleanup_local
 else
   # Forgejo sometimes returns 500 on successful merge - verify actual state
   echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
@@ -137,9 +168,7 @@ else
     echo "✅ Verified: PR was successfully merged!"
     echo "---------------------------------------------------"
     echo "🧹 Cleaning up local branch..."
-    git checkout main
-    git pull origin main
-    git branch -d "$BRANCH"
+    cleanup_local
   else
     echo "❌ Merge failed:"
     echo "HTTP Status: $MERGE_HTTP_CODE"
