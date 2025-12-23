@@ -1,11 +1,16 @@
 import argparse
 import json
+import sys
 from pathlib import Path
+from typing import Any, Dict, List
+
 from . import __version__
 from .analyze.html import analyze_html
 from .analyze.py import analyze_python
+from .ir import Symbol, Edge, Span
 from .profile import detect_profile
 from .schema import new_behavior_map
+from .slice import SliceQuery, slice_graph
 
 
 
@@ -52,9 +57,122 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _node_from_dict(d: Dict[str, Any]) -> Symbol:
+    """Reconstruct a Symbol from its dict representation."""
+    span_data = d.get("span", {})
+    span = Span(
+        start_line=span_data.get("start_line", 0),
+        end_line=span_data.get("end_line", 0),
+        start_col=span_data.get("start_col", 0),
+        end_col=span_data.get("end_col", 0),
+    )
+    return Symbol(
+        id=d["id"],
+        name=d["name"],
+        kind=d["kind"],
+        language=d["language"],
+        path=d["path"],
+        span=span,
+        origin=d.get("origin", ""),
+        origin_run_id=d.get("origin_run_id", ""),
+        stable_id=d.get("stable_id"),
+        shape_id=d.get("shape_id"),
+    )
+
+
+def _edge_from_dict(d: Dict[str, Any]) -> Edge:
+    """Reconstruct an Edge from its dict representation."""
+    meta = d.get("meta", {})
+    return Edge(
+        id=d["id"],
+        src=d["src"],
+        dst=d["dst"],
+        edge_type=d["type"],
+        line=d.get("line", 0),
+        confidence=d.get("confidence", 0.85),
+        origin=d.get("origin", ""),
+        origin_run_id=d.get("origin_run_id", ""),
+        evidence_type=meta.get("evidence_type", "unknown"),
+    )
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
-    # TODO: implement slicing
-    print(f"[hypergumbo slice] entry={args.entry} out={args.out}")
+    """Execute the slice command."""
+    repo_root = Path(args.path).resolve()
+    out_path = Path(args.out)
+
+    # Determine input: use --input if provided, otherwise run analysis
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
+        behavior_map = json.loads(input_path.read_text())
+    else:
+        # Check for existing results file
+        default_results = repo_root / "hypergumbo.results.json"
+        if default_results.exists():
+            behavior_map = json.loads(default_results.read_text())
+        else:
+            # Run analysis first
+            behavior_map = new_behavior_map()
+            profile = detect_profile(repo_root)
+            behavior_map["profile"] = profile.to_dict()
+
+            analysis_runs = []
+            all_nodes: List[Dict[str, Any]] = []
+            all_edges: List[Dict[str, Any]] = []
+
+            py_result = analyze_python(repo_root)
+            if py_result.run is not None:
+                analysis_runs.append(py_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in py_result.symbols)
+            all_edges.extend(e.to_dict() for e in py_result.edges)
+
+            html_result = analyze_html(repo_root)
+            if html_result.run is not None:
+                analysis_runs.append(html_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in html_result.symbols)
+            all_edges.extend(e.to_dict() for e in html_result.edges)
+
+            behavior_map["analysis_runs"] = analysis_runs
+            behavior_map["nodes"] = all_nodes
+            behavior_map["edges"] = all_edges
+
+    # Reconstruct Symbol and Edge objects from the behavior map
+    nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
+    edges = [_edge_from_dict(e) for e in behavior_map.get("edges", [])]
+
+    # Build slice query
+    query = SliceQuery(
+        entrypoint=args.entry,
+        max_hops=args.max_hops,
+        max_files=args.max_files,
+        min_confidence=args.min_confidence,
+        exclude_tests=args.exclude_tests,
+    )
+
+    # Perform slice
+    result = slice_graph(nodes, edges, query)
+
+    # Build output
+    output = {
+        "schema_version": behavior_map.get("schema_version", "0.1.0"),
+        "view": "slice",
+        "feature": result.to_dict(),
+    }
+
+    # Write output
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(output, indent=2))
+
+    print(f"[hypergumbo slice] Wrote slice to {out_path}")
+    print(f"  entry: {args.entry}")
+    print(f"  nodes: {len(result.node_ids)}")
+    print(f"  edges: {len(result.edge_ids)}")
+    if result.limits_hit:
+        print(f"  limits hit: {', '.join(result.limits_hit)}")
+
     return 0
 
 
@@ -125,7 +243,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
-    p_slice = sub.add_parser("slice", help="[stub] Produce a reduced behavior slice")
+    p_slice = sub.add_parser("slice", help="Produce a reduced behavior slice")
+    p_slice.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
     p_slice.add_argument(
         "--entry",
         required=True,
@@ -135,6 +259,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--out",
         default="slice.json",
         help="Output JSON path (default: slice.json)",
+    )
+    p_slice.add_argument(
+        "--input",
+        default=None,
+        help="Read from existing behavior map file instead of running analysis",
+    )
+    p_slice.add_argument(
+        "--max-hops",
+        type=int,
+        default=3,
+        help="Maximum traversal depth (default: 3)",
+    )
+    p_slice.add_argument(
+        "--max-files",
+        type=int,
+        default=20,
+        help="Maximum number of files to include (default: 20)",
+    )
+    p_slice.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.0,
+        help="Minimum edge confidence to follow (default: 0.0)",
+    )
+    p_slice.add_argument(
+        "--exclude-tests",
+        action="store_true",
+        help="Exclude test files from the slice",
     )
     p_slice.set_defaults(func=cmd_slice)
 

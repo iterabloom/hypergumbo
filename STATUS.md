@@ -49,10 +49,10 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Slice module (BFS/DFS on relationships) | [ ] | `hypergumbo slice` is stub |
+| Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal |
 | Entrypoint detection heuristics | [ ] | FastAPI, Flask, Express, etc. |
-| Feature generation with query specs | [ ] | |
-| Slice IDs and reproducibility | [ ] | |
+| Feature generation with query specs | [x] | Stable feature IDs from query |
+| Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
 
 ## Week 5: Capsule Initialization
 
@@ -71,7 +71,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo --version` | [x] | Print version |
 | `hypergumbo init [path]` | [x] | Initialize capsule |
 | `hypergumbo run [path]` | [x] | Run analysis |
-| `hypergumbo slice --entry X` | [stub] | Produce reduced slice |
+| `hypergumbo slice --entry X` | [x] | Produce reduced slice |
 | `hypergumbo catalog` | [stub] | List passes/packs |
 | `hypergumbo export-capsule` | [stub] | Export shareable capsule |
 
@@ -84,7 +84,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `analysis_runs[]` | [x] | Provenance tracking |
 | `nodes[]` with span, stable_id, shape_id | [x] | |
 | `edges[]` with id, confidence, meta | [x] | |
-| `features[]` | [ ] | Requires slice module |
+| `features[]` | [x] | Via slice command output |
 | `metrics` | [ ] | Optional counts |
 | `limits` | [ ] | Explicit gaps |
 
@@ -99,4 +99,4 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 ---
 
-*Last updated: 2024-12-23*
+*Last updated: 2025-12-23*
