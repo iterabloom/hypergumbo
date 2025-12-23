@@ -39,6 +39,11 @@ hypergumbo export-capsule    # stub: will export shareable capsule
 - Relative import resolution (`from ..utils import helper`)
 - Method call detection (`self.helper()`)
 
+**HTML Analysis:**
+- HTML file detection (`.html`, `.htm`)
+- Script tag detection (`<script src="...">`)
+- Creates edges from HTML files to referenced scripts
+
 **Output Format:**
 ```json
 {
@@ -60,7 +65,6 @@ hypergumbo export-capsule    # stub: will export shareable capsule
 ### Not Yet Implemented
 
 See `docs/hypergumbo-spec.md` for the full MVP spec. Key missing pieces:
-- HTML script tag detection (`html-pattern-v1`)
 - JS/TS analysis (tree-sitter)
 - Capsule infrastructure (plan validation, catalog)
 - Profile detection (languages, frameworks)

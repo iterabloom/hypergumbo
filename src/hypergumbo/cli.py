@@ -2,6 +2,7 @@ import argparse
 import json
 from pathlib import Path
 from . import __version__
+from .analyze.html import analyze_html
 from .analyze.py import analyze_python
 from .schema import new_behavior_map
 
@@ -171,15 +172,27 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     """
     behavior_map = new_behavior_map()
 
-    # Run Python analysis and compile IR to output view
-    result = analyze_python(repo_root)
+    analysis_runs = []
+    all_nodes = []
+    all_edges = []
 
-    # Add analysis runs for provenance tracking
-    if result.run is not None:
-        behavior_map["analysis_runs"] = [result.run.to_dict()]
+    # Run Python analysis
+    py_result = analyze_python(repo_root)
+    if py_result.run is not None:
+        analysis_runs.append(py_result.run.to_dict())
+    all_nodes.extend(s.to_dict() for s in py_result.symbols)
+    all_edges.extend(e.to_dict() for e in py_result.edges)
 
-    behavior_map["nodes"] = [s.to_dict() for s in result.symbols]
-    behavior_map["edges"] = [e.to_dict() for e in result.edges]
+    # Run HTML analysis
+    html_result = analyze_html(repo_root)
+    if html_result.run is not None:
+        analysis_runs.append(html_result.run.to_dict())
+    all_nodes.extend(s.to_dict() for s in html_result.symbols)
+    all_edges.extend(e.to_dict() for e in html_result.edges)
+
+    behavior_map["analysis_runs"] = analysis_runs
+    behavior_map["nodes"] = all_nodes
+    behavior_map["edges"] = all_edges
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
