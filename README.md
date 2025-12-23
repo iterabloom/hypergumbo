@@ -28,21 +28,39 @@ hypergumbo export-capsule    # stub: will export shareable capsule
 
 `hypergumbo run` analyzes Python files and outputs a behavior map with:
 - **Nodes**: Functions and classes with name, kind, location, and unique IDs
-- **Edges**: Call relationships between functions (who calls whom)
+- **Edges**: Call relationships between symbols (who calls whom)
 
-Example output:
+### Current Capabilities
+
+**Python Analysis:**
+- Function and class detection via AST
+- Intra-file call detection (`helper()`)
+- Cross-file call detection via imports (`from utils import helper`)
+- Relative import resolution (`from ..utils import helper`)
+- Method call detection (`self.helper()`)
+
+**Output Format:**
 ```json
 {
   "schema_version": "0.1.0",
   "nodes": [
-    {"id": "python:app.py:1-2:helper:function", "name": "helper", "kind": "function", ...},
-    {"id": "python:app.py:4-5:main:function", "name": "main", "kind": "function", ...}
+    {"id": "python:app.py:1-2:helper:function", "name": "helper", "kind": "function", "language": "python", "path": "app.py", "line": 1, "end_line": 2}
   ],
   "edges": [
     {"source": "python:app.py:4-5:main:function", "target": "python:app.py:1-2:helper:function", "kind": "calls", "line": 5}
   ]
 }
 ```
+
+### Not Yet Implemented
+
+See `docs/hypergumbo-spec.md` for the full MVP spec. Key missing pieces:
+- Provenance tracking (origin, execution_id, run_signature)
+- Confidence scoring and evidence types
+- HTML script tag detection
+- JS/TS analysis (tree-sitter)
+- Capsule infrastructure (plan validation, catalog)
+- Profile detection (languages, frameworks)
 
 ## Running tests
 
