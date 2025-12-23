@@ -511,18 +511,44 @@ def test_cmd_catalog_default(capsys) -> None:
     assert "Use --show-all" in out  # hint about extras
 
 
-def test_cmd_export_capsule_stub(capsys) -> None:
+def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:
+    """Export capsule creates tarball."""
+    # Setup capsule directory
+    capsule_dir = tmp_path / ".hypergumbo"
+    capsule_dir.mkdir()
+    (capsule_dir / "capsule.json").write_text('{"repo_root": "/tmp"}')
+    (capsule_dir / "capsule_plan.json").write_text(
+        '{"version": "0.1.0", "passes": [], "packs": [], "rules": [], "features": []}'
+    )
+
     args = FakeArgs()
+    args.path = str(tmp_path)
     args.shareable = True
-    args.out = "capsule.tar.gz"
+    args.out = str(tmp_path / "capsule.tar.gz")
 
     result = cmd_export_capsule(args)
 
     assert result == 0
+    assert (tmp_path / "capsule.tar.gz").exists()
 
     out, _ = capsys.readouterr()
     assert "[hypergumbo export-capsule]" in out
-    assert "shareable=True" in out
+    assert "shareable" in out
+
+
+def test_cmd_export_capsule_no_capsule(tmp_path: Path, capsys) -> None:
+    """Export fails if no capsule exists."""
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.shareable = False
+    args.out = str(tmp_path / "capsule.tar.gz")
+
+    result = cmd_export_capsule(args)
+
+    assert result == 1
+
+    _, err = capsys.readouterr()
+    assert "No capsule found" in err
 
 
 def test_main_with_init(tmp_path: Path) -> None:
@@ -554,6 +580,17 @@ def test_main_with_catalog() -> None:
     assert result == 0
 
 
-def test_main_with_export_capsule() -> None:
-    result = main(["export-capsule"])
+def test_main_with_export_capsule(tmp_path: Path) -> None:
+    """Main with export-capsule creates tarball."""
+    # Setup capsule directory
+    capsule_dir = tmp_path / ".hypergumbo"
+    capsule_dir.mkdir()
+    (capsule_dir / "capsule.json").write_text('{"repo_root": "/tmp"}')
+    (capsule_dir / "capsule_plan.json").write_text(
+        '{"version": "0.1.0", "passes": [], "packs": [], "rules": [], "features": []}'
+    )
+
+    out_path = tmp_path / "capsule.tar.gz"
+    result = main(["export-capsule", str(tmp_path), "--out", str(out_path)])
     assert result == 0
+    assert out_path.exists()
