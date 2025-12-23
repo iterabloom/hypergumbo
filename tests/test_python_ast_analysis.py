@@ -65,3 +65,25 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
     assert len(data["nodes"]) == 1
     assert data["nodes"][0]["name"] == "works"
+
+
+def test_run_detects_python_class(tmp_path: Path) -> None:
+    """Running analysis on a Python file should detect class definitions."""
+    # Create a Python file with a class
+    py_file = tmp_path / "models.py"
+    py_file.write_text("class User:\n    pass\n")
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Expect a class node in the output
+    assert len(data["nodes"]) == 1
+    node = data["nodes"][0]
+    assert node["name"] == "User"
+    assert node["kind"] == "class"
+    assert node["language"] == "python"
+    assert "models.py" in node["path"]
