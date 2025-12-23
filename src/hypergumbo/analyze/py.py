@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
 
 def find_python_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Python files in the repository."""
-    yield from repo_root.rglob("*.py")
+    """Yield all Python files in the repository, excluding common non-source dirs."""
+    yield from find_files(repo_root, ["*.py"])
 
 
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:

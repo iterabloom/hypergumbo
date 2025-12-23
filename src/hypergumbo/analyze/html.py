@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
 PASS_ID = "html-pattern-v1"
@@ -18,9 +19,8 @@ SCRIPT_SRC_PATTERN = re.compile(
 
 
 def find_html_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all HTML files in the repository."""
-    yield from repo_root.rglob("*.html")
-    yield from repo_root.rglob("*.htm")
+    """Yield all HTML files in the repository, excluding common non-source dirs."""
+    yield from find_files(repo_root, ["*.html", "*.htm"])
 
 
 def _make_file_id(path: str) -> str:
