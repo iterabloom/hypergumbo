@@ -294,26 +294,24 @@ done
 
 rewrite_trailer_value_smartass() {
   local v="$1"
-  local out="" prefix angle rest inner
 
-  while [[ "$v" =~ ^([^<]*)(<[^>]*>)(.*)$ ]]; do
-    prefix="${BASH_REMATCH[1]}"
-    angle="${BASH_REMATCH[2]}"
-    rest="${BASH_REMATCH[3]}"
+  # Store regex in variable to prevent glob expansion of [^<] and [^>]
+  local identity_re='^([^<]*)<([^>]*)>(.*)$'
 
-    prefix="$(replace_brands_ci "$replacement_out" "$prefix")"
-
-    inner="${angle:1:${#angle}-2}"
-    inner="$(replace_brands_ci "$replacement_in" "$inner")"
-
-    out+="${prefix}<${inner}>"
-    v="$rest"
-  done
-
-  v="$(replace_brands_ci "$replacement_out" "$v")"
-  out+="$v"
-
-  printf '%s' "$out"
+  # If the value follows the standard "Name <Email>" format:
+  if [[ "$v" =~ $identity_re ]]; then
+    # We ignore the original name and email entirely.
+    # We construct a new identity using the slugified phrase + the static domain.
+    # Preserve any trailing garbage/comments if they existed (BASH_REMATCH[3]).
+    printf '%s <%s@racialcapitalism.isbad>%s' \
+      "$replacement_out" \
+      "$replacement_in" \
+      "${BASH_REMATCH[3]}"
+  else
+    # Fallback: If it's not a standard identity line (e.g. "Closes: #123"),
+    # just output the absurd phrase.
+    printf '%s' "$replacement_out"
+  fi
 }
 
 out_trailers=()
