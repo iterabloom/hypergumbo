@@ -52,15 +52,19 @@ hypergumbo export-capsule    # stub: will export shareable capsule
 }
 ```
 
+**Schema Compliance (per spec):**
+- Provenance tracking via `analysis_runs[]` with execution_id, timing
+- Nodes have `origin`, `origin_run_id`, `span` (with columns), `stable_id`, `shape_id`
+- Edges have `id`, `confidence`, `meta.evidence_type`, `origin`, `origin_run_id`
+
 ### Not Yet Implemented
 
 See `docs/hypergumbo-spec.md` for the full MVP spec. Key missing pieces:
-- Provenance tracking (origin, execution_id, run_signature)
-- Confidence scoring and evidence types
-- HTML script tag detection
+- HTML script tag detection (`html-pattern-v1`)
 - JS/TS analysis (tree-sitter)
 - Capsule infrastructure (plan validation, catalog)
 - Profile detection (languages, frameworks)
+- Computed `stable_id` and `shape_id` (currently null)
 
 ## Running tests
 
