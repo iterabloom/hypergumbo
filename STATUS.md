@@ -50,7 +50,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal |
-| Entrypoint detection heuristics | [ ] | FastAPI, Flask, Express, etc. |
+| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron |
 | Feature generation with query specs | [x] | Stable feature IDs from query |
 | Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
 

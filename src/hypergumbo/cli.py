@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from . import __version__
 from .analyze.html import analyze_html
 from .analyze.py import analyze_python
+from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, Span
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -143,9 +144,35 @@ def cmd_slice(args: argparse.Namespace) -> int:
     nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
     edges = [_edge_from_dict(e) for e in behavior_map.get("edges", [])]
 
+    # Handle --list-entries: show detected entrypoints and exit
+    if args.list_entries:
+        entrypoints = detect_entrypoints(nodes, edges)
+        if not entrypoints:
+            print("[hypergumbo slice] No entrypoints detected")
+        else:
+            print(f"[hypergumbo slice] Detected {len(entrypoints)} entrypoint(s):")
+            for ep in entrypoints:
+                print(f"  [{ep.kind.value}] {ep.label} (confidence: {ep.confidence:.2f})")
+                print(f"    {ep.symbol_id}")
+        return 0
+
+    # Handle --entry auto: use detected entrypoints
+    entry = args.entry
+    if entry == "auto":
+        entrypoints = detect_entrypoints(nodes, edges)
+        if not entrypoints:
+            print("Error: No entrypoints detected. Use --entry to specify manually.",
+                  file=sys.stderr)
+            return 1
+        # Use the highest confidence entrypoint
+        best = max(entrypoints, key=lambda e: e.confidence)
+        entry = best.symbol_id
+        print(f"[hypergumbo slice] Auto-detected entry: {best.label}")
+        print(f"  {entry}")
+
     # Build slice query
     query = SliceQuery(
-        entrypoint=args.entry,
+        entrypoint=entry,
         max_hops=args.max_hops,
         max_files=args.max_files,
         min_confidence=args.min_confidence,
@@ -167,7 +194,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     out_path.write_text(json.dumps(output, indent=2))
 
     print(f"[hypergumbo slice] Wrote slice to {out_path}")
-    print(f"  entry: {args.entry}")
+    print(f"  entry: {entry}")
     print(f"  nodes: {len(result.node_ids)}")
     print(f"  edges: {len(result.edge_ids)}")
     if result.limits_hit:
@@ -252,8 +279,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_slice.add_argument(
         "--entry",
-        required=True,
-        help="Entrypoint (symbol | file | route) to slice from",
+        default="auto",
+        help="Entrypoint to slice from: symbol name, file path, node ID, or 'auto' "
+             "to detect automatically (default: auto)",
+    )
+    p_slice.add_argument(
+        "--list-entries",
+        action="store_true",
+        help="List detected entrypoints and exit (do not slice)",
     )
     p_slice.add_argument(
         "--out",
