@@ -4,6 +4,44 @@ Detects common entrypoint patterns:
 - HTTP routes (FastAPI, Flask, Express)
 - CLI entrypoints (main guard, Click commands)
 - Electron app entry points (main, preload, renderer)
+
+How It Works
+------------
+Entrypoint detection uses heuristics to identify likely "entry points"
+into a codebase - places where execution typically starts or where
+external requests arrive. This enables `--entry auto` in the slicer.
+
+Detection is based on two signals:
+
+1. **Decorators** (high confidence ~0.95): Functions decorated with
+   `@get`, `@post`, `@route`, `@command` etc. are almost certainly
+   entrypoints. We extract decorator names from the Symbol's stable_id
+   field during analysis.
+
+2. **Name patterns** (lower confidence ~0.70): Functions named `main`,
+   `cli`, `run` are *probably* entrypoints but could be false positives.
+   The lower confidence lets callers filter if desired.
+
+3. **File patterns** (medium confidence ~0.85): For Electron apps,
+   files named `main.js`, `preload.js`, `renderer.js` indicate entry
+   points by convention.
+
+Confidence Scores
+-----------------
+Each entrypoint has a confidence score (0.0-1.0) reflecting detection
+certainty. When `--entry auto` is used, we pick the highest-confidence
+entrypoint. Scores are:
+
+- 0.95: Decorator-based (very reliable)
+- 0.85: File-pattern-based (reliable for Electron)
+- 0.70: Name-pattern-based (heuristic, may have false positives)
+
+Current Limitations
+-------------------
+- Decorator detection relies on stable_id containing decorator names,
+  which is a temporary hack. Proper decorator storage in IR is needed.
+- No Express.js detection yet (requires JS analysis).
+- No Django URL pattern detection yet.
 """
 from __future__ import annotations
 

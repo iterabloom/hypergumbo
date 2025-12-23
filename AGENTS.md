@@ -12,6 +12,7 @@
 - **100% Coverage:** No code may be committed without full test coverage. Verify with: `pytest --cov=src --cov-fail-under=100`
 - **Golden Masters:** Output must match existing golden files in `tests/fixtures/`.
 - **Linting:** Ensure code adheres to PEP 8.
+- **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:

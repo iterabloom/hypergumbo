@@ -3,6 +3,38 @@
 This module implements BFS-based graph traversal to extract relevant
 subgraphs from a behavior map, suitable for providing focused context
 to AI coding agents.
+
+How It Works
+------------
+Given an entrypoint (function name, file path, or node ID), the slicer
+performs breadth-first traversal following edges (calls, imports) to
+collect related nodes. Traversal respects configurable limits:
+
+- **max_hops**: Depth limit (default 3). Prevents unbounded exploration.
+- **max_files**: File count limit (default 20). Keeps context focused.
+- **min_confidence**: Edge confidence threshold. Filters speculative edges.
+- **exclude_tests**: Skips test files to focus on production code.
+
+The result is a "feature" - a subgraph with a stable ID derived from
+the query parameters (sha256 of JSON-serialized query). Same query
+always produces same feature ID, enabling caching and reproducibility.
+
+Why BFS (not DFS)
+-----------------
+BFS explores by distance from entry, so if we hit max_hops, we've seen
+all nodes within N hops. DFS might go deep down one path and miss
+nearby relevant code. For context extraction, "nearby" code is usually
+more relevant than "deep" code.
+
+Entry Matching
+--------------
+The entrypoint spec is matched flexibly:
+1. Exact node ID match (most specific)
+2. Exact file path match (all symbols in that file)
+3. Exact symbol name match
+4. Partial name match (contains)
+
+This lets users say `--entry login` and find `user_login`, `login_handler`, etc.
 """
 from __future__ import annotations
 
