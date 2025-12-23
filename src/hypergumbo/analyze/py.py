@@ -1,6 +1,6 @@
 """Python AST analysis pass."""
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
@@ -25,23 +25,48 @@ class AnalysisResult:
     edges: list[Edge]
 
 
-def extract_nodes(py_file: Path) -> AnalysisResult:
-    """
-    Extract function/class definitions and call edges from a Python file.
+@dataclass
+class FileAnalysis:
+    """Intermediate analysis result for a single file."""
 
-    Returns an AnalysisResult with symbols and edges.
-    Gracefully handles syntax errors and encoding issues.
+    symbols: list[Symbol]
+    symbol_by_name: dict[str, Symbol]
+    # Maps imported name -> (module_name, original_name)
+    imports: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # The parsed AST tree (kept to avoid re-parsing)
+    tree: ast.AST | None = None
+
+
+def _extract_imports(tree: ast.AST) -> dict[str, tuple[str, str]]:
+    """Extract import mappings from AST.
+
+    Returns a dict mapping local name -> (module_name, original_name).
+    For 'from utils import helper', returns {'helper': ('utils', 'helper')}.
+    For 'from utils import helper as h', returns {'h': ('utils', 'helper')}.
+    """
+    imports: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                local_name = alias.asname if alias.asname else alias.name
+                imports[local_name] = (node.module, alias.name)
+    return imports
+
+
+def _extract_file_analysis(py_file: Path) -> FileAnalysis | None:
+    """Extract symbols and imports from a single file.
+
+    Returns None if the file cannot be parsed.
     """
     try:
         source = py_file.read_text()
         tree = ast.parse(source, filename=str(py_file))
     except (SyntaxError, UnicodeDecodeError):
-        return AnalysisResult(symbols=[], edges=[])
+        return None
 
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
 
-    # First pass: collect all function and class definitions
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef):
             end_line = node.end_lineno or node.lineno
@@ -70,28 +95,71 @@ def extract_nodes(py_file: Path) -> AnalysisResult:
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
 
-    # Second pass: find call edges within functions
+    imports = _extract_imports(tree)
+    return FileAnalysis(symbols=symbols, symbol_by_name=symbol_by_name, imports=imports, tree=tree)
+
+
+def _extract_edges(
+    tree: ast.AST,
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+) -> list[Edge]:
+    """Extract call edges from an AST, resolving both local and cross-file calls."""
     edges = []
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef):
-            caller_symbol = symbol_by_name.get(node.name)
+            caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
-                # Walk the function body to find calls
                 for child in ast.walk(node):
-                    if isinstance(child, ast.Call):
-                        # Handle simple name calls like helper()
-                        if isinstance(child.func, ast.Name):
-                            callee_name = child.func.id
-                            callee_symbol = symbol_by_name.get(callee_name)
-                            if callee_symbol:
-                                edges.append(Edge(
-                                    source=caller_symbol.id,
-                                    target=callee_symbol.id,
-                                    kind="calls",
-                                    line=child.lineno,
-                                ))
+                    if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+                        callee_name = child.func.id
+                        # First check local symbols
+                        callee_symbol = local_symbols.get(callee_name)
+                        # Then check imports for cross-file resolution
+                        if not callee_symbol and callee_name in imports:
+                            module_name, original_name = imports[callee_name]
+                            callee_symbol = global_symbols.get((module_name, original_name))
+                        if callee_symbol:
+                            edges.append(Edge(
+                                source=caller_symbol.id,
+                                target=callee_symbol.id,
+                                kind="calls",
+                                line=child.lineno,
+                            ))
+    return edges
 
-    return AnalysisResult(symbols=symbols, edges=edges)
+
+def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None) -> AnalysisResult:
+    """
+    Extract function/class definitions and call edges from a Python file.
+
+    Returns an AnalysisResult with symbols and edges.
+    Gracefully handles syntax errors and encoding issues.
+
+    Note: For cross-file call detection, use analyze_python() instead.
+    This function only detects intra-file calls for backwards compatibility.
+    """
+    file_analysis = _extract_file_analysis(py_file)
+    if file_analysis is None:
+        return AnalysisResult(symbols=[], edges=[])
+
+    # For single-file analysis, only detect local calls
+    edges = _extract_edges(file_analysis.tree, file_analysis.symbol_by_name, {}, {})
+    return AnalysisResult(symbols=file_analysis.symbols, edges=edges)
+
+
+def _module_name_from_path(py_file: Path, repo_root: Path) -> str:
+    """Convert a file path to a module name.
+
+    E.g., /repo/utils.py -> 'utils', /repo/pkg/mod.py -> 'pkg.mod'
+    """
+    try:
+        rel_path = py_file.relative_to(repo_root)
+    except ValueError:
+        rel_path = py_file
+    # Remove .py extension and convert path separators to dots
+    return str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
 
 
 def analyze_python(repo_root: Path) -> AnalysisResult:
@@ -99,11 +167,30 @@ def analyze_python(repo_root: Path) -> AnalysisResult:
     Analyze all Python files in a repository.
 
     Returns an AnalysisResult with all detected symbols and edges.
+    Supports cross-file call detection via import resolution.
     """
+    # First pass: collect all symbols and imports from all files
+    file_analyses: dict[Path, FileAnalysis] = {}
+    for py_file in find_python_files(repo_root):
+        analysis = _extract_file_analysis(py_file)
+        if analysis is not None:
+            file_analyses[py_file] = analysis
+
+    # Build global symbol table: (module_name, symbol_name) -> Symbol
+    global_symbols: dict[tuple[str, str], Symbol] = {}
+    for py_file, analysis in file_analyses.items():
+        module_name = _module_name_from_path(py_file, repo_root)
+        for symbol in analysis.symbols:
+            global_symbols[(module_name, symbol.name)] = symbol
+
+    # Second pass: extract edges with cross-file resolution
     all_symbols = []
     all_edges = []
-    for py_file in find_python_files(repo_root):
-        result = extract_nodes(py_file)
-        all_symbols.extend(result.symbols)
-        all_edges.extend(result.edges)
+    for py_file, analysis in file_analyses.items():
+        all_symbols.extend(analysis.symbols)
+        edges = _extract_edges(
+            analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols
+        )
+        all_edges.extend(edges)
+
     return AnalysisResult(symbols=all_symbols, edges=all_edges)

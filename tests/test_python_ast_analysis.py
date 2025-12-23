@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from hypergumbo.cli import run_behavior_map
+from hypergumbo.analyze.py import extract_nodes, _module_name_from_path
 
 
 def test_run_detects_python_function(tmp_path: Path) -> None:
@@ -117,3 +118,94 @@ def test_run_detects_call_edges(tmp_path: Path) -> None:
     assert edge["kind"] == "calls"
     assert "main" in edge["source"]
     assert "helper" in edge["target"]
+
+
+def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
+    """Running analysis should detect calls across files via imports."""
+    # Create a utility module with a helper function
+    utils_file = tmp_path / "utils.py"
+    utils_file.write_text("def helper():\n    pass\n")
+
+    # Create a main module that imports and calls the helper
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from utils import helper\n"
+        "\n"
+        "def run():\n"
+        "    helper()\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have two function nodes (helper in utils, run in main)
+    assert len(data["nodes"]) == 2
+
+    # Should have one cross-file edge: run -> helper
+    assert len(data["edges"]) == 1
+    edge = data["edges"][0]
+    assert edge["kind"] == "calls"
+    assert "run" in edge["source"]
+    assert "helper" in edge["target"]
+    # The target should reference utils.py, not main.py
+    assert "utils.py" in edge["target"]
+
+
+def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
+    """extract_nodes should detect intra-file calls."""
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "def helper():\n"
+        "    pass\n"
+        "\n"
+        "def main():\n"
+        "    helper()\n"
+    )
+
+    result = extract_nodes(py_file)
+
+    assert len(result.symbols) == 2
+    assert len(result.edges) == 1
+    assert "main" in result.edges[0].source
+    assert "helper" in result.edges[0].target
+
+
+def test_extract_nodes_handles_syntax_error(tmp_path: Path) -> None:
+    """extract_nodes should return empty result for syntax errors."""
+    bad_file = tmp_path / "bad.py"
+    bad_file.write_text("def broken(\n")
+
+    result = extract_nodes(bad_file)
+
+    assert result.symbols == []
+    assert result.edges == []
+
+
+def test_module_name_from_path_basic(tmp_path: Path) -> None:
+    """_module_name_from_path should convert paths to module names."""
+    py_file = tmp_path / "utils.py"
+    assert _module_name_from_path(py_file, tmp_path) == "utils"
+
+
+def test_module_name_from_path_nested(tmp_path: Path) -> None:
+    """_module_name_from_path should handle nested packages."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    py_file = pkg / "mod.py"
+    assert _module_name_from_path(py_file, tmp_path) == "pkg.mod"
+
+
+def test_module_name_from_path_outside_repo(tmp_path: Path) -> None:
+    """_module_name_from_path should handle files outside repo root."""
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    py_file = other_dir / "external.py"
+    # When file is outside repo_root, falls back to using the path as-is
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    result = _module_name_from_path(py_file, repo_root)
+    assert "external" in result
