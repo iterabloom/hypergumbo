@@ -115,9 +115,9 @@ def test_run_detects_call_edges(tmp_path: Path) -> None:
     # Should have one edge showing main calls helper
     assert len(data["edges"]) == 1
     edge = data["edges"][0]
-    assert edge["kind"] == "calls"
-    assert "main" in edge["source"]
-    assert "helper" in edge["target"]
+    assert edge["type"] == "calls"
+    assert "main" in edge["src"]
+    assert "helper" in edge["dst"]
 
 
 def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
@@ -148,11 +148,11 @@ def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
     # Should have one cross-file edge: run -> helper
     assert len(data["edges"]) == 1
     edge = data["edges"][0]
-    assert edge["kind"] == "calls"
-    assert "run" in edge["source"]
-    assert "helper" in edge["target"]
+    assert edge["type"] == "calls"
+    assert "run" in edge["src"]
+    assert "helper" in edge["dst"]
     # The target should reference utils.py, not main.py
-    assert "utils.py" in edge["target"]
+    assert "utils.py" in edge["dst"]
 
 
 def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
@@ -170,8 +170,8 @@ def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
 
     assert len(result.symbols) == 2
     assert len(result.edges) == 1
-    assert "main" in result.edges[0].source
-    assert "helper" in result.edges[0].target
+    assert "main" in result.edges[0].src
+    assert "helper" in result.edges[0].dst
 
 
 def test_extract_nodes_handles_syntax_error(tmp_path: Path) -> None:
@@ -264,11 +264,11 @@ def test_run_detects_relative_import_calls(tmp_path: Path) -> None:
     # Should have one cross-file edge: run -> helper
     assert len(data["edges"]) == 1
     edge = data["edges"][0]
-    assert edge["kind"] == "calls"
-    assert "run" in edge["source"]
-    assert "helper" in edge["target"]
+    assert edge["type"] == "calls"
+    assert "run" in edge["src"]
+    assert "helper" in edge["dst"]
     # The target should reference utils.py, not main.py
-    assert "utils.py" in edge["target"]
+    assert "utils.py" in edge["dst"]
 
 
 def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
@@ -294,6 +294,6 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     # Should detect run -> helper via self.helper()
     assert len(data["edges"]) == 1
     edge = data["edges"][0]
-    assert edge["kind"] == "calls"
-    assert "run" in edge["source"]
-    assert "helper" in edge["target"]
+    assert edge["type"] == "calls"
+    assert "run" in edge["src"]
+    assert "helper" in edge["dst"]
