@@ -101,7 +101,7 @@ join_with_pipe() {
 
 load_brand_regex() {
   # Reads brand patterns from file. Lines:
-  #   - default: literal string (escaped)
+  #   - default: literal string (escaped, with word boundaries)
   #   - prefix "re:" => raw regex (use with care)
   local file="$1"
   local pats=() line p
@@ -117,9 +117,12 @@ load_brand_regex() {
       [[ -z "$line" ]] && continue
 
       if [[ "$line" == re:* ]]; then
+        # Raw regex: user is responsible for word boundaries if desired
         p="${line#re:}"
       else
-        p="$(escape_regex_basic "$line")"
+        # Literal pattern: wrap with \b word boundaries to prevent substring matches
+        # This ensures "Stable" matches "Stable Diffusion" but NOT "stable_id"
+        p="\\b$(escape_regex_basic "$line")\\b"
       fi
 
       [[ -z "$p" ]] && continue
@@ -128,10 +131,10 @@ load_brand_regex() {
   fi
 
   if (( ${#pats[@]} == 0 )); then
-    # fallback defaults (as literals)
-    pats+=( "$(escape_regex_basic "FanDuel")" )
-    pats+=( "$(escape_regex_basic "DraftKings")" )
-    pats+=( "$(escape_regex_basic "BetMGM")" )
+    # fallback defaults (as literals with word boundaries)
+    pats+=( "\\b$(escape_regex_basic "FanDuel")\\b" )
+    pats+=( "\\b$(escape_regex_basic "DraftKings")\\b" )
+    pats+=( "\\b$(escape_regex_basic "BetMGM")\\b" )
   fi
 
   printf '(%s)' "$(join_with_pipe "${pats[@]}")"
@@ -351,3 +354,4 @@ if ! grep -q "^Signed-off-by: " "$msg_file"; then
   echo "Please commit with 'git commit -s' or add 'Signed-off-by: Name <email>'." >&2
   exit 1
 fi
+
