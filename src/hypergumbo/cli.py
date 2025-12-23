@@ -172,8 +172,9 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     behavior_map = new_behavior_map()
 
     # Run Python analysis and compile IR to output view
-    symbols = analyze_python(repo_root)
-    behavior_map["nodes"] = [s.to_dict() for s in symbols]
+    result = analyze_python(repo_root)
+    behavior_map["nodes"] = [s.to_dict() for s in result.symbols]
+    behavior_map["edges"] = [e.to_dict() for e in result.edges]
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
