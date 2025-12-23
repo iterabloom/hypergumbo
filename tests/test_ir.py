@@ -1,20 +1,20 @@
 """Tests for the internal representation (IR) layer."""
 from pathlib import Path
 
-from hypergumbo.ir import Symbol
+from hypergumbo.ir import Span, Symbol
 from hypergumbo.analyze.py import analyze_python
 
 
 def test_symbol_has_required_fields() -> None:
     """Symbol dataclass should have all required fields."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
     symbol = Symbol(
         id="python:test.py:1-2:greet:function",
         name="greet",
         kind="function",
         language="python",
         path="test.py",
-        line=1,
-        end_line=2,
+        span=span,
     )
 
     assert symbol.id == "python:test.py:1-2:greet:function"
@@ -22,8 +22,10 @@ def test_symbol_has_required_fields() -> None:
     assert symbol.kind == "function"
     assert symbol.language == "python"
     assert symbol.path == "test.py"
-    assert symbol.line == 1
-    assert symbol.end_line == 2
+    assert symbol.line == 1  # property for backwards compat
+    assert symbol.end_line == 2  # property for backwards compat
+    assert symbol.span.start_col == 0
+    assert symbol.span.end_col == 10
 
 
 def test_analyze_python_returns_symbols(tmp_path: Path) -> None:

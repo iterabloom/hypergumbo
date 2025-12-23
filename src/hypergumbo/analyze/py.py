@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..ir import Edge, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol
 
 
 def find_python_files(repo_root: Path) -> Iterator[Path]:
@@ -17,12 +17,17 @@ def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"
 
 
+PASS_ID = "python-ast-v1"
+PASS_VERSION = "hypergumbo-0.1.0"
+
+
 @dataclass
 class AnalysisResult:
-    """Result of analyzing a Python file."""
+    """Result of analyzing Python files."""
 
     symbols: list[Symbol]
     edges: list[Edge]
+    run: AnalysisRun | None = None
 
 
 @dataclass
@@ -135,27 +140,39 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef):
             end_line = node.end_lineno or node.lineno
+            end_col = node.end_col_offset or 0
+            span = Span(
+                start_line=node.lineno,
+                end_line=end_line,
+                start_col=node.col_offset,
+                end_col=end_col,
+            )
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
                 name=node.name,
                 kind="function",
                 language="python",
                 path=str(py_file),
-                line=node.lineno,
-                end_line=end_line,
+                span=span,
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
         elif isinstance(node, ast.ClassDef):
             end_line = node.end_lineno or node.lineno
+            end_col = node.end_col_offset or 0
+            span = Span(
+                start_line=node.lineno,
+                end_line=end_line,
+                start_col=node.col_offset,
+                end_col=end_col,
+            )
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
                 kind="class",
                 language="python",
                 path=str(py_file),
-                line=node.lineno,
-                end_line=end_line,
+                span=span,
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -205,11 +222,18 @@ def _extract_edges(
                                 callee_symbol = local_symbols.get(callee_name)
 
                         if callee_symbol:
-                            edges.append(Edge(
-                                source=caller_symbol.id,
-                                target=callee_symbol.id,
-                                kind="calls",
+                            # Determine evidence type based on call pattern
+                            if isinstance(child.func, ast.Attribute):
+                                evidence_type = "ast_call_method"
+                            else:
+                                evidence_type = "ast_call_direct"
+
+                            edges.append(Edge.create(
+                                src=caller_symbol.id,
+                                dst=callee_symbol.id,
+                                edge_type="calls",
                                 line=child.lineno,
+                                evidence_type=evidence_type,
                             ))
     return edges
 
@@ -237,15 +261,25 @@ def analyze_python(repo_root: Path) -> AnalysisResult:
     """
     Analyze all Python files in a repository.
 
-    Returns an AnalysisResult with all detected symbols and edges.
+    Returns an AnalysisResult with all detected symbols, edges, and provenance.
     Supports cross-file call detection via import resolution.
     """
+    import time
+
+    start_time = time.time()
+
+    # Create analysis run for provenance tracking
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
     # First pass: collect all symbols and imports from all files
     file_analyses: dict[Path, FileAnalysis] = {}
+    files_skipped = 0
     for py_file in find_python_files(repo_root):
         analysis = _extract_file_analysis(py_file, repo_root)
         if analysis is not None:
             file_analyses[py_file] = analysis
+        else:
+            files_skipped += 1
 
     # Build global symbol table: (module_name, symbol_name) -> Symbol
     global_symbols: dict[tuple[str, str], Symbol] = {}
@@ -258,10 +292,24 @@ def analyze_python(repo_root: Path) -> AnalysisResult:
     all_symbols = []
     all_edges = []
     for py_file, analysis in file_analyses.items():
+        # Set origin on symbols
+        for symbol in analysis.symbols:
+            symbol.origin = PASS_ID
+            symbol.origin_run_id = run.execution_id
         all_symbols.extend(analysis.symbols)
+
         edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols
         )
+        # Set origin on edges
+        for edge in edges:
+            edge.origin = PASS_ID
+            edge.origin_run_id = run.execution_id
         all_edges.extend(edges)
 
-    return AnalysisResult(symbols=all_symbols, edges=all_edges)
+    # Update run metadata
+    run.files_analyzed = len(file_analyses)
+    run.files_skipped = files_skipped
+    run.duration_ms = int((time.time() - start_time) * 1000)
+
+    return AnalysisResult(symbols=all_symbols, edges=all_edges, run=run)

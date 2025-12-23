@@ -173,6 +173,11 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
 
     # Run Python analysis and compile IR to output view
     result = analyze_python(repo_root)
+
+    # Add analysis runs for provenance tracking
+    if result.run is not None:
+        behavior_map["analysis_runs"] = [result.run.to_dict()]
+
     behavior_map["nodes"] = [s.to_dict() for s in result.symbols]
     behavior_map["edges"] = [e.to_dict() for e in result.edges]
 
