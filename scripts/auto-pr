@@ -128,7 +128,21 @@ if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
   git pull origin main
   git branch -d "$BRANCH"
 else
-  echo "❌ Merge failed:"
-  echo "HTTP Status: $MERGE_HTTP_CODE"
-  exit 1
+  # Forgejo sometimes returns 500 on successful merge - verify actual state
+  echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
+  sleep 2
+  PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" |     python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
+  
+  if [[ "$PR_STATE" == "True" ]]; then
+    echo "✅ Verified: PR was successfully merged!"
+    echo "---------------------------------------------------"
+    echo "🧹 Cleaning up local branch..."
+    git checkout main
+    git pull origin main
+    git branch -d "$BRANCH"
+  else
+    echo "❌ Merge failed:"
+    echo "HTTP Status: $MERGE_HTTP_CODE"
+    exit 1
+  fi
 fi
