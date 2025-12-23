@@ -57,18 +57,22 @@ hypergumbo export-capsule    # stub: will export shareable capsule
 }
 ```
 
+**Profile Detection:**
+- Language detection via file extensions (20+ languages)
+- Framework detection via dependency files (pyproject.toml, package.json, etc.)
+
 **Schema Compliance (per spec):**
 - Provenance tracking via `analysis_runs[]` with execution_id, timing
 - Nodes have `origin`, `origin_run_id`, `span` (with columns), `stable_id`, `shape_id`
 - Edges have `id`, `confidence`, `meta.evidence_type`, `origin`, `origin_run_id`
 
-### Not Yet Implemented
+### Implementation Status
 
-See `docs/hypergumbo-spec.md` for the full MVP spec. Key missing pieces:
-- JS/TS analysis (tree-sitter)
-- Capsule infrastructure (plan validation, catalog)
-- Profile detection (languages, frameworks)
-- Computed `stable_id` and `shape_id` (currently null)
+See [STATUS.md](STATUS.md) for detailed progress against the spec.
+
+**Implemented:** Python analysis, HTML script detection, profile detection, stable_id/shape_id, provenance tracking.
+
+**Not yet implemented:** JS/TS analysis, slice module, catalog system, capsule plan infrastructure.
 
 ## Running tests
 

@@ -1,0 +1,102 @@
+# Implementation Status
+
+This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spec-a--hypergumbo-mvp).
+
+> **Note:** The spec file also contains "Spec B" which describes a multi-year roadmap. Spec B is not in scope for current development.
+
+## Legend
+
+- [x] Implemented and tested
+- [ ] Not yet implemented
+- [stub] CLI command exists but is a placeholder
+
+## Week 1: Foundation + IR Layer
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Schema definition (behavior_map view) | [x] | `schema.py` |
+| Internal IR classes (Symbol, Edge, AnalysisRun) | [x] | `ir.py` |
+| Profile module (language detection) | [x] | `profile.py` |
+| File discovery + exclude logic | [x] | `discovery.py` |
+| JSON writer (IR → views compilation) | [x] | `cli.py` |
+| ID generation (stable_id, shape_id) | [x] | `analyze/py.py` |
+| Pass interface and registry | [ ] | No formal pass registration |
+| Catalog system (catalog.json schema) | [ ] | `hypergumbo catalog` is stub |
+| Capsule Plan (plan.json, validation) | [ ] | No plan infrastructure |
+
+## Week 2: Python Analyzer
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Python AST parser → IR emission | [x] | `analyze/py.py` |
+| Function/class detection | [x] | |
+| Call edges (intra-file) | [x] | |
+| Import edges (cross-file) | [x] | Includes relative imports |
+| Method call detection (self.method) | [x] | |
+| Evidence-type-based confidence | [x] | `meta.evidence_type` on edges |
+| Provenance tracking (AnalysisRun) | [x] | `analysis_runs[]` in output |
+
+## Week 3: JS/TS Analyzer (Optional)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Tree-sitter integration | [ ] | Not started |
+| JS/TS AST → IR emission | [ ] | |
+| Call/import edges | [ ] | |
+| Fallback if tree-sitter unavailable | [ ] | |
+
+## Week 4: Slicing + Entrypoints
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Slice module (BFS/DFS on relationships) | [ ] | `hypergumbo slice` is stub |
+| Entrypoint detection heuristics | [ ] | FastAPI, Flask, Express, etc. |
+| Feature generation with query specs | [ ] | |
+| Slice IDs and reproducibility | [ ] | |
+
+## Week 5: Capsule Initialization
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` |
+| Template-based plan generation | [ ] | |
+| LLM-assisted plan generation | [ ] | Optional enhancement |
+| `hypergumbo catalog` command | [stub] | Prints placeholder |
+| `hypergumbo export-capsule` command | [stub] | Prints placeholder |
+
+## CLI Commands
+
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo --version` | [x] | Print version |
+| `hypergumbo init [path]` | [x] | Initialize capsule |
+| `hypergumbo run [path]` | [x] | Run analysis |
+| `hypergumbo slice --entry X` | [stub] | Produce reduced slice |
+| `hypergumbo catalog` | [stub] | List passes/packs |
+| `hypergumbo export-capsule` | [stub] | Export shareable capsule |
+
+## Output Schema Compliance
+
+| Field | Status | Notes |
+|-------|--------|-------|
+| `schema_version` | [x] | |
+| `profile` (languages, frameworks) | [x] | |
+| `analysis_runs[]` | [x] | Provenance tracking |
+| `nodes[]` with span, stable_id, shape_id | [x] | |
+| `edges[]` with id, confidence, meta | [x] | |
+| `features[]` | [ ] | Requires slice module |
+| `metrics` | [ ] | Optional counts |
+| `limits` | [ ] | Explicit gaps |
+
+## Analysis Passes
+
+| Language | Parser | Edges | Confidence | Notes |
+|----------|--------|-------|------------|-------|
+| Python | [x] AST | [x] calls, imports | [x] | Full support |
+| HTML | [x] regex | [x] script_src | [x] | Script tag detection |
+| JavaScript | [ ] | [ ] | [ ] | Requires tree-sitter |
+| TypeScript | [ ] | [ ] | [ ] | Requires tree-sitter |
+
+---
+
+*Last updated: 2024-12-23*
