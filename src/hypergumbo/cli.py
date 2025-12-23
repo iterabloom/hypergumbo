@@ -9,6 +9,8 @@ from .analyze.html import analyze_html
 from .analyze.py import analyze_python
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, Span
+from .limits import Limits
+from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
 from .slice import SliceQuery, slice_graph
@@ -139,6 +141,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
             behavior_map["analysis_runs"] = analysis_runs
             behavior_map["nodes"] = all_nodes
             behavior_map["edges"] = all_edges
+            behavior_map["metrics"] = compute_metrics(all_nodes, all_edges)
+            behavior_map["limits"] = Limits().to_dict()
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
@@ -383,6 +387,17 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes
     behavior_map["edges"] = all_edges
+
+    # Compute metrics from analyzed nodes and edges
+    behavior_map["metrics"] = compute_metrics(all_nodes, all_edges)
+
+    # Track analysis limits
+    limits = Limits()
+    # Record skipped files from analysis runs
+    for run in analysis_runs:
+        if run.get("files_skipped", 0) > 0:
+            limits.partial_results_reason = "some files skipped during analysis"
+    behavior_map["limits"] = limits.to_dict()
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
