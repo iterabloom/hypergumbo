@@ -11,7 +11,12 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
   set +o allexport
 fi
 
+USER="${FORGEJO_USER:-}"
 TOKEN="${FORGEJO_TOKEN:-}"
+if [[ -z "$USER" ]]; then
+  echo "Error: FORGEJO_USER environment variable is not set."
+  exit 1
+fi
 if [[ -z "$TOKEN" ]]; then
   echo "Error: FORGEJO_TOKEN environment variable is not set."
   exit 1
@@ -72,7 +77,8 @@ echo "📤 Pushing to Codeberg..."
 TITLE="${1:-$(git log -1 --pretty=%s)}"
 DESC="${2:-$(git log -1 --pretty=%b | tr '\n' ' ' | sed 's/  */ /g')}"
 
-git push origin "HEAD:refs/for/main/$BRANCH" \
+git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+  push origin "HEAD:refs/for/main/$BRANCH" \
   -o title="$TITLE" \
   -o description="$DESC" \
   -o force-push=true

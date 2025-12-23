@@ -1,6 +1,6 @@
 # Hypergumbo Spec (MVP + Future Phases)
 
-Status: draft living document.
+Status: draft, living document.
 
 - Spec A: MVP behavior map + capsules (current focus of this repo).
 - Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
