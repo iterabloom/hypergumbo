@@ -89,6 +89,7 @@ def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     args.max_files = 20
     args.min_confidence = 0.0
     args.exclude_tests = False
+    args.list_entries = False
 
     result = cmd_slice(args)
 
@@ -135,6 +136,7 @@ def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
     args.max_files = 20
     args.min_confidence = 0.0
     args.exclude_tests = False
+    args.list_entries = False
 
     result = cmd_slice(args)
 
@@ -155,6 +157,7 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     args.max_files = 20
     args.min_confidence = 0.0
     args.exclude_tests = False
+    args.list_entries = False
 
     result = cmd_slice(args)
 
@@ -189,6 +192,7 @@ def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
     args.max_files = 20
     args.min_confidence = 0.0
     args.exclude_tests = False
+    args.list_entries = False
 
     result = cmd_slice(args)
 
@@ -260,6 +264,7 @@ def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
     args.max_files = 20
     args.min_confidence = 0.0
     args.exclude_tests = False
+    args.list_entries = False
 
     result = cmd_slice(args)
 
@@ -305,10 +310,172 @@ def test_edge_from_dict_defaults(tmp_path: Path) -> None:
     args.max_files = 20
     args.min_confidence = 0.0
     args.exclude_tests = False
+    args.list_entries = False
 
     result = cmd_slice(args)
 
     assert result == 0
+
+
+def test_cmd_slice_list_entries(tmp_path: Path, capsys) -> None:
+    """Test --list-entries shows detected entrypoints."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "get",  # Decorator marker
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Detected" in out
+    assert "entrypoint" in out
+
+
+def test_cmd_slice_list_entries_none(tmp_path: Path, capsys) -> None:
+    """Test --list-entries when no entrypoints detected."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/utils.py:1-5:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "No entrypoints detected" in out
+
+
+def test_cmd_slice_auto_entry(tmp_path: Path, capsys) -> None:
+    """Test --entry auto uses detected entrypoints."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "get",  # Decorator marker for HTTP route
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # Check slice was created
+    assert (tmp_path / "slice.json").exists()
+
+
+def test_cmd_slice_auto_entry_no_entrypoints(tmp_path: Path, capsys) -> None:
+    """Test --entry auto fails when no entrypoints detected."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/utils.py:1-5:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+
+    result = cmd_slice(args)
+
+    assert result == 1  # Error exit code
+    _, err = capsys.readouterr()
+    assert "No entrypoints detected" in err
 
 
 def test_cmd_catalog_stub(capsys) -> None:
