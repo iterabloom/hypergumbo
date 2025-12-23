@@ -4,6 +4,7 @@ from pathlib import Path
 from . import __version__
 from .analyze.html import analyze_html
 from .analyze.py import analyze_python
+from .profile import detect_profile
 from .schema import new_behavior_map
 
 
@@ -171,6 +172,10 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     Run the behavior_map analysis for a repo and write JSON to out_path.
     """
     behavior_map = new_behavior_map()
+
+    # Detect repo profile (languages, frameworks)
+    profile = detect_profile(repo_root)
+    behavior_map["profile"] = profile.to_dict()
 
     analysis_runs = []
     all_nodes = []
