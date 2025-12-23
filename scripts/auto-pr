@@ -70,7 +70,7 @@ echo "🔑 Commit: ${LOCAL_SHA:0:7}"
 echo "---------------------------------------------------"
 echo "📤 Pushing to Codeberg..."
 TITLE="${1:-$(git log -1 --pretty=%s)}"
-DESC="${2:-$(git log -1 --pretty=%b)}"
+DESC="${2:-$(git log -1 --pretty=%b | tr '\n' ' ' | sed 's/  */ /g')}"
 
 git push origin "HEAD:refs/for/main/$BRANCH" \
   -o title="$TITLE" \
