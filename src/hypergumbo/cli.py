@@ -12,6 +12,7 @@ from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, Span
 from .limits import Limits
 from .metrics import compute_metrics
+from .plan import generate_plan
 from .profile import detect_profile
 from .schema import new_behavior_map
 from .slice import SliceQuery, slice_graph
@@ -24,6 +25,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     capsule_dir.mkdir(parents=True, exist_ok=True)
 
     capsule_path = capsule_dir / "capsule.json"
+    plan_path = capsule_dir / "capsule_plan.json"
 
     # Normalize capabilities into a list
     capabilities = [
@@ -31,6 +33,13 @@ def cmd_init(args: argparse.Namespace) -> int:
         for c in (args.capabilities or "").split(",")
         if c.strip()
     ]
+
+    # Detect repo profile for plan generation
+    profile = detect_profile(repo_root)
+
+    # If no explicit capabilities, use detected languages
+    if not capabilities:
+        capabilities = list(profile.languages.keys())
 
     capsule = {
         "repo_root": str(repo_root),
@@ -41,6 +50,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     capsule_path.write_text(json.dumps(capsule, indent=2))
 
+    # Generate capsule plan (template-based)
+    catalog = get_default_catalog()
+    plan = generate_plan(profile, catalog)
+    plan_path.write_text(json.dumps(plan.to_dict(), indent=2))
+
     print(
         "[hypergumbo init] "
         f"repo_root={repo_root} "
@@ -48,6 +62,9 @@ def cmd_init(args: argparse.Namespace) -> int:
         f"assistant={args.assistant} "
         f"llm_input={args.llm_input}"
     )
+    print(f"  Created: {capsule_path}")
+    print(f"  Created: {plan_path}")
+    print(f"  Passes: {len(plan.passes)}, Packs: {len(plan.packs)}, Rules: {len(plan.rules)}")
 
     return 0
 
