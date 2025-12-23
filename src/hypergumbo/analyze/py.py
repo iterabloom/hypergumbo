@@ -182,14 +182,28 @@ def _extract_edges(
             caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
                 for child in ast.walk(node):
-                    if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
-                        callee_name = child.func.id
-                        # First check local symbols
-                        callee_symbol = local_symbols.get(callee_name)
-                        # Then check imports for cross-file resolution
-                        if not callee_symbol and callee_name in imports:
-                            module_name, original_name = imports[callee_name]
-                            callee_symbol = global_symbols.get((module_name, original_name))
+                    if isinstance(child, ast.Call):
+                        callee_name = None
+                        callee_symbol = None
+
+                        # Handle simple name calls: helper()
+                        if isinstance(child.func, ast.Name):
+                            callee_name = child.func.id
+                            # First check local symbols
+                            callee_symbol = local_symbols.get(callee_name)
+                            # Then check imports for cross-file resolution
+                            if not callee_symbol and callee_name in imports:
+                                module_name, original_name = imports[callee_name]
+                                callee_symbol = global_symbols.get((module_name, original_name))
+
+                        # Handle method calls: self.helper() or obj.method()
+                        elif isinstance(child.func, ast.Attribute):
+                            callee_name = child.func.attr
+                            # For self.method() calls, look up method in local symbols
+                            if (isinstance(child.func.value, ast.Name)
+                                    and child.func.value.id == "self"):
+                                callee_symbol = local_symbols.get(callee_name)
+
                         if callee_symbol:
                             edges.append(Edge(
                                 source=caller_symbol.id,

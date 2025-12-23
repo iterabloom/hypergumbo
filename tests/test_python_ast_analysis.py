@@ -269,3 +269,31 @@ def test_run_detects_relative_import_calls(tmp_path: Path) -> None:
     assert "helper" in edge["target"]
     # The target should reference utils.py, not main.py
     assert "utils.py" in edge["target"]
+
+
+def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
+    """Running analysis should detect method calls via self.method()."""
+    py_file = tmp_path / "service.py"
+    py_file.write_text(
+        "class Service:\n"
+        "    def helper(self):\n"
+        "        pass\n"
+        "\n"
+        "    def run(self):\n"
+        "        self.helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Should have a class and two methods
+    assert len(data["nodes"]) == 3
+
+    # Should detect run -> helper via self.helper()
+    assert len(data["edges"]) == 1
+    edge = data["edges"][0]
+    assert edge["kind"] == "calls"
+    assert "run" in edge["source"]
+    assert "helper" in edge["target"]
