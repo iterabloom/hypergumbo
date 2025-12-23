@@ -1,7 +1,7 @@
 """Internal Representation (IR) for code analysis.
 
-Parsers emit Symbol objects to this IR layer. The IR is then compiled
-to output views (e.g., behavior_map JSON).
+Parsers emit Symbol and Edge objects to this IR layer. The IR is then
+compiled to output views (e.g., behavior_map JSON).
 """
 from dataclasses import dataclass
 
@@ -38,4 +38,30 @@ class Symbol:
             "path": self.path,
             "line": self.line,
             "end_line": self.end_line,
+        }
+
+
+@dataclass
+class Edge:
+    """A relationship between two symbols (e.g., function calls).
+
+    Attributes:
+        source: ID of the source symbol (e.g., the caller)
+        target: ID of the target symbol (e.g., the callee)
+        kind: Type of relationship (calls, imports, inherits, etc.)
+        line: Line number where the relationship occurs
+    """
+
+    source: str
+    target: str
+    kind: str
+    line: int
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "source": self.source,
+            "target": self.target,
+            "kind": self.kind,
+            "line": self.line,
         }

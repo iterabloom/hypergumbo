@@ -27,16 +27,16 @@ def test_symbol_has_required_fields() -> None:
 
 
 def test_analyze_python_returns_symbols(tmp_path: Path) -> None:
-    """analyze_python should return Symbol objects, not dicts."""
+    """analyze_python should return AnalysisResult with Symbol objects."""
     py_file = tmp_path / "hello.py"
     py_file.write_text("def greet():\n    pass\n")
 
-    symbols = analyze_python(tmp_path)
+    result = analyze_python(tmp_path)
 
-    assert len(symbols) == 1
-    assert isinstance(symbols[0], Symbol)
-    assert symbols[0].name == "greet"
-    assert symbols[0].kind == "function"
+    assert len(result.symbols) == 1
+    assert isinstance(result.symbols[0], Symbol)
+    assert result.symbols[0].name == "greet"
+    assert result.symbols[0].kind == "function"
 
 
 def test_symbol_id_format(tmp_path: Path) -> None:
@@ -44,10 +44,10 @@ def test_symbol_id_format(tmp_path: Path) -> None:
     py_file = tmp_path / "models.py"
     py_file.write_text("class User:\n    pass\n")
 
-    symbols = analyze_python(tmp_path)
+    result = analyze_python(tmp_path)
 
-    assert len(symbols) == 1
-    symbol = symbols[0]
+    assert len(result.symbols) == 1
+    symbol = result.symbols[0]
     # ID should contain all components
     assert symbol.language in symbol.id
     assert "models.py" in symbol.id

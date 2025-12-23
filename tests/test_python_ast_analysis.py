@@ -87,3 +87,33 @@ def test_run_detects_python_class(tmp_path: Path) -> None:
     assert node["kind"] == "class"
     assert node["language"] == "python"
     assert "models.py" in node["path"]
+
+
+def test_run_detects_call_edges(tmp_path: Path) -> None:
+    """Running analysis should detect when one function calls another."""
+    # Create a Python file with two functions where one calls the other
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "def helper():\n"
+        "    pass\n"
+        "\n"
+        "def main():\n"
+        "    helper()\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have two function nodes
+    assert len(data["nodes"]) == 2
+
+    # Should have one edge showing main calls helper
+    assert len(data["edges"]) == 1
+    edge = data["edges"][0]
+    assert edge["kind"] == "calls"
+    assert "main" in edge["source"]
+    assert "helper" in edge["target"]
