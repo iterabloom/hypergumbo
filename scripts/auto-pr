@@ -32,6 +32,7 @@ LOCAL_SHA="$(git rev-parse HEAD)"
 # Cleanup function with retry for SSH timeouts
 # ------------------------------------------------------------------
 cleanup_local() {
+  rm -f .git/PR_PENDING
   git checkout main
   
   local max_attempts=3
@@ -102,6 +103,9 @@ except Exception:
 
 PR_NUM=$(echo "$PR_INDEX" | head -n1)
 HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+
+# Gate file for agentic systems - signals "wait for CI/merge"
+echo "$PR_NUM" > .git/PR_PENDING
 
 echo "✅ Found PR #$PR_NUM"
 echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
