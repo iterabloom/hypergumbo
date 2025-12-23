@@ -1,5 +1,6 @@
 """Python AST analysis pass."""
 import ast
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -16,6 +17,83 @@ def find_python_files(repo_root: Path) -> Iterator[Path]:
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
     """Generate location-based ID in format {lang}:{file}:{start}-{end}:{name}:{kind}."""
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"
+
+
+def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
+    """Compute stable_id based on signature (survives renames/moves).
+
+    For untyped Python:
+    sha256({kind}:{param_count}:{arity_flags}:{decorators})
+
+    arity_flags: has_defaults, has_varargs, has_kwargs
+    decorators: sorted list of decorator names
+    """
+    kind = "function" if isinstance(node, ast.FunctionDef) else "class"
+
+    # Extract signature info for functions
+    if isinstance(node, ast.FunctionDef):
+        args = node.args
+        param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
+        has_defaults = len(args.defaults) > 0 or len(args.kw_defaults) > 0
+        has_varargs = args.vararg is not None
+        has_kwargs = args.kwarg is not None
+        arity_flags = f"{has_defaults},{has_varargs},{has_kwargs}"
+    else:
+        # Classes don't have parameters in the same way
+        param_count = 0
+        arity_flags = "False,False,False"
+
+    # Extract decorator names
+    decorators = []
+    for dec in node.decorator_list:
+        if isinstance(dec, ast.Name):
+            decorators.append(dec.id)
+        elif isinstance(dec, ast.Attribute):
+            decorators.append(dec.attr)
+        elif isinstance(dec, ast.Call):
+            if isinstance(dec.func, ast.Name):
+                decorators.append(dec.func.id)
+            elif isinstance(dec.func, ast.Attribute):
+                decorators.append(dec.func.attr)
+    decorators_str = ",".join(sorted(decorators))
+
+    # Build signature string and hash
+    sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}"
+    hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
+    return f"sha256:{hash_val}"
+
+
+def _ast_structure(node: ast.AST) -> str:
+    """Generate structural representation of an AST node, ignoring names/literals."""
+    parts = [type(node).__name__]
+
+    for child in ast.iter_child_nodes(node):
+        # Skip name nodes and constants (we want structure only)
+        if isinstance(child, (ast.Name, ast.Constant, ast.arg)):
+            parts.append(type(child).__name__)
+        else:
+            parts.append(_ast_structure(child))
+
+    return f"({','.join(parts)})"
+
+
+def _compute_shape_id(node: ast.FunctionDef | ast.ClassDef) -> str:
+    """Compute shape_id based on AST structure (ignores variable names/literals).
+
+    sha256(ast_structure) where structure is a normalized representation
+    of the control flow and nesting.
+    """
+    # For functions, analyze the body structure
+    if isinstance(node, ast.FunctionDef):
+        body_parts = [_ast_structure(stmt) for stmt in node.body]
+        structure = f"FunctionDef({','.join(body_parts)})"
+    else:
+        # For classes, analyze class body
+        body_parts = [_ast_structure(stmt) for stmt in node.body]
+        structure = f"ClassDef({','.join(body_parts)})"
+
+    hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
+    return f"sha256:{hash_val}"
 
 
 PASS_ID = "python-ast-v1"
@@ -155,6 +233,8 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                 language="python",
                 path=str(py_file),
                 span=span,
+                stable_id=_compute_stable_id(node),
+                shape_id=_compute_shape_id(node),
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -174,6 +254,8 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                 language="python",
                 path=str(py_file),
                 span=span,
+                stable_id=_compute_stable_id(node),
+                shape_id=_compute_shape_id(node),
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
