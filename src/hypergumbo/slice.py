@@ -191,6 +191,18 @@ def slice_graph(
             edges_from[edge.src] = []
         edges_from[edge.src].append(edge)
 
+    # Build file path -> file node IDs mapping for import edge lookup
+    # Import edges source from file nodes with ID format: {lang}:{path}:1-1:file:file
+    # We collect all unique (path, language) combinations from nodes
+    file_node_ids: Dict[str, List[str]] = {}
+    for node in nodes:
+        if node.path not in file_node_ids:
+            file_node_ids[node.path] = []
+        # Construct the file node ID that import edges use as source
+        file_id = f"{node.language}:{node.path}:1-1:file:file"
+        if file_id not in file_node_ids[node.path]:
+            file_node_ids[node.path].append(file_id)
+
     # Find entry nodes
     entry_nodes = find_entry_nodes(nodes, query.entrypoint)
     if not entry_nodes:
@@ -206,7 +218,24 @@ def slice_graph(
     visited_nodes: Set[str] = set()
     visited_edges: Set[str] = set()
     files_seen: Set[str] = set()
+    files_with_imports_added: Set[str] = set()  # Track files whose imports we've added
     limits_hit: List[str] = []
+
+    def add_file_imports(file_path: str) -> None:
+        """Add import edges from the file node(s) for the given path."""
+        if file_path in files_with_imports_added:
+            return
+        files_with_imports_added.add(file_path)
+
+        # Find file node IDs (may have multiple for different languages)
+        file_ids = file_node_ids.get(file_path, [])
+
+        # Add all import edges from these file nodes
+        for file_node_id in file_ids:
+            for edge in edges_from.get(file_node_id, []):
+                if edge.edge_type == "imports":
+                    if edge.confidence >= query.min_confidence:
+                        visited_edges.add(edge.id)
 
     # BFS state: (node_id, current_hop)
     queue: deque[tuple[str, int]] = deque()
@@ -218,6 +247,8 @@ def slice_graph(
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
         files_seen.add(entry.path)
+        # Add import edges from this file
+        add_file_imports(entry.path)
 
     # BFS traversal
     while queue:
@@ -260,6 +291,8 @@ def slice_graph(
             if dst_node.id not in visited_nodes:
                 visited_nodes.add(dst_node.id)
                 queue.append((dst_node.id, hop + 1))
+                # Add import edges from the visited file
+                add_file_imports(dst_node.path)
 
     return SliceResult(
         entry_nodes=[n.id for n in entry_nodes],

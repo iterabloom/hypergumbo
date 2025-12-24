@@ -467,3 +467,145 @@ class TestSliceEdgeCases:
         assert len(result.node_ids) == 0
         assert len(result.edge_ids) == 0
         assert result.entry_nodes == []
+
+    def test_slice_includes_file_level_imports(self) -> None:
+        """Slice from function should include import edges from the containing file.
+
+        Import edges source from file nodes (e.g., python:path:1-1:file:file),
+        not function nodes. When slicing from a function, we should include
+        the import edges from that function's file.
+        """
+        # Create a function node in main.py
+        func = make_symbol("main", path="src/main.py")
+
+        # Create the file node for main.py (this is what import edges source from)
+        file_node = Symbol(
+            id="python:src/main.py:1-1:file:file",
+            name="file",
+            kind="file",
+            language="python",
+            path="src/main.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="uuid:test",
+        )
+
+        # Create a module node (the import target)
+        module_node = Symbol(
+            id="python:os:0-0:module:module",
+            name="module",
+            kind="module",
+            language="python",
+            path="os",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="uuid:test",
+        )
+
+        # Create an import edge from file node to module
+        import_edge = Edge.create(
+            src=file_node.id,
+            dst=module_node.id,
+            edge_type="imports",
+            line=1,
+            evidence_type="ast_import",
+            confidence=0.95,
+        )
+
+        nodes = [func, file_node, module_node]
+        edges = [import_edge]
+
+        # Slice from the function, not the file
+        query = SliceQuery(entrypoint="main", max_hops=3)
+        result = slice_graph(nodes, edges, query)
+
+        # The function should be included
+        assert func.id in result.node_ids
+
+        # The import edge from the file should also be included
+        assert import_edge.id in result.edge_ids, (
+            "Import edges from the containing file should be included in the slice"
+        )
+
+    def test_slice_includes_imports_from_multiple_files(self) -> None:
+        """Slice should include import edges from all visited files."""
+        # main.py: main() calls helper()
+        main_func = make_symbol("main", path="src/main.py")
+        main_file = Symbol(
+            id="python:src/main.py:1-1:file:file",
+            name="file",
+            kind="file",
+            language="python",
+            path="src/main.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="uuid:test",
+        )
+
+        # utils.py: helper()
+        helper_func = make_symbol("helper", path="src/utils.py")
+        utils_file = Symbol(
+            id="python:src/utils.py:1-1:file:file",
+            name="file",
+            kind="file",
+            language="python",
+            path="src/utils.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="uuid:test",
+        )
+
+        # Module nodes
+        os_module = Symbol(
+            id="python:os:0-0:module:module",
+            name="module",
+            kind="module",
+            language="python",
+            path="os",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="uuid:test",
+        )
+        json_module = Symbol(
+            id="python:json:0-0:module:module",
+            name="module",
+            kind="module",
+            language="python",
+            path="json",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="uuid:test",
+        )
+
+        # Edges
+        call_edge = make_edge(main_func, helper_func, "calls")
+        import_os = Edge.create(
+            src=main_file.id,
+            dst=os_module.id,
+            edge_type="imports",
+            line=1,
+            evidence_type="ast_import",
+            confidence=0.95,
+        )
+        import_json = Edge.create(
+            src=utils_file.id,
+            dst=json_module.id,
+            edge_type="imports",
+            line=1,
+            evidence_type="ast_import",
+            confidence=0.95,
+        )
+
+        nodes = [main_func, main_file, helper_func, utils_file, os_module, json_module]
+        edges = [call_edge, import_os, import_json]
+
+        query = SliceQuery(entrypoint="main", max_hops=3)
+        result = slice_graph(nodes, edges, query)
+
+        # Both function nodes should be visited
+        assert main_func.id in result.node_ids
+        assert helper_func.id in result.node_ids
+
+        # Import edges from both files should be included
+        assert import_os.id in result.edge_ids, "Import from main.py should be included"
+        assert import_json.id in result.edge_ids, "Import from utils.py should be included"
