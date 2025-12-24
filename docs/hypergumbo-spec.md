@@ -15,7 +15,7 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 * **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
 * **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
 * **Capsule Plan composition**: `hypergumbo init` generates a validated `capsule_plan.json` selecting from pre-approved passes/packs/rules in a `catalog.json`. LLM may assist with plan generation **(optional)**, but `hypergumbo run` stays deterministic and offline-by-default.
-* **Portable analyzer artifact**: `hypergumbo_capsule/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
+* **Portable analyzer artifact**: `.hypergumbo/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
 * **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * **Local-first execution**: analysis runs offline by default (no network, no API keys required).
@@ -33,9 +33,11 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 ### Install
 * `pipx install hypergumbo` (primary)
 * `pip install hypergumbo` (secondary)
-* `pip install hypergumbo[javascript]` (optional JS/TS support via tree-sitter)
-* `pip install hypergumbo[treesitter]` (optional tree-sitter runtime)
-* `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` / `hypergumbo-pack-java` (optional language packs)
+* `pip install hypergumbo[javascript]` (optional JS/TS/Svelte support via tree-sitter)
+* `pip install hypergumbo[php]` (optional PHP support via tree-sitter)
+* `pip install hypergumbo[llm-assist]` (optional OpenAI/OpenRouter support for plan generation)
+* `pip install hypergumbo[llm-local]` (optional local LLM support via llm package)
+* `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` / `hypergumbo-pack-java` (future language packs)
 
 ### Commands
 **`hypergumbo [path] [-t tokens]`** (default mode)
@@ -44,7 +46,7 @@ Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into
 * `-t N` limits output to approximately N tokens.
 
 ** `hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
-Creates `hypergumbo_capsule/` containing:
+Creates `.hypergumbo/` containing:
 * `capsule.json` (manifest: format version, requirements, capabilities, security defaults)
 * `capsule_plan.json` (validated composition plan)
 * `catalog.json` (optional to *copy into capsule* only if you want portability of the menu; otherwise it stays in the installed package)
@@ -123,16 +125,19 @@ Initialization may use language detection; **analysis execution requires no netw
 ## 4) Supported stacks (MVP)
 * **Python** (best-effort call edges via `ast`)
 * **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
+* **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
+* **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
 * **HTML** (script tag/linking edges only; always available, limited to pattern matching)
 > The analyzer is "best-effort, explicitly limited," but produces consistent structures.
 
 ### Dependency strategy
 * **Core package**: Python + HTML (AST + regex only, zero compilation)
-* **JavaScript extra**: `pip install hypergumbo[javascript]` adds tree-sitter runtime + JS/TS grammar (pre-built wheels for Linux x64, macOS arm64/x64, Windows x64)
+* **JavaScript extra**: `pip install hypergumbo[javascript]` adds tree-sitter runtime + JS/TS/Svelte grammar (pre-built wheels for Linux x64, macOS arm64/x64, Windows x64)
+* **PHP extra**: `pip install hypergumbo[php]` adds tree-sitter PHP grammar
 * Core includes Python/HTML analyzers.
-* Optional: tree-sitter runtime.
-* Optional: installable **language packs** (data-only: queries + metadata; minimal code).
-* Fallback: if packs aren’t installed, those languages are skipped with explicit limits.
+* Optional: tree-sitter runtime for JS/TS/Svelte and PHP.
+* Optional: installable **language packs** for future languages (e.g., `pip install hypergumbo-pack-go`, `hypergumbo-pack-rust`, `hypergumbo-pack-java`). Language packs are data-only packages containing queries + metadata with minimal code.
+* Fallback: if extras/packs aren't installed, those languages are skipped with explicit limits.
 * **Fallback**: If extras unavailable, analysis uses only core languages (Python/HTML); other files logged in `limits.skipped_languages[]`
 ### De-risking strategy
 * **Week 0a (Days 1-5)**: Validate tree-sitter packaging on target platforms, prototype Capsule Plan validation
@@ -142,20 +147,24 @@ Initialization may use language detection; **analysis execution requires no netw
 
 ## 5) Architecture (local-only)
 ### Core packages
-* `hypergumbo/cli.py` — CLI entrypoint
+* `hypergumbo/cli.py` — CLI entrypoint and command handlers
 * `hypergumbo/profile.py` — language/framework detection (cheap heuristics)
-* `hypergumbo/ir.py` — Internal representation: Symbol, Reference, Relationship classes
-* `hypergumbo/provenance.py` — AnalysisRun tracking and metadata
-* `hypergumbo/passes.py` — Pass interface and registry for pluggable analyzers
-* `hypergumbo/catalog.py` — loads catalog (built-ins + installed packs)
-* `hypergumbo/plan.py` — `capsule_plan.json` schema + strict validator + compiler
-* `hypergumbo/factory.py` — optional LLM-assisted plan generator (outputs plan only)
-* `hypergumbo/analyze/treesitter_query.py` — generic tree-sitter query pass (engine)
-* `hypergumbo/analyze/py.py`, `js_ts.py`, `html.py` — parsers that emit to IR
-* `hypergumbo/views/behavior_map.py` — Compiles IR → public behavior map JSON
-* `hypergumbo/schema.py` — JSON schema + versioning
-* `hypergumbo/slice.py` — graph slicing + entrypoint heuristics
-* `hypergumbo/confidence.py` — deterministic confidence scoring algorithm
+* `hypergumbo/ir.py` — Internal representation: Symbol, Edge, Span, AnalysisRun classes
+* `hypergumbo/schema.py` — JSON schema versioning and behavior map factory
+* `hypergumbo/discovery.py` — file finding with exclude patterns
+* `hypergumbo/catalog.py` — Pass/Pack registry, availability checking
+* `hypergumbo/plan.py` — `capsule_plan.json` schema + validator + generator
+* `hypergumbo/llm_assist.py` — optional LLM-assisted plan generator (OpenRouter, OpenAI, local llm)
+* `hypergumbo/sketch.py` — token-budgeted Markdown summary generation
+* `hypergumbo/entrypoints.py` — entry point detection heuristics (routes, CLI, Electron)
+* `hypergumbo/slice.py` — graph slicing for context extraction
+* `hypergumbo/metrics.py` — analysis statistics computation
+* `hypergumbo/limits.py` — error tracking and analysis gaps
+* `hypergumbo/export.py` — privacy-safe capsule export
+* `hypergumbo/analyze/py.py` — Python AST parser
+* `hypergumbo/analyze/js_ts.py` — JS/TS/Svelte parser via tree-sitter
+* `hypergumbo/analyze/php.py` — PHP parser via tree-sitter
+* `hypergumbo/analyze/html.py` — HTML script tag parser
 
 ### Runner interface (execution by capsule format)
 hypergumbo executes capsules through a runner abstraction selected by `capsule.json.format`.
@@ -300,17 +309,17 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-**MVP ships 3 passes:**
+**MVP ships 4 passes:**
 * `python-ast-v1` — Python AST parser
-* `javascript-ts-v1` — Tree-sitter JS/TS (optional)
+* `javascript-ts-v1` — Tree-sitter JS/TS/Svelte (optional)
+* `php-ts-v1` — Tree-sitter PHP (optional)
 * `html-pattern-v1` — HTML script tag parser
-* `treesitter-query-v1` — generic TS query executor driven by installed packs (defs/imports/calls via `.scm` queries)
 
-**Design principle:** Future language expansion happens via **packs**.
+**Design principle:** Future language expansion happens via **packs** (installable packages like `hypergumbo-pack-go`).
 
 ### Analyzer capsule
 
-`hypergumbo_capsule/` structure:
+`.hypergumbo/` structure:
 
 #### `capsule.json` — Manifest
 Declares execution requirements and security policy:
