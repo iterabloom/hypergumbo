@@ -101,6 +101,16 @@ def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return _find_identifier_in_children(node, source)
 
 
+def _has_native_modifier(node: "tree_sitter.Node", source: bytes) -> bool:
+    """Check if a method declaration has the 'native' modifier."""
+    for child in node.children:
+        if child.type == "modifiers":
+            modifiers_text = _node_text(child, source)
+            if "native" in modifiers_text:
+                return True
+    return False
+
+
 def _get_java_parser() -> Optional["tree_sitter.Parser"]:
     """Get tree-sitter parser for Java."""
     try:
@@ -236,6 +246,9 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                # Check for native modifier
+                is_native = _has_native_modifier(node, source)
+                meta = {"is_native": True} if is_native else None
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -245,6 +258,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 

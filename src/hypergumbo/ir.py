@@ -163,6 +163,7 @@ class Symbol:
         canonical_name: Fully qualified name (e.g., 'mymodule.MyClass.method')
         fingerprint: Content hash of source bytes (sha256)
         quality: Score and reason dict for quality assessment
+        meta: Optional metadata dict for language-specific information
     """
 
     id: str
@@ -179,6 +180,7 @@ class Symbol:
     canonical_name: Optional[str] = None
     fingerprint: Optional[str] = None
     quality: Optional[Dict[str, Any]] = None
+    meta: Optional[Dict[str, Any]] = None
 
     # Keep line/end_line for backwards compatibility during transition
     @property
@@ -206,6 +208,7 @@ class Symbol:
             "canonical_name": self.canonical_name,
             "fingerprint": self.fingerprint,
             "quality": self.quality,
+            "meta": self.meta,
         }
 
 
