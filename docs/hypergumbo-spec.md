@@ -3536,3 +3536,17 @@ If all fallbacks unacceptable:
 ### Orchestration
 * **B1**: Simple subprocess management
 * **B2**: Docker Compose (simple) or Kubernetes (production)
+
+## Appendix D: Future Testing Enhancements
+
+### LLM Integration Tests
+
+Add optional integration tests that make real API calls to LLM providers (OpenRouter, OpenAI) to validate the `llm_assist` module end-to-end. These tests would:
+
+* Use `@pytest.mark.integration` marker
+* Skip automatically when API keys are not set
+* Run only on explicit request (`pytest -m integration`)
+* Use a dedicated test API key with rate limiting awareness
+* Catch environment-specific issues (e.g., proxy configuration, API changes)
+
+**Rationale:** Unit tests with mocks provide full coverage but cannot catch issues like the httpx/IPv6 CIDR proxy bug discovered during manual testing. Integration tests would provide additional confidence for real-world deployments.
