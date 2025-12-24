@@ -121,22 +121,34 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo.ir import AnalysisRun
     from hypergumbo.analyze.js_ts import JsAnalysisResult
+    from hypergumbo.analyze.php import PhpAnalysisResult
 
-    # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
-    mock_result = JsAnalysisResult(
+    # Create mock result with skipped flag for JS
+    mock_js_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
+    mock_js_result = JsAnalysisResult(
         symbols=[],
         edges=[],
-        run=mock_run,
+        run=mock_js_run,
         skipped=True,
         skip_reason="requires tree-sitter",
+    )
+
+    # Create mock result for PHP (not skipped, just empty)
+    mock_php_run = AnalysisRun.create(pass_id="php-v1", version="test")
+    mock_php_result = PhpAnalysisResult(
+        symbols=[],
+        edges=[],
+        run=mock_php_run,
+        skipped=False,
+        skip_reason=None,
     )
 
     args = FakeArgs()
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_result):
+    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_js_result), \
+         patch("hypergumbo.cli.analyze_php", return_value=mock_php_result):
         result = cmd_run(args)
 
     assert result == 0
