@@ -591,6 +591,7 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     ipc_result = link_ipc(repo_root)
     if ipc_result.run is not None:
         analysis_runs.append(ipc_result.run.to_dict())
+        all_nodes.extend(s.to_dict() for s in ipc_result.symbols)
         all_edges.extend(e.to_dict() for e in ipc_result.edges)
 
     behavior_map["analysis_runs"] = analysis_runs
