@@ -16,6 +16,7 @@ from .limits import Limits
 from .metrics import compute_metrics
 from .plan import generate_plan
 from .profile import detect_profile
+from .llm_assist import generate_plan_with_fallback, LLMBackend
 from .schema import new_behavior_map
 from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph
@@ -57,6 +58,14 @@ def cmd_init(args: argparse.Namespace) -> int:
     if not capabilities:
         capabilities = list(profile.languages.keys())
 
+    # Generate capsule plan (template or LLM-assisted)
+    catalog = get_default_catalog()
+    use_llm = args.assistant == "llm"
+    plan, llm_result = generate_plan_with_fallback(
+        profile, catalog, use_llm=use_llm, tier=args.llm_input
+    )
+
+    # Build capsule manifest with generation metadata
     capsule = {
         "repo_root": str(repo_root),
         "assistant": args.assistant,
@@ -64,13 +73,20 @@ def cmd_init(args: argparse.Namespace) -> int:
         "capabilities": capabilities,
     }
 
-    capsule_path.write_text(json.dumps(capsule, indent=2))
+    # Add LLM generation metadata if attempted
+    if llm_result is not None:
+        capsule["generator"] = {
+            "mode": "llm_assisted" if llm_result.success else "template_fallback",
+            "backend": llm_result.backend_used.value if llm_result.backend_used else None,
+            "model": llm_result.model_used,
+        }
+        if not llm_result.success:
+            capsule["generator"]["fallback_reason"] = llm_result.error
 
-    # Generate capsule plan (template-based)
-    catalog = get_default_catalog()
-    plan = generate_plan(profile, catalog)
+    capsule_path.write_text(json.dumps(capsule, indent=2))
     plan_path.write_text(json.dumps(plan.to_dict(), indent=2))
 
+    # Print status
     print(
         "[hypergumbo init] "
         f"repo_root={repo_root} "
@@ -81,6 +97,15 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"  Created: {capsule_path}")
     print(f"  Created: {plan_path}")
     print(f"  Passes: {len(plan.passes)}, Packs: {len(plan.packs)}, Rules: {len(plan.rules)}")
+
+    # Print LLM status if attempted
+    if llm_result is not None:
+        if llm_result.success:
+            backend = llm_result.backend_used.value if llm_result.backend_used else "unknown"
+            model = llm_result.model_used or "default"
+            print(f"  LLM: {backend}/{model} (success)")
+        else:
+            print(f"  LLM: failed ({llm_result.error}), using template fallback")
 
     return 0
 
