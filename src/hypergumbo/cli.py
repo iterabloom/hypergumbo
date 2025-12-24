@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from . import __version__
 from .analyze.html import analyze_html
 from .analyze.js_ts import analyze_javascript
+from .analyze.php import analyze_php
 from .analyze.py import analyze_python
 from .catalog import get_default_catalog, is_available
 from .entrypoints import detect_entrypoints
@@ -514,7 +515,7 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     all_nodes.extend(s.to_dict() for s in html_result.symbols)
     all_edges.extend(e.to_dict() for e in html_result.edges)
 
-    # Run JavaScript/TypeScript analysis (optional, requires tree-sitter)
+    # Run JavaScript/TypeScript/Svelte analysis (optional, requires tree-sitter)
     js_result = analyze_javascript(repo_root)
     if js_result.run is not None:
         if js_result.skipped:
@@ -527,6 +528,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(js_result.run.to_dict())
             all_nodes.extend(s.to_dict() for s in js_result.symbols)
             all_edges.extend(e.to_dict() for e in js_result.edges)
+
+    # Run PHP analysis (optional, requires tree-sitter-php)
+    php_result = analyze_php(repo_root)
+    if php_result.run is not None:
+        if php_result.skipped:
+            limits.skipped_passes.append({
+                "pass": php_result.run.pass_id,
+                "reason": php_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(php_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in php_result.symbols)
+            all_edges.extend(e.to_dict() for e in php_result.edges)
 
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes

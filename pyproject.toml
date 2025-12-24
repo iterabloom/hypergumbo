@@ -29,6 +29,10 @@ javascript = [
   "tree-sitter-javascript>=0.21",
   "tree-sitter-typescript>=0.21",
 ]
+php = [
+  "tree-sitter>=0.21",
+  "tree-sitter-php>=0.23",
+]
 llm-assist = [
   "openai>=1.0",
 ]

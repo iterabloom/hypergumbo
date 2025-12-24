@@ -18,11 +18,11 @@ def test_is_excluded_returns_false_for_normal_paths(tmp_path: Path) -> None:
 
 def test_is_excluded_with_custom_patterns(tmp_path: Path) -> None:
     """Should respect custom exclude patterns."""
-    vendor_file = tmp_path / "vendor" / "lib.py"
+    third_party = tmp_path / "third_party" / "lib.py"
     # Not excluded by default
-    assert is_excluded(vendor_file, tmp_path) is False
+    assert is_excluded(third_party, tmp_path) is False
     # Excluded with custom pattern
-    assert is_excluded(vendor_file, tmp_path, excludes=["vendor"]) is True
+    assert is_excluded(third_party, tmp_path, excludes=["third_party"]) is True
 
 
 def test_is_excluded_with_path_outside_repo_root(tmp_path: Path) -> None:
@@ -68,6 +68,15 @@ def test_find_files_excludes_by_default(tmp_path: Path) -> None:
 
 def test_default_excludes_contains_expected_patterns() -> None:
     """DEFAULT_EXCLUDES should contain all expected patterns."""
-    expected = ["node_modules", "venv", ".venv", "dist", "build", ".git", "__pycache__"]
+    expected = [
+        "node_modules",
+        "vendor",  # PHP Composer dependencies
+        "venv",
+        ".venv",
+        "dist",
+        "build",
+        ".git",
+        "__pycache__",
+    ]
     for pattern in expected:
         assert pattern in DEFAULT_EXCLUDES

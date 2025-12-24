@@ -6,6 +6,7 @@ from typing import Iterator
 # Default exclude patterns (gitignore-style)
 DEFAULT_EXCLUDES = [
     "node_modules",
+    "vendor",  # PHP dependencies (Composer)
     "venv",
     ".venv",
     "dist",
