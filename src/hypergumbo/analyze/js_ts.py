@@ -4,6 +4,8 @@ This analyzer uses tree-sitter to parse JS/TS/Svelte files and extract:
 - Function and class declarations (symbols)
 - Import/require statements (edges)
 - Function call relationships (edges)
+- Method call relationships (edges)
+- Object instantiation relationships (edges)
 
 If tree-sitter is not installed, the analyzer gracefully degrades and
 reports the pass as skipped with reason.
@@ -12,9 +14,10 @@ How It Works
 ------------
 1. Check if tree-sitter and language grammars are available
 2. If not available, return empty result with skip reason
-3. If available, parse each file and extract symbols/edges
-4. Use tree-sitter queries to identify relevant nodes
-5. For Svelte files, extract <script> blocks and parse as TS/JS
+3. Two-pass analysis:
+   - Pass 1: Parse all files, extract all symbols into global registry
+   - Pass 2: Detect calls and resolve against global symbol registry
+4. For Svelte files, extract <script> blocks and parse as TS/JS
 
 Svelte Support
 --------------
@@ -27,6 +30,7 @@ Why This Design
 - Optional dependency keeps base install lightweight
 - Graceful degradation ensures CLI still works without tree-sitter
 - Tree-sitter provides accurate parsing even for complex syntax
+- Two-pass allows cross-file call resolution
 - Svelte support reuses existing TS/JS parsing infrastructure
 """
 from __future__ import annotations
@@ -36,7 +40,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
@@ -82,7 +86,6 @@ def extract_svelte_scripts(source: str) -> list[SvelteScriptBlock]:
     Handles both TypeScript (lang="ts") and JavaScript scripts.
     """
     blocks: list[SvelteScriptBlock] = []
-    lines = source.split("\n")
 
     # Find all script tags with their positions
     for match in _SVELTE_SCRIPT_RE.finditer(source):
@@ -130,6 +133,17 @@ class JsAnalysisResult:
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
+
+
+@dataclass
+class _ParsedFile:
+    """Holds parsed file data for two-pass analysis."""
+
+    path: Path
+    tree: "tree_sitter.Tree"
+    source: bytes
+    lang: str
+    line_offset: int = 0  # For Svelte script blocks
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
@@ -193,27 +207,37 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None
 
 
-def _extract_symbols_and_edges(
+def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
     lang: str,
     run: AnalysisRun,
-) -> tuple[list[Symbol], list[Edge]]:
-    """Extract symbols and edges from a parsed tree."""
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    symbol_by_name: dict[str, Symbol] = {}
+    line_offset: int = 0,
+) -> list[Symbol]:
+    """Extract symbols from a parsed tree (pass 1).
 
-    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
+    Args:
+        tree: Parsed tree-sitter tree
+        source: Source bytes
+        file_path: Path to the file
+        lang: Language (javascript or typescript)
+        run: Analysis run for provenance
+        line_offset: Line offset for Svelte script blocks
+    """
+    symbols: list[Symbol] = []
+    current_class_name: Optional[str] = None
+
+    def visit(node: "tree_sitter.Node") -> None:
+        nonlocal current_class_name
 
         # Function declarations
         if node.type == "function_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
@@ -228,11 +252,6 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
-                # Visit body with this as current function
-                for child in node.children:
-                    visit(child, symbol)
-                return
 
         # Arrow functions assigned to variables: const foo = () => {}
         if node.type == "lexical_declaration" or node.type == "variable_declaration":
@@ -240,19 +259,16 @@ def _extract_symbols_and_edges(
                 if child.type == "variable_declarator":
                     name_node = None
                     value_node = None
-                    call_node = None
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
                             name_node = grandchild
                         elif grandchild.type == "arrow_function":
                             value_node = grandchild
-                        elif grandchild.type == "call_expression":
-                            call_node = grandchild
                     if name_node and value_node:
                         name = _node_text(name_node, source)
                         span = Span(
-                            start_line=value_node.start_point[0] + 1,
-                            end_line=value_node.end_point[0] + 1,
+                            start_line=value_node.start_point[0] + 1 + line_offset,
+                            end_line=value_node.end_point[0] + 1 + line_offset,
                             start_col=value_node.start_point[1],
                             end_col=value_node.end_point[1],
                         )
@@ -267,22 +283,14 @@ def _extract_symbols_and_edges(
                             origin_run_id=run.execution_id,
                         )
                         symbols.append(symbol)
-                        symbol_by_name[name] = symbol
-                        # Visit body with this as current function
-                        for vc in value_node.children:
-                            visit(vc, symbol)
-                    # Handle require() calls: const x = require('module')
-                    if call_node:
-                        visit(call_node, current_function)
-            return
 
         # Class declarations
         if node.type == "class_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
@@ -297,15 +305,20 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
+                old_class_name = current_class_name
+                current_class_name = name
+                for child in node.children:
+                    visit(child)
+                current_class_name = old_class_name
+                return
 
         # TypeScript interface declarations
         if node.type == "interface_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
@@ -320,15 +333,14 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
 
         # TypeScript type alias declarations
         if node.type == "type_alias_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
@@ -343,7 +355,6 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
 
         # TypeScript enum declarations
         if node.type == "enum_declaration":
@@ -355,8 +366,8 @@ def _extract_symbols_and_edges(
                     break
             if name:
                 span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
@@ -371,7 +382,6 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
 
         # Method definitions inside classes (including getters/setters)
         if node.type == "method_definition":
@@ -388,14 +398,16 @@ def _extract_symbols_and_edges(
                         break
 
                 span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                # Use ClassName.methodName for method symbols
+                full_name = f"{current_class_name}.{name}" if current_class_name else name
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, kind, lang),
-                    name=name,
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, kind, lang),
+                    name=full_name,
                     kind=kind,
                     language=lang,
                     path=str(file_path),
@@ -404,21 +416,16 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
-                # Visit method body for call detection
-                for child in node.children:
-                    visit(child, symbol)
-                return
 
-        # Export default function
+        # Export default function - handle specially to avoid double extraction
         if node.type == "export_statement":
             for child in node.children:
                 if child.type == "function_declaration":
                     name = _find_name_in_children(child, source)
                     if name:
                         span = Span(
-                            start_line=child.start_point[0] + 1,
-                            end_line=child.end_point[0] + 1,
+                            start_line=child.start_point[0] + 1 + line_offset,
+                            end_line=child.end_point[0] + 1 + line_offset,
                             start_col=child.start_point[1],
                             end_col=child.end_point[1],
                         )
@@ -433,27 +440,127 @@ def _extract_symbols_and_edges(
                             origin_run_id=run.execution_id,
                         )
                         symbols.append(symbol)
-                        symbol_by_name[name] = symbol
-                        for fc in child.children:
-                            visit(fc, symbol)
+                        return  # Don't recurse - we handled the function_declaration
+                elif child.type == "class_declaration":
+                    # For exported classes, let normal recursion handle it
+                    visit(child)
+                    return
+            # For other export types, recurse normally
+            for child in node.children:
+                visit(child)
+            return
+
+        # Recurse into children
+        for child in node.children:
+            visit(child)
+
+    visit(tree.root_node)
+    return symbols
+
+
+def _extract_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    lang: str,
+    run: AnalysisRun,
+    global_symbols: dict[str, Symbol],
+    global_methods: dict[str, list[Symbol]],
+    global_classes: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[Edge]:
+    """Extract edges from a parsed tree (pass 2).
+
+    Uses global symbol registries to resolve cross-file references.
+    """
+    edges: list[Edge] = []
+    current_class_name: Optional[str] = None
+
+    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
+        nonlocal current_class_name
+
+        # Track current function context
+        if node.type == "function_declaration":
+            name = _find_name_in_children(node, source)
+            if name and name in global_symbols:
+                func_sym = global_symbols[name]
+                if func_sym.path == str(file_path):
+                    for child in node.children:
+                        visit(child, func_sym)
+                    return
+
+        # Arrow functions assigned to variables
+        if node.type == "lexical_declaration" or node.type == "variable_declaration":
+            for child in node.children:
+                if child.type == "variable_declarator":
+                    name_node = None
+                    value_node = None
+                    call_node = None
+                    for grandchild in child.children:
+                        if grandchild.type == "identifier":
+                            name_node = grandchild
+                        elif grandchild.type == "arrow_function":
+                            value_node = grandchild
+                        elif grandchild.type == "call_expression":
+                            call_node = grandchild
+                    if name_node and value_node:
+                        name = _node_text(name_node, source)
+                        if name in global_symbols:
+                            func_sym = global_symbols[name]
+                            if func_sym.path == str(file_path):
+                                for vc in value_node.children:
+                                    visit(vc, func_sym)
+                    if call_node:
+                        visit(call_node, current_function)
+            return
+
+        # Track class context
+        if node.type == "class_declaration":
+            name = _find_name_in_children(node, source)
+            if name:
+                old_class_name = current_class_name
+                current_class_name = name
+                for child in node.children:
+                    visit(child, current_function)
+                current_class_name = old_class_name
+                return
+
+        # Track method context
+        if node.type == "method_definition":
+            name = _find_name_in_children(node, source)
+            if name and current_class_name:
+                full_name = f"{current_class_name}.{name}"
+                if full_name in global_symbols:
+                    method_sym = global_symbols[full_name]
+                    if method_sym.path == str(file_path):
+                        for child in node.children:
+                            visit(child, method_sym)
                         return
 
-        # Import statements: import { x } from 'module'
+        # Export default function
+        if node.type == "export_statement":
+            for child in node.children:
+                if child.type == "function_declaration":
+                    name = _find_name_in_children(child, source)
+                    if name and name in global_symbols:
+                        func_sym = global_symbols[name]
+                        if func_sym.path == str(file_path):
+                            for fc in child.children:
+                                visit(fc, func_sym)
+                            return
+
+        # Import statements
         if node.type == "import_statement":
-            # Find the source string
             for child in node.children:
                 if child.type == "string":
                     module_name = _node_text(child, source).strip("'\"")
-                    # Create file symbol for this file if not exists
                     file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
-
-                    # Create import edge
                     dst_id = f"{lang}:{module_name}:0-0:module:module"
                     edge = Edge.create(
                         src=file_id,
                         dst=dst_id,
                         edge_type="imports",
-                        line=node.start_point[0] + 1,
+                        line=node.start_point[0] + 1 + line_offset,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="import_static",
@@ -462,63 +569,63 @@ def _extract_symbols_and_edges(
                     edges.append(edge)
                     break
 
-        # Require calls: const x = require('module')
+        # Call expressions
         if node.type == "call_expression":
             func_node = None
             args_node = None
             for child in node.children:
                 if child.type == "identifier":
                     func_node = child
+                elif child.type == "member_expression":
+                    func_node = child
                 elif child.type == "arguments":
                     args_node = child
 
-            if func_node and _node_text(func_node, source) == "require" and args_node:
-                # Get the first argument
-                for arg in args_node.children:
-                    if arg.type == "string":
-                        module_name = _node_text(arg, source).strip("'\"")
-                        file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
-                        dst_id = f"{lang}:{module_name}:0-0:module:module"
-                        edge = Edge.create(
-                            src=file_id,
-                            dst=dst_id,
-                            edge_type="imports",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="require_static",
-                            confidence=0.90,
-                        )
-                        edges.append(edge)
-                        break
-                    elif arg.type == "identifier":
-                        # Dynamic require
-                        var_name = _node_text(arg, source)
-                        file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
-                        dst_id = f"{lang}:<dynamic:{var_name}>:0-0:module:module"
-                        edge = Edge.create(
-                            src=file_id,
-                            dst=dst_id,
-                            edge_type="imports",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="require_dynamic",
-                            confidence=0.40,
-                        )
-                        edges.append(edge)
-                        break
-
-            # Regular function calls within a function
-            elif func_node and current_function:
-                callee_name = _node_text(func_node, source)
-                if callee_name in symbol_by_name:
-                    callee_symbol = symbol_by_name[callee_name]
+            # Require calls
+            if func_node and func_node.type == "identifier":
+                func_name = _node_text(func_node, source)
+                if func_name == "require" and args_node:
+                    for arg in args_node.children:
+                        if arg.type == "string":
+                            module_name = _node_text(arg, source).strip("'\"")
+                            file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
+                            dst_id = f"{lang}:{module_name}:0-0:module:module"
+                            edge = Edge.create(
+                                src=file_id,
+                                dst=dst_id,
+                                edge_type="imports",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="require_static",
+                                confidence=0.90,
+                            )
+                            edges.append(edge)
+                            break
+                        elif arg.type == "identifier":
+                            var_name = _node_text(arg, source)
+                            file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
+                            dst_id = f"{lang}:<dynamic:{var_name}>:0-0:module:module"
+                            edge = Edge.create(
+                                src=file_id,
+                                dst=dst_id,
+                                edge_type="imports",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="require_dynamic",
+                                confidence=0.40,
+                            )
+                            edges.append(edge)
+                            break
+                # Regular function call
+                elif current_function and func_name in global_symbols:
+                    callee_symbol = global_symbols[func_name]
                     edge = Edge.create(
                         src=current_function.id,
                         dst=callee_symbol.id,
                         edge_type="calls",
-                        line=node.start_point[0] + 1,
+                        line=node.start_point[0] + 1 + line_offset,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
@@ -526,41 +633,110 @@ def _extract_symbols_and_edges(
                     )
                     edges.append(edge)
 
+            # Method calls: obj.method()
+            if func_node and func_node.type == "member_expression" and current_function:
+                # Get the method name (property)
+                method_name = None
+                obj_node = None
+                for child in func_node.children:
+                    if child.type == "property_identifier":
+                        method_name = _node_text(child, source)
+                    elif child.type in ("identifier", "this", "member_expression"):
+                        obj_node = child
+
+                if method_name:
+                    # Check if it's this.method()
+                    is_this_call = obj_node and obj_node.type == "this"
+
+                    if is_this_call and current_class_name:
+                        full_name = f"{current_class_name}.{method_name}"
+                        if full_name in global_symbols:
+                            target_sym = global_symbols[full_name]
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=target_sym.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_this",
+                                confidence=0.95,
+                            )
+                            edges.append(edge)
+                    elif method_name in global_methods:
+                        # Infer method by name
+                        for target_sym in global_methods[method_name]:
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=target_sym.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_inferred",
+                                confidence=0.60,
+                            )
+                            edges.append(edge)
+
+        # new ClassName()
+        if node.type == "new_expression" and current_function:
+            for child in node.children:
+                if child.type == "identifier":
+                    class_name = _node_text(child, source)
+                    if class_name in global_classes:
+                        target_sym = global_classes[class_name]
+                        edge = Edge.create(
+                            src=current_function.id,
+                            dst=target_sym.id,
+                            edge_type="instantiates",
+                            line=node.start_point[0] + 1 + line_offset,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_new",
+                            confidence=0.95,
+                        )
+                        edges.append(edge)
+                    break
+
         # Recurse into children
         for child in node.children:
             visit(child, current_function)
 
     visit(tree.root_node)
-    return symbols, edges
+    return edges
 
 
-def _analyze_file(
+def _extract_symbols_and_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
     file_path: Path,
+    lang: str,
     run: AnalysisRun,
-) -> tuple[list[Symbol], list[Edge], bool]:
-    """Analyze a single JS/TS file.
+) -> tuple[list[Symbol], list[Edge]]:
+    """Extract symbols and edges from a parsed tree (legacy single-file).
 
-    Returns (symbols, edges, success).
+    This function is kept for backwards compatibility with single-file analysis.
+    For cross-file resolution, use the two-pass approach in analyze_javascript.
     """
-    parser = _get_parser_for_file(file_path)
-    if parser is None:
-        return [], [], False
+    symbols = _extract_symbols(tree, source, file_path, lang, run)
 
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return [], [], False
+    # Build local symbol registry
+    global_symbols: dict[str, Symbol] = {}
+    global_methods: dict[str, list[Symbol]] = {}
+    global_classes: dict[str, Symbol] = {}
 
-    # Check for parse errors (tree-sitter creates error nodes)
-    if tree.root_node.has_error:
-        # Still try to extract what we can, but note the error
-        pass
+    for sym in symbols:
+        global_symbols[sym.name] = sym
+        if sym.kind == "method":
+            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            if method_name not in global_methods:
+                global_methods[method_name] = []
+            global_methods[method_name].append(sym)
+        elif sym.kind == "class":
+            global_classes[sym.name] = sym
 
-    lang = _get_language_for_file(file_path)
-    symbols, edges = _extract_symbols_and_edges(tree, source, file_path, lang, run)
-
-    return symbols, edges, True
+    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes)
+    return symbols, edges
 
 
 def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
@@ -619,28 +795,29 @@ def _analyze_svelte_file(
         tree = parser.parse(source_bytes)
 
         lang = "typescript" if block.is_typescript else "javascript"
-        symbols, edges = _extract_symbols_and_edges(
-            tree, source_bytes, file_path, lang, run
-        )
+        line_offset = block.start_line - 1
 
-        # Adjust line numbers to account for script block offset
-        line_offset = block.start_line - 1  # Convert to 0-indexed offset
+        symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+
+        # Build local symbol registry for this block
+        local_symbols: dict[str, Symbol] = {}
+        local_methods: dict[str, list[Symbol]] = {}
+        local_classes: dict[str, Symbol] = {}
+
         for sym in symbols:
-            sym.span = Span(
-                start_line=sym.span.start_line + line_offset,
-                end_line=sym.span.end_line + line_offset,
-                start_col=sym.span.start_col,
-                end_col=sym.span.end_col,
-            )
-            # Regenerate ID with correct line numbers
-            sym.id = _make_symbol_id(
-                str(file_path),
-                sym.span.start_line,
-                sym.span.end_line,
-                sym.name,
-                sym.kind,
-                lang,
-            )
+            local_symbols[sym.name] = sym
+            if sym.kind == "method":
+                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                if method_name not in local_methods:
+                    local_methods[method_name] = []
+                local_methods[method_name].append(sym)
+            elif sym.kind == "class":
+                local_classes[sym.name] = sym
+
+        edges = _extract_edges(
+            tree, source_bytes, file_path, lang, run,
+            local_symbols, local_methods, local_classes, line_offset
+        )
 
         all_symbols.extend(symbols)
         all_edges.extend(edges)
@@ -650,6 +827,10 @@ def _analyze_svelte_file(
 
 def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
     """Analyze all JavaScript/TypeScript/Svelte files in a repository.
+
+    Uses a two-pass approach:
+    1. Parse all files and extract symbols into global registry
+    2. Detect calls and resolve against global symbol registry
 
     Returns a JsAnalysisResult with symbols, edges, and provenance.
     If tree-sitter is not available, returns empty result with skip info.
@@ -668,30 +849,83 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
             skip_reason="requires tree-sitter: pip install hypergumbo[javascript]",
         )
 
+    # Pass 1: Parse all files and extract symbols
+    parsed_files: list[_ParsedFile] = []
     all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
     files_analyzed = 0
     files_skipped = 0
 
     # Analyze JS/TS files
     for file_path in find_js_ts_files(repo_root):
-        symbols, edges, success = _analyze_file(file_path, run)
-        if success:
-            files_analyzed += 1
+        parser = _get_parser_for_file(file_path)
+        if parser is None:
+            files_skipped += 1
+            continue
+
+        try:
+            source = file_path.read_bytes()
+            tree = parser.parse(source)
+            lang = _get_language_for_file(file_path)
+            parsed_files.append(_ParsedFile(path=file_path, tree=tree, source=source, lang=lang))
+            symbols = _extract_symbols(tree, source, file_path, lang, run)
             all_symbols.extend(symbols)
-            all_edges.extend(edges)
-        else:
+            files_analyzed += 1
+        except (OSError, IOError):
             files_skipped += 1
 
-    # Analyze Svelte files (extract and parse <script> blocks)
+    # Analyze Svelte files
     for file_path in find_svelte_files(repo_root):
-        symbols, edges, success = _analyze_svelte_file(file_path, run)
-        if success:
+        try:
+            source_text = file_path.read_text(encoding="utf-8", errors="replace")
+            script_blocks = extract_svelte_scripts(source_text)
+            if not script_blocks:
+                files_analyzed += 1
+                continue
+
+            for block in script_blocks:
+                parser = _get_parser_for_lang(block.is_typescript)
+                if parser is None:
+                    continue
+
+                source_bytes = block.content.encode("utf-8")
+                tree = parser.parse(source_bytes)
+                lang = "typescript" if block.is_typescript else "javascript"
+                line_offset = block.start_line - 1
+
+                parsed_files.append(_ParsedFile(
+                    path=file_path, tree=tree, source=source_bytes,
+                    lang=lang, line_offset=line_offset
+                ))
+                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                all_symbols.extend(symbols)
+
             files_analyzed += 1
-            all_symbols.extend(symbols)
-            all_edges.extend(edges)
-        else:
+        except (OSError, IOError):
             files_skipped += 1
+
+    # Build global symbol registries
+    global_symbols: dict[str, Symbol] = {}
+    global_methods: dict[str, list[Symbol]] = {}
+    global_classes: dict[str, Symbol] = {}
+
+    for sym in all_symbols:
+        global_symbols[sym.name] = sym
+        if sym.kind == "method":
+            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            if method_name not in global_methods:
+                global_methods[method_name] = []
+            global_methods[method_name].append(sym)
+        elif sym.kind == "class":
+            global_classes[sym.name] = sym
+
+    # Pass 2: Extract edges using global symbol registry
+    all_edges: list[Edge] = []
+    for pf in parsed_files:
+        edges = _extract_edges(
+            pf.tree, pf.source, pf.path, pf.lang, run,
+            global_symbols, global_methods, global_classes, pf.line_offset
+        )
+        all_edges.extend(edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
