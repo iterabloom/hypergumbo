@@ -42,7 +42,7 @@ hypergumbo . -t 2000  # include symbols and entry points
 pip install git+https://codeberg.org/iterabloom/hypergumbo.git
 ```
 
-For JavaScript/TypeScript analysis:
+For JavaScript/TypeScript analysis (requires tree-sitter):
 ```bash
 pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
 ```
@@ -61,45 +61,38 @@ hypergumbo export-capsule    # export shareable capsule tarball
 
 ## What It Does
 
-`hypergumbo run` analyzes source files and outputs a behavior map with:
-- **Nodes**: Functions, classes, methods, interfaces with name, kind, location, and unique IDs
+**Default mode** (`hypergumbo .`) generates a Markdown sketch with:
+- Language breakdown and LOC count
+- Directory structure with labels
+- Framework detection
+- Key symbols ranked by graph centrality (★ = most called)
+- Entry points (CLI, HTTP routes, etc.)
+
+**Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
+- **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
 - **Edges**: Call and import relationships between symbols
 
-### Analysis Capabilities
+### Supported Languages
 
-**Python Analysis:**
-- Function and class detection via AST
-- Intra-file call detection (`helper()`)
-- Cross-file call detection via imports (`from utils import helper`)
-- Relative import resolution (`from ..utils import helper`)
-- Method call detection (`self.helper()`)
+| Language | Parser | Symbols | Edges |
+|----------|--------|---------|-------|
+| Python | AST | function, class | calls, imports |
+| JavaScript | tree-sitter | function, class, method | calls, imports |
+| TypeScript | tree-sitter | function, class, interface, type, enum | calls, imports |
+| HTML | regex | file | script_src |
 
-**JavaScript/TypeScript Analysis** (optional):
-```bash
-pip install hypergumbo[javascript]
-```
-- Function, class, method, getter, setter detection
-- TypeScript interface, type alias, and enum detection
-- Arrow function detection (`const fn = () => {}`)
-- ES6 imports (`import { x } from 'module'`)
-- CommonJS require (`const x = require('module')`)
-- Intra-file function call detection
+## Development
 
-**HTML Analysis:**
-- Script tag detection (`<script src="...">`)
-- Creates edges from HTML files to referenced scripts
-
-### Implementation Status
-
-See [STATUS.md](STATUS.md) for detailed progress against the spec.
-
-## Running tests
+To contribute to hypergumbo:
 
 ```bash
+git clone https://codeberg.org/iterabloom/hypergumbo.git
+cd hypergumbo
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+./scripts/install-hooks
 pytest
 ```
 
-## AI-Assisted Development
-
-All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files 
-(`CLAUDE.md`, etc.) are thin adapters that import the canonical source.
+See [AGENTS.md](AGENTS.md) for development guidelines and [STATUS.md](STATUS.md) for implementation progress.
