@@ -22,11 +22,18 @@ classifiers = [
 dev = [
   "pytest>=8",
   "pytest-cov>=5",
+  "openai>=1.0",  # For testing LLM-assisted plan generation
 ]
 javascript = [
   "tree-sitter>=0.21",
   "tree-sitter-javascript>=0.21",
   "tree-sitter-typescript>=0.21",
+]
+llm-assist = [
+  "openai>=1.0",
+]
+llm-local = [
+  "llm>=0.19",
 ]
 
 [project.scripts]
