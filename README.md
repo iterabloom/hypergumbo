@@ -3,7 +3,7 @@
 Get a quick overview of any codebase, sized to fit your context window.
 
 ```bash
-pip install hypergumbo
+pip install git+https://codeberg.org/iterabloom/hypergumbo.git
 hypergumbo .
 ```
 
@@ -39,12 +39,12 @@ hypergumbo . -t 2000  # include symbols and entry points
 ## Installation
 
 ```bash
-pip install hypergumbo
+pip install git+https://codeberg.org/iterabloom/hypergumbo.git
 ```
 
 For JavaScript/TypeScript analysis:
 ```bash
-pip install hypergumbo[javascript]
+pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
 ```
 
 ## CLI Commands
