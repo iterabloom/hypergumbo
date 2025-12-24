@@ -184,9 +184,10 @@ class UserService {
         method_symbols = [s for s in result.symbols if s.kind == "method"]
         method_names = [m.name for m in method_symbols]
 
-        assert "constructor" in method_names
-        assert "createUser" in method_names
-        assert "validate" in method_names
+        # Method names now include class prefix
+        assert "UserService.constructor" in method_names
+        assert "UserService.createUser" in method_names
+        assert "UserService.validate" in method_names
         assert len(method_symbols) == 3
 
     def test_extracts_getters_and_setters(self, tmp_path: Path) -> None:
@@ -222,11 +223,12 @@ class User {
         getter_names = [g.name for g in getter_symbols]
         setter_names = [s.name for s in setter_symbols]
 
-        assert "name" in getter_names
-        assert "age" in getter_names
+        # Getter/setter names now include class prefix
+        assert "User.name" in getter_names
+        assert "User.age" in getter_names
         assert len(getter_symbols) == 2
 
-        assert "name" in setter_names
+        assert "User.name" in setter_names
         assert len(setter_symbols) == 1
 
     def test_extracts_es6_import(self, tmp_path: Path) -> None:
@@ -837,38 +839,6 @@ class TestMockedTreeSitter:
 
         assert symbol_id == "javascript:app.js:1-5:foo:function"
 
-    def test_analyze_file_returns_failure_on_io_error(self, tmp_path: Path) -> None:
-        """Returns failure when file cannot be read."""
-        from hypergumbo.analyze.js_ts import _analyze_file
-        from hypergumbo.ir import AnalysisRun
-
-        run = AnalysisRun.create(pass_id="test", version="1.0")
-        nonexistent = tmp_path / "nonexistent.js"
-
-        # Mock parser to be available
-        with patch("hypergumbo.analyze.js_ts._get_parser_for_file") as mock_get_parser:
-            mock_get_parser.return_value = MagicMock()
-
-            symbols, edges, success = _analyze_file(nonexistent, run)
-
-        assert success is False
-        assert symbols == []
-        assert edges == []
-
-    def test_analyze_file_returns_failure_when_no_parser(self, tmp_path: Path) -> None:
-        """Returns failure when parser not available."""
-        from hypergumbo.analyze.js_ts import _analyze_file
-        from hypergumbo.ir import AnalysisRun
-
-        run = AnalysisRun.create(pass_id="test", version="1.0")
-        js_file = tmp_path / "app.js"
-        js_file.write_text("const x = 1;")
-
-        with patch("hypergumbo.analyze.js_ts._get_parser_for_file", return_value=None):
-            symbols, edges, success = _analyze_file(js_file, run)
-
-        assert success is False
-
     def test_analyze_javascript_with_mocked_tree_sitter(self, tmp_path: Path) -> None:
         """Tests full analysis with mocked tree-sitter."""
         from hypergumbo.analyze.js_ts import analyze_javascript
@@ -954,6 +924,46 @@ class TestMockedTreeSitter:
         assert len(symbols) == 1
         assert symbols[0].name == "User"
         assert symbols[0].kind == "class"
+
+    def test_extract_class_with_methods_builds_registry(self) -> None:
+        """Tests that method registry is built correctly for cross-file resolution."""
+        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
+        from hypergumbo.ir import AnalysisRun
+
+        source = b"class Svc { save() {} }"
+        run = AnalysisRun.create(pass_id="test", version="1.0")
+
+        class_id = self._create_mock_node("identifier", start_byte=6, end_byte=9)
+        method_id = self._create_mock_node("property_identifier", start_byte=12, end_byte=16)
+        method_node = self._create_mock_node(
+            "method_definition",
+            start_point=(0, 12),
+            end_point=(0, 21),
+            children=[method_id],
+        )
+        class_body = self._create_mock_node("class_body", children=[method_node])
+        class_node = self._create_mock_node(
+            "class_declaration",
+            start_point=(0, 0),
+            end_point=(0, 23),
+            children=[class_id, class_body],
+        )
+        root = self._create_mock_node("program", children=[class_node])
+        tree = MagicMock()
+        tree.root_node = root
+
+        symbols, edges = _extract_symbols_and_edges(
+            tree, source, Path("app.js"), "javascript", run
+        )
+
+        # Should have class + method
+        assert len(symbols) == 2
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        assert len(class_symbols) == 1
+        assert len(method_symbols) == 1
+        # Method name should include class prefix
+        assert "Svc.save" in method_symbols[0].name
 
     def test_extract_arrow_function(self) -> None:
         """Tests extraction of arrow functions assigned to const."""
@@ -1245,52 +1255,26 @@ class TestMockedTreeSitter:
         assert result.run.files_analyzed == 1
 
     def test_analyze_with_file_errors(self, tmp_path: Path) -> None:
-        """Tracks files that fail to parse."""
+        """Tracks files that fail to read."""
         from hypergumbo.analyze.js_ts import analyze_javascript
 
         (tmp_path / "good.js").write_text("function foo() {}")
-        (tmp_path / "bad.js").write_text("broken")
+        (tmp_path / "bad.js").write_text("function bar() {}")
 
-        # Mock: good.js succeeds, bad.js fails
-        root = self._create_mock_node("program")
-        id_node = self._create_mock_node("identifier", start_byte=9, end_byte=12)
-        func_node = self._create_mock_node(
-            "function_declaration",
-            start_point=(0, 0),
-            end_point=(0, 17),
-            children=[id_node],
-        )
-        root.children = [func_node]
-        tree = MagicMock()
-        tree.root_node = root
+        # Mock file read to fail for bad.js
+        original_read_bytes = Path.read_bytes
 
-        call_count = [0]
+        def mock_read_bytes(self: Path) -> bytes:
+            if "bad" in self.name:
+                raise IOError("Mock read error")
+            return original_read_bytes(self)
 
-        def mock_analyze_file(file_path, run):
-            call_count[0] += 1
-            if "bad" in str(file_path):
-                return [], [], False  # Simulate failure
-            # Return success for good.js
-            from hypergumbo.ir import Symbol, Span
-            s = Symbol(
-                id="js:good.js:1-1:foo:function",
-                name="foo",
-                kind="function",
-                language="javascript",
-                path=str(file_path),
-                span=Span(start_line=1, end_line=1, start_col=0, end_col=17),
-            )
-            return [s], [], True
+        with patch.object(Path, "read_bytes", mock_read_bytes):
+            result = analyze_javascript(tmp_path)
 
-        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
-            with patch("hypergumbo.analyze.js_ts._analyze_file", side_effect=mock_analyze_file):
-                result = analyze_javascript(tmp_path)
-
-        # Should have analyzed 2 files
-        assert call_count[0] == 2
         assert result.run is not None
-        assert result.run.files_analyzed == 1
-        assert result.run.files_skipped == 1
+        assert result.run.files_analyzed == 1  # good.js
+        assert result.run.files_skipped == 1  # bad.js
 
 
 class TestSvelteFileDiscovery:
@@ -1584,7 +1568,7 @@ function test() {}
         assert len(symbols) == 0
 
     def test_svelte_file_skipped_increments_counter(self, tmp_path: Path) -> None:
-        """Svelte files that fail to analyze increment skipped counter."""
+        """Svelte files that fail to read increment skipped counter."""
         from hypergumbo.analyze.js_ts import analyze_javascript
 
         svelte_file = tmp_path / "Component.svelte"
@@ -1592,15 +1576,223 @@ function test() {}
 function test() {}
 </script>''')
 
-        # Mock the svelte file analysis to fail
-        def mock_analyze_svelte_file(file_path, run):
-            return [], [], False
+        # Mock file read to fail for svelte files
+        original_read_text = Path.read_text
 
-        with patch(
-            "hypergumbo.analyze.js_ts._analyze_svelte_file",
-            side_effect=mock_analyze_svelte_file,
-        ):
+        def mock_read_text(self: Path, *args, **kwargs) -> str:
+            if self.suffix == ".svelte":
+                raise IOError("Mock read error")
+            return original_read_text(self, *args, **kwargs)
+
+        with patch.object(Path, "read_text", mock_read_text):
             result = analyze_javascript(tmp_path)
 
         assert result.run is not None
         assert result.run.files_skipped == 1
+
+
+class TestParserUnavailableEdgeCases:
+    """Tests for edge cases when parser is unavailable."""
+
+    def test_js_parser_unavailable_skips_files(self, tmp_path: Path) -> None:
+        """JS files are skipped when parser is unavailable."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text("function foo() {}")
+
+        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
+            with patch("hypergumbo.analyze.js_ts._get_parser_for_file", return_value=None):
+                result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_skipped == 1
+        assert result.run.files_analyzed == 0
+
+    def test_svelte_parser_unavailable_in_main_analysis(self, tmp_path: Path) -> None:
+        """Svelte script blocks are skipped when parser unavailable."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "App.svelte").write_text('''<script lang="ts">
+function test() {}
+</script>''')
+
+        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
+            with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", return_value=None):
+                result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        # File is analyzed but script blocks are skipped
+        assert result.run.files_analyzed == 1
+        # No symbols extracted since parser is None
+        assert len(result.symbols) == 0
+
+
+class TestSvelteMethodResolution:
+    """Tests for method resolution in Svelte files."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter not installed."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_svelte_with_class_methods(self, tmp_path: Path) -> None:
+        """Svelte files with class methods build proper method registry."""
+        from hypergumbo.analyze.js_ts import _analyze_svelte_file
+        from hypergumbo.ir import AnalysisRun
+
+        svelte_file = tmp_path / "Component.svelte"
+        svelte_file.write_text('''<script lang="ts">
+class UserService {
+    save() {
+        return true;
+    }
+
+    create() {
+        this.save();
+        return {};
+    }
+}
+</script>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_svelte_file(svelte_file, run)
+
+        assert success is True
+        # Should have class and methods
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        assert len(method_symbols) == 2
+
+        # Should have this.method() call edge
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+
+    def test_analyze_svelte_file_no_scripts_in_main(self, tmp_path: Path) -> None:
+        """Svelte files with no script blocks count as analyzed."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create Svelte file with no script
+        (tmp_path / "Static.svelte").write_text('''<style>
+.foo { color: red; }
+</style>
+<div>Just HTML</div>''')
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 1  # Still counts as analyzed
+
+
+class TestCrossFileResolution:
+    """Tests for cross-file call resolution."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter not installed."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_this_method_call(self, tmp_path: Path) -> None:
+        """Detects this.method() calls within a class."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+class UserService {
+    save() {
+        return true;
+    }
+
+    create() {
+        this.save();
+        return {};
+    }
+}
+"""
+        (tmp_path / "service.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        this_calls = [e for e in call_edges if e.evidence_type == "ast_method_this"]
+        assert len(this_calls) == 1
+        assert "save" in this_calls[0].dst
+        assert this_calls[0].confidence == 0.95
+
+    def test_inferred_method_call(self, tmp_path: Path) -> None:
+        """Detects obj.method() calls with inferred type."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+class Logger {
+    writeMessage(msg) {
+        return msg;
+    }
+}
+
+function main(logger) {
+    logger.writeMessage("hello");
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_calls = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
+        assert len(inferred_calls) == 1
+        assert "writeMessage" in inferred_calls[0].dst
+        assert inferred_calls[0].confidence == 0.60
+
+    def test_new_class_instantiation(self, tmp_path: Path) -> None:
+        """Detects new ClassName() instantiation."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+class User {
+    constructor(name) {
+        this.name = name;
+    }
+}
+
+function createUser() {
+    return new User("test");
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "User" in inst_edges[0].dst
+        assert inst_edges[0].evidence_type == "ast_new"
+        assert inst_edges[0].confidence == 0.95
+
+    def test_cross_file_function_call(self, tmp_path: Path) -> None:
+        """Resolves function calls across files."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text("function helper() { return 42; }")
+        (tmp_path / "main.js").write_text("function main() { helper(); }")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # main calls helper (cross-file)
+        assert any("helper" in e.dst for e in call_edges)
+
+    def test_cross_file_class_instantiation(self, tmp_path: Path) -> None:
+        """Resolves class instantiation across files."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "models.js").write_text("class User { constructor() {} }")
+        (tmp_path / "main.js").write_text("function createUser() { return new User(); }")
+
+        result = analyze_javascript(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "User" in inst_edges[0].dst
+
+

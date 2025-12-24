@@ -117,9 +117,9 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 |----------|--------|---------|-------|-------|
 | Python | [x] AST | function, class | calls, imports | Full support |
 | HTML | [x] regex | file | script_src | Script tag detection |
-| JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports | Optional: `pip install hypergumbo[javascript]` |
-| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum | calls, imports | Optional: `pip install hypergumbo[javascript]` |
-| Svelte | [x] tree-sitter | function, class, method | calls, imports | Extracts `<script>` blocks, adjusts line numbers. Optional: `pip install hypergumbo[javascript]` |
+| JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. Optional: `pip install hypergumbo[javascript]` |
+| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. Optional: `pip install hypergumbo[javascript]` |
+| Svelte | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` blocks, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
 | PHP | [x] tree-sitter | function, class, method | calls, instantiates | Two-pass cross-file resolution. Detects `$this->method()`, `$obj->method()`, `ClassName::method()`, `new ClassName()`. Optional: `pip install hypergumbo[php]`. Excludes `vendor/` by default |
 
 ---
