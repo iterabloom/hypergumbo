@@ -13,6 +13,7 @@ from hypergumbo.sketch import (
     _format_entrypoints,
     _compute_centrality,
     _format_symbols,
+    _is_test_path,
 )
 from hypergumbo.profile import detect_profile
 from hypergumbo.ir import Symbol, Edge, Span
@@ -342,6 +343,51 @@ class TestRunAnalysis:
 
         assert symbols == []
         assert edges == []
+
+
+class TestIsTestPath:
+    """Tests for test file detection."""
+
+    def test_tests_directory(self) -> None:
+        """Detects /tests/ directory pattern."""
+        assert _is_test_path("/project/tests/test_app.py") is True
+        assert _is_test_path("src/tests/helpers.py") is True
+
+    def test_dunder_tests_directory(self) -> None:
+        """Detects /__tests__/ directory pattern (JavaScript)."""
+        assert _is_test_path("/src/__tests__/App.test.js") is True
+
+    def test_test_prefix_filename(self) -> None:
+        """Detects test_*.py filename pattern."""
+        assert _is_test_path("/src/test_utils.py") is True
+        assert _is_test_path("test_main.py") is True
+
+    def test_dot_test_suffix(self) -> None:
+        """Detects .test.js, .test.ts patterns."""
+        assert _is_test_path("/src/App.test.js") is True
+        assert _is_test_path("/src/utils.test.ts") is True
+        assert _is_test_path("Component.test.tsx") is True
+
+    def test_dot_spec_suffix(self) -> None:
+        """Detects .spec.js, .spec.ts patterns."""
+        assert _is_test_path("/src/App.spec.js") is True
+        assert _is_test_path("utils.spec.ts") is True
+
+    def test_underscore_test_suffix(self) -> None:
+        """Detects _test.py pattern."""
+        assert _is_test_path("/src/utils_test.py") is True
+        assert _is_test_path("app_test.js") is True
+
+    def test_production_files(self) -> None:
+        """Non-test files return False."""
+        assert _is_test_path("/src/app.py") is False
+        assert _is_test_path("/src/utils.ts") is False
+        assert _is_test_path("main.js") is False
+
+    def test_pytest_temp_dirs_not_matched(self) -> None:
+        """Pytest temp directories are not matched as test files."""
+        # These contain 'test' but are not actual test files
+        assert _is_test_path("/tmp/pytest-of-user/pytest-1/test_something0/app.py") is False
 
 
 class TestComputeCentrality:

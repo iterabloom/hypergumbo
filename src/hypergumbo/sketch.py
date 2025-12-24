@@ -349,6 +349,32 @@ def _format_entrypoints(
     return "\n".join(lines)
 
 
+def _is_test_path(path: str) -> bool:
+    """Check if a path looks like a test file.
+
+    Matches common test patterns across Python, JavaScript, and TypeScript.
+    Only matches actual test files, not directories that happen to contain 'test'.
+    """
+    import os
+    filename = os.path.basename(path)
+
+    # Directory patterns (actual test directories, not temp dirs)
+    if "/tests/" in path or "/__tests__/" in path:
+        return True
+
+    # File name patterns: test_*.py, test_*.js, etc.
+    if filename.startswith("test_"):
+        return True
+
+    # Suffix patterns (.test.ts, .spec.js, _test.py, etc.)
+    for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
+        if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
+            return True
+        if filename.endswith(f"_test{ext}"):
+            return True
+    return False
+
+
 def _compute_centrality(
     symbols: list[Symbol],
     edges: list,
@@ -384,6 +410,8 @@ def _format_symbols(
     """Format key symbols (functions, classes) as a Markdown section.
 
     Uses graph centrality to prioritize the most-called symbols first.
+    Test files are excluded from both symbols and edge sources to avoid
+    inflating centrality of production code called by tests.
     """
     if not symbols:
         return ""
@@ -392,16 +420,25 @@ def _format_symbols(
     key_symbols = [
         s for s in symbols
         if s.kind in ("function", "class", "method")
-        and "/tests/" not in s.path  # Exclude tests directories
-        and not s.path.endswith("/test.py")  # Exclude test.py files
+        and not _is_test_path(s.path)
         and "test_" not in s.name  # Exclude test functions
+    ]
+
+    # Build lookup: symbol ID -> path (for filtering edges by source)
+    symbol_path_by_id = {s.id: s.path for s in symbols}
+
+    # Filter edges: exclude edges originating from test files
+    # This prevents test code from inflating centrality of production code
+    production_edges = [
+        e for e in edges
+        if not _is_test_path(symbol_path_by_id.get(getattr(e, 'src', ''), ''))
     ]
 
     if not key_symbols:
         return ""
 
-    # Compute centrality scores
-    centrality = _compute_centrality(key_symbols, edges)
+    # Compute centrality scores using only production edges
+    centrality = _compute_centrality(key_symbols, production_edges)
 
     # Sort by centrality (most called first), then by name
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
