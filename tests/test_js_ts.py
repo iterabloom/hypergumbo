@@ -158,6 +158,37 @@ class TestAnalyzeJavascriptWithTreeSitter:
         assert len(class_symbols) == 1
         assert class_symbols[0].name == "User"
 
+    def test_extracts_class_methods(self, tmp_path: Path) -> None:
+        """Extracts methods from class declarations."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+class UserService {
+  constructor(db) {
+    this.db = db;
+  }
+
+  async createUser(email) {
+    return { email };
+  }
+
+  static validate(data) {
+    return true;
+  }
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        method_symbols = [s for s in result.symbols if s.kind == "method"]
+        method_names = [m.name for m in method_symbols]
+
+        assert "constructor" in method_names
+        assert "createUser" in method_names
+        assert "validate" in method_names
+        assert len(method_symbols) == 3
+
     def test_extracts_es6_import(self, tmp_path: Path) -> None:
         """Extracts ES6 import statements as edges."""
         from hypergumbo.analyze.js_ts import analyze_javascript
