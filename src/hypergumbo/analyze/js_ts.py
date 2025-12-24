@@ -63,10 +63,24 @@ def find_svelte_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.svelte"])
 
 
+def find_vue_files(repo_root: Path) -> Iterator[Path]:
+    """Yield all Vue SFC files in the repository."""
+    yield from find_files(repo_root, ["*.vue"])
+
+
 # Regex to extract <script> blocks from Svelte files
 # Captures: lang attribute (if present) and script content
 _SVELTE_SCRIPT_RE = re.compile(
     r'<script(?:\s+lang=["\']?(ts|typescript)["\']?)?[^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+# Regex to extract <script> blocks from Vue SFC files
+# Handles both regular <script> and <script setup> variants
+# Captures: lang attribute (if present) and script content
+_VUE_SCRIPT_RE = re.compile(
+    r'<script(?:\s+setup)?(?:\s+lang=["\']?(ts|typescript)["\']?)?'
+    r'(?:\s+setup)?[^>]*>(.*?)</script>',
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -107,6 +121,52 @@ def extract_svelte_scripts(source: str) -> list[SvelteScriptBlock]:
 
         blocks.append(
             SvelteScriptBlock(
+                content=content,
+                start_line=content_start_line,
+                is_typescript=is_ts,
+            )
+        )
+
+    return blocks
+
+
+@dataclass
+class VueScriptBlock:
+    """Extracted script block from a Vue SFC file."""
+
+    content: str
+    start_line: int  # 1-indexed line where script content starts
+    is_typescript: bool
+
+
+def extract_vue_scripts(source: str) -> list[VueScriptBlock]:
+    """Extract <script> blocks from Vue SFC file content.
+
+    Returns list of script blocks with their content and line offsets.
+    Handles both TypeScript (lang="ts") and JavaScript scripts.
+    Also handles <script setup> blocks.
+    """
+    blocks: list[VueScriptBlock] = []
+
+    # Find all script tags with their positions
+    for match in _VUE_SCRIPT_RE.finditer(source):
+        lang = match.group(1)
+        content = match.group(2)
+        is_ts = lang is not None and lang.lower() in ("ts", "typescript")
+
+        # Calculate line number where content starts
+        # Count newlines before the match start
+        prefix = source[: match.start()]
+        tag_start_line = prefix.count("\n") + 1
+
+        # Find where the actual content starts (after the opening tag)
+        tag_text = match.group(0)
+        opening_tag_end = tag_text.find(">") + 1
+        opening_tag_lines = tag_text[:opening_tag_end].count("\n")
+        content_start_line = tag_start_line + opening_tag_lines
+
+        blocks.append(
+            VueScriptBlock(
                 content=content,
                 start_line=content_start_line,
                 is_typescript=is_ts,
@@ -826,8 +886,68 @@ def _analyze_svelte_file(
     return all_symbols, all_edges, True
 
 
+def _analyze_vue_file(
+    file_path: Path,
+    run: AnalysisRun,
+) -> tuple[list[Symbol], list[Edge], bool]:
+    """Analyze a Vue SFC file by extracting and parsing <script> blocks.
+
+    Returns (symbols, edges, success).
+    """
+    try:
+        source_text = file_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, IOError):
+        return [], [], False
+
+    script_blocks = extract_vue_scripts(source_text)
+    if not script_blocks:
+        # No script blocks found - not an error, just empty
+        return [], [], True
+
+    all_symbols: list[Symbol] = []
+    all_edges: list[Edge] = []
+
+    for block in script_blocks:
+        parser = _get_parser_for_lang(block.is_typescript)
+        if parser is None:
+            continue
+
+        source_bytes = block.content.encode("utf-8")
+        tree = parser.parse(source_bytes)
+
+        lang = "typescript" if block.is_typescript else "javascript"
+        line_offset = block.start_line - 1
+
+        symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+
+        # Build local symbol registry for this block
+        local_symbols: dict[str, Symbol] = {}
+        local_methods: dict[str, list[Symbol]] = {}
+        local_classes: dict[str, Symbol] = {}
+
+        for sym in symbols:
+            local_symbols[sym.name] = sym
+            if sym.kind == "method":
+                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                if method_name not in local_methods:
+                    local_methods[method_name] = []
+                local_methods[method_name].append(sym)
+            elif sym.kind == "class":
+                local_classes[sym.name] = sym
+
+        edges = _extract_edges(
+            tree, source_bytes, file_path, lang, run,
+            local_symbols, local_methods, local_classes, line_offset
+        )
+
+        all_symbols.extend(symbols)
+        all_edges.extend(edges)
+
+    return all_symbols, all_edges, True
+
+
 def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
-    """Analyze all JavaScript/TypeScript/Svelte files in a repository.
+    """Analyze all JavaScript/TypeScript/Svelte/Vue files in a repository.
 
     Uses a two-pass approach:
     1. Parse all files and extract symbols into global registry
@@ -881,6 +1001,36 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
         try:
             source_text = file_path.read_text(encoding="utf-8", errors="replace")
             script_blocks = extract_svelte_scripts(source_text)
+            if not script_blocks:
+                files_analyzed += 1
+                continue
+
+            for block in script_blocks:
+                parser = _get_parser_for_lang(block.is_typescript)
+                if parser is None:
+                    continue
+
+                source_bytes = block.content.encode("utf-8")
+                tree = parser.parse(source_bytes)
+                lang = "typescript" if block.is_typescript else "javascript"
+                line_offset = block.start_line - 1
+
+                parsed_files.append(_ParsedFile(
+                    path=file_path, tree=tree, source=source_bytes,
+                    lang=lang, line_offset=line_offset
+                ))
+                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                all_symbols.extend(symbols)
+
+            files_analyzed += 1
+        except (OSError, IOError):
+            files_skipped += 1
+
+    # Analyze Vue SFC files
+    for file_path in find_vue_files(repo_root):
+        try:
+            source_text = file_path.read_text(encoding="utf-8", errors="replace")
+            script_blocks = extract_vue_scripts(source_text)
             if not script_blocks:
                 files_analyzed += 1
                 continue
