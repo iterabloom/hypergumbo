@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import importlib.util
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
@@ -362,20 +363,24 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
 
     # Check for tree-sitter-c availability
     if not is_c_tree_sitter_available():
+        skip_reason = "C analysis skipped: requires tree-sitter-c (pip install tree-sitter-c)"
+        warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return CAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason="requires tree-sitter-c: pip install tree-sitter-c",
+            skip_reason=skip_reason,
         )
 
     parser = _get_c_parser()
     if parser is None:
+        skip_reason = "C analysis skipped: requires tree-sitter-c (pip install tree-sitter-c)"
+        warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return CAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason="requires tree-sitter-c: pip install tree-sitter-c",
+            skip_reason=skip_reason,
         )
 
     # Pass 1: Parse all files and extract symbols
