@@ -143,7 +143,7 @@ def get_default_catalog() -> Catalog:
             ),
             Pass(
                 id="javascript-ts-v1",
-                description="JS/TS/Svelte via tree-sitter",
+                description="JS/TS/Svelte/Vue via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[javascript]",
             ),

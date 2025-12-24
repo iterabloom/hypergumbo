@@ -1796,3 +1796,342 @@ function createUser() {
         assert "User" in inst_edges[0].dst
 
 
+class TestVueFileDiscovery:
+    """Tests for Vue SFC file discovery."""
+
+    def test_finds_vue_files(self, tmp_path: Path) -> None:
+        """Finds .vue files."""
+        from hypergumbo.analyze.js_ts import find_vue_files
+
+        (tmp_path / "App.vue").write_text("<script>const x = 1;</script>")
+        (tmp_path / "other.txt").write_text("not vue")
+
+        files = list(find_vue_files(tmp_path))
+
+        assert len(files) == 1
+        assert files[0].suffix == ".vue"
+
+
+class TestVueScriptExtraction:
+    """Tests for extracting <script> blocks from Vue SFC files."""
+
+    def test_extracts_typescript_script(self) -> None:
+        """Extracts TypeScript script with lang='ts'."""
+        from hypergumbo.analyze.js_ts import extract_vue_scripts
+
+        source = '''<template>
+<div>Hello</div>
+</template>
+
+<script lang="ts">
+export default {
+  data() {
+    return { count: 0 };
+  }
+}
+</script>'''
+
+        blocks = extract_vue_scripts(source)
+
+        assert len(blocks) == 1
+        assert blocks[0].is_typescript is True
+        assert "export default" in blocks[0].content
+
+    def test_extracts_javascript_script(self) -> None:
+        """Extracts JavaScript script without lang attribute."""
+        from hypergumbo.analyze.js_ts import extract_vue_scripts
+
+        source = '''<script>
+const x = 1;
+</script>'''
+
+        blocks = extract_vue_scripts(source)
+
+        assert len(blocks) == 1
+        assert blocks[0].is_typescript is False
+        assert "const x = 1" in blocks[0].content
+
+    def test_extracts_script_setup(self) -> None:
+        """Extracts <script setup> blocks (Vue 3 Composition API)."""
+        from hypergumbo.analyze.js_ts import extract_vue_scripts
+
+        source = '''<script setup lang="ts">
+import { ref } from 'vue'
+const count = ref(0)
+</script>
+
+<template>
+<button @click="count++">{{ count }}</button>
+</template>'''
+
+        blocks = extract_vue_scripts(source)
+
+        assert len(blocks) == 1
+        assert blocks[0].is_typescript is True
+        assert "import { ref }" in blocks[0].content
+
+    def test_handles_no_script(self) -> None:
+        """Returns empty list when no script block."""
+        from hypergumbo.analyze.js_ts import extract_vue_scripts
+
+        source = '''<template>
+<div>Just HTML</div>
+</template>
+
+<style>
+.foo { color: red; }
+</style>'''
+
+        blocks = extract_vue_scripts(source)
+
+        assert len(blocks) == 0
+
+    def test_correct_line_offset(self) -> None:
+        """Script content line offset is calculated correctly."""
+        from hypergumbo.analyze.js_ts import extract_vue_scripts
+
+        source = '''<template>
+<div>Hello</div>
+</template>
+
+<script lang="ts">
+function test() {
+    return 42;
+}
+</script>'''
+
+        blocks = extract_vue_scripts(source)
+
+        assert len(blocks) == 1
+        # Script tag is on line 5, content starts there
+        assert blocks[0].start_line == 5
+
+
+class TestVueAnalysis:
+    """Tests for analyzing Vue SFC files."""
+
+    def test_analyzes_vue_functions(self, tmp_path: Path) -> None:
+        """Analyzes functions in Vue script block."""
+        from hypergumbo.analyze.js_ts import _analyze_vue_file
+        from hypergumbo.ir import AnalysisRun
+
+        vue_file = tmp_path / "Component.vue"
+        vue_file.write_text('''<script lang="ts">
+function handleClick() {
+    console.log("clicked");
+}
+
+const helper = () => {
+    return 42;
+}
+</script>
+
+<template>
+<button @click="handleClick">Click me</button>
+</template>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_vue_file(vue_file, run)
+
+        assert success is True
+        func_names = [s.name for s in symbols if s.kind == "function"]
+        assert "handleClick" in func_names
+        assert "helper" in func_names
+
+    def test_analyze_javascript_includes_vue(self, tmp_path: Path) -> None:
+        """analyze_javascript processes Vue files too."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create a JS file and a Vue file
+        (tmp_path / "app.js").write_text("function main() {}")
+        (tmp_path / "Component.vue").write_text('''<script>
+function vueHelper() {}
+</script>''')
+
+        result = analyze_javascript(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter not available")
+
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "main" in func_names
+        assert "vueHelper" in func_names
+
+    def test_vue_file_no_script(self, tmp_path: Path) -> None:
+        """Vue file without script blocks returns empty symbols."""
+        from hypergumbo.analyze.js_ts import _analyze_vue_file
+        from hypergumbo.ir import AnalysisRun
+
+        vue_file = tmp_path / "NoScript.vue"
+        vue_file.write_text('''<template>
+<div>No script here</div>
+</template>
+
+<style>
+.foo { color: red; }
+</style>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_vue_file(vue_file, run)
+
+        assert success is True
+        assert symbols == []
+        assert edges == []
+
+
+class TestVueEdgeCases:
+    """Tests for Vue edge cases and error handling."""
+
+    def test_vue_file_read_error(self, tmp_path: Path) -> None:
+        """Returns failure when Vue file cannot be read."""
+        from hypergumbo.analyze.js_ts import _analyze_vue_file
+        from hypergumbo.ir import AnalysisRun
+        from unittest.mock import patch
+
+        vue_file = tmp_path / "Broken.vue"
+        vue_file.write_text("<script>const x = 1;</script>")
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        with patch.object(Path, "read_text", side_effect=OSError("Read failed")):
+            symbols, edges, success = _analyze_vue_file(vue_file, run)
+
+        assert success is False
+        assert symbols == []
+        assert edges == []
+
+    def test_vue_files_increment_analyzed_counter(self, tmp_path: Path) -> None:
+        """Vue files without script blocks count as analyzed."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create Vue file with no script
+        (tmp_path / "Empty.vue").write_text("<template><div>Hi</div></template>")
+
+        result = analyze_javascript(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter not available")
+
+        # Files should be counted as analyzed, not skipped
+        assert result.run is not None
+        assert result.run.files_analyzed >= 1
+
+    def test_vue_file_read_error_increments_skipped(self, tmp_path: Path) -> None:
+        """Vue files that fail to read increment skipped counter."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+        from unittest.mock import patch
+
+        vue_file = tmp_path / "Component.vue"
+        vue_file.write_text("<script>const x = 1;</script>")
+
+        # Also create a readable file so we can run analysis
+        (tmp_path / "good.js").write_text("const y = 2;")
+
+        # Mock only the Vue file read to fail
+        original_read_text = Path.read_text
+
+        def mock_read_text(self, *args, **kwargs):
+            if str(self).endswith(".vue"):
+                raise OSError("Read failed")
+            return original_read_text(self, *args, **kwargs)
+
+        with patch.object(Path, "read_text", mock_read_text):
+            result = analyze_javascript(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter not available")
+
+        # Vue file should be skipped
+        assert result.run is not None
+        assert result.run.files_skipped >= 1
+
+    def test_vue_with_class_and_methods(self, tmp_path: Path) -> None:
+        """Vue file with class and methods builds proper symbol registry."""
+        from hypergumbo.analyze.js_ts import _analyze_vue_file
+        from hypergumbo.ir import AnalysisRun
+
+        vue_file = tmp_path / "WithClass.vue"
+        vue_file.write_text('''<script lang="ts">
+class MyComponent {
+    private data: string;
+
+    constructor() {
+        this.data = "";
+    }
+
+    public greet(): string {
+        return "Hello " + this.data;
+    }
+
+    private helper(): void {
+        console.log("helping");
+    }
+}
+</script>
+
+<template>
+<div>Test</div>
+</template>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_vue_file(vue_file, run)
+
+        assert success is True
+        # Should find class and methods
+        class_names = [s.name for s in symbols if s.kind == "class"]
+        method_names = [s.name for s in symbols if s.kind == "method"]
+        assert "MyComponent" in class_names
+        assert any("greet" in name for name in method_names)
+
+    def test_vue_parser_unavailable_skips_block(self, tmp_path: Path) -> None:
+        """Vue script blocks are skipped when parser unavailable."""
+        from hypergumbo.analyze.js_ts import _analyze_vue_file
+        from hypergumbo.ir import AnalysisRun
+        from unittest.mock import patch
+
+        vue_file = tmp_path / "Test.vue"
+        vue_file.write_text("<script>const x = 1;</script>")
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        # Mock _get_parser_for_lang to return None
+        with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", return_value=None):
+            symbols, edges, success = _analyze_vue_file(vue_file, run)
+
+        assert success is True
+        assert symbols == []
+        assert edges == []
+
+    def test_vue_parser_unavailable_in_analyze_javascript(self, tmp_path: Path) -> None:
+        """Vue script blocks are skipped in analyze_javascript when parser unavailable."""
+        from hypergumbo.analyze.js_ts import analyze_javascript, is_tree_sitter_available
+        from unittest.mock import patch
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+        vue_file = tmp_path / "Test.vue"
+        vue_file.write_text("<script>const x = 1;</script>")
+
+        # Also create a JS file so we have something to analyze
+        (tmp_path / "good.js").write_text("function foo() {}")
+
+        # Mock _get_parser_for_lang to return None only for TypeScript
+        original_get_parser = None
+
+        def mock_get_parser(is_typescript):
+            if is_typescript is False:  # JavaScript from Vue file
+                return None
+            import tree_sitter
+            import tree_sitter_javascript
+            parser = tree_sitter.Parser()
+            parser.language = tree_sitter.Language(tree_sitter_javascript.language())
+            return parser
+
+        with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", side_effect=mock_get_parser):
+            result = analyze_javascript(tmp_path)
+
+        # Should still succeed with the JS file
+        assert result.run is not None
+
+

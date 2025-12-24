@@ -37,6 +37,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "python": ["*.py", "*.pyi"],
     "javascript": ["*.js", "*.mjs", "*.cjs", "*.jsx"],
     "typescript": ["*.ts", "*.tsx", "*.d.ts"],
+    "vue": ["*.vue"],
     "html": ["*.html", "*.htm"],
     "css": ["*.css", "*.scss", "*.sass", "*.less"],
     "json": ["*.json"],
