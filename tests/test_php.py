@@ -268,20 +268,21 @@ class TestPhpEdgeCases:
         assert len(symbols) == 0
 
     def test_php_file_skipped_increments_counter(self, tmp_path: Path) -> None:
-        """PHP files that fail to analyze increment skipped counter."""
+        """PHP files that fail to read increment skipped counter."""
         from hypergumbo.analyze.php import analyze_php
 
         php_file = tmp_path / "test.php"
         php_file.write_text("<?php function test() {} ?>")
 
-        # Mock file analysis to fail
-        def mock_analyze_php_file(file_path, run):
-            return [], [], False
+        # Mock file read to fail with IOError
+        original_read_bytes = Path.read_bytes
 
-        with patch(
-            "hypergumbo.analyze.php._analyze_php_file",
-            side_effect=mock_analyze_php_file,
-        ):
+        def mock_read_bytes(self: Path) -> bytes:
+            if self.name == "test.php":
+                raise IOError("Mock read error")
+            return original_read_bytes(self)
+
+        with patch.object(Path, "read_bytes", mock_read_bytes):
             result = analyze_php(tmp_path)
 
         assert result.run is not None
@@ -314,3 +315,360 @@ function main() {
         assert len(result.edges) >= 1
         edge = result.edges[0]
         assert edge.edge_type == "calls"
+
+
+class TestPhpMethodCalls:
+    """Tests for PHP method call detection."""
+
+    def test_this_method_call(self, tmp_path: Path) -> None:
+        """Detects $this->method() calls within a class."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "MyClass.php"
+        php_file.write_text("""<?php
+class MyClass {
+    public function helper() {
+        return 42;
+    }
+
+    public function main() {
+        return $this->helper();
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # Should have symbols for class and methods
+        names = [s.name for s in result.symbols]
+        assert "MyClass" in names
+        assert "MyClass.helper" in names
+        assert "MyClass.main" in names
+
+        # Should have a call edge from main to helper
+        assert len(result.edges) >= 1
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # Verify evidence type
+        assert any(e.evidence_type == "ast_method_this" for e in call_edges)
+
+    def test_static_method_call(self, tmp_path: Path) -> None:
+        """Detects ClassName::method() static calls."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "StaticClass.php"
+        php_file.write_text("""<?php
+class StaticClass {
+    public static function helper() {
+        return 42;
+    }
+
+    public static function main() {
+        return StaticClass::helper();
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # Should have a call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        assert any(e.evidence_type == "ast_static_call" for e in call_edges)
+
+    def test_self_static_call(self, tmp_path: Path) -> None:
+        """Detects self:: and static:: calls."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "SelfCall.php"
+        php_file.write_text("""<?php
+class SelfCall {
+    public static function helper() {
+        return 42;
+    }
+
+    public static function useSelf() {
+        return self::helper();
+    }
+
+    public static function useStatic() {
+        return static::helper();
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # Should have call edges for self:: and static::
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 2
+        assert all(e.evidence_type == "ast_static_call" for e in call_edges)
+
+    def test_object_instantiation(self, tmp_path: Path) -> None:
+        """Detects new ClassName() instantiation."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "Factory.php"
+        php_file.write_text("""<?php
+class Product {
+    public function __construct() {}
+}
+
+class Factory {
+    public function create() {
+        return new Product();
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # Should have instantiation edge
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) >= 1
+        assert inst_edges[0].evidence_type == "ast_new"
+
+    def test_inferred_method_call(self, tmp_path: Path) -> None:
+        """Detects $obj->method() with inferred type."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "Caller.php"
+        php_file.write_text("""<?php
+class Service {
+    public function doWork() {
+        return 42;
+    }
+}
+
+class Caller {
+    public function run($service) {
+        return $service->doWork();
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # Should have inferred method call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # Inferred calls have lower confidence
+        inferred = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
+        assert len(inferred) >= 1
+        assert inferred[0].confidence < 0.9  # Lower confidence for inferred
+
+
+class TestPhpCrossFileResolution:
+    """Tests for cross-file call resolution."""
+
+    def test_cross_file_function_call(self, tmp_path: Path) -> None:
+        """Resolves function calls across files."""
+        from hypergumbo.analyze.php import analyze_php
+
+        # Create two files
+        (tmp_path / "helpers.php").write_text("""<?php
+function helper() {
+    return 42;
+}
+?>""")
+
+        (tmp_path / "main.php").write_text("""<?php
+function main() {
+    return helper();
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Should have symbols from both files
+        names = [s.name for s in result.symbols]
+        assert "helper" in names
+        assert "main" in names
+
+        # Should have cross-file call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+
+    def test_cross_file_class_instantiation(self, tmp_path: Path) -> None:
+        """Resolves class instantiation across files."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Product.php").write_text("""<?php
+class Product {
+    public function getName() {
+        return "Widget";
+    }
+}
+?>""")
+
+        (tmp_path / "Factory.php").write_text("""<?php
+class Factory {
+    public function create() {
+        return new Product();
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Should have cross-file instantiation edge
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) >= 1
+
+    def test_cross_file_static_call(self, tmp_path: Path) -> None:
+        """Resolves static method calls across files."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Helper.php").write_text("""<?php
+class Helper {
+    public static function format($s) {
+        return strtoupper($s);
+    }
+}
+?>""")
+
+        (tmp_path / "User.php").write_text("""<?php
+class User {
+    public function display() {
+        return Helper::format("name");
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # Should have cross-file static call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        static_calls = [e for e in call_edges if e.evidence_type == "ast_static_call"]
+        assert len(static_calls) >= 1
+
+
+class TestPhpEdgeExtraction:
+    """Tests for edge extraction edge cases."""
+
+    def test_no_edges_outside_function(self, tmp_path: Path) -> None:
+        """Calls outside functions/methods don't create edges."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "top_level.php"
+        php_file.write_text("""<?php
+function helper() {
+    return 42;
+}
+
+// Top-level call - no current function context
+helper();
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        # The call at top level shouldn't create an edge
+        # (no source function for the edge)
+        assert len(result.edges) == 0
+
+    def test_nested_class_method(self, tmp_path: Path) -> None:
+        """Handles nested method calls."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "Nested.php"
+        php_file.write_text("""<?php
+class Outer {
+    public function outer() {
+        return $this->inner();
+    }
+
+    public function inner() {
+        return 42;
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+
+    def test_method_without_class_context(self, tmp_path: Path) -> None:
+        """Method outside class still extracts symbol."""
+        from hypergumbo.analyze.php import _extract_symbols, _get_php_parser
+        from hypergumbo.ir import AnalysisRun
+
+        # This is an edge case - method_declaration outside class
+        # Tree-sitter may parse it differently, but we handle it
+        parser = _get_php_parser()
+        assert parser is not None
+
+        source = b"<?php function standalone() { return 1; } ?>"
+        tree = parser.parse(source)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        symbols = _extract_symbols(tree, source, tmp_path / "test.php", run)
+
+        # Should extract as function
+        assert len(symbols) >= 1
+        assert symbols[0].kind == "function"
+
+    def test_analyze_php_file_success(self, tmp_path: Path) -> None:
+        """_analyze_php_file returns symbols and edges on success."""
+        from hypergumbo.analyze.php import _analyze_php_file
+        from hypergumbo.ir import AnalysisRun
+
+        php_file = tmp_path / "test.php"
+        php_file.write_text("""<?php
+class MyClass {
+    public function helper() {
+        return 42;
+    }
+
+    public function main() {
+        return $this->helper();
+    }
+}
+?>""")
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_php_file(php_file, run)
+
+        assert success is True
+        assert len(symbols) >= 3  # class + 2 methods
+        assert len(edges) >= 1  # at least one call edge
+
+        # Verify method call edge is detected
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+
+    def test_analyze_php_parser_none_after_check(self, tmp_path: Path) -> None:
+        """analyze_php handles case where parser is None after availability check."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "test.php"
+        php_file.write_text("<?php function test() {} ?>")
+
+        # Mock is_php_tree_sitter_available to return True
+        # but _get_php_parser to return None
+        with patch(
+            "hypergumbo.analyze.php.is_php_tree_sitter_available",
+            return_value=True,
+        ), patch(
+            "hypergumbo.analyze.php._get_php_parser",
+            return_value=None,
+        ):
+            result = analyze_php(tmp_path)
+
+        assert result.run is not None
+        assert result.skipped is True
+        assert "tree-sitter-php" in result.skip_reason

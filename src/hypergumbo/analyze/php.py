@@ -5,6 +5,9 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Class declarations (symbols)
 - Method declarations (symbols)
 - Function call relationships (edges)
+- Method call relationships (edges)
+- Static method call relationships (edges)
+- Object instantiation relationships (edges)
 
 If tree-sitter-php is not installed, the analyzer gracefully degrades
 and returns an empty result.
@@ -13,13 +16,16 @@ How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-php are available
 2. If not available, return empty result (not an error, just no PHP analysis)
-3. If available, parse each file and extract symbols/edges
-4. Use tree-sitter to identify functions, classes, and method calls
+3. Two-pass analysis:
+   - Pass 1: Parse all files, extract all symbols into global registry
+   - Pass 2: Detect calls and resolve against global symbol registry
+4. Detect function calls, method calls, static calls, and instantiation
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - PHP support is separate from JS/TS to keep modules focused
+- Two-pass allows cross-file call resolution
 - Same pattern as JS/TS analyzer for consistency
 """
 from __future__ import annotations
@@ -98,19 +104,26 @@ def _get_php_parser() -> Optional["tree_sitter.Parser"]:
     return parser
 
 
-def _extract_symbols_and_edges(
+@dataclass
+class _ParsedFile:
+    """Holds parsed file data for two-pass analysis."""
+
+    path: Path
+    tree: "tree_sitter.Tree"
+    source: bytes
+
+
+def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
-) -> tuple[list[Symbol], list[Edge]]:
-    """Extract symbols and edges from a parsed PHP tree."""
+) -> list[Symbol]:
+    """Extract symbols from a parsed PHP tree (pass 1)."""
     symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    symbol_by_name: dict[str, Symbol] = {}
     current_class: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
+    def visit(node: "tree_sitter.Node") -> None:
         nonlocal current_class
 
         # Function declarations
@@ -134,11 +147,6 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
-                # Visit body with this as current function
-                for child in node.children:
-                    visit(child, symbol)
-                return
 
         # Class declarations
         if node.type == "class_declaration":
@@ -161,11 +169,10 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
                 old_class = current_class
                 current_class = symbol
                 for child in node.children:
-                    visit(child, current_function)
+                    visit(child)
                 current_class = old_class
                 return
 
@@ -191,21 +198,78 @@ def _extract_symbols_and_edges(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                symbol_by_name[name] = symbol
+
+        # Recurse into children
+        for child in node.children:
+            visit(child)
+
+    visit(tree.root_node)
+    return symbols
+
+
+def _extract_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+    global_symbols: dict[str, Symbol],
+    global_methods: dict[str, list[Symbol]],
+    global_classes: dict[str, Symbol],
+) -> list[Edge]:
+    """Extract edges from a parsed PHP tree (pass 2).
+
+    Uses global symbol registries to resolve cross-file references.
+    """
+    edges: list[Edge] = []
+    current_class: Optional[Symbol] = None
+    current_class_name: Optional[str] = None
+
+    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
+        nonlocal current_class, current_class_name
+
+        # Track current function/method context
+        if node.type == "function_definition":
+            name = _find_name_in_children(node, source)
+            if name and name in global_symbols:
+                func_sym = global_symbols[name]
+                # Only use if it's from this file
+                if func_sym.path == str(file_path):
+                    for child in node.children:
+                        visit(child, func_sym)
+                    return
+
+        if node.type == "class_declaration":
+            name = _find_name_in_children(node, source)
+            if name:
+                old_class = current_class
+                old_class_name = current_class_name
+                current_class_name = name
+                current_class = global_classes.get(name)
                 for child in node.children:
-                    visit(child, symbol)
+                    visit(child, current_function)
+                current_class = old_class
+                current_class_name = old_class_name
                 return
 
-        # Function calls
+        if node.type == "method_declaration":
+            name = _find_name_in_children(node, source)
+            if name and current_class_name:
+                full_name = f"{current_class_name}.{name}"
+                if full_name in global_symbols:
+                    method_sym = global_symbols[full_name]
+                    if method_sym.path == str(file_path):
+                        for child in node.children:
+                            visit(child, method_sym)
+                        return
+
+        # Function calls: func_name()
         if node.type == "function_call_expression":
-            # Get the function name
             func_node = node.child_by_field_name("function")
             if func_node and func_node.type == "name":
                 callee_name = _node_text(func_node, source)
-                if current_function and callee_name in symbol_by_name:
-                    target_sym = symbol_by_name[callee_name]
-                    edge = Edge(
-                        id=f"call:{current_function.id}->{target_sym.id}",
+                if current_function and callee_name in global_symbols:
+                    target_sym = global_symbols[callee_name]
+                    edge = Edge.create(
                         src=current_function.id,
                         dst=target_sym.id,
                         edge_type="calls",
@@ -213,22 +277,117 @@ def _extract_symbols_and_edges(
                         confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        evidence_type="ast_call_direct",
                     )
                     edges.append(edge)
+
+        # Method calls: $this->method() or $obj->method()
+        if node.type == "member_call_expression":
+            if current_function:
+                # Get the method name
+                name_node = node.child_by_field_name("name")
+                obj_node = node.child_by_field_name("object")
+                if name_node:
+                    method_name = _node_text(name_node, source)
+
+                    # Check if it's $this->method()
+                    is_this_call = obj_node and obj_node.type == "variable_name" and _node_text(obj_node, source) == "$this"
+
+                    if is_this_call and current_class_name:
+                        # Try to resolve to a method in the same class
+                        full_name = f"{current_class_name}.{method_name}"
+                        if full_name in global_symbols:
+                            target_sym = global_symbols[full_name]
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=target_sym.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.95,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_this",
+                            )
+                            edges.append(edge)
+                    elif method_name in global_methods:
+                        # Try to resolve to any method with this name
+                        # Use lower confidence since we can't be sure of the type
+                        for target_sym in global_methods[method_name]:
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=target_sym.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.60,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_inferred",
+                            )
+                            edges.append(edge)
+
+        # Static method calls: ClassName::method()
+        if node.type == "scoped_call_expression":
+            if current_function:
+                scope_node = node.child_by_field_name("scope")
+                name_node = node.child_by_field_name("name")
+                if scope_node and name_node:
+                    class_name = _node_text(scope_node, source)
+                    method_name = _node_text(name_node, source)
+
+                    # Handle self:: and static::
+                    if class_name in ("self", "static") and current_class_name:
+                        class_name = current_class_name
+
+                    full_name = f"{class_name}.{method_name}"
+                    if full_name in global_symbols:
+                        target_sym = global_symbols[full_name]
+                        edge = Edge.create(
+                            src=current_function.id,
+                            dst=target_sym.id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=0.95,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_static_call",
+                        )
+                        edges.append(edge)
+
+        # Object instantiation: new ClassName()
+        if node.type == "object_creation_expression":
+            if current_function:
+                # Get the class name
+                for child in node.children:
+                    if child.type == "name":
+                        class_name = _node_text(child, source)
+                        if class_name in global_classes:
+                            target_sym = global_classes[class_name]
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=target_sym.id,
+                                edge_type="instantiates",
+                                line=node.start_point[0] + 1,
+                                confidence=0.95,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_new",
+                            )
+                            edges.append(edge)
+                        break
 
         # Recurse into children
         for child in node.children:
             visit(child, current_function)
 
     visit(tree.root_node)
-    return symbols, edges
+    return edges
 
 
 def _analyze_php_file(
     file_path: Path,
     run: AnalysisRun,
 ) -> tuple[list[Symbol], list[Edge], bool]:
-    """Analyze a single PHP file.
+    """Analyze a single PHP file (legacy single-pass, used for testing).
 
     Returns (symbols, edges, success).
     """
@@ -242,12 +401,34 @@ def _analyze_php_file(
     except (OSError, IOError):
         return [], [], False
 
-    symbols, edges = _extract_symbols_and_edges(tree, source, file_path, run)
+    symbols = _extract_symbols(tree, source, file_path, run)
+
+    # Build symbol registry for edge extraction
+    global_symbols: dict[str, Symbol] = {}
+    global_methods: dict[str, list[Symbol]] = {}
+    global_classes: dict[str, Symbol] = {}
+
+    for sym in symbols:
+        global_symbols[sym.name] = sym
+        if sym.kind == "method":
+            # Extract just the method name (after the dot)
+            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            if method_name not in global_methods:
+                global_methods[method_name] = []
+            global_methods[method_name].append(sym)
+        elif sym.kind == "class":
+            global_classes[sym.name] = sym
+
+    edges = _extract_edges(tree, source, file_path, run, global_symbols, global_methods, global_classes)
     return symbols, edges, True
 
 
 def analyze_php(repo_root: Path) -> PhpAnalysisResult:
     """Analyze all PHP files in a repository.
+
+    Uses a two-pass approach:
+    1. Parse all files and extract symbols into global registry
+    2. Detect calls and resolve against global symbol registry
 
     Returns a PhpAnalysisResult with symbols, edges, and provenance.
     If tree-sitter-php is not available, returns empty result (silently skipped).
@@ -266,19 +447,56 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
             skip_reason="requires tree-sitter-php: pip install tree-sitter-php",
         )
 
+    parser = _get_php_parser()
+    if parser is None:
+        run.duration_ms = int((time.time() - start_time) * 1000)
+        return PhpAnalysisResult(
+            run=run,
+            skipped=True,
+            skip_reason="requires tree-sitter-php: pip install tree-sitter-php",
+        )
+
+    # Pass 1: Parse all files and extract symbols
+    parsed_files: list[_ParsedFile] = []
     all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
     files_analyzed = 0
     files_skipped = 0
 
     for file_path in find_php_files(repo_root):
-        symbols, edges, success = _analyze_php_file(file_path, run)
-        if success:
-            files_analyzed += 1
+        try:
+            source = file_path.read_bytes()
+            tree = parser.parse(source)
+            parsed_files.append(_ParsedFile(path=file_path, tree=tree, source=source))
+            symbols = _extract_symbols(tree, source, file_path, run)
             all_symbols.extend(symbols)
-            all_edges.extend(edges)
-        else:
+            files_analyzed += 1
+        except (OSError, IOError):
             files_skipped += 1
+
+    # Build global symbol registries
+    global_symbols: dict[str, Symbol] = {}
+    global_methods: dict[str, list[Symbol]] = {}
+    global_classes: dict[str, Symbol] = {}
+
+    for sym in all_symbols:
+        global_symbols[sym.name] = sym
+        if sym.kind == "method":
+            # Extract just the method name (after the dot)
+            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            if method_name not in global_methods:
+                global_methods[method_name] = []
+            global_methods[method_name].append(sym)
+        elif sym.kind == "class":
+            global_classes[sym.name] = sym
+
+    # Pass 2: Extract edges using global symbol registry
+    all_edges: list[Edge] = []
+    for pf in parsed_files:
+        edges = _extract_edges(
+            pf.tree, pf.source, pf.path, run,
+            global_symbols, global_methods, global_classes
+        )
+        all_edges.extend(edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
