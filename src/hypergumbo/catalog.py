@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        if "javascript" in p.requires or "php" in p.requires:
+        if "javascript" in p.requires or "php" in p.requires or "c" in p.requires:
             return importlib.util.find_spec("tree_sitter") is not None
 
     return False
@@ -151,6 +151,12 @@ def get_default_catalog() -> Catalog:
                 description="PHP via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[php]",
+            ),
+            Pass(
+                id="c-ts-v1",
+                description="C via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[c]",
             ),
         ],
         packs=[

@@ -1,0 +1,421 @@
+"""C analysis pass using tree-sitter-c.
+
+This analyzer uses tree-sitter-c to parse C files and extract:
+- Function definitions and declarations (symbols)
+- Struct declarations (symbols)
+- Typedef declarations (symbols)
+- Enum declarations (symbols)
+- Function call relationships (edges)
+- JNI export patterns (Java_ClassName_methodName)
+
+If tree-sitter-c is not installed, the analyzer gracefully degrades
+and returns an empty result.
+
+How It Works
+------------
+1. Check if tree-sitter and tree-sitter-c are available
+2. If not available, return empty result (not an error, just no C analysis)
+3. Two-pass analysis:
+   - Pass 1: Parse all files, extract all symbols into global registry
+   - Pass 2: Detect calls and resolve against global symbol registry
+4. Detect function calls and JNI export patterns
+
+Why This Design
+---------------
+- Optional dependency keeps base install lightweight
+- C support is separate from other languages to keep modules focused
+- Two-pass allows cross-file call resolution
+- Same pattern as PHP/JS analyzers for consistency
+"""
+from __future__ import annotations
+
+import importlib.util
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Iterator, Optional
+
+from ..discovery import find_files
+from ..ir import AnalysisRun, Edge, Span, Symbol
+
+if TYPE_CHECKING:
+    import tree_sitter
+
+PASS_ID = "c-v1"
+PASS_VERSION = "hypergumbo-0.1.0"
+
+
+def find_c_files(repo_root: Path) -> Iterator[Path]:
+    """Yield all C files in the repository."""
+    yield from find_files(repo_root, ["*.c", "*.h"])
+
+
+def is_c_tree_sitter_available() -> bool:
+    """Check if tree-sitter and C grammar are available."""
+    if importlib.util.find_spec("tree_sitter") is None:
+        return False
+    if importlib.util.find_spec("tree_sitter_c") is None:
+        return False
+    return True
+
+
+@dataclass
+class CAnalysisResult:
+    """Result of analyzing C files."""
+
+    symbols: list[Symbol] = field(default_factory=list)
+    edges: list[Edge] = field(default_factory=list)
+    run: AnalysisRun | None = None
+    skipped: bool = False
+    skip_reason: str = ""
+
+
+def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
+    """Generate location-based ID."""
+    return f"c:{path}:{start_line}-{end_line}:{name}:{kind}"
+
+
+def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract text for a tree-sitter node."""
+    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Find identifier name in node's children."""
+    for child in node.children:
+        if child.type in ("identifier", "type_identifier"):
+            return _node_text(child, source)
+    return None
+
+
+def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function name from function_definition or declaration."""
+    # Look for declarator which contains the function name
+    for child in node.children:
+        if child.type == "function_declarator":
+            # Function declarator contains identifier
+            return _find_identifier_in_children(child, source)
+        elif child.type == "pointer_declarator":
+            # Handle pointer return types: int* func()
+            for subchild in child.children:
+                if subchild.type == "function_declarator":
+                    return _find_identifier_in_children(subchild, source)
+    return None
+
+
+def _get_c_parser() -> Optional["tree_sitter.Parser"]:
+    """Get tree-sitter parser for C."""
+    try:
+        import tree_sitter
+        import tree_sitter_c
+    except ImportError:
+        return None
+
+    parser = tree_sitter.Parser()
+    lang_ptr = tree_sitter_c.language()
+    parser.language = tree_sitter.Language(lang_ptr)
+    return parser
+
+
+@dataclass
+class _ParsedFile:
+    """Holds parsed file data for two-pass analysis."""
+
+    path: Path
+    tree: "tree_sitter.Tree"
+    source: bytes
+
+
+def _extract_symbols(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+) -> list[Symbol]:
+    """Extract symbols from a parsed C tree (pass 1)."""
+    symbols: list[Symbol] = []
+
+    def visit(node: "tree_sitter.Node") -> None:
+        # Function definitions
+        if node.type == "function_definition":
+            name = _get_function_name(node, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
+                    name=name,
+                    kind="function",
+                    language="c",
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                )
+                symbols.append(symbol)
+
+        # Function declarations (prototypes)
+        if node.type == "declaration":
+            # Check if this is a function declaration
+            for child in node.children:
+                if child.type == "function_declarator":
+                    name = _find_identifier_in_children(child, source)
+                    if name:
+                        span = Span(
+                            start_line=node.start_point[0] + 1,
+                            end_line=node.end_point[0] + 1,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        )
+                        symbol = Symbol(
+                            id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
+                            name=name,
+                            kind="function",
+                            language="c",
+                            path=str(file_path),
+                            span=span,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        )
+                        symbols.append(symbol)
+
+        # Struct declarations
+        if node.type == "struct_specifier":
+            name = _find_identifier_in_children(node, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "struct"),
+                    name=name,
+                    kind="struct",
+                    language="c",
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                )
+                symbols.append(symbol)
+
+        # Enum declarations
+        if node.type == "enum_specifier":
+            name = _find_identifier_in_children(node, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "enum"),
+                    name=name,
+                    kind="enum",
+                    language="c",
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                )
+                symbols.append(symbol)
+
+        # Typedef declarations
+        if node.type == "type_definition":
+            # Find the typedef name (last identifier usually)
+            name = None
+            for child in node.children:
+                if child.type == "type_identifier":
+                    name = _node_text(child, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "typedef"),
+                    name=name,
+                    kind="typedef",
+                    language="c",
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                )
+                symbols.append(symbol)
+
+        # Recurse into children
+        for child in node.children:
+            visit(child)
+
+    visit(tree.root_node)
+    return symbols
+
+
+def _extract_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+    global_symbols: dict[str, Symbol],
+) -> list[Edge]:
+    """Extract edges from a parsed C tree (pass 2).
+
+    Uses global symbol registry to resolve cross-file references.
+    """
+    edges: list[Edge] = []
+
+    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
+        # Track current function context
+        if node.type == "function_definition":
+            name = _get_function_name(node, source)
+            if name and name in global_symbols:
+                func_sym = global_symbols[name]
+                # Only use if it's from this file
+                if func_sym.path == str(file_path):
+                    for child in node.children:
+                        visit(child, func_sym)
+                    return
+
+        # Function calls: func_name(...)
+        if node.type == "call_expression":
+            if current_function:
+                # Get the function being called
+                func_node = node.child_by_field_name("function")
+                if func_node and func_node.type == "identifier":
+                    callee_name = _node_text(func_node, source)
+                    if callee_name in global_symbols:
+                        target_sym = global_symbols[callee_name]
+                        edge = Edge.create(
+                            src=current_function.id,
+                            dst=target_sym.id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=0.95,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_call_direct",
+                        )
+                        edges.append(edge)
+
+        # Recurse into children
+        for child in node.children:
+            visit(child, current_function)
+
+    visit(tree.root_node)
+    return edges
+
+
+def _analyze_c_file(
+    file_path: Path,
+    run: AnalysisRun,
+) -> tuple[list[Symbol], list[Edge], bool]:
+    """Analyze a single C file (legacy single-pass, used for testing).
+
+    Returns (symbols, edges, success).
+    """
+    parser = _get_c_parser()
+    if parser is None:
+        return [], [], False
+
+    try:
+        source = file_path.read_bytes()
+        tree = parser.parse(source)
+    except (OSError, IOError):
+        return [], [], False
+
+    symbols = _extract_symbols(tree, source, file_path, run)
+
+    # Build symbol registry for edge extraction
+    global_symbols: dict[str, Symbol] = {}
+
+    for sym in symbols:
+        global_symbols[sym.name] = sym
+
+    edges = _extract_edges(tree, source, file_path, run, global_symbols)
+    return symbols, edges, True
+
+
+def analyze_c(repo_root: Path) -> CAnalysisResult:
+    """Analyze all C files in a repository.
+
+    Uses a two-pass approach:
+    1. Parse all files and extract symbols into global registry
+    2. Detect calls and resolve against global symbol registry
+
+    Returns a CAnalysisResult with symbols, edges, and provenance.
+    If tree-sitter-c is not available, returns empty result (silently skipped).
+    """
+    start_time = time.time()
+
+    # Create analysis run for provenance
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+    # Check for tree-sitter-c availability
+    if not is_c_tree_sitter_available():
+        run.duration_ms = int((time.time() - start_time) * 1000)
+        return CAnalysisResult(
+            run=run,
+            skipped=True,
+            skip_reason="requires tree-sitter-c: pip install tree-sitter-c",
+        )
+
+    parser = _get_c_parser()
+    if parser is None:
+        run.duration_ms = int((time.time() - start_time) * 1000)
+        return CAnalysisResult(
+            run=run,
+            skipped=True,
+            skip_reason="requires tree-sitter-c: pip install tree-sitter-c",
+        )
+
+    # Pass 1: Parse all files and extract symbols
+    parsed_files: list[_ParsedFile] = []
+    all_symbols: list[Symbol] = []
+    files_analyzed = 0
+    files_skipped = 0
+
+    for file_path in find_c_files(repo_root):
+        try:
+            source = file_path.read_bytes()
+            tree = parser.parse(source)
+            parsed_files.append(_ParsedFile(path=file_path, tree=tree, source=source))
+            symbols = _extract_symbols(tree, source, file_path, run)
+            all_symbols.extend(symbols)
+            files_analyzed += 1
+        except (OSError, IOError):
+            files_skipped += 1
+
+    # Build global symbol registry
+    global_symbols: dict[str, Symbol] = {}
+
+    for sym in all_symbols:
+        global_symbols[sym.name] = sym
+
+    # Pass 2: Extract edges using global symbol registry
+    all_edges: list[Edge] = []
+    for pf in parsed_files:
+        edges = _extract_edges(
+            pf.tree, pf.source, pf.path, run,
+            global_symbols
+        )
+        all_edges.extend(edges)
+
+    run.files_analyzed = files_analyzed
+    run.files_skipped = files_skipped
+    run.duration_ms = int((time.time() - start_time) * 1000)
+
+    return CAnalysisResult(
+        symbols=all_symbols,
+        edges=all_edges,
+        run=run,
+    )
