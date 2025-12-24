@@ -340,9 +340,10 @@ class TestLinkWebSocket:
         file = tmp_path / "server.js"
         file.write_text("io.on('connection', (socket) => {});")
         result = link_websocket(tmp_path)
-        assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "websocket_endpoint"
-        assert "connection" in result.symbols[0].name
+        # Should have endpoint symbol + file symbol
+        endpoint_symbols = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoint_symbols) == 1
+        assert "connection" in endpoint_symbols[0].name
 
     def test_links_matching_events(self, tmp_path: Path) -> None:
         """Should create edges between matching send/receive patterns."""
@@ -416,9 +417,11 @@ socket.on('message', handleMessage);
         file = tmp_path / "server.js"
         file.write_text("io.on('connection', handler);")
         result = link_websocket(tmp_path)
-        assert len(result.symbols) == 1
-        assert result.symbols[0].origin == PASS_ID
-        assert result.symbols[0].origin_run_id == result.run.execution_id
+        # All symbols (endpoint + file) should have origin set
+        assert len(result.symbols) >= 1
+        for symbol in result.symbols:
+            assert symbol.origin == PASS_ID
+            assert symbol.origin_run_id == result.run.execution_id
 
     def test_edge_origin(self, tmp_path: Path) -> None:
         """Should set origin on edges."""
@@ -428,6 +431,55 @@ socket.on('message', handleMessage);
         for edge in result.edges:
             assert edge.origin == PASS_ID
             assert edge.origin_run_id == result.run.execution_id
+
+
+class TestFileNodesForSliceIntegration:
+    """Tests for file nodes that enable slice traversal of WebSocket edges."""
+
+    def test_creates_file_symbols_for_senders(self, tmp_path: Path) -> None:
+        """Should create file symbols for files that emit WebSocket events."""
+        (tmp_path / "sender.js").write_text("socket.emit('chat', message);")
+        (tmp_path / "receiver.js").write_text("socket.on('chat', handler);")
+        result = link_websocket(tmp_path)
+
+        # Should have file symbols for both sender and receiver
+        file_symbols = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_symbols) >= 2
+
+        # File symbols should have paths matching the source files
+        paths = {s.path for s in file_symbols}
+        assert any("sender.js" in p for p in paths)
+        assert any("receiver.js" in p for p in paths)
+
+    def test_file_symbol_ids_match_edge_endpoints(self, tmp_path: Path) -> None:
+        """File symbol IDs should match the src/dst in websocket_message edges."""
+        (tmp_path / "sender.js").write_text("socket.emit('event', data);")
+        (tmp_path / "receiver.js").write_text("socket.on('event', handler);")
+        result = link_websocket(tmp_path)
+
+        # Get all symbol IDs
+        symbol_ids = {s.id for s in result.symbols}
+
+        # Every edge endpoint should be in the symbol list
+        for edge in result.edges:
+            if edge.edge_type == "websocket_message":
+                assert edge.src in symbol_ids, f"Edge src {edge.src} not in symbols"
+                assert edge.dst in symbol_ids, f"Edge dst {edge.dst} not in symbols"
+
+    def test_file_symbols_enable_slice_traversal(self, tmp_path: Path) -> None:
+        """Slice should be able to traverse WebSocket edges via file symbols."""
+        (tmp_path / "client.js").write_text("socket.emit('request', data);")
+        (tmp_path / "server.js").write_text("socket.on('request', handler);")
+        result = link_websocket(tmp_path)
+
+        # Find the client file symbol
+        client_symbols = [s for s in result.symbols if "client.js" in s.path and s.kind == "file"]
+        assert len(client_symbols) == 1
+
+        # Find edges from this symbol
+        client_id = client_symbols[0].id
+        outgoing = [e for e in result.edges if e.src == client_id]
+        assert len(outgoing) >= 1, "Should have outgoing edges from client file symbol"
 
 
 class TestRealWorldPatterns:
