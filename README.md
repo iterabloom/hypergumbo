@@ -44,7 +44,7 @@ hypergumbo export-capsule    # exports shareable capsule tarball
 pip install hypergumbo[javascript]
 ```
 - Function, class, method, getter, setter detection
-- TypeScript interface detection
+- TypeScript interface, type alias, and enum detection
 - Arrow function detection (`const fn = () => {}`)
 - ES6 imports (`import { x } from 'module'`)
 - CommonJS require (`const x = require('module')`)
