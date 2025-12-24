@@ -41,7 +41,9 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Tree-sitter integration | [x] | `analyze/js_ts.py` |
-| JS/TS AST → IR emission | [x] | Functions, classes, arrow functions |
+| JS/TS AST → IR emission | [x] | Functions, classes, methods, getters, setters |
+| TypeScript interface detection | [x] | `kind: "interface"` |
+| Arrow function detection | [x] | `const fn = () => {}` |
 | Call/import edges | [x] | ES6 imports, require(), function calls |
 | Fallback if tree-sitter unavailable | [x] | Returns skipped result with reason |
 
@@ -90,12 +92,12 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 ## Analysis Passes
 
-| Language | Parser | Edges | Confidence | Notes |
-|----------|--------|-------|------------|-------|
-| Python | [x] AST | [x] calls, imports | [x] | Full support |
-| HTML | [x] regex | [x] script_src | [x] | Script tag detection |
-| JavaScript | [x] tree-sitter | [x] calls, imports | [x] | Optional, requires `hypergumbo[javascript]` |
-| TypeScript | [x] tree-sitter | [x] calls, imports | [x] | Optional, requires `hypergumbo[javascript]` |
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Python | [x] AST | function, class | calls, imports | Full support |
+| HTML | [x] regex | file | script_src | Script tag detection |
+| JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports | Optional: `pip install hypergumbo[javascript]` |
+| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface | calls, imports | Optional: `pip install hypergumbo[javascript]` |
 
 ---
 

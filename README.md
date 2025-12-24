@@ -17,20 +17,20 @@ hypergumbo --version
 ## CLI
 
 ```bash
-hypergumbo init [path]       # creates .hypergumbo/capsule.json with config
+hypergumbo init [path]       # creates .hypergumbo/ with capsule.json and plan
 hypergumbo run [path]        # analyzes repo and writes hypergumbo.results.json
-hypergumbo slice --entry X   # stub: will produce reduced behavior slice
-hypergumbo catalog           # stub: will list available passes/packs
-hypergumbo export-capsule    # stub: will export shareable capsule
+hypergumbo slice --entry X   # produces reduced behavior slice from entry point
+hypergumbo catalog           # lists available analysis passes and packs
+hypergumbo export-capsule    # exports shareable capsule tarball
 ```
 
 ## What It Does
 
-`hypergumbo run` analyzes Python files and outputs a behavior map with:
-- **Nodes**: Functions and classes with name, kind, location, and unique IDs
-- **Edges**: Call relationships between symbols (who calls whom)
+`hypergumbo run` analyzes source files and outputs a behavior map with:
+- **Nodes**: Functions, classes, methods, interfaces with name, kind, location, and unique IDs
+- **Edges**: Call and import relationships between symbols
 
-### Current Capabilities
+### Analysis Capabilities
 
 **Python Analysis:**
 - Function and class detection via AST
@@ -39,40 +39,24 @@ hypergumbo export-capsule    # stub: will export shareable capsule
 - Relative import resolution (`from ..utils import helper`)
 - Method call detection (`self.helper()`)
 
+**JavaScript/TypeScript Analysis** (optional):
+```bash
+pip install hypergumbo[javascript]
+```
+- Function, class, method, getter, setter detection
+- TypeScript interface detection
+- Arrow function detection (`const fn = () => {}`)
+- ES6 imports (`import { x } from 'module'`)
+- CommonJS require (`const x = require('module')`)
+- Intra-file function call detection
+
 **HTML Analysis:**
-- HTML file detection (`.html`, `.htm`)
 - Script tag detection (`<script src="...">`)
 - Creates edges from HTML files to referenced scripts
-
-**Output Format:**
-```json
-{
-  "schema_version": "0.1.0",
-  "nodes": [
-    {"id": "python:app.py:1-2:helper:function", "name": "helper", "kind": "function", "language": "python", "path": "app.py", "line": 1, "end_line": 2}
-  ],
-  "edges": [
-    {"source": "python:app.py:4-5:main:function", "target": "python:app.py:1-2:helper:function", "kind": "calls", "line": 5}
-  ]
-}
-```
-
-**Profile Detection:**
-- Language detection via file extensions (20+ languages)
-- Framework detection via dependency files (pyproject.toml, package.json, etc.)
-
-**Schema Compliance (per spec):**
-- Provenance tracking via `analysis_runs[]` with execution_id, timing
-- Nodes have `origin`, `origin_run_id`, `span` (with columns), `stable_id`, `shape_id`
-- Edges have `id`, `confidence`, `meta.evidence_type`, `origin`, `origin_run_id`
 
 ### Implementation Status
 
 See [STATUS.md](STATUS.md) for detailed progress against the spec.
-
-**Implemented:** Python analysis, HTML script detection, profile detection, stable_id/shape_id, provenance tracking.
-
-**Not yet implemented:** JS/TS analysis, slice module, catalog system, capsule plan infrastructure.
 
 ## Running tests
 
