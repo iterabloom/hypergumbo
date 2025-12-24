@@ -17,8 +17,22 @@ from .metrics import compute_metrics
 from .plan import generate_plan
 from .profile import detect_profile
 from .schema import new_behavior_map
+from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph
 
+
+def cmd_sketch(args: argparse.Namespace) -> int:
+    """Generate token-budgeted Markdown sketch to stdout."""
+    repo_root = Path(args.path).resolve()
+
+    if not repo_root.exists():
+        print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
+        return 1
+
+    max_tokens = args.tokens if args.tokens else None
+    sketch = generate_sketch(repo_root, max_tokens=max_tokens)
+    print(sketch)
+    return 0
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -283,7 +297,10 @@ def cmd_export_capsule(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="hypergumbo")
+    p = argparse.ArgumentParser(
+        prog="hypergumbo",
+        description="Generate behavior maps and sketches for AI coding agents.",
+    )
     p.add_argument(
         "--version",
         action="version",
@@ -291,7 +308,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print version and exit",
     )
 
-    sub = p.add_subparsers(dest="command", required=True)
+    sub = p.add_subparsers(dest="command")
+
+    # hypergumbo [path] [-t tokens] (default sketch mode)
+    p_sketch = sub.add_parser(
+        "sketch",
+        help="Generate token-budgeted Markdown sketch (default mode)",
+    )
+    p_sketch.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Path to repo (default: current directory)",
+    )
+    p_sketch.add_argument(
+        "-t", "--tokens",
+        type=int,
+        default=None,
+        help="Limit output to approximately N tokens",
+    )
+    p_sketch.set_defaults(func=cmd_sketch)
 
     # hypergumbo init
     p_init = sub.add_parser("init", help="Initialize a hypergumbo capsule")
@@ -488,6 +524,22 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
 
 def main(argv=None) -> int:
     parser = build_parser()
+
+    # Handle default sketch mode: if no subcommand given, insert "sketch"
+    if argv is None:
+        argv = sys.argv[1:]
+
+    subcommands = {"init", "run", "slice", "catalog", "export-capsule", "sketch"}
+
+    # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
+    if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
+        argv = ["sketch"] + list(argv)
+
     args = parser.parse_args(argv)
+
+    if not hasattr(args, "func"):  # pragma: no cover
+        parser.print_help()  # pragma: no cover
+        return 1  # pragma: no cover
+
     return args.func(args)
 
