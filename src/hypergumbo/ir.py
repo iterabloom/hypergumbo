@@ -253,6 +253,7 @@ class Edge:
     evidence_lang: Optional[str] = None
     evidence_spans: Optional[List[Dict[str, Any]]] = None
     quality: Optional[Dict[str, Any]] = None
+    meta: Optional[Dict[str, Any]] = None
 
     @classmethod
     def create(
@@ -296,6 +297,9 @@ class Edge:
             meta["evidence_lang"] = self.evidence_lang
         if self.evidence_spans is not None:
             meta["evidence_spans"] = self.evidence_spans
+        # Merge any additional metadata (e.g., channel for IPC edges)
+        if self.meta is not None:
+            meta.update(self.meta)
 
         return {
             "id": self.id,

@@ -12,6 +12,8 @@ from .analyze.js_ts import analyze_javascript
 from .analyze.php import analyze_php
 from .analyze.py import analyze_python
 from .catalog import get_default_catalog, is_available
+from .linkers.ipc import link_ipc
+from .linkers.jni import link_jni
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -545,6 +547,8 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             all_edges.extend(e.to_dict() for e in php_result.edges)
 
     # Run C analysis (optional, requires tree-sitter-c)
+    # Keep raw symbols for JNI linker
+    c_symbols: list[Symbol] = []
     c_result = analyze_c(repo_root)
     if c_result.run is not None:
         if c_result.skipped:
@@ -554,10 +558,13 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             })
         else:
             analysis_runs.append(c_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in c_result.symbols)
+            c_symbols = list(c_result.symbols)
+            all_nodes.extend(s.to_dict() for s in c_symbols)
             all_edges.extend(e.to_dict() for e in c_result.edges)
 
     # Run Java analysis (optional, requires tree-sitter-java)
+    # Keep raw symbols for JNI linker
+    java_symbols: list[Symbol] = []
     java_result = analyze_java(repo_root)
     if java_result.run is not None:
         if java_result.skipped:
@@ -567,8 +574,24 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             })
         else:
             analysis_runs.append(java_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in java_result.symbols)
+            java_symbols = list(java_result.symbols)
+            all_nodes.extend(s.to_dict() for s in java_symbols)
             all_edges.extend(e.to_dict() for e in java_result.edges)
+
+    # Run cross-language linkers
+
+    # JNI linker: connect Java native methods to C implementations
+    if java_symbols and c_symbols:
+        jni_result = link_jni(java_symbols, c_symbols)
+        if jni_result.run is not None:
+            analysis_runs.append(jni_result.run.to_dict())
+            all_edges.extend(e.to_dict() for e in jni_result.edges)
+
+    # IPC linker: detect Electron IPC, postMessage, Web Workers
+    ipc_result = link_ipc(repo_root)
+    if ipc_result.run is not None:
+        analysis_runs.append(ipc_result.run.to_dict())
+        all_edges.extend(e.to_dict() for e in ipc_result.edges)
 
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes

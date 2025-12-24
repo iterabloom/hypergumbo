@@ -259,6 +259,46 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     assert "tree-sitter-java" in skipped[0]["reason"]
 
 
+def test_cmd_run_with_jni_linker(tmp_path: Path) -> None:
+    """Test that JNI linker runs when Java and C files with JNI patterns exist."""
+    # Create Java file with native method
+    (tmp_path / "NativeLib.java").write_text("""
+public class NativeLib {
+    public native void sayHello();
+}
+""")
+
+    # Create C file with JNI implementation
+    (tmp_path / "native.c").write_text("""
+#include <jni.h>
+
+JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
+    // Implementation
+}
+""")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "output.json")
+
+    result = cmd_run(args)
+
+    assert result == 0
+
+    out_path = tmp_path / "output.json"
+    assert out_path.exists()
+
+    data = json.loads(out_path.read_text())
+
+    # Should have JNI linker run
+    runs = [r["pass"] for r in data["analysis_runs"]]
+    assert "jni-linker-v1" in runs
+
+    # Should have native_bridge edge
+    native_edges = [e for e in data["edges"] if e["type"] == "native_bridge"]
+    assert len(native_edges) >= 1
+
+
 def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     """Test that slice command produces a valid slice file."""
     # Create a simple Python file to analyze
