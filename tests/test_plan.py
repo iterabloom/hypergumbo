@@ -1,5 +1,6 @@
 """Tests for plan generation module."""
 import pytest
+from unittest.mock import patch
 
 from hypergumbo.plan import (
     PassConfig,
@@ -205,11 +206,13 @@ class TestGeneratePlan:
         profile = RepoProfile(languages=["javascript"], frameworks=[])
         catalog = get_default_catalog()
 
-        plan = generate_plan(profile, catalog)
+        # Mock tree_sitter as not installed
+        with patch("importlib.util.find_spec", return_value=None):
+            plan = generate_plan(profile, catalog)
 
-        # JS pass should not be included since tree-sitter not installed
-        pass_ids = [p.id for p in plan.passes]
-        assert "javascript-ts-v1" not in pass_ids
+            # JS pass should not be included since tree-sitter not installed
+            pass_ids = [p.id for p in plan.passes]
+            assert "javascript-ts-v1" not in pass_ids
 
     def test_generate_plan_for_fastapi_project(self) -> None:
         """Generates plan with FastAPI pack for FastAPI project."""

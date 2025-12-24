@@ -321,9 +321,13 @@ const x = require(name);
 
         result = analyze_javascript(tmp_path)
 
+        # Tree-sitter has error recovery, so both files are analyzed
         # Should still extract from good file
         assert result.run is not None
-        assert result.run.files_skipped >= 1
+        assert result.run.files_analyzed >= 1
+        # Should find foo function from good.js
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "foo" in func_names
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         """Analysis run has correct metadata."""

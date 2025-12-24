@@ -1,5 +1,6 @@
 """Tests for catalog module and command."""
 import pytest
+from unittest.mock import patch
 
 from hypergumbo.catalog import (
     Pass,
@@ -170,8 +171,9 @@ class TestIsAvailable:
     def test_extra_pass_not_available_without_dependency(self) -> None:
         """Extra passes unavailable if dependency missing."""
         p = Pass("javascript-ts-v1", "JS/TS", "extra", "hypergumbo[javascript]")
-        # tree_sitter is not installed in test env
-        assert is_available(p) is False
+        # Mock tree_sitter as not installed
+        with patch("importlib.util.find_spec", return_value=None):
+            assert is_available(p) is False
 
     def test_extra_pass_unknown_dependency_not_available(self) -> None:
         """Extra passes with unknown dependencies are not available."""
