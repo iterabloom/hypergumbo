@@ -119,6 +119,9 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
             return _node_text(child, source)
         if child.type == "property_identifier":
             return _node_text(child, source)
+        # TypeScript uses type_identifier for class names
+        if child.type == "type_identifier":
+            return _node_text(child, source)
     return None
 
 
