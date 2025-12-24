@@ -73,6 +73,49 @@ def test_cmd_run_creates_behavior_map(tmp_path: Path) -> None:
     assert data["schema_version"] == "0.1.0"
 
 
+def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
+    """Test run with mocked JS analyzer returning successful results."""
+    from unittest.mock import patch, MagicMock
+    from hypergumbo.ir import Symbol, Edge, Span, AnalysisRun
+    from hypergumbo.analyze.js_ts import JsAnalysisResult
+
+    # Create a JS file to trigger analysis
+    (tmp_path / "app.js").write_text("function foo() {}")
+
+    # Create mock result with symbols and edges
+    mock_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
+    mock_symbol = Symbol(
+        id="javascript:app.js:1-1:foo:function",
+        name="foo",
+        kind="function",
+        language="javascript",
+        path=str(tmp_path / "app.js"),
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=17),
+    )
+    mock_result = JsAnalysisResult(
+        symbols=[mock_symbol],
+        edges=[],
+        run=mock_run,
+        skipped=False,
+        skip_reason="",
+    )
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "results.json")
+
+    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_result):
+        result = cmd_run(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "results.json").read_text())
+    # Should have JavaScript symbols
+    js_nodes = [n for n in data["nodes"] if n["language"] == "javascript"]
+    assert len(js_nodes) == 1
+    assert js_nodes[0]["name"] == "foo"
+
+
 def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     """Test that slice command produces a valid slice file."""
     # Create a simple Python file to analyze

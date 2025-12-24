@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from . import __version__
 from .analyze.html import analyze_html
+from .analyze.js_ts import analyze_javascript
 from .analyze.py import analyze_python
 from .catalog import get_default_catalog, is_available
 from .entrypoints import detect_entrypoints
@@ -436,6 +437,7 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     analysis_runs = []
     all_nodes = []
     all_edges = []
+    limits = Limits()
 
     # Run Python analysis
     py_result = analyze_python(repo_root)
@@ -451,6 +453,20 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     all_nodes.extend(s.to_dict() for s in html_result.symbols)
     all_edges.extend(e.to_dict() for e in html_result.edges)
 
+    # Run JavaScript/TypeScript analysis (optional, requires tree-sitter)
+    js_result = analyze_javascript(repo_root)
+    if js_result.run is not None:
+        if js_result.skipped:
+            # Track skipped pass in limits
+            limits.skipped_passes.append({
+                "pass": js_result.run.pass_id,
+                "reason": js_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(js_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in js_result.symbols)
+            all_edges.extend(e.to_dict() for e in js_result.edges)
+
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes
     behavior_map["edges"] = all_edges
@@ -458,8 +474,6 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     # Compute metrics from analyzed nodes and edges
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edges)
 
-    # Track analysis limits
-    limits = Limits()
     # Record skipped files from analysis runs
     for run in analysis_runs:
         if run.get("files_skipped", 0) > 0:
