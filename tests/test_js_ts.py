@@ -516,6 +516,71 @@ export interface Config {
         for iface in interface_symbols:
             assert iface.language == "typescript"
 
+    def test_typescript_type_aliases(self, tmp_path: Path) -> None:
+        """Extracts TypeScript type alias declarations."""
+        pytest.importorskip("tree_sitter_typescript")
+
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+type UserId = string;
+
+type Result<T> = {
+  data: T;
+  error?: string;
+};
+
+export type Config = {
+  apiUrl: string;
+};
+"""
+        (tmp_path / "types.ts").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        type_symbols = [s for s in result.symbols if s.kind == "type"]
+        type_names = [t.name for t in type_symbols]
+
+        assert "UserId" in type_names
+        assert "Result" in type_names
+        assert "Config" in type_names
+        assert len(type_symbols) == 3
+
+    def test_typescript_enums(self, tmp_path: Path) -> None:
+        """Extracts TypeScript enum declarations."""
+        pytest.importorskip("tree_sitter_typescript")
+
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+enum Status {
+  Active,
+  Inactive,
+  Pending
+}
+
+export enum Color {
+  Red = "red",
+  Green = "green"
+}
+
+const enum Direction {
+  Up,
+  Down
+}
+"""
+        (tmp_path / "enums.ts").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        enum_symbols = [s for s in result.symbols if s.kind == "enum"]
+        enum_names = [e.name for e in enum_symbols]
+
+        assert "Status" in enum_names
+        assert "Color" in enum_names
+        assert "Direction" in enum_names
+        assert len(enum_symbols) == 3
+
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Handles empty directories gracefully."""
         from hypergumbo.analyze.js_ts import analyze_javascript
