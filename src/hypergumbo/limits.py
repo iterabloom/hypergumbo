@@ -53,6 +53,7 @@ class Limits:
 
     failed_files: List[FailedFile] = field(default_factory=list)
     skipped_languages: List[str] = field(default_factory=list)
+    skipped_passes: List[Dict[str, str]] = field(default_factory=list)
     truncated_files: List[Dict[str, Any]] = field(default_factory=list)
     analysis_depth: str = "syntax_only"
     partial_results_reason: str = ""
@@ -88,6 +89,7 @@ class Limits:
         merged = Limits(
             failed_files=self.failed_files + other.failed_files,
             skipped_languages=list(set(self.skipped_languages + other.skipped_languages)),
+            skipped_passes=self.skipped_passes + other.skipped_passes,
             truncated_files=self.truncated_files + other.truncated_files,
             analysis_depth=self.analysis_depth,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,
@@ -100,6 +102,7 @@ class Limits:
             "not_captured": KNOWN_LIMITATIONS.copy(),
             "truncated_files": self.truncated_files,
             "skipped_languages": self.skipped_languages,
+            "skipped_passes": self.skipped_passes,
             "failed_files": [f.to_dict() for f in self.failed_files],
             "partial_results_reason": self.partial_results_reason,
             "analyzer_version": f"hypergumbo-{__version__}",

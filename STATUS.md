@@ -40,10 +40,10 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Tree-sitter integration | [ ] | Not started |
-| JS/TS AST → IR emission | [ ] | |
-| Call/import edges | [ ] | |
-| Fallback if tree-sitter unavailable | [ ] | |
+| Tree-sitter integration | [x] | `analyze/js_ts.py` |
+| JS/TS AST → IR emission | [x] | Functions, classes, arrow functions |
+| Call/import edges | [x] | ES6 imports, require(), function calls |
+| Fallback if tree-sitter unavailable | [x] | Returns skipped result with reason |
 
 ## Week 4: Slicing + Entrypoints
 
@@ -94,8 +94,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 |----------|--------|-------|------------|-------|
 | Python | [x] AST | [x] calls, imports | [x] | Full support |
 | HTML | [x] regex | [x] script_src | [x] | Script tag detection |
-| JavaScript | [ ] | [ ] | [ ] | Requires tree-sitter |
-| TypeScript | [ ] | [ ] | [ ] | Requires tree-sitter |
+| JavaScript | [x] tree-sitter | [x] calls, imports | [x] | Optional, requires `hypergumbo[javascript]` |
+| TypeScript | [x] tree-sitter | [x] calls, imports | [x] | Optional, requires `hypergumbo[javascript]` |
 
 ---
 
