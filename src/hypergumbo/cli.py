@@ -48,6 +48,7 @@ from .analyze.rust import analyze_rust
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
+from .linkers.websocket import link_websocket
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -653,6 +654,13 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
         analysis_runs.append(ipc_result.run.to_dict())
         all_nodes.extend(s.to_dict() for s in ipc_result.symbols)
         all_edges.extend(e.to_dict() for e in ipc_result.edges)
+
+    # WebSocket linker: detect Socket.io, native WebSocket, ws package patterns
+    ws_result = link_websocket(repo_root)
+    if ws_result.run is not None:
+        analysis_runs.append(ws_result.run.to_dict())
+        all_nodes.extend(s.to_dict() for s in ws_result.symbols)
+        all_edges.extend(e.to_dict() for e in ws_result.edges)
 
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes

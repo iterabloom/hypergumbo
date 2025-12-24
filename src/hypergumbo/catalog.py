@@ -177,6 +177,11 @@ def get_default_catalog() -> Catalog:
                 availability="extra",
                 requires="hypergumbo[rust]",
             ),
+            Pass(
+                id="websocket-linker-v1",
+                description="WebSocket communication patterns",
+                availability="core",
+            ),
         ],
         packs=[
             Pack(
