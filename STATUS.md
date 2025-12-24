@@ -129,6 +129,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Linker | Status | Edge Type | Description |
 |--------|--------|-----------|-------------|
 | JNI | [x] | native_bridge | Links Java native methods to C JNI implementations. Parses `Java_Package_Class_Method` naming convention. |
+| IPC | [x] | message_send, message_receive | Detects Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`), Web Workers, and `postMessage` patterns. Links senders to receivers by channel name. |
 
 ---
 
