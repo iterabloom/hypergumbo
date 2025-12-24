@@ -44,6 +44,7 @@ from .analyze.java import analyze_java
 from .analyze.js_ts import analyze_javascript
 from .analyze.php import analyze_php
 from .analyze.py import analyze_python
+from .analyze.rust import analyze_rust
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -623,6 +624,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(elixir_result.run.to_dict())
             all_nodes.extend(s.to_dict() for s in elixir_result.symbols)
             all_edges.extend(e.to_dict() for e in elixir_result.edges)
+
+    # Run Rust analysis (optional, requires tree-sitter-rust)
+    rust_result = analyze_rust(repo_root)
+    if rust_result.run is not None:
+        if rust_result.skipped:
+            limits.skipped_passes.append({
+                "pass": rust_result.run.pass_id,
+                "reason": rust_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(rust_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in rust_result.symbols)
+            all_edges.extend(e.to_dict() for e in rust_result.edges)
 
     # Run cross-language linkers
 

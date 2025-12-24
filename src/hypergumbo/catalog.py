@@ -120,7 +120,8 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        if "javascript" in p.requires or "php" in p.requires or "c" in p.requires or "java" in p.requires:
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust"]
+        if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
     return False
@@ -169,6 +170,12 @@ def get_default_catalog() -> Catalog:
                 description="Elixir via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[elixir]",
+            ),
+            Pass(
+                id="rust-ts-v1",
+                description="Rust via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[rust]",
             ),
         ],
         packs=[
