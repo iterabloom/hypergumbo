@@ -251,6 +251,32 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             origin_run_id=run.execution_id,
         ))
 
+    # Collect all files involved in WebSocket messaging for file symbol creation
+    files_with_patterns: set[str] = set()
+    for patterns_list in sends.values():
+        for pat in patterns_list:
+            files_with_patterns.add(pat.file_path)
+    for patterns_list in receives.values():
+        for pat in patterns_list:
+            files_with_patterns.add(pat.file_path)
+    for ep in endpoints:
+        files_with_patterns.add(ep.file_path)
+
+    # Create file symbols for all files with WebSocket patterns
+    # These enable slice traversal of websocket_message edges
+    for file_path in files_with_patterns:
+        file_name = Path(file_path).name
+        symbols.append(Symbol(
+            id=_make_file_id(file_path),
+            name=file_name,
+            kind="file",
+            language="javascript",
+            path=file_path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+
     # Create edges linking senders to receivers with matching events
     edges: list[Edge] = []
     for event, send_patterns in sends.items():
