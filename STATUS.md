@@ -79,6 +79,11 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Directory structure | [x] | Top-level dirs with type labels |
 | Framework detection | [x] | Via profile.py |
 | Section-boundary truncation | [x] | Preserves coherent sections when truncating |
+| Source file listings | [x] | Progressive expansion based on budget |
+| Entry points section | [x] | CLI, HTTP routes, Electron patterns |
+| Key symbols section | [x] | Functions/classes from static analysis |
+| Graph centrality ranking | [x] | In-degree centrality orders symbols by importance |
+| Test file filtering | [x] | Excludes test files from centrality calculation |
 
 ## CLI Commands
 

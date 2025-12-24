@@ -1,27 +1,62 @@
 # hypergumbo
 
-Local-first CLI that profiles a repo and emits an agent-friendly “repo behavior map” JSON.
-
-Status: MVP in progress.
-
-## Quickstart
+Get a quick overview of any codebase, sized to fit your context window.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
-./scripts/install-hooks
-hypergumbo --version
+pip install hypergumbo
+hypergumbo .
 ```
 
-## CLI
+Output:
+```markdown
+# my-project
+
+## Overview
+Python (72%), TypeScript (18%), Markdown (10%) · 84 files · ~12,400 LOC
+
+## Structure
+- `src/` — Source code
+- `tests/` — Tests
+- `docs/` — Documentation
+
+## Frameworks
+- fastapi
+- pytest
+
+## Key Symbols
+### `src/api/routes.py`
+- `create_user` (function) ★
+- `get_user` (function) ★
+...
+```
+
+Use `-t` to control the token budget:
+```bash
+hypergumbo . -t 500   # concise overview
+hypergumbo . -t 2000  # include symbols and entry points
+```
+
+## Installation
 
 ```bash
-hypergumbo init [path]       # creates .hypergumbo/ with capsule.json and plan
-hypergumbo run [path]        # analyzes repo and writes hypergumbo.results.json
-hypergumbo slice --entry X   # produces reduced behavior slice from entry point
-hypergumbo catalog           # lists available analysis passes and packs
-hypergumbo export-capsule    # exports shareable capsule tarball
+pip install hypergumbo
+```
+
+For JavaScript/TypeScript analysis:
+```bash
+pip install hypergumbo[javascript]
+```
+
+## CLI Commands
+
+```bash
+hypergumbo [path]            # default: generate Markdown sketch
+hypergumbo . -t 1000         # sketch with 1000 token budget
+hypergumbo run [path]        # full analysis → hypergumbo.results.json
+hypergumbo slice --entry X   # extract subgraph from entry point
+hypergumbo init [path]       # initialize .hypergumbo/ capsule
+hypergumbo catalog           # list available analysis passes
+hypergumbo export-capsule    # export shareable capsule tarball
 ```
 
 ## What It Does
