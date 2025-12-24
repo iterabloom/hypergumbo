@@ -193,6 +193,72 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     assert "tree-sitter-php" in skipped[0]["reason"]
 
 
+def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
+    """Test run with C analyzer skipped (tree-sitter-c not available)."""
+    from unittest.mock import patch
+    from hypergumbo.ir import AnalysisRun
+    from hypergumbo.analyze.c import CAnalysisResult
+
+    # Create mock result with skipped flag
+    mock_run = AnalysisRun.create(pass_id="c-v1", version="test")
+    mock_result = CAnalysisResult(
+        symbols=[],
+        edges=[],
+        run=mock_run,
+        skipped=True,
+        skip_reason="requires tree-sitter-c",
+    )
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "results.json")
+
+    with patch("hypergumbo.cli.analyze_c", return_value=mock_result):
+        result = cmd_run(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "results.json").read_text())
+    # Should have recorded skipped pass in limits
+    assert "skipped_passes" in data["limits"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "c-v1"]
+    assert len(skipped) == 1
+    assert "tree-sitter-c" in skipped[0]["reason"]
+
+
+def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
+    """Test run with Java analyzer skipped (tree-sitter-java not available)."""
+    from unittest.mock import patch
+    from hypergumbo.ir import AnalysisRun
+    from hypergumbo.analyze.java import JavaAnalysisResult
+
+    # Create mock result with skipped flag
+    mock_run = AnalysisRun.create(pass_id="java-v1", version="test")
+    mock_result = JavaAnalysisResult(
+        symbols=[],
+        edges=[],
+        run=mock_run,
+        skipped=True,
+        skip_reason="requires tree-sitter-java",
+    )
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "results.json")
+
+    with patch("hypergumbo.cli.analyze_java", return_value=mock_result):
+        result = cmd_run(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "results.json").read_text())
+    # Should have recorded skipped pass in limits
+    assert "skipped_passes" in data["limits"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "java-v1"]
+    assert len(skipped) == 1
+    assert "tree-sitter-java" in skipped[0]["reason"]
+
+
 def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     """Test that slice command produces a valid slice file."""
     # Create a simple Python file to analyze

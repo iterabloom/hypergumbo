@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from . import __version__
+from .analyze.c import analyze_c
 from .analyze.html import analyze_html
+from .analyze.java import analyze_java
 from .analyze.js_ts import analyze_javascript
 from .analyze.php import analyze_php
 from .analyze.py import analyze_python
@@ -541,6 +543,32 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(php_result.run.to_dict())
             all_nodes.extend(s.to_dict() for s in php_result.symbols)
             all_edges.extend(e.to_dict() for e in php_result.edges)
+
+    # Run C analysis (optional, requires tree-sitter-c)
+    c_result = analyze_c(repo_root)
+    if c_result.run is not None:
+        if c_result.skipped:
+            limits.skipped_passes.append({
+                "pass": c_result.run.pass_id,
+                "reason": c_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(c_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in c_result.symbols)
+            all_edges.extend(e.to_dict() for e in c_result.edges)
+
+    # Run Java analysis (optional, requires tree-sitter-java)
+    java_result = analyze_java(repo_root)
+    if java_result.run is not None:
+        if java_result.skipped:
+            limits.skipped_passes.append({
+                "pass": java_result.run.pass_id,
+                "reason": java_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(java_result.run.to_dict())
+            all_nodes.extend(s.to_dict() for s in java_result.symbols)
+            all_edges.extend(e.to_dict() for e in java_result.edges)
 
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes

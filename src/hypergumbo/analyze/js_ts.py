@@ -38,6 +38,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
@@ -842,11 +843,13 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
 
     # Check for tree-sitter availability
     if not is_tree_sitter_available():
+        skip_reason = "JS/TS analysis skipped: requires tree-sitter (pip install hypergumbo[javascript])"
+        warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JsAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason="requires tree-sitter: pip install hypergumbo[javascript]",
+            skip_reason=skip_reason,
         )
 
     # Pass 1: Parse all files and extract symbols

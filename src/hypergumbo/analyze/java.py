@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import importlib.util
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
@@ -531,20 +532,24 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
 
     # Check for tree-sitter-java availability
     if not is_java_tree_sitter_available():
+        skip_reason = "Java analysis skipped: requires tree-sitter-java (pip install tree-sitter-java)"
+        warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JavaAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason="requires tree-sitter-java: pip install tree-sitter-java",
+            skip_reason=skip_reason,
         )
 
     parser = _get_java_parser()
     if parser is None:
+        skip_reason = "Java analysis skipped: requires tree-sitter-java (pip install tree-sitter-java)"
+        warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JavaAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason="requires tree-sitter-java: pip install tree-sitter-java",
+            skip_reason=skip_reason,
         )
 
     # Pass 1: Parse all files and extract symbols
