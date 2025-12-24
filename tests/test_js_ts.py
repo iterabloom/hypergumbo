@@ -189,6 +189,46 @@ class UserService {
         assert "validate" in method_names
         assert len(method_symbols) == 3
 
+    def test_extracts_getters_and_setters(self, tmp_path: Path) -> None:
+        """Extracts getters and setters from class declarations."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+class User {
+  constructor(name) {
+    this._name = name;
+  }
+
+  get name() {
+    return this._name;
+  }
+
+  set name(value) {
+    this._name = value;
+  }
+
+  get age() {
+    return 0;
+  }
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        getter_symbols = [s for s in result.symbols if s.kind == "getter"]
+        setter_symbols = [s for s in result.symbols if s.kind == "setter"]
+
+        getter_names = [g.name for g in getter_symbols]
+        setter_names = [s.name for s in setter_symbols]
+
+        assert "name" in getter_names
+        assert "age" in getter_names
+        assert len(getter_symbols) == 2
+
+        assert "name" in setter_names
+        assert len(setter_symbols) == 1
+
     def test_extracts_es6_import(self, tmp_path: Path) -> None:
         """Extracts ES6 import statements as edges."""
         from hypergumbo.analyze.js_ts import analyze_javascript

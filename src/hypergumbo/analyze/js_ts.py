@@ -231,10 +231,20 @@ def _extract_symbols_and_edges(
                 symbols.append(symbol)
                 symbol_by_name[name] = symbol
 
-        # Method definitions inside classes
+        # Method definitions inside classes (including getters/setters)
         if node.type == "method_definition":
             name = _find_name_in_children(node, source)
             if name:
+                # Determine method kind (getter, setter, or regular method)
+                kind = "method"
+                for child in node.children:
+                    if child.type == "get":
+                        kind = "getter"
+                        break
+                    elif child.type == "set":
+                        kind = "setter"
+                        break
+
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -242,9 +252,9 @@ def _extract_symbols_and_edges(
                     end_col=node.end_point[1],
                 )
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "method", lang),
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, kind, lang),
                     name=name,
-                    kind="method",
+                    kind=kind,
                     language=lang,
                     path=str(file_path),
                     span=span,
