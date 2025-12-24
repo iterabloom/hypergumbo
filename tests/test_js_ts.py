@@ -478,6 +478,44 @@ export class ApiClient {
         assert class_symbols[0].name == "ApiClient"
         assert class_symbols[0].language == "typescript"
 
+    def test_typescript_interfaces(self, tmp_path: Path) -> None:
+        """Extracts TypeScript interface declarations."""
+        pytest.importorskip("tree_sitter_typescript")
+
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+interface User {
+  id: number;
+  name: string;
+}
+
+interface ApiResponse<T> {
+  data: T;
+  status: number;
+}
+
+export interface Config {
+  apiUrl: string;
+  timeout: number;
+}
+"""
+        (tmp_path / "types.ts").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        interface_symbols = [s for s in result.symbols if s.kind == "interface"]
+        interface_names = [i.name for i in interface_symbols]
+
+        assert "User" in interface_names
+        assert "ApiResponse" in interface_names
+        assert "Config" in interface_names
+        assert len(interface_symbols) == 3
+
+        # Verify language is TypeScript
+        for iface in interface_symbols:
+            assert iface.language == "typescript"
+
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Handles empty directories gracefully."""
         from hypergumbo.analyze.js_ts import analyze_javascript

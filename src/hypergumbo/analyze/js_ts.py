@@ -231,6 +231,29 @@ def _extract_symbols_and_edges(
                 symbols.append(symbol)
                 symbol_by_name[name] = symbol
 
+        # TypeScript interface declarations
+        if node.type == "interface_declaration":
+            name = _find_name_in_children(node, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "interface", lang),
+                    name=name,
+                    kind="interface",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                )
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
+
         # Method definitions inside classes (including getters/setters)
         if node.type == "method_definition":
             name = _find_name_in_children(node, source)
