@@ -116,6 +116,38 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     assert js_nodes[0]["name"] == "foo"
 
 
+def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
+    """Test run with JS analyzer skipped (tree-sitter not available)."""
+    from unittest.mock import patch
+    from hypergumbo.ir import AnalysisRun
+    from hypergumbo.analyze.js_ts import JsAnalysisResult
+
+    # Create mock result with skipped flag
+    mock_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
+    mock_result = JsAnalysisResult(
+        symbols=[],
+        edges=[],
+        run=mock_run,
+        skipped=True,
+        skip_reason="requires tree-sitter",
+    )
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "results.json")
+
+    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_result):
+        result = cmd_run(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "results.json").read_text())
+    # Should have recorded skipped pass in limits
+    assert "skipped_passes" in data["limits"]
+    assert len(data["limits"]["skipped_passes"]) == 1
+    assert data["limits"]["skipped_passes"][0]["pass"] == "javascript-ts-v1"
+
+
 def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     """Test that slice command produces a valid slice file."""
     # Create a simple Python file to analyze

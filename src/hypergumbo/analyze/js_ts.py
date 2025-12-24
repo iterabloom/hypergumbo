@@ -93,17 +93,17 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
             import tree_sitter_typescript
 
             if suffix == ".tsx":
-                lang = tree_sitter_typescript.language_tsx()
+                lang_ptr = tree_sitter_typescript.language_tsx()
             else:
-                lang = tree_sitter_typescript.language_typescript()
-            parser.language = lang
+                lang_ptr = tree_sitter_typescript.language_typescript()
+            parser.language = tree_sitter.Language(lang_ptr)
             return parser
         except ImportError:
             # Fall back to JavaScript parser for TS files
-            parser.language = tree_sitter_javascript.language()
+            parser.language = tree_sitter.Language(tree_sitter_javascript.language())
             return parser
     else:
-        parser.language = tree_sitter_javascript.language()
+        parser.language = tree_sitter.Language(tree_sitter_javascript.language())
         return parser
 
 
@@ -169,11 +169,14 @@ def _extract_symbols_and_edges(
                 if child.type == "variable_declarator":
                     name_node = None
                     value_node = None
+                    call_node = None
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
                             name_node = grandchild
                         elif grandchild.type == "arrow_function":
                             value_node = grandchild
+                        elif grandchild.type == "call_expression":
+                            call_node = grandchild
                     if name_node and value_node:
                         name = _node_text(name_node, source)
                         span = Span(
@@ -197,6 +200,9 @@ def _extract_symbols_and_edges(
                         # Visit body with this as current function
                         for vc in value_node.children:
                             visit(vc, symbol)
+                    # Handle require() calls: const x = require('module')
+                    if call_node:
+                        visit(call_node, current_function)
             return
 
         # Class declarations
