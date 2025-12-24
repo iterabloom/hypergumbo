@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge
+from ..ir import AnalysisRun, Edge, Span, Symbol
 
 PASS_ID = "ipc-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -60,6 +60,7 @@ class IpcLinkResult:
     """Result of IPC linking."""
 
     edges: list[Edge] = field(default_factory=list)
+    symbols: list[Symbol] = field(default_factory=list)
     run: AnalysisRun | None = None
 
 
@@ -223,8 +224,36 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 receive_by_channel[p.channel] = []
             receive_by_channel[p.channel].append(p)
 
-    # Create edges for matching channels
+    # Create symbols and edges for matching channels
     edges: list[Edge] = []
+    symbols: list[Symbol] = []
+    created_symbol_ids: set[str] = set()
+
+    def _make_symbol_id(pattern: IpcPattern, channel: str) -> str:
+        return f"ipc:{pattern.file_path}:{pattern.line}:{pattern.type}:{channel}"
+
+    def _ensure_symbol(pattern: IpcPattern, channel: str) -> str:
+        """Create symbol for IPC endpoint if not already created."""
+        sym_id = _make_symbol_id(pattern, channel)
+        if sym_id not in created_symbol_ids:
+            symbols.append(Symbol(
+                id=sym_id,
+                name=f"ipc:{pattern.type}:{channel}",
+                kind=f"ipc_{pattern.type}",
+                language="javascript",
+                path=pattern.file_path,
+                span=Span(
+                    start_line=pattern.line,
+                    end_line=pattern.line,
+                    start_col=0,
+                    end_col=0,
+                ),
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                meta={"channel": channel, "pattern_type": pattern.pattern_type},
+            ))
+            created_symbol_ids.add(sym_id)
+        return sym_id
 
     for channel, senders in send_by_channel.items():
         if not channel:  # Skip empty channel (postMessage without named channel)
@@ -232,11 +261,13 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
         receivers = receive_by_channel.get(channel, [])
         for sender in senders:
+            src_id = _ensure_symbol(sender, channel)
             for receiver in receivers:
-                # Create edge from sender file to receiver file
+                dst_id = _ensure_symbol(receiver, channel)
+                # Create edge from sender to receiver
                 edge = Edge.create(
-                    src=f"ipc:{sender.file_path}:{sender.line}:send:{channel}",
-                    dst=f"ipc:{receiver.file_path}:{receiver.line}:receive:{channel}",
+                    src=src_id,
+                    dst=dst_id,
                     edge_type="message_send",
                     line=sender.line,
                     confidence=0.85,
@@ -254,10 +285,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
         senders = send_by_channel.get(channel, [])
         for receiver in receivers:
+            src_id = _ensure_symbol(receiver, channel)
             for sender in senders:
+                dst_id = _ensure_symbol(sender, channel)
                 edge = Edge.create(
-                    src=f"ipc:{receiver.file_path}:{receiver.line}:receive:{channel}",
-                    dst=f"ipc:{sender.file_path}:{sender.line}:send:{channel}",
+                    src=src_id,
+                    dst=dst_id,
                     edge_type="message_receive",
                     line=receiver.line,
                     confidence=0.85,
@@ -272,4 +305,4 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return IpcLinkResult(edges=edges, run=run)
+    return IpcLinkResult(edges=edges, symbols=symbols, run=run)
