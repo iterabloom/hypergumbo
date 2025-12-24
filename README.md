@@ -44,10 +44,12 @@ pip install git+https://codeberg.org/iterabloom/hypergumbo.git
 
 Optional extras for additional language support:
 ```bash
-pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"  # JS/TS/Svelte
+pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"  # JS/TS/Vue/Svelte
 pip install "hypergumbo[php] @ git+https://codeberg.org/iterabloom/hypergumbo.git"         # PHP
 pip install "hypergumbo[c] @ git+https://codeberg.org/iterabloom/hypergumbo.git"           # C
 pip install "hypergumbo[java] @ git+https://codeberg.org/iterabloom/hypergumbo.git"        # Java
+pip install "hypergumbo[elixir] @ git+https://codeberg.org/iterabloom/hypergumbo.git"      # Elixir
+pip install "hypergumbo[rust] @ git+https://codeberg.org/iterabloom/hypergumbo.git"        # Rust
 ```
 
 For LLM-assisted plan generation:
@@ -92,7 +94,7 @@ a customized analysis plan based on your repo's profile. Supports:
 Falls back to template-based generation if LLM is unavailable or fails.
 
 > **Note:** LLM-assisted plan generation is currently proof-of-concept infrastructure.
-> With only 6 passes and 2 packs in the catalog, template-based generation produces
+> With 9 passes and 3 packs in the catalog, template-based generation produces
 > equivalent results. This feature will become practical as the catalog expands with
 > framework-specific packs and configuration options.
 
@@ -103,10 +105,13 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | Python | AST | function, class, method | calls, imports, instantiates |
 | JavaScript | tree-sitter | function, class, method | calls, imports, instantiates |
 | TypeScript | tree-sitter | function, class, method, interface, type, enum | calls, imports, instantiates |
+| Vue | tree-sitter | function, class, method | calls, imports, instantiates |
 | Svelte | tree-sitter | function, class, method | calls, imports, instantiates |
 | PHP | tree-sitter | function, class, method | calls, instantiates |
 | C | tree-sitter | function, struct, enum, typedef | calls |
 | Java | tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates |
+| Elixir | tree-sitter | module, function, macro | calls, imports |
+| Rust | tree-sitter | function, struct, enum, trait, method | calls, imports |
 | HTML | regex | file | script_src |
 
 ### Cross-Language Linkers
@@ -117,6 +122,7 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 |--------|-----------|-------------|
 | JNI | native_bridge | Links Java `native` methods to C JNI implementations (`Java_Package_Class_Method`) |
 | IPC | message_send, message_receive | Detects Electron IPC (`ipcRenderer`/`ipcMain`), Web Workers, `postMessage` patterns |
+| WebSocket | websocket_message, websocket_connection | Detects Socket.io, native WebSocket, and ws package patterns. Event matching links senders to receivers. |
 
 ## Development
 

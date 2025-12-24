@@ -123,9 +123,9 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | PHP | [x] tree-sitter | function, class, method | calls, instantiates | Two-pass cross-file resolution. Detects `$this->method()`, `$obj->method()`, `ClassName::method()`, `new ClassName()`. Optional: `pip install hypergumbo[php]`. Excludes `vendor/` by default |
 | C | [x] tree-sitter | function, struct, enum, typedef | calls | Two-pass cross-file resolution. Detects function calls, JNI export patterns (`Java_ClassName_methodName`). Optional: `pip install hypergumbo[c]` |
 | Java | [x] tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `ClassName.method()`, inheritance, `new ClassName()`. Native method detection with `meta.is_native`. Optional: `pip install hypergumbo[java]` |
-| Vue | [ ] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` blocks from `.vue` SFCs, adjusts line numbers. Optional: `pip install hypergumbo[javascript]` |
-| Elixir | [ ] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Optional: `pip install hypergumbo[elixir]` |
-| Rust | [ ] tree-sitter | function, struct, enum, impl, trait | calls, imports, instantiates | Detects `fn`, `impl` blocks, `use` statements. Optional: `pip install hypergumbo[rust]` |
+| Vue | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` and `<script setup>` blocks from `.vue` SFCs, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
+| Elixir | [x] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[elixir]` |
+| Rust | [x] tree-sitter | function, struct, enum, trait, method | calls, imports | Detects `fn`, `struct`, `enum`, `trait`, `impl` blocks, `use` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[rust]` |
 
 ## Cross-Language Linkers
 
@@ -135,7 +135,7 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 |--------|--------|-----------|---------|-------------|
 | JNI | [x] | native_bridge | — | Links Java native methods to C JNI implementations. Parses `Java_Package_Class_Method` naming convention. Runs when both Java and C symbols are present. |
 | IPC | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`), Web Workers, and `postMessage` patterns. Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Channel stored in `edge.meta.channel` and `symbol.meta.channel`. |
-| IPC (Socket.io) | [ ] | message_send, message_receive | ipc_send, ipc_receive | Detects Socket.io patterns (`socket.emit`, `socket.on`, `io.emit`). |
+| WebSocket | [x] | websocket_message, websocket_connection | websocket_endpoint, file | Detects Socket.io (`socket.emit`, `socket.on`, `io.emit`), native WebSocket (`new WebSocket`, `ws.send`), and Node.js ws package patterns. Creates file symbols enabling slice traversal across WebSocket boundaries. Event matching links senders to receivers. |
 | IPC (Phoenix) | [ ] | message_send, message_receive | ipc_send, ipc_receive | Detects Phoenix Channel patterns (`broadcast!`, `push`, `handle_in`). |
 
 ---
