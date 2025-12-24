@@ -10,7 +10,7 @@
 
 ## Required Checks
 - **100% Coverage:** No code may be committed without full test coverage. Verify with: `pytest --cov=src --cov-fail-under=100`
-- **Golden Masters:** Output must match existing golden files in `tests/fixtures/`.
+- **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
 - **Signing & Identity:**
