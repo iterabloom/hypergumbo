@@ -305,8 +305,8 @@ def _run_analysis(repo_root: Path, profile: RepoProfile) -> tuple[list[Symbol], 
 
     if "javascript" in profile.languages or "typescript" in profile.languages:
         try:  # pragma: no cover
-            from .analyze.js_ts import analyze_js_ts  # pragma: no cover
-            result = analyze_js_ts(repo_root)  # pragma: no cover
+            from .analyze.js_ts import analyze_javascript  # pragma: no cover
+            result = analyze_javascript(repo_root)  # pragma: no cover
             all_symbols.extend(result.symbols)  # pragma: no cover
             all_edges.extend(result.edges)  # pragma: no cover
         except Exception:  # pragma: no cover
