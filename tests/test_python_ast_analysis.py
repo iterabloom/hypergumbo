@@ -145,14 +145,81 @@ def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
     # Should have two function nodes (helper in utils, run in main)
     assert len(data["nodes"]) == 2
 
-    # Should have one cross-file edge: run -> helper
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
-    assert edge["type"] == "calls"
+    # Should have both call and import edges
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    assert len(call_edges) == 1
+    assert len(import_edges) == 1
+
+    # Verify the call edge: run -> helper
+    edge = call_edges[0]
     assert "run" in edge["src"]
     assert "helper" in edge["dst"]
     # The target should reference utils.py, not main.py
     assert "utils.py" in edge["dst"]
+
+
+def test_run_detects_import_edges(tmp_path: Path) -> None:
+    """Running analysis should detect import edges."""
+    # Create a utility module with a helper function
+    utils_file = tmp_path / "utils.py"
+    utils_file.write_text("def helper():\n    pass\n")
+
+    # Create a main module that imports the helper
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from utils import helper\n"
+        "\n"
+        "def run():\n"
+        "    helper()\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have import edges
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    assert len(import_edges) >= 1, "Expected at least one import edge"
+
+    # The import edge should reference the imported symbol
+    import_edge = import_edges[0]
+    assert "main.py" in import_edge["src"]
+    assert "helper" in import_edge["dst"]
+    assert import_edge["meta"]["evidence_type"] == "ast_import"
+    # Static imports should have high confidence
+    assert import_edge["confidence"] >= 0.9
+
+
+def test_run_detects_module_import_edges(tmp_path: Path) -> None:
+    """Running analysis should detect 'import X' style imports."""
+    # Create a main module with a plain import
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "import os\n"
+        "\n"
+        "def run():\n"
+        "    pass\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have import edge for 'import os'
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    assert len(import_edges) >= 1, "Expected at least one import edge for 'import os'"
+
+    # The import edge should reference the module
+    import_edge = import_edges[0]
+    assert "main.py" in import_edge["src"]
+    assert "os" in import_edge["dst"]
 
 
 def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
@@ -261,10 +328,14 @@ def test_run_detects_relative_import_calls(tmp_path: Path) -> None:
     functions = [n for n in data["nodes"] if n["kind"] == "function"]
     assert len(functions) == 2
 
-    # Should have one cross-file edge: run -> helper
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
-    assert edge["type"] == "calls"
+    # Should have both call and import edges
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    assert len(call_edges) == 1
+    assert len(import_edges) == 1
+
+    # Verify the call edge: run -> helper
+    edge = call_edges[0]
     assert "run" in edge["src"]
     assert "helper" in edge["dst"]
     # The target should reference utils.py, not main.py

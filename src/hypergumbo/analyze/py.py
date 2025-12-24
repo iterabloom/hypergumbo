@@ -19,6 +19,16 @@ def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"
 
 
+def _make_file_id(path: str) -> str:
+    """Generate ID for a Python file node (used as import edge source)."""
+    return f"python:{path}:1-1:file:file"
+
+
+def _make_module_id(module_name: str) -> str:
+    """Generate ID for an external module (used as import edge destination)."""
+    return f"python:{module_name}:0-0:module:module"
+
+
 def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
@@ -195,6 +205,71 @@ def _extract_imports(
                     local_name = alias.asname if alias.asname else alias.name
                     imports[local_name] = (resolved_module, alias.name)
     return imports
+
+
+def _extract_import_edges(
+    tree: ast.AST,
+    file_path: str,
+    importing_module: str,
+    global_symbols: dict[tuple[str, str], Symbol],
+) -> list[Edge]:
+    """Extract import edges from AST.
+
+    Creates edges from the importing file to the imported symbols/modules.
+    For 'from X import Y', links to the resolved symbol if known, else to module.
+    For 'import X', links to the module.
+
+    Args:
+        tree: The parsed AST
+        file_path: Path to the importing file
+        importing_module: The fully qualified name of the importing module
+        global_symbols: Map of (module, name) -> Symbol for cross-file resolution
+
+    Returns list of import edges.
+    """
+    edges = []
+    file_id = _make_file_id(file_path)
+
+    for node in ast.walk(tree):
+        # Handle 'from X import Y, Z' style imports
+        if isinstance(node, ast.ImportFrom):
+            resolved_module = _resolve_relative_import(
+                node.module, node.level, importing_module
+            )
+            if resolved_module:
+                for alias in node.names:
+                    # Try to find the symbol in our global table
+                    symbol = global_symbols.get((resolved_module, alias.name))
+                    if symbol:
+                        dst_id = symbol.id
+                    else:
+                        # External symbol - create a reference ID
+                        dst_id = f"python:{resolved_module}:0-0:{alias.name}:symbol"
+
+                    edges.append(Edge.create(
+                        src=file_id,
+                        dst=dst_id,
+                        edge_type="imports",
+                        line=node.lineno,
+                        evidence_type="ast_import",
+                        confidence=0.95,
+                    ))
+
+        # Handle 'import X' and 'import X as Y' style imports
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                module_name = alias.name
+                dst_id = _make_module_id(module_name)
+                edges.append(Edge.create(
+                    src=file_id,
+                    dst=dst_id,
+                    edge_type="imports",
+                    line=node.lineno,
+                    evidence_type="ast_import",
+                    confidence=0.95,
+                ))
+
+    return edges
 
 
 def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> FileAnalysis | None:
@@ -375,20 +450,31 @@ def analyze_python(repo_root: Path) -> AnalysisResult:
     all_symbols = []
     all_edges = []
     for py_file, analysis in file_analyses.items():
+        module_name = _module_name_from_path(py_file, repo_root)
+
         # Set origin on symbols
         for symbol in analysis.symbols:
             symbol.origin = PASS_ID
             symbol.origin_run_id = run.execution_id
         all_symbols.extend(analysis.symbols)
 
-        edges = _extract_edges(
+        # Extract call edges
+        call_edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols
         )
-        # Set origin on edges
-        for edge in edges:
+        for edge in call_edges:
             edge.origin = PASS_ID
             edge.origin_run_id = run.execution_id
-        all_edges.extend(edges)
+        all_edges.extend(call_edges)
+
+        # Extract import edges
+        import_edges = _extract_import_edges(
+            analysis.tree, str(py_file), module_name, global_symbols
+        )
+        for edge in import_edges:
+            edge.origin = PASS_ID
+            edge.origin_run_id = run.execution_id
+        all_edges.extend(import_edges)
 
     # Update run metadata
     run.files_analyzed = len(file_analyses)
