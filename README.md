@@ -47,6 +47,16 @@ For JavaScript/TypeScript analysis (requires tree-sitter):
 pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
 ```
 
+For LLM-assisted plan generation (OpenRouter/OpenAI):
+```bash
+pip install "hypergumbo[llm-assist] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
+```
+
+For local LLM models via Simon Willison's llm package:
+```bash
+pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
+```
+
 ## CLI Commands
 
 ```bash
@@ -55,6 +65,7 @@ hypergumbo . -t 1000         # sketch with 1000 token budget
 hypergumbo run [path]        # full analysis → hypergumbo.results.json
 hypergumbo slice --entry X   # extract subgraph from entry point
 hypergumbo init [path]       # initialize .hypergumbo/ capsule
+hypergumbo init --assistant llm  # use LLM to generate analysis plan
 hypergumbo catalog           # list available analysis passes
 hypergumbo export-capsule    # export shareable capsule tarball
 ```
@@ -71,6 +82,14 @@ hypergumbo export-capsule    # export shareable capsule tarball
 **Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
 - **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
 - **Edges**: Call and import relationships between symbols
+
+**LLM-assisted init** (`hypergumbo init --assistant llm`) uses an LLM to generate
+a customized analysis plan based on your repo's profile. Supports:
+- **OpenRouter** (free tier): Set `OPENROUTER_API_KEY` env var
+- **OpenAI**: Set `OPENAI_API_KEY` env var
+- **Local models**: Install `hypergumbo[llm-local]` for Simon Willison's llm package
+
+Falls back to template-based generation if LLM is unavailable or fails.
 
 ### Supported Languages
 

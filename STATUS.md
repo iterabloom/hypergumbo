@@ -64,7 +64,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 |---------|--------|-------|
 | `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` + `capsule_plan.json` |
 | Template-based plan generation | [x] | `plan.py` - generates from profile + catalog |
-| LLM-assisted plan generation | [ ] | Optional enhancement |
+| LLM-assisted plan generation | [x] | `llm_assist.py` - OpenRouter, OpenAI, llm package backends |
 | `hypergumbo catalog` command | [x] | Lists passes and packs |
 | `hypergumbo export-capsule` command | [x] | `export.py` - tarball with privacy redactions |
 
@@ -122,4 +122,4 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 ---
 
-*Last updated: 2025-12-23*
+*Last updated: 2025-12-24*
