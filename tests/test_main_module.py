@@ -1,4 +1,4 @@
-"""Tests for module entry points to achieve 100% coverage."""
+"""Tests for __main__.py module (python -m hypergumbo invocation)."""
 import runpy
 import sys
 
