@@ -1,9 +1,9 @@
 """Entrypoint detection heuristics for code analysis.
 
 Detects common entrypoint patterns:
-- HTTP routes (FastAPI, Flask, Express)
+- HTTP routes (FastAPI, Flask decorators)
 - CLI entrypoints (main guard, Click commands)
-- Electron app entry points (main, preload, renderer)
+- Electron app entry points (electron.js, preload.js)
 
 How It Works
 ------------
@@ -11,7 +11,7 @@ Entrypoint detection uses heuristics to identify likely "entry points"
 into a codebase - places where execution typically starts or where
 external requests arrive. This enables `--entry auto` in the slicer.
 
-Detection is based on two signals:
+Detection is based on:
 
 1. **Decorators** (high confidence ~0.95): Functions decorated with
    `@get`, `@post`, `@route`, `@command` etc. are almost certainly
@@ -23,17 +23,14 @@ Detection is based on two signals:
    The lower confidence lets callers filter if desired.
 
 3. **File patterns** (medium confidence ~0.85): For Electron apps,
-   files named `main.js`, `preload.js`, `renderer.js` indicate entry
-   points by convention.
+   files named `electron.js`, `preload.js` indicate entry points.
+   Generic names like `renderer.js` and `index.js` are NOT matched
+   to avoid false positives (many frameworks use these names).
 
 Confidence Scores
 -----------------
-Each entrypoint has a confidence score (0.0-1.0) reflecting detection
-certainty. When `--entry auto` is used, we pick the highest-confidence
-entrypoint. Scores are:
-
 - 0.95: Decorator-based (very reliable)
-- 0.85: File-pattern-based (reliable for Electron)
+- 0.85: File-pattern-based (specific Electron files)
 - 0.70: Name-pattern-based (heuristic, may have false positives)
 
 Current Limitations
@@ -106,10 +103,10 @@ CLI_NAME_PATTERNS = {
     "main", "cli", "run", "execute", "start",
 }
 
-# Electron file patterns
-ELECTRON_MAIN_FILES = {"main.js", "main.ts", "electron.js", "electron.ts"}
-ELECTRON_PRELOAD_FILES = {"preload.js", "preload.ts"}
-ELECTRON_RENDERER_FILES = {"renderer.js", "renderer.ts", "index.js"}
+# Electron file patterns (only specific patterns to avoid false positives)
+# Note: renderer.js/ts and index.js are too generic - many frameworks use these names
+ELECTRON_MAIN_FILES = {"electron.js", "electron.ts", "electron-main.js", "electron-main.ts"}
+ELECTRON_PRELOAD_FILES = {"preload.js", "preload.ts", "electron-preload.js", "electron-preload.ts"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -180,16 +177,26 @@ def _detect_cli_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
 
 
 def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
-    """Detect Electron app entrypoints from file names."""
+    """Detect Electron app entrypoints from file names.
+
+    Only matches specific Electron file patterns to minimize false positives.
+    Tracks files already seen to emit one entry point per file, not per symbol.
+    """
     entrypoints = []
+    seen_files: set[str] = set()
 
     for sym in symbols:
         if sym.language not in ("javascript", "typescript"):
             continue
 
+        # Only emit one entry point per file
+        if sym.path in seen_files:
+            continue
+
         filename = _get_filename(sym.path)
 
         if filename in ELECTRON_MAIN_FILES:
+            seen_files.add(sym.path)
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.ELECTRON_MAIN,
@@ -197,18 +204,12 @@ def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
                 label="Electron main",
             ))
         elif filename in ELECTRON_PRELOAD_FILES:
+            seen_files.add(sym.path)
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.ELECTRON_PRELOAD,
                 confidence=0.85,
                 label="Electron preload",
-            ))
-        elif filename in ELECTRON_RENDERER_FILES:
-            entrypoints.append(Entrypoint(
-                symbol_id=sym.id,
-                kind=EntrypointKind.ELECTRON_RENDERER,
-                confidence=0.80,
-                label="Electron renderer",
             ))
 
     return entrypoints
