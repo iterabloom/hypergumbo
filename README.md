@@ -95,4 +95,7 @@ pip install -e .[dev]
 pytest
 ```
 
-See [AGENTS.md](AGENTS.md) for development guidelines and [STATUS.md](STATUS.md) for implementation progress.
+All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
+(`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
+
+See [STATUS.md](STATUS.md) for implementation progress.
