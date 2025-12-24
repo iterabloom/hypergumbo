@@ -31,7 +31,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Python AST parser → IR emission | [x] | `analyze/py.py` |
 | Function/class detection | [x] | |
 | Call edges (intra-file) | [x] | |
-| Import edges (cross-file) | [x] | Includes relative imports |
+| Import edges (cross-file) | [x] | `from X import Y` and `import X` emitted as `imports` edges |
 | Method call detection (self.method) | [x] | |
 | Evidence-type-based confidence | [x] | `meta.evidence_type` on edges |
 | Provenance tracking (AnalysisRun) | [x] | `analysis_runs[]` in output |
@@ -53,7 +53,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal |
+| Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal; includes file-level imports |
 | Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron |
 | Feature generation with query specs | [x] | Stable feature IDs from query |
 | Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
