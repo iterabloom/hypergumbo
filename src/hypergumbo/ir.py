@@ -88,6 +88,7 @@ class Symbol:
     span: Span
     origin: str = ""
     origin_run_id: str = ""
+    origin_run_signature: Optional[str] = None
     stable_id: Optional[str] = None
     shape_id: Optional[str] = None
 
@@ -111,6 +112,7 @@ class Symbol:
             "span": self.span.to_dict(),
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
+            "origin_run_signature": self.origin_run_signature,
             "stable_id": self.stable_id,
             "shape_id": self.shape_id,
         }
@@ -140,6 +142,7 @@ class Edge:
     confidence: float = 0.85
     origin: str = ""
     origin_run_id: str = ""
+    origin_run_signature: Optional[str] = None
     evidence_type: str = "ast_call_direct"
 
     @classmethod
@@ -180,6 +183,7 @@ class Edge:
             "confidence": self.confidence,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
+            "origin_run_signature": self.origin_run_signature,
             "meta": {
                 "evidence_type": self.evidence_type,
             },
