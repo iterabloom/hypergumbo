@@ -42,19 +42,18 @@ hypergumbo . -t 2000  # include symbols and entry points
 pip install git+https://codeberg.org/iterabloom/hypergumbo.git
 ```
 
-For JavaScript/TypeScript analysis (requires tree-sitter):
+Optional extras for additional language support:
 ```bash
-pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
+pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"  # JS/TS/Svelte
+pip install "hypergumbo[php] @ git+https://codeberg.org/iterabloom/hypergumbo.git"         # PHP
+pip install "hypergumbo[c] @ git+https://codeberg.org/iterabloom/hypergumbo.git"           # C
+pip install "hypergumbo[java] @ git+https://codeberg.org/iterabloom/hypergumbo.git"        # Java
 ```
 
-For LLM-assisted plan generation (OpenRouter/OpenAI):
+For LLM-assisted plan generation:
 ```bash
-pip install "hypergumbo[llm-assist] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
-```
-
-For local LLM models via Simon Willison's llm package:
-```bash
-pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergumbo.git"
+pip install "hypergumbo[llm-assist] @ git+https://codeberg.org/iterabloom/hypergumbo.git"  # OpenRouter/OpenAI
+pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergumbo.git"   # local models via llm
 ```
 
 ## CLI Commands
@@ -81,7 +80,8 @@ hypergumbo export-capsule    # export shareable capsule tarball
 
 **Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
 - **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
-- **Edges**: Call and import relationships between symbols
+- **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
+- **Cross-language edges**: JNI bridges (Java↔C), IPC channels (Electron, Web Workers)
 
 **LLM-assisted init** (`hypergumbo init --assistant llm`) uses an LLM to generate
 a customized analysis plan based on your repo's profile. Supports:
@@ -95,10 +95,23 @@ Falls back to template-based generation if LLM is unavailable or fails.
 
 | Language | Parser | Symbols | Edges |
 |----------|--------|---------|-------|
-| Python | AST | function, class | calls, imports |
-| JavaScript | tree-sitter | function, class, method | calls, imports |
-| TypeScript | tree-sitter | function, class, interface, type, enum | calls, imports |
+| Python | AST | function, class, method | calls, imports, instantiates |
+| JavaScript | tree-sitter | function, class, method | calls, imports, instantiates |
+| TypeScript | tree-sitter | function, class, method, interface, type, enum | calls, imports, instantiates |
+| Svelte | tree-sitter | function, class, method | calls, imports, instantiates |
+| PHP | tree-sitter | function, class, method | calls, instantiates |
+| C | tree-sitter | function, struct, enum, typedef | calls |
+| Java | tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates |
 | HTML | regex | file | script_src |
+
+### Cross-Language Linkers
+
+Linkers run automatically during `hypergumbo run` to connect symbols across language boundaries:
+
+| Linker | Edge Type | Description |
+|--------|-----------|-------------|
+| JNI | native_bridge | Links Java `native` methods to C JNI implementations (`Java_Package_Class_Method`) |
+| IPC | message_send, message_receive | Detects Electron IPC (`ipcRenderer`/`ipcMain`), Web Workers, `postMessage` patterns |
 
 ## Development
 
