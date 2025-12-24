@@ -35,9 +35,11 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[javascript]` (optional JS/TS/Svelte support via tree-sitter)
 * `pip install hypergumbo[php]` (optional PHP support via tree-sitter)
+* `pip install hypergumbo[c]` (optional C support via tree-sitter)
+* `pip install hypergumbo[java]` (optional Java support via tree-sitter)
 * `pip install hypergumbo[llm-assist]` (optional OpenAI/OpenRouter support for plan generation)
 * `pip install hypergumbo[llm-local]` (optional local LLM support via llm package)
-* `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` / `hypergumbo-pack-java` (future language packs)
+* `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` (future language packs)
 
 ### Commands
 **`hypergumbo [path] [-t tokens]`** (default mode)
@@ -127,6 +129,8 @@ Initialization may use language detection; **analysis execution requires no netw
 * **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
 * **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
 * **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
+* **C** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[c]`)
+* **Java** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[java]`)
 * **HTML** (script tag/linking edges only; always available, limited to pattern matching)
 > The analyzer is "best-effort, explicitly limited," but produces consistent structures.
 
@@ -134,9 +138,11 @@ Initialization may use language detection; **analysis execution requires no netw
 * **Core package**: Python + HTML (AST + regex only, zero compilation)
 * **JavaScript extra**: `pip install hypergumbo[javascript]` adds tree-sitter runtime + JS/TS/Svelte grammar (pre-built wheels for Linux x64, macOS arm64/x64, Windows x64)
 * **PHP extra**: `pip install hypergumbo[php]` adds tree-sitter PHP grammar
+* **C extra**: `pip install hypergumbo[c]` adds tree-sitter C grammar
+* **Java extra**: `pip install hypergumbo[java]` adds tree-sitter Java grammar
 * Core includes Python/HTML analyzers.
-* Optional: tree-sitter runtime for JS/TS/Svelte and PHP.
-* Optional: installable **language packs** for future languages (e.g., `pip install hypergumbo-pack-go`, `hypergumbo-pack-rust`, `hypergumbo-pack-java`). Language packs are data-only packages containing queries + metadata with minimal code.
+* Optional: tree-sitter runtime for JS/TS/Svelte, PHP, C, and Java.
+* Optional: installable **language packs** for future languages (e.g., `pip install hypergumbo-pack-go`, `hypergumbo-pack-rust`). Language packs are data-only packages containing queries + metadata with minimal code.
 * Fallback: if extras/packs aren't installed, those languages are skipped with explicit limits.
 * **Fallback**: If extras unavailable, analysis uses only core languages (Python/HTML); other files logged in `limits.skipped_languages[]`
 ### De-risking strategy
@@ -164,7 +170,11 @@ Initialization may use language detection; **analysis execution requires no netw
 * `hypergumbo/analyze/py.py` — Python AST parser
 * `hypergumbo/analyze/js_ts.py` — JS/TS/Svelte parser via tree-sitter
 * `hypergumbo/analyze/php.py` — PHP parser via tree-sitter
+* `hypergumbo/analyze/c.py` — C parser via tree-sitter
+* `hypergumbo/analyze/java.py` — Java parser via tree-sitter
 * `hypergumbo/analyze/html.py` — HTML script tag parser
+* `hypergumbo/linkers/jni.py` — JNI boundary detection (Java↔C)
+* `hypergumbo/linkers/ipc.py` — IPC message channel detection
 
 ### Runner interface (execution by capsule format)
 hypergumbo executes capsules through a runner abstraction selected by `capsule.json.format`.
@@ -309,11 +319,17 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-**MVP ships 4 passes:**
+**MVP ships 6 language passes:**
 * `python-ast-v1` — Python AST parser
 * `javascript-ts-v1` — Tree-sitter JS/TS/Svelte (optional)
 * `php-ts-v1` — Tree-sitter PHP (optional)
+* `c-ts-v1` — Tree-sitter C (optional)
+* `java-ts-v1` — Tree-sitter Java (optional)
 * `html-pattern-v1` — HTML script tag parser
+
+**MVP ships 2 cross-language linkers:**
+* `jni-linker-v1` — Java↔C native method matching
+* `ipc-linker-v1` — Message channel matching (Electron, WebSocket, custom protocols)
 
 **Design principle:** Future language expansion happens via **packs** (installable packages like `hypergumbo-pack-go`).
 
@@ -812,6 +828,12 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
 * `defines` — definition relationship
 * `renders` — template rendering
 * `loads_script` — script tag src
+* `implements` — class implements interface (Java, TypeScript)
+* `extends` — class extends base class
+* `native_bridge` — Java native method → C implementation (JNI)
+* `message_send` — sends IPC/protocol message
+* `message_receive` — handles IPC/protocol message
+* `instantiates` — class instantiation (constructor call)
 * `manual` — user-annotated
 
 ### features[] — named slices
@@ -1059,6 +1081,144 @@ def calculate_evidence_confidence(
   * Nodes: `(language, path, start_line, name)`
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
+
+## 8.5) Cross-Language Edge Detection (MVP)
+
+Spec A provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
+
+### JNI Boundary Detection (Java ↔ C)
+
+Detects native method declarations in Java and matches them to C implementations via naming conventions.
+
+**Java side detection:**
+```java
+public class GuacamoleSession {
+    public native void processFrame(byte[] data);
+}
+```
+
+**C side detection (matched by naming convention):**
+```c
+JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
+    JNIEnv *env, jobject obj, jbyteArray data)
+```
+
+**Detection rules:**
+1. Find Java methods with `native` modifier
+2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
+3. Emit `native_bridge` edge from Java method → C function
+
+**Confidence scoring:**
+* Pattern-matched (naming convention): 0.80
+* Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
+
+**Limitations:**
+* Does not resolve JNI calls through reflection
+* Does not track `JNI_OnLoad` dynamic registration
+* Does not handle inner classes (mangling includes `$`)
+* Logs unmatched natives in `limits.unresolved_jni[]`
+
+### IPC/Message Channel Detection
+
+Detects message send/receive patterns across process boundaries using string literal matching on channel/event names.
+
+**Supported patterns:**
+
+| Framework | Send Pattern | Receive Pattern | Evidence Type |
+|-----------|-------------|-----------------|---------------|
+| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
+| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
+| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
+| Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
+| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
+
+**Detection algorithm:**
+1. Parse AST for known send/receive function patterns
+2. Extract channel/event name from string literal argument
+3. Build index of all senders and receivers by channel name
+4. Match senders to receivers with same channel name
+5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
+
+**Confidence scoring:**
+* String literal channel name match: 0.85
+* Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
+* Template literal with interpolation: 0.40 (partial match)
+* Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
+
+**Limitations:**
+* Dynamic channel names require annotation hints
+* Complex message routing (middleware, proxies) not traced
+* Does not validate message schema compatibility
+* Logs unmatched patterns in `limits.unresolved_ipc[]`
+
+### HTTP Endpoint Detection (Server-side only)
+
+Detects HTTP route definitions for entrypoint detection. Full client→server linking is deferred to Spec B1.
+
+**Supported frameworks:**
+
+| Framework | Pattern | Example |
+|-----------|---------|---------|
+| FastAPI | `@app.get("/path")` | `@app.get("/users/{id}")` |
+| Flask | `@app.route("/path")` | `@app.route("/login", methods=["POST"])` |
+| Express | `app.get("/path", handler)` | `router.post("/api/users", createUser)` |
+| Java Servlet | `@WebServlet("/path")` | `@WebServlet("/api/session")` |
+| JAX-RS | `@Path("/path")` | `@GET @Path("/users/{id}")` |
+| Spring MVC | `@RequestMapping("/path")` | `@PostMapping("/api/login")` |
+
+**Detection output:**
+* Symbol kind: `route` or `endpoint`
+* Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
+* Used by entrypoint detection for slicing
+
+**Client-side linking (NOT in MVP):**
+Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is deferred to Spec B1 HTTP linker.
+
+### Language-Specific Detection Notes
+
+**C analyzer detects:**
+* Functions, structs, typedefs, enums
+* Function calls (direct calls only, not function pointers)
+* `#include` edges (file → file)
+* JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming)
+* Macro definitions (as symbols, not expanded)
+
+**Java analyzer detects:**
+* Classes, interfaces, enums, annotations
+* Methods, constructors, fields
+* `implements` edges (class → interface)
+* `extends` edges (class → superclass, interface → superinterface)
+* `native` method declarations (for JNI linking)
+* Annotation detection (`@Override`, `@Deprecated`, servlet/JAX-RS annotations)
+* `instantiates` edges (constructor calls)
+
+### limits.cross_language — tracking unresolved links
+
+Cross-language linkers log unresolved patterns for debugging:
+
+```json
+{
+  "limits": {
+    "cross_language": {
+      "unresolved_jni": [
+        {
+          "java_method": "com.example.Native.processData",
+          "expected_c_name": "Java_com_example_Native_processData",
+          "reason": "no_matching_c_function"
+        }
+      ],
+      "unresolved_ipc": [
+        {
+          "channel": "user.login",
+          "senders": ["src/client/auth.js:45"],
+          "receivers": [],
+          "reason": "no_receiver_found"
+        }
+      ]
+    }
+  }
+}
+```
 
 ## 9) Testing & quality bar
 
