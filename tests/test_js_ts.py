@@ -367,6 +367,46 @@ const x = require(name);
         func_symbols = [s for s in result.symbols if s.kind == "function"]
         assert len(func_symbols) >= 1
 
+    def test_exports_class_declaration(self, tmp_path: Path) -> None:
+        """Handles export class syntax."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text("export class ApiClient { fetch() { return 1; } }")
+
+        result = analyze_javascript(tmp_path)
+
+        class_symbols = [s for s in result.symbols if s.kind == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0].name == "ApiClient"
+
+    def test_typescript_exports_class(self, tmp_path: Path) -> None:
+        """Handles TypeScript export class syntax."""
+        pytest.importorskip("tree_sitter_typescript")
+
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        code = """
+export class ApiClient {
+  private config: string;
+
+  constructor(config: string) {
+    this.config = config;
+  }
+
+  async fetchUser(id: number): Promise<any> {
+    return fetch(this.config + '/users/' + id);
+  }
+}
+"""
+        (tmp_path / "api.ts").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        class_symbols = [s for s in result.symbols if s.kind == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0].name == "ApiClient"
+        assert class_symbols[0].language == "typescript"
+
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Handles empty directories gracefully."""
         from hypergumbo.analyze.js_ts import analyze_javascript
@@ -588,6 +628,23 @@ class TestMockedTreeSitter:
         name = _find_name_in_children(node, source)
 
         assert name is None
+
+    def test_find_name_in_children_type_identifier(self) -> None:
+        """Finds type_identifier for TypeScript classes."""
+        from hypergumbo.analyze.js_ts import _find_name_in_children
+
+        type_id_child = MagicMock()
+        type_id_child.type = "type_identifier"
+        type_id_child.start_byte = 0
+        type_id_child.end_byte = 9
+
+        node = MagicMock()
+        node.children = [type_id_child]
+
+        source = b"ApiClient"
+        name = _find_name_in_children(node, source)
+
+        assert name == "ApiClient"
 
     def test_get_language_for_file(self, tmp_path: Path) -> None:
         """Tests language detection based on file extension."""
