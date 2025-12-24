@@ -270,3 +270,18 @@ def test_edge_to_dict_includes_new_fields() -> None:
     assert "quality" in d
     assert "evidence_lang" in d["meta"]
     assert "evidence_spans" in d["meta"]
+
+
+def test_edge_with_custom_meta() -> None:
+    """Edge.to_dict should merge custom meta fields."""
+    edge = Edge.create(
+        src="ipc:sender.ts:10:send:my-channel",
+        dst="ipc:receiver.ts:20:receive:my-channel",
+        edge_type="message_send",
+        line=10,
+    )
+    edge.meta = {"channel": "my-channel"}
+    d = edge.to_dict()
+
+    assert d["meta"]["evidence_type"] == "ast_call_direct"
+    assert d["meta"]["channel"] == "my-channel"
