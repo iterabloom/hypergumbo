@@ -164,6 +164,12 @@ def get_default_catalog() -> Catalog:
                 availability="extra",
                 requires="hypergumbo[java]",
             ),
+            Pass(
+                id="elixir-ts-v1",
+                description="Elixir via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[elixir]",
+            ),
         ],
         packs=[
             Pack(
@@ -175,6 +181,11 @@ def get_default_catalog() -> Catalog:
                 id="electron-app",
                 description="Main/renderer split + IPC detection",
                 passes=["javascript-ts-v1", "html-pattern-v1"],
+            ),
+            Pack(
+                id="phoenix-app",
+                description="Phoenix channels + routes + LiveView",
+                passes=["elixir-ts-v1", "html-pattern-v1"],
             ),
         ],
     )
