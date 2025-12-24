@@ -38,8 +38,12 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 * `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` / `hypergumbo-pack-java` (optional language packs)
 
 ### Commands
+**`hypergumbo [path] [-t tokens]`** (default mode)
+Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
+* If no subcommand is given, assumes sketch mode.
+* `-t N` limits output to approximately N tokens.
 
-* `hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`
+** `hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
 Creates `hypergumbo_capsule/` containing:
 * `capsule.json` (manifest: format version, requirements, capabilities, security defaults)
 * `capsule_plan.json` (validated composition plan)
@@ -266,6 +270,7 @@ def authenticate(username: str, password: str) -> User:
   - Purpose: Cache invalidation, provenance tracking
 Public outputs are **compiled views** from this IR:
 * `behavior_map.json` (v0.1 default)
+* `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
 * Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
@@ -880,6 +885,39 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
   - `"Resource limit: Memory usage exceeded 2GB"`
   - `"Critical error: catalog.json could not be loaded"`
   - `"User interrupted: Ctrl-C received"`
+
+### sketch — Human/LLM-readable summary
+
+Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces.
+
+**Contents (in priority order for truncation):**
+1. Header: repo name, language breakdown, LOC estimate (always included)
+2. Entry points: detected routes, CLI mains, etc.
+3. Structure: top-level directory overview
+4. Build: detected build system (CMake, npm, etc.)
+5. Dependencies: key frameworks
+
+**Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections.
+
+**Example:**
+```markdown
+# minetest-wasm
+
+## Overview
+C++ (82%), Lua (12%), CMake (6%) · 847 files · ~120k LOC
+
+## Entry Points
+- `src/main.cpp:main()` — Application entry
+- `src/client/client.cpp:Client::Client()` — Client initialization
+
+## Structure
+- `src/` — Core source
+- `builtin/` — Lua built-ins
+- `games/` — Game content
+
+## Build
+CMake, Emscripten
+```
 
 ## 7) Slicing behavior (MVP)
 
