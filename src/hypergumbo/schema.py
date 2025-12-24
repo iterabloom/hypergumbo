@@ -1,3 +1,29 @@
+"""Schema versioning and behavior map factory.
+
+This module defines the output schema version and provides a factory
+for creating empty behavior map structures with all required fields.
+
+How It Works
+------------
+The behavior map is the primary output format for hypergumbo analysis.
+This module defines several versioned schemes:
+
+- **schema_version**: Overall format version (breaking changes increment minor)
+- **confidence_model**: How confidence scores are computed
+- **stable_id_scheme**: How stable_id hashes are generated
+- **shape_id_scheme**: How shape_id (structure) hashes are generated
+- **repo_fingerprint_scheme**: How repo state is fingerprinted for caching
+
+new_behavior_map() returns an empty structure with all top-level fields
+initialized, ensuring consistent output even for empty analyses.
+
+Why This Design
+---------------
+- Explicit versioning enables consumers to detect format changes
+- Scheme identifiers let consumers know how to interpret computed IDs
+- Factory function ensures all required fields are present
+- Separating schema from IR keeps output format concerns isolated
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone

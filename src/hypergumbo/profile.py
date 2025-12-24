@@ -1,4 +1,31 @@
-"""Repo profile detection - language and framework heuristics."""
+"""Repo profile detection - language and framework heuristics.
+
+This module provides fast, heuristic-based detection of programming
+languages and frameworks in a repository, without requiring full parsing.
+
+How It Works
+------------
+Language detection scans file extensions using the discovery module:
+- Counts files matching each language's extension patterns
+- Tallies lines of code (LOC) for each detected language
+- Returns a RepoProfile with language statistics
+
+Framework detection examines dependency manifests:
+- Python: pyproject.toml, requirements.txt, setup.py, Pipfile
+- JavaScript: package.json dependencies and devDependencies
+
+Detection is intentionally shallow - we look for package names in
+dependency files rather than analyzing imports. This keeps profiling
+fast (milliseconds) even for large repos.
+
+Why This Design
+---------------
+- Extension-based language detection is simple and reliable
+- Dependency file scanning catches frameworks even in empty repos
+- Shallow heuristics prioritize speed over precision
+- The profile informs which analyzers to run and what to expect
+- Results are used by sketch generation for the language breakdown
+"""
 import json
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -1,3 +1,35 @@
+"""Command-line interface for hypergumbo.
+
+This module provides the main entry point for the hypergumbo CLI, handling
+argument parsing and dispatching to the appropriate command handlers.
+
+How It Works
+------------
+The CLI uses argparse with subcommands for different operations:
+
+- **sketch** (default): Generate token-budgeted Markdown overview
+- **init**: Create .hypergumbo/ capsule with analysis plan
+- **run**: Execute full analysis and output behavior map JSON
+- **slice**: Extract subgraph from an entry point
+- **catalog**: List available analysis passes and packs
+- **export-capsule**: Export capsule as shareable tarball
+
+When no subcommand is given, sketch mode is assumed. This makes the
+common case (`hypergumbo .`) as simple as possible.
+
+The `run` command orchestrates all language analyzers and cross-language
+linkers, collecting their results into a unified behavior map. Analyzers
+run in sequence: Python, HTML, JS/TS, PHP, C, Java. Linkers (JNI, IPC)
+run after all analyzers complete to create cross-language edges.
+
+Why This Design
+---------------
+- Subcommand dispatch keeps each operation isolated and testable
+- Default sketch mode optimizes for the common "quick overview" use case
+- run_behavior_map() is separate from cmd_run() for testability
+- Helper functions (_node_from_dict, _edge_from_dict) enable slice
+  to work with previously-generated JSON files
+"""
 import argparse
 import json
 import sys
