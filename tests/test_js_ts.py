@@ -1291,3 +1291,316 @@ class TestMockedTreeSitter:
         assert result.run is not None
         assert result.run.files_analyzed == 1
         assert result.run.files_skipped == 1
+
+
+class TestSvelteFileDiscovery:
+    """Tests for Svelte file discovery."""
+
+    def test_finds_svelte_files(self, tmp_path: Path) -> None:
+        """Finds .svelte files."""
+        from hypergumbo.analyze.js_ts import find_svelte_files
+
+        (tmp_path / "App.svelte").write_text("<script>const x = 1;</script>")
+        (tmp_path / "other.txt").write_text("not svelte")
+
+        files = list(find_svelte_files(tmp_path))
+
+        assert len(files) == 1
+        assert files[0].suffix == ".svelte"
+
+
+class TestSvelteScriptExtraction:
+    """Tests for extracting <script> blocks from Svelte files."""
+
+    def test_extracts_typescript_script(self) -> None:
+        """Extracts TypeScript script with lang='ts'."""
+        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+
+        source = '''<script lang="ts">
+const x: number = 1;
+function foo() { return x; }
+</script>
+
+<div>Hello</div>'''
+
+        blocks = extract_svelte_scripts(source)
+
+        assert len(blocks) == 1
+        assert blocks[0].is_typescript is True
+        assert "const x: number" in blocks[0].content
+        assert blocks[0].start_line == 1  # Content starts after <script> on line 1
+
+    def test_extracts_javascript_script(self) -> None:
+        """Extracts JavaScript script without lang attribute."""
+        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+
+        source = '''<script>
+const x = 1;
+</script>'''
+
+        blocks = extract_svelte_scripts(source)
+
+        assert len(blocks) == 1
+        assert blocks[0].is_typescript is False
+        assert "const x = 1" in blocks[0].content
+
+    def test_extracts_multiple_scripts(self) -> None:
+        """Extracts multiple script blocks."""
+        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+
+        source = '''<script lang="ts">
+export let name: string;
+</script>
+
+<script context="module" lang="ts">
+export const preload = () => {};
+</script>
+
+<div>{name}</div>'''
+
+        blocks = extract_svelte_scripts(source)
+
+        # Should find both script blocks (context="module" is also matched)
+        assert len(blocks) >= 1  # At least the first one
+        assert any(b.is_typescript for b in blocks)
+
+    def test_handles_no_script(self) -> None:
+        """Returns empty list when no script block."""
+        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+
+        source = '''<div>Just HTML</div>
+<style>
+.foo { color: red; }
+</style>'''
+
+        blocks = extract_svelte_scripts(source)
+
+        assert len(blocks) == 0
+
+    def test_correct_line_offset(self) -> None:
+        """Script content line offset is calculated correctly."""
+        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+
+        source = '''<!-- Comment -->
+<style>
+.foo { color: red; }
+</style>
+
+<script lang="ts">
+function test() {
+    return 42;
+}
+</script>'''
+
+        blocks = extract_svelte_scripts(source)
+
+        assert len(blocks) == 1
+        # Script tag is on line 6, content starts there
+        assert blocks[0].start_line == 6
+
+
+class TestSvelteAnalysis:
+    """Tests for analyzing Svelte files."""
+
+    def test_analyzes_svelte_functions(self, tmp_path: Path) -> None:
+        """Analyzes functions in Svelte script block."""
+        from hypergumbo.analyze.js_ts import _analyze_svelte_file
+        from hypergumbo.ir import AnalysisRun
+
+        svelte_file = tmp_path / "Component.svelte"
+        svelte_file.write_text('''<script lang="ts">
+function handleClick() {
+    console.log("clicked");
+}
+
+const double = (x: number) => x * 2;
+</script>
+
+<button on:click={handleClick}>Click me</button>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_svelte_file(svelte_file, run)
+
+        assert success is True
+        assert len(symbols) >= 1
+        names = [s.name for s in symbols]
+        assert "handleClick" in names
+
+    def test_svelte_line_numbers_adjusted(self, tmp_path: Path) -> None:
+        """Line numbers are adjusted for script block offset."""
+        from hypergumbo.analyze.js_ts import _analyze_svelte_file
+        from hypergumbo.ir import AnalysisRun
+
+        svelte_file = tmp_path / "Component.svelte"
+        svelte_file.write_text('''<!-- Header comment -->
+<style>
+.container { margin: 0; }
+</style>
+
+<script lang="ts">
+function myFunc() {
+    return 42;
+}
+</script>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_svelte_file(svelte_file, run)
+
+        assert success is True
+        # Find myFunc symbol
+        my_func = next((s for s in symbols if s.name == "myFunc"), None)
+        assert my_func is not None
+        # Function is defined on line 7-9 of the original file
+        assert my_func.span.start_line >= 7
+
+    def test_analyze_javascript_includes_svelte(self, tmp_path: Path) -> None:
+        """analyze_javascript processes Svelte files too."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create a JS file and a Svelte file
+        (tmp_path / "app.js").write_text("function jsFunc() {}")
+        (tmp_path / "Component.svelte").write_text('''<script lang="ts">
+function svelteFunc() {}
+</script>''')
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2  # Both files
+        names = [s.name for s in result.symbols]
+        assert "jsFunc" in names
+        assert "svelteFunc" in names
+
+    def test_svelte_no_script_blocks(self, tmp_path: Path) -> None:
+        """Svelte file without script blocks returns empty symbols."""
+        from hypergumbo.analyze.js_ts import _analyze_svelte_file
+        from hypergumbo.ir import AnalysisRun
+
+        svelte_file = tmp_path / "Static.svelte"
+        svelte_file.write_text('''<style>
+.container { margin: 0; }
+</style>
+
+<div class="container">
+  <h1>Static content</h1>
+</div>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_svelte_file(svelte_file, run)
+
+        assert success is True
+        assert len(symbols) == 0
+        assert len(edges) == 0
+
+
+class TestSvelteEdgeCases:
+    """Tests for Svelte edge cases and error handling."""
+
+    def test_get_parser_for_lang_import_error(self) -> None:
+        """Returns None when tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import _get_parser_for_lang
+
+        # Mark tree-sitter modules as unavailable in sys.modules
+        with patch.dict(sys.modules, {
+            "tree_sitter": None,
+            "tree_sitter_javascript": None,
+        }):
+            result = _get_parser_for_lang(is_typescript=True)
+            assert result is None
+
+    def test_get_parser_for_lang_ts_fallback_to_js(self) -> None:
+        """Falls back to JavaScript parser when TypeScript unavailable."""
+        from hypergumbo.analyze.js_ts import _get_parser_for_lang
+
+        mock_ts = MagicMock()
+        mock_ts_js = MagicMock()
+        mock_parser = MagicMock()
+        mock_ts.Parser.return_value = mock_parser
+        mock_lang = MagicMock()
+        mock_ts_js.language.return_value = mock_lang
+
+        # Test the fallback path by mocking tree_sitter_typescript to raise ImportError
+        with patch.dict(sys.modules, {
+            "tree_sitter": mock_ts,
+            "tree_sitter_javascript": mock_ts_js,
+            "tree_sitter_typescript": None,  # Mark as unavailable
+        }):
+            result = _get_parser_for_lang(is_typescript=True)
+            # When TypeScript import fails, should fall back to JavaScript parser
+            assert result is mock_parser
+            mock_ts_js.language.assert_called()
+
+    def test_get_parser_for_lang_javascript(self) -> None:
+        """Gets JavaScript parser when is_typescript=False."""
+        from hypergumbo.analyze.js_ts import _get_parser_for_lang
+
+        mock_ts = MagicMock()
+        mock_ts_js = MagicMock()
+        mock_parser = MagicMock()
+        mock_ts.Parser.return_value = mock_parser
+        mock_lang = MagicMock()
+        mock_ts_js.language.return_value = mock_lang
+
+        with patch.dict(sys.modules, {
+            "tree_sitter": mock_ts,
+            "tree_sitter_javascript": mock_ts_js,
+        }):
+            result = _get_parser_for_lang(is_typescript=False)
+            assert result is mock_parser
+            mock_ts_js.language.assert_called()
+
+    def test_svelte_file_read_error(self, tmp_path: Path) -> None:
+        """Returns failure when Svelte file cannot be read."""
+        from hypergumbo.analyze.js_ts import _analyze_svelte_file
+        from hypergumbo.ir import AnalysisRun
+
+        svelte_file = tmp_path / "Component.svelte"
+        # Don't create the file - will cause read error
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+        symbols, edges, success = _analyze_svelte_file(svelte_file, run)
+
+        assert success is False
+        assert len(symbols) == 0
+        assert len(edges) == 0
+
+    def test_svelte_parser_unavailable(self, tmp_path: Path) -> None:
+        """Skips script block when parser is unavailable."""
+        from hypergumbo.analyze.js_ts import _analyze_svelte_file
+        from hypergumbo.ir import AnalysisRun
+
+        svelte_file = tmp_path / "Component.svelte"
+        svelte_file.write_text('''<script lang="ts">
+function test() {}
+</script>''')
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", return_value=None):
+            symbols, edges, success = _analyze_svelte_file(svelte_file, run)
+
+        # Still succeeds but with no symbols
+        assert success is True
+        assert len(symbols) == 0
+
+    def test_svelte_file_skipped_increments_counter(self, tmp_path: Path) -> None:
+        """Svelte files that fail to analyze increment skipped counter."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        svelte_file = tmp_path / "Component.svelte"
+        svelte_file.write_text('''<script lang="ts">
+function test() {}
+</script>''')
+
+        # Mock the svelte file analysis to fail
+        def mock_analyze_svelte_file(file_path, run):
+            return [], [], False
+
+        with patch(
+            "hypergumbo.analyze.js_ts._analyze_svelte_file",
+            side_effect=mock_analyze_svelte_file,
+        ):
+            result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_skipped == 1

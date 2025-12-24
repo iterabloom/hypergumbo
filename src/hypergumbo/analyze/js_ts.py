@@ -1,6 +1,6 @@
-"""JavaScript/TypeScript analysis pass using tree-sitter.
+"""JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
 
-This analyzer uses tree-sitter to parse JS/TS files and extract:
+This analyzer uses tree-sitter to parse JS/TS/Svelte files and extract:
 - Function and class declarations (symbols)
 - Import/require statements (edges)
 - Function call relationships (edges)
@@ -14,20 +14,29 @@ How It Works
 2. If not available, return empty result with skip reason
 3. If available, parse each file and extract symbols/edges
 4. Use tree-sitter queries to identify relevant nodes
+5. For Svelte files, extract <script> blocks and parse as TS/JS
+
+Svelte Support
+--------------
+Svelte files contain <script> blocks with TypeScript or JavaScript.
+We extract these blocks, preserving line numbers for accurate spans,
+and analyze them using the appropriate tree-sitter grammar.
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Graceful degradation ensures CLI still works without tree-sitter
 - Tree-sitter provides accurate parsing even for complex syntax
+- Svelte support reuses existing TS/JS parsing infrastructure
 """
 from __future__ import annotations
 
 import importlib.util
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
@@ -42,6 +51,65 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_js_ts_files(repo_root: Path) -> Iterator[Path]:
     """Yield all JS/TS files in the repository, excluding common non-source dirs."""
     yield from find_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx"])
+
+
+def find_svelte_files(repo_root: Path) -> Iterator[Path]:
+    """Yield all Svelte files in the repository."""
+    yield from find_files(repo_root, ["*.svelte"])
+
+
+# Regex to extract <script> blocks from Svelte files
+# Captures: lang attribute (if present) and script content
+_SVELTE_SCRIPT_RE = re.compile(
+    r'<script(?:\s+lang=["\']?(ts|typescript)["\']?)?[^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+@dataclass
+class SvelteScriptBlock:
+    """Extracted script block from a Svelte file."""
+
+    content: str
+    start_line: int  # 1-indexed line where script content starts
+    is_typescript: bool
+
+
+def extract_svelte_scripts(source: str) -> list[SvelteScriptBlock]:
+    """Extract <script> blocks from Svelte file content.
+
+    Returns list of script blocks with their content and line offsets.
+    Handles both TypeScript (lang="ts") and JavaScript scripts.
+    """
+    blocks: list[SvelteScriptBlock] = []
+    lines = source.split("\n")
+
+    # Find all script tags with their positions
+    for match in _SVELTE_SCRIPT_RE.finditer(source):
+        lang = match.group(1)
+        content = match.group(2)
+        is_ts = lang is not None and lang.lower() in ("ts", "typescript")
+
+        # Calculate line number where content starts
+        # Count newlines before the match start
+        prefix = source[: match.start()]
+        tag_start_line = prefix.count("\n") + 1
+
+        # Find where the actual content starts (after the opening tag)
+        tag_text = match.group(0)
+        opening_tag_end = tag_text.find(">") + 1
+        opening_tag_lines = tag_text[:opening_tag_end].count("\n")
+        content_start_line = tag_start_line + opening_tag_lines
+
+        blocks.append(
+            SvelteScriptBlock(
+                content=content,
+                start_line=content_start_line,
+                is_typescript=is_ts,
+            )
+        )
+
+    return blocks
 
 
 def is_tree_sitter_available() -> bool:
@@ -495,8 +563,93 @@ def _analyze_file(
     return symbols, edges, True
 
 
+def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
+    """Get tree-sitter parser for TypeScript or JavaScript."""
+    try:
+        import tree_sitter
+        import tree_sitter_javascript
+    except ImportError:
+        return None
+
+    parser = tree_sitter.Parser()
+
+    if is_typescript:
+        try:
+            import tree_sitter_typescript
+
+            lang_ptr = tree_sitter_typescript.language_typescript()
+            parser.language = tree_sitter.Language(lang_ptr)
+            return parser
+        except ImportError:
+            # Fall back to JavaScript parser
+            parser.language = tree_sitter.Language(tree_sitter_javascript.language())
+            return parser
+    else:
+        parser.language = tree_sitter.Language(tree_sitter_javascript.language())
+        return parser
+
+
+def _analyze_svelte_file(
+    file_path: Path,
+    run: AnalysisRun,
+) -> tuple[list[Symbol], list[Edge], bool]:
+    """Analyze a Svelte file by extracting and parsing <script> blocks.
+
+    Returns (symbols, edges, success).
+    """
+    try:
+        source_text = file_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, IOError):
+        return [], [], False
+
+    script_blocks = extract_svelte_scripts(source_text)
+    if not script_blocks:
+        # No script blocks found - not an error, just empty
+        return [], [], True
+
+    all_symbols: list[Symbol] = []
+    all_edges: list[Edge] = []
+
+    for block in script_blocks:
+        parser = _get_parser_for_lang(block.is_typescript)
+        if parser is None:
+            continue
+
+        source_bytes = block.content.encode("utf-8")
+        tree = parser.parse(source_bytes)
+
+        lang = "typescript" if block.is_typescript else "javascript"
+        symbols, edges = _extract_symbols_and_edges(
+            tree, source_bytes, file_path, lang, run
+        )
+
+        # Adjust line numbers to account for script block offset
+        line_offset = block.start_line - 1  # Convert to 0-indexed offset
+        for sym in symbols:
+            sym.span = Span(
+                start_line=sym.span.start_line + line_offset,
+                end_line=sym.span.end_line + line_offset,
+                start_col=sym.span.start_col,
+                end_col=sym.span.end_col,
+            )
+            # Regenerate ID with correct line numbers
+            sym.id = _make_symbol_id(
+                str(file_path),
+                sym.span.start_line,
+                sym.span.end_line,
+                sym.name,
+                sym.kind,
+                lang,
+            )
+
+        all_symbols.extend(symbols)
+        all_edges.extend(edges)
+
+    return all_symbols, all_edges, True
+
+
 def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
-    """Analyze all JavaScript/TypeScript files in a repository.
+    """Analyze all JavaScript/TypeScript/Svelte files in a repository.
 
     Returns a JsAnalysisResult with symbols, edges, and provenance.
     If tree-sitter is not available, returns empty result with skip info.
@@ -520,8 +673,19 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
     files_analyzed = 0
     files_skipped = 0
 
+    # Analyze JS/TS files
     for file_path in find_js_ts_files(repo_root):
         symbols, edges, success = _analyze_file(file_path, run)
+        if success:
+            files_analyzed += 1
+            all_symbols.extend(symbols)
+            all_edges.extend(edges)
+        else:
+            files_skipped += 1
+
+    # Analyze Svelte files (extract and parse <script> blocks)
+    for file_path in find_svelte_files(repo_root):
+        symbols, edges, success = _analyze_svelte_file(file_path, run)
         if success:
             files_analyzed += 1
             all_symbols.extend(symbols)
