@@ -319,17 +319,23 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-**MVP ships 6 language passes:**
+**MVP ships 9 language passes:**
 * `python-ast-v1` — Python AST parser
-* `javascript-ts-v1` — Tree-sitter JS/TS/Svelte (optional)
+* `javascript-ts-v1` — Tree-sitter JS/TS/Svelte/Vue (optional)
 * `php-ts-v1` — Tree-sitter PHP (optional)
 * `c-ts-v1` — Tree-sitter C (optional)
 * `java-ts-v1` — Tree-sitter Java (optional)
+* `elixir-ts-v1` — Tree-sitter Elixir (optional)
+* `rust-ts-v1` — Tree-sitter Rust (optional)
 * `html-pattern-v1` — HTML script tag parser
 
 **MVP ships 2 cross-language linkers:**
 * `jni-linker-v1` — Java↔C native method matching
-* `ipc-linker-v1` — Message channel matching (Electron, WebSocket, custom protocols)
+* `ipc-linker-v1` — Message channel matching:
+  - Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`)
+  - Socket.io (`socket.emit`, `socket.on`, `io.emit`)
+  - Phoenix Channels (`broadcast!`, `push`, `handle_in`)
+  - Web Workers (`postMessage`, `onmessage`)
 
 **Design principle:** Future language expansion happens via **packs** (installable packages like `hypergumbo-pack-go`).
 

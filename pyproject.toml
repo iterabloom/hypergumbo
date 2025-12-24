@@ -41,6 +41,13 @@ java = [
   "tree-sitter>=0.21",
   "tree-sitter-java>=0.21",
 ]
+elixir = [
+  "tree-sitter-language-pack>=0.13",
+]
+rust = [
+  "tree-sitter>=0.21",
+  "tree-sitter-rust>=0.21",
+]
 llm-assist = [
   "openai>=1.0",
 ]
