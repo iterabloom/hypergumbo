@@ -1,8 +1,15 @@
 """LLM-assisted capsule plan generation.
 
+**Status: Proof-of-concept infrastructure.**
+
+With the current catalog size (6 passes, 2 packs), template-based generation
+produces equivalent results. This module exists to support future catalog
+expansion where LLM assistance will help navigate complex framework pack
+combinations and configuration options.
+
 Provides optional LLM integration for generating capsule plans from repo profiles.
 Supports multiple backends: OpenRouter (free tier), OpenAI, and local models via
-Simon Willison's llm package.
+the llm package (https://pypi.org/project/llm/).
 
 How It Works
 ------------
@@ -192,7 +199,7 @@ def detect_backend() -> Tuple[LLMBackend, LLMConfig]:
 
 
 def _is_llm_package_available() -> bool:
-    """Check if Simon Willison's llm package is installed and usable."""
+    """Check if the llm package is installed and usable."""
     try:
         import llm  # noqa: F401
 
