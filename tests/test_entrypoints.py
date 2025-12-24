@@ -133,9 +133,9 @@ class TestCLIEntrypoints:
 class TestElectronEntrypoints:
     """Tests for Electron app detection."""
 
-    def test_detect_main_js(self) -> None:
+    def test_detect_electron_js(self) -> None:
         """Detect Electron main process file."""
-        sym = make_symbol("createWindow", path="src/main.js", language="javascript")
+        sym = make_symbol("createWindow", path="src/electron.js", language="javascript")
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
@@ -151,14 +151,28 @@ class TestElectronEntrypoints:
 
         assert any(e.kind == EntrypointKind.ELECTRON_PRELOAD for e in entrypoints)
 
-    def test_detect_renderer_js(self) -> None:
-        """Detect Electron renderer process."""
+    def test_generic_renderer_not_matched(self) -> None:
+        """Generic renderer.js is NOT matched to avoid false positives."""
         sym = make_symbol("render", path="src/renderer.js", language="javascript")
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        assert any(e.kind == EntrypointKind.ELECTRON_RENDERER for e in entrypoints)
+        # Should not detect as Electron - too generic, causes false positives
+        assert not any(e.label.startswith("Electron") for e in entrypoints)
+
+    def test_one_entry_per_file(self) -> None:
+        """Multiple symbols in same Electron file produce only one entry."""
+        sym1 = make_symbol("createWindow", path="src/electron.js", language="javascript")
+        sym2 = make_symbol("setupMenu", path="src/electron.js", language="javascript")
+        sym3 = make_symbol("handleIPC", path="src/electron.js", language="javascript")
+        nodes = [sym1, sym2, sym3]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one Electron main entry, not three
+        electron_entries = [e for e in entrypoints if e.kind == EntrypointKind.ELECTRON_MAIN]
+        assert len(electron_entries) == 1
 
 
 class TestEntrypointResult:
