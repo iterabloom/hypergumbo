@@ -122,7 +122,13 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Svelte | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` blocks, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
 | PHP | [x] tree-sitter | function, class, method | calls, instantiates | Two-pass cross-file resolution. Detects `$this->method()`, `$obj->method()`, `ClassName::method()`, `new ClassName()`. Optional: `pip install hypergumbo[php]`. Excludes `vendor/` by default |
 | C | [x] tree-sitter | function, struct, enum, typedef | calls | Two-pass cross-file resolution. Detects function calls, JNI export patterns (`Java_ClassName_methodName`). Optional: `pip install hypergumbo[c]` |
-| Java | [x] tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `ClassName.method()`, inheritance, `new ClassName()`. Optional: `pip install hypergumbo[java]` |
+| Java | [x] tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `ClassName.method()`, inheritance, `new ClassName()`. Native method detection with `meta.is_native`. Optional: `pip install hypergumbo[java]` |
+
+## Cross-Language Linkers
+
+| Linker | Status | Edge Type | Description |
+|--------|--------|-----------|-------------|
+| JNI | [x] | native_bridge | Links Java native methods to C JNI implementations. Parses `Java_Package_Class_Method` naming convention. |
 
 ---
 
