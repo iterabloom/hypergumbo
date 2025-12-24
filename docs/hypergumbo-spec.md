@@ -1053,50 +1053,57 @@ def calculate_evidence_confidence(
 
 ## 9) Testing & quality bar
 
-### Golden fixtures
+### Test fixtures
 
-* Tiny mixed-language repos in `tests/fixtures/*`:
-  * `fastapi-simple/` — Python web API
-  * `electron-basic/` — Electron app (main + renderer)
-  * `react-express/` — JS frontend + backend
-  * `mixed-langs/` — Python + JS interop
+* Small controlled fixtures in `tests/fixtures/*` for property testing
+* Synthetic code samples with known structure (e.g., "3 functions" → expect 3 function nodes)
 
-### Regression test suite
+### Property-based testing (current approach)
 
-**Purpose:** Catch unintended behavior changes via deterministic output comparison.
+**Rationale:** Golden file testing assumes we know the "correct" output a priori. For complex real-world repos, this is infeasible—we can't manually verify every node and edge. Instead, we verify *invariants* that must hold regardless of the specific output.
 
-**Setup (Week 1):**
-1. For each fixture repo (`fastapi-simple/`, `electron-basic/`, etc.):
-   - Run `hypergumbo run --out tests/golden/{fixture_name}.json`
-   - Commit golden files to git
-   - Document expected node/edge counts in `tests/golden/README.md`
-2. Add CI check:
-   ```bash
-   # On every PR
-   pytest tests/test_regression.py --regenerate-if-needed
-   
-   # Test compares new output to golden files
-   # If different: Fails with diff output
-   # Developer must review: Bug or intended change?
-   ```
-
-**Update process:**
-1. If diff is a **bug**: Fix code, tests pass
-2. If diff is an **improvement**:
-   - Review diff carefully
-   - Update golden file: `pytest tests/test_regression.py --update-golden`
-   - Document in CHANGELOG.md: "Behavior change: [description]"
-   - Commit updated golden file
-
-**Coverage:**
-- All fixture repos (fastapi-simple, electron-basic, react-express, mixed-langs)
-- Various CLI flag combinations (`--max-hops`, `--exclude`, `--max-file-bytes`)
-- Error cases (malformed code, missing dependencies)
+**Invariants tested:**
+- Every edge's source/target references a valid node ID
+- Confidence scores are in range [0.0, 1.0]
+- Every symbol has a non-empty name
+- Output matches the JSON schema
+- Analysis completes without errors
+- Determinism: same input → same output
 
 **Benefits:**
-- Prevents silent behavior changes (e.g., "why did this edge disappear?")
-- Forces conscious decision when changing output
-- Enables safe refactoring
+- No need to know "correct" answer upfront
+- Tests remain valid as analysis improves
+- Catches structural bugs (dangling references, invalid values)
+
+### Future: Longitudinal analysis ("slow thinking")
+
+**Problem:** Property tests provide immediate pass/fail feedback ("fast thinking"). But some insights only emerge from patterns across many CI runs:
+- Did node count suddenly drop 40%? (regression)
+- Is edge detection improving over time? (progress)
+- How does analysis time scale with repo size? (performance)
+
+**Concept:** "Nonjudgmental fixtures"—run analysis on a real repo without asserting correctness, just observing metrics:
+
+```python
+def test_observatory(capsys):
+    """Emit metrics for longitudinal analysis. No assertions on correctness."""
+    result = analyze(Path("tests/fixtures/medium-repo"))
+    print(json.dumps({
+        "timestamp": datetime.utcnow().isoformat(),
+        "commit": os.environ.get("CI_COMMIT_SHA"),
+        "nodes": len(result.nodes),
+        "edges": len(result.edges),
+        "nodes_by_kind": dict(Counter(n.kind for n in result.nodes)),
+    }))
+    assert validate_schema(result)  # Only hard check: didn't crash, valid schema
+```
+
+**Infrastructure needed (not MVP):**
+- Persistent storage for metrics across CI runs
+- Aggregation/visualization tooling
+- Anomaly detection (alert on significant changes)
+
+This is a fundamentally different paradigm than pytest's immediate feedback. Defer to future work.
 
 ### Unit tests
 * Parsing to nodes/edges (per language)
