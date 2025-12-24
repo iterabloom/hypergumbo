@@ -1,4 +1,47 @@
-"""Python AST analysis pass."""
+"""Python AST analysis pass.
+
+This analyzer uses Python's built-in ast module to extract symbols and
+relationships from Python source files, with no external dependencies.
+
+How It Works
+------------
+Analysis proceeds in two passes for cross-file resolution:
+
+**Pass 1 - Symbol Collection:**
+- Parse each .py file with ast.parse()
+- Extract top-level functions and classes as symbols
+- Extract methods nested inside classes
+- Build import mappings for cross-file resolution
+- Compute stable_id (signature-based) and shape_id (structure-based)
+
+**Pass 2 - Edge Extraction:**
+- Walk AST to find function/method call sites
+- Resolve callees using local symbols first, then imports
+- Detect self.method() calls within classes
+- Detect ClassName() instantiation patterns
+- Create import edges from files to imported symbols
+
+Detected Patterns
+-----------------
+- Function calls: helper(), module.func()
+- Method calls: self.method(), obj.method()
+- Class instantiation: ClassName()
+- Imports: from X import Y, import X
+
+ID Schemes
+----------
+- **stable_id**: sha256 of signature (param count, arity flags, decorators).
+  Survives renames and moves if signature unchanged.
+- **shape_id**: sha256 of AST structure (control flow, nesting).
+  Detects clones with different variable names.
+
+Why This Design
+---------------
+- Built-in ast module requires no dependencies and handles all Python syntax
+- Two-pass approach enables cross-file call resolution via imports
+- col_offset == 0 heuristic distinguishes top-level from nested functions
+- Import resolution handles both absolute and relative imports
+"""
 import ast
 import hashlib
 from dataclasses import dataclass, field

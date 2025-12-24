@@ -1,4 +1,42 @@
-"""HTML script tag analysis pass."""
+"""HTML script tag analysis pass.
+
+This analyzer uses regex pattern matching to detect <script src="...">
+tags in HTML files, creating edges from HTML documents to their
+referenced JavaScript files.
+
+How It Works
+------------
+1. Find all .html and .htm files in the repository
+2. For each file, create a file-level symbol
+3. Scan content with regex for <script src="..."> patterns
+4. Create script_src edges from the HTML file to referenced scripts
+5. Track line numbers for accurate source mapping
+
+The regex pattern handles both single and double quotes, and is
+case-insensitive to match HTML conventions.
+
+Detected Patterns
+-----------------
+- <script src="path/to/file.js">
+- <script src='path/to/file.js'>
+- <script type="module" src="...">
+
+Edge Destinations
+-----------------
+Script references create edges to synthetic IDs like:
+  javascript:path/to/file.js:0-0:ref:script
+
+These reference IDs may not correspond to analyzed symbols (external
+CDN scripts, etc.), but enable graph construction when the script
+is also analyzed.
+
+Why This Design
+---------------
+- Regex is sufficient for this simple pattern (no need for HTML parser)
+- File-level symbols enable graph connectivity from HTML entry points
+- High confidence (0.95) reflects reliability of static <script> tags
+- Reference IDs allow graceful handling of external/missing scripts
+"""
 import re
 import time
 from dataclasses import dataclass
