@@ -68,10 +68,24 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo catalog` command | [x] | Lists passes and packs |
 | `hypergumbo export-capsule` command | [x] | `export.py` - tarball with privacy redactions |
 
+## Sketch Generation (Default Mode)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Token-budgeted Markdown sketch | [x] | `sketch.py` - ~4 chars/token heuristic |
+| Default CLI mode | [x] | `hypergumbo [path]` runs sketch |
+| Token limit flag | [x] | `-t N` / `--tokens N` |
+| Language breakdown | [x] | Sorted by LOC percentage |
+| Directory structure | [x] | Top-level dirs with type labels |
+| Framework detection | [x] | Via profile.py |
+| Section-boundary truncation | [x] | Preserves coherent sections when truncating |
+
 ## CLI Commands
 
 | Command | Status | Description |
 |---------|--------|-------------|
+| `hypergumbo [path] [-t N]` | [x] | Default sketch mode with optional token budget |
+| `hypergumbo sketch [path] [-t N]` | [x] | Explicit sketch command |
 | `hypergumbo --version` | [x] | Print version |
 | `hypergumbo init [path]` | [x] | Initialize capsule |
 | `hypergumbo run [path]` | [x] | Run analysis |
