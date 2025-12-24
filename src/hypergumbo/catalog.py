@@ -118,9 +118,10 @@ def is_available(p: Pass) -> bool:
     if p.availability == "core":
         return True
 
-    # Check for tree-sitter dependency
-    if p.requires and "javascript" in p.requires:
-        return importlib.util.find_spec("tree_sitter") is not None
+    # Check for tree-sitter dependency based on the requires field
+    if p.requires:
+        if "javascript" in p.requires or "php" in p.requires:
+            return importlib.util.find_spec("tree_sitter") is not None
 
     return False
 
@@ -141,9 +142,15 @@ def get_default_catalog() -> Catalog:
             ),
             Pass(
                 id="javascript-ts-v1",
-                description="JS/TS via tree-sitter",
+                description="JS/TS/Svelte via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[javascript]",
+            ),
+            Pass(
+                id="php-ts-v1",
+                description="PHP via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[php]",
             ),
         ],
         packs=[
