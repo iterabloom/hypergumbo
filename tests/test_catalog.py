@@ -177,6 +177,6 @@ class TestIsAvailable:
 
     def test_extra_pass_unknown_dependency_not_available(self) -> None:
         """Extra passes with unknown dependencies are not available."""
-        p = Pass("rust-v1", "Rust analyzer", "extra", "hypergumbo[rust]")
+        p = Pass("unknown-v1", "Unknown analyzer", "extra", "hypergumbo[unknown]")
         # Unknown dependency type defaults to not available
         assert is_available(p) is False
