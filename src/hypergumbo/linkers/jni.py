@@ -125,7 +125,10 @@ def parse_jni_function_name(name: str) -> Optional[dict[str, str]]:
 def _build_jni_lookup(c_symbols: list[Symbol]) -> dict[str, Symbol]:
     """Build a lookup table from JNI-style names to C symbols.
 
-    Maps fully qualified Java method names to their C implementations.
+    Maps Java method names to their C implementations. Creates entries for both
+    fully qualified names (com.example.MyClass.method) and short names
+    (MyClass.method) to support matching regardless of whether the Java analyzer
+    includes package information.
     """
     lookup: dict[str, Symbol] = {}
 
@@ -137,13 +140,14 @@ def _build_jni_lookup(c_symbols: list[Symbol]) -> dict[str, Symbol]:
         if parsed is None:
             continue
 
-        # Build the fully qualified Java method name
+        # Build the short name (ClassName.method)
+        short_name = f"{parsed['class']}.{parsed['method']}"
+        lookup[short_name] = sym
+
+        # Also add fully qualified name if package is present
         if parsed["package"]:
             fq_name = f"{parsed['package']}.{parsed['class']}.{parsed['method']}"
-        else:
-            fq_name = f"{parsed['class']}.{parsed['method']}"
-
-        lookup[fq_name] = sym
+            lookup[fq_name] = sym
 
     return lookup
 
