@@ -87,9 +87,14 @@ hypergumbo export-capsule    # export shareable capsule tarball
 a customized analysis plan based on your repo's profile. Supports:
 - **OpenRouter** (free tier): Set `OPENROUTER_API_KEY` env var
 - **OpenAI**: Set `OPENAI_API_KEY` env var
-- **Local models**: Install `hypergumbo[llm-local]` for Simon Willison's llm package
+- **Local models**: Install `hypergumbo[llm-local]` for the [llm](https://pypi.org/project/llm/) package
 
 Falls back to template-based generation if LLM is unavailable or fails.
+
+> **Note:** LLM-assisted plan generation is currently proof-of-concept infrastructure.
+> With only 6 passes and 2 packs in the catalog, template-based generation produces
+> equivalent results. This feature will become practical as the catalog expands with
+> framework-specific packs and configuration options.
 
 ### Supported Languages
 
