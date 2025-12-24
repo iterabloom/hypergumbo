@@ -6,8 +6,17 @@ from hypergumbo.sketch import (
     generate_sketch,
     estimate_tokens,
     truncate_to_tokens,
+    _collect_source_files,
+    _format_source_files,
+    _format_all_files,
+    _run_analysis,
+    _format_entrypoints,
+    _compute_centrality,
+    _format_symbols,
 )
 from hypergumbo.profile import detect_profile
+from hypergumbo.ir import Symbol, Edge, Span
+from hypergumbo.entrypoints import Entrypoint, EntrypointKind
 
 
 class TestEstimateTokens:
@@ -190,6 +199,411 @@ class TestGenerateSketch:
 
         # Should be truncated to ~20 chars
         assert len(result) <= 25
+
+
+class TestCollectSourceFiles:
+    """Tests for source file collection."""
+
+    def test_collects_python_files(self, tmp_path: Path) -> None:
+        """Collects Python files from repo."""
+        (tmp_path / "main.py").write_text("print('hello')")
+        (tmp_path / "utils.py").write_text("print('util')")
+
+        profile = detect_profile(tmp_path)
+        files = _collect_source_files(tmp_path, profile)
+
+        assert len(files) == 2
+        names = {f.name for f in files}
+        assert "main.py" in names
+        assert "utils.py" in names
+
+    def test_prioritizes_source_directories(self, tmp_path: Path) -> None:
+        """Files from src/ directories come first."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "core.py").write_text("print('core')")
+        (tmp_path / "main.py").write_text("print('main')")
+
+        profile = detect_profile(tmp_path)
+        files = _collect_source_files(tmp_path, profile)
+
+        # src/core.py should come before main.py
+        names = [f.name for f in files]
+        assert names[0] == "core.py"
+
+    def test_handles_no_source_files(self, tmp_path: Path) -> None:
+        """Returns empty list when no source files."""
+        profile = detect_profile(tmp_path)
+        files = _collect_source_files(tmp_path, profile)
+        assert files == []
+
+
+class TestFormatSourceFiles:
+    """Tests for source file formatting."""
+
+    def test_formats_file_list(self, tmp_path: Path) -> None:
+        """Formats files as Markdown list."""
+        files = [tmp_path / "a.py", tmp_path / "b.py"]
+
+        result = _format_source_files(tmp_path, files)
+
+        assert "## Source Files" in result
+        assert "`a.py`" in result
+        assert "`b.py`" in result
+
+    def test_respects_max_files(self, tmp_path: Path) -> None:
+        """Limits output to max_files."""
+        files = [tmp_path / f"file_{i}.py" for i in range(10)]
+
+        result = _format_source_files(tmp_path, files, max_files=3)
+
+        assert "file_0.py" in result
+        assert "file_1.py" in result
+        assert "file_2.py" in result
+        assert "... and 7 more files" in result
+
+    def test_empty_files_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string for empty file list."""
+        result = _format_source_files(tmp_path, [])
+        assert result == ""
+
+
+class TestFormatAllFiles:
+    """Tests for all files formatting."""
+
+    def test_lists_all_files(self, tmp_path: Path) -> None:
+        """Lists all non-excluded files."""
+        (tmp_path / "readme.md").write_text("# README")
+        (tmp_path / "main.py").write_text("print('hello')")
+
+        result = _format_all_files(tmp_path)
+
+        assert "## All Files" in result
+        assert "`main.py`" in result
+        assert "`readme.md`" in result
+
+    def test_excludes_hidden_files(self, tmp_path: Path) -> None:
+        """Excludes hidden files."""
+        (tmp_path / ".hidden").write_text("secret")
+        (tmp_path / "visible.txt").write_text("public")
+
+        result = _format_all_files(tmp_path)
+
+        assert ".hidden" not in result
+        assert "`visible.txt`" in result
+
+    def test_excludes_node_modules(self, tmp_path: Path) -> None:
+        """Excludes node_modules directory."""
+        nm = tmp_path / "node_modules"
+        nm.mkdir()
+        (nm / "package.json").write_text("{}")
+        (tmp_path / "index.js").write_text("console.log('hi')")
+
+        result = _format_all_files(tmp_path)
+
+        assert "node_modules" not in result
+        assert "`index.js`" in result
+
+    def test_respects_max_files(self, tmp_path: Path) -> None:
+        """Limits output to max_files."""
+        for i in range(10):
+            (tmp_path / f"file_{i}.txt").write_text(f"content {i}")
+
+        result = _format_all_files(tmp_path, max_files=3)
+
+        assert "... and 7 more files" in result
+
+    def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string for empty directory."""
+        result = _format_all_files(tmp_path)
+        assert result == ""
+
+
+class TestRunAnalysis:
+    """Tests for running static analysis."""
+
+    def test_analyzes_python_files(self, tmp_path: Path) -> None:
+        """Runs Python analysis on Python files."""
+        (tmp_path / "main.py").write_text("def hello():\n    print('hi')\n")
+
+        profile = detect_profile(tmp_path)
+        symbols, edges = _run_analysis(tmp_path, profile)
+
+        assert len(symbols) > 0
+        names = {s.name for s in symbols}
+        assert "hello" in names
+
+    def test_handles_no_python(self, tmp_path: Path) -> None:
+        """Returns empty results when no Python files."""
+        (tmp_path / "readme.md").write_text("# Hello")
+
+        profile = detect_profile(tmp_path)
+        symbols, edges = _run_analysis(tmp_path, profile)
+
+        assert symbols == []
+        assert edges == []
+
+
+class TestComputeCentrality:
+    """Tests for graph centrality computation."""
+
+    def test_computes_in_degree(self) -> None:
+        """Computes in-degree centrality."""
+        symbols = [
+            Symbol(id="a", name="a", kind="function", language="python",
+                   path="/app.py", span=Span(1, 1, 1, 10)),
+            Symbol(id="b", name="b", kind="function", language="python",
+                   path="/app.py", span=Span(2, 1, 2, 10)),
+        ]
+        edges = [
+            Edge.create(src="a", dst="b", edge_type="calls", line=1, confidence=1.0),
+        ]
+
+        centrality = _compute_centrality(symbols, edges)
+
+        assert centrality["b"] > centrality["a"]
+
+    def test_handles_no_edges(self) -> None:
+        """Handles symbols with no edges."""
+        symbols = [
+            Symbol(id="a", name="a", kind="function", language="python",
+                   path="/app.py", span=Span(1, 1, 1, 10)),
+        ]
+
+        centrality = _compute_centrality(symbols, [])
+
+        assert centrality["a"] == 0
+
+
+class TestFormatEntrypoints:
+    """Tests for entry point formatting."""
+
+    def test_formats_entrypoints(self, tmp_path: Path) -> None:
+        """Formats entry points as Markdown."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.7, label="CLI main"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "## Entry Points" in result
+        assert "`main`" in result
+        assert "CLI main" in result
+
+    def test_respects_max_entries(self, tmp_path: Path) -> None:
+        """Limits output to max_entries."""
+        symbols = [
+            Symbol(id=f"ep{i}", name=f"ep{i}", kind="function", language="python",
+                   path=str(tmp_path / "app.py"), span=Span(i, 1, i, 10))
+            for i in range(10)
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id=f"ep{i}", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.9, label="HTTP GET")
+            for i in range(10)
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path, max_entries=3)
+
+        assert "... and 7 more entry points" in result
+
+    def test_empty_entrypoints_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string for empty entry points."""
+        result = _format_entrypoints([], [], tmp_path)
+        assert result == ""
+
+    def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
+        """Falls back to symbol_id when symbol not found."""
+        entrypoints = [
+            Entrypoint(symbol_id="unknown:symbol", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.7, label="CLI main"),
+        ]
+
+        result = _format_entrypoints(entrypoints, [], tmp_path)
+
+        assert "`unknown:symbol`" in result
+        assert "CLI main" in result
+
+
+class TestFormatSymbols:
+    """Tests for symbol formatting."""
+
+    def test_formats_symbols(self) -> None:
+        """Formats symbols as Markdown."""
+        # Use fixed paths to avoid tmp_path containing /test
+        repo_root = Path("/fake/repo")
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path="/fake/repo/cli.py", span=Span(1, 1, 1, 10)),
+            Symbol(id="App", name="App", kind="class", language="python",
+                   path="/fake/repo/cli.py", span=Span(5, 1, 10, 10)),
+        ]
+
+        result = _format_symbols(symbols, [], repo_root)
+
+        assert "## Key Symbols" in result
+        assert "`main`" in result
+        assert "`App`" in result
+
+    def test_excludes_test_files(self) -> None:
+        """Excludes symbols from test files and test functions."""
+        repo_root = Path("/fake/repo")
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path="/fake/repo/app.py", span=Span(1, 1, 1, 10)),
+            # Symbol in tests/ directory
+            Symbol(id="test_main", name="test_main", kind="function", language="python",
+                   path="/fake/repo/tests/test_app.py", span=Span(1, 1, 1, 10)),
+            # Function with test_ prefix
+            Symbol(id="test_helper", name="test_helper", kind="function", language="python",
+                   path="/fake/repo/app.py", span=Span(5, 1, 5, 10)),
+        ]
+
+        result = _format_symbols(symbols, [], repo_root)
+
+        assert "`main`" in result
+        assert "test_main" not in result
+        assert "test_helper" not in result
+
+    def test_respects_max_symbols(self) -> None:
+        """Limits output to max_symbols."""
+        repo_root = Path("/fake/repo")
+        symbols = [
+            Symbol(id=f"fn{i}", name=f"fn{i}", kind="function", language="python",
+                   path="/fake/repo/app.py", span=Span(i, 1, i, 10))
+            for i in range(20)
+        ]
+
+        result = _format_symbols(symbols, [], repo_root, max_symbols=5)
+
+        assert "... and 15 more symbols" in result
+
+    def test_max_symbols_breaks_across_files(self) -> None:
+        """Max symbols limit causes early break at file level."""
+        repo_root = Path("/fake/repo")
+        # Create symbols across multiple files
+        symbols = []
+        for file_idx in range(5):
+            for fn_idx in range(10):
+                symbols.append(
+                    Symbol(
+                        id=f"fn{file_idx}_{fn_idx}",
+                        name=f"fn{file_idx}_{fn_idx}",
+                        kind="function",
+                        language="python",
+                        path=f"/fake/repo/file_{file_idx}.py",
+                        span=Span(fn_idx, 1, fn_idx, 10),
+                    )
+                )
+
+        # Max symbols less than total, should break mid-way
+        result = _format_symbols(symbols, [], repo_root, max_symbols=15)
+
+        assert "... and 35 more symbols" in result
+
+    def test_empty_symbols_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string for empty symbols."""
+        result = _format_symbols([], [], tmp_path)
+        assert result == ""
+
+    def test_only_test_symbols_returns_empty(self) -> None:
+        """Returns empty when all symbols are filtered out (e.g., test files only)."""
+        repo_root = Path("/fake/repo")
+        symbols = [
+            Symbol(id="test_a", name="test_a", kind="function", language="python",
+                   path="/fake/repo/tests/test_app.py", span=Span(1, 1, 1, 10)),
+            Symbol(id="test_b", name="test_b", kind="function", language="python",
+                   path="/fake/repo/tests/test_util.py", span=Span(1, 1, 1, 10)),
+        ]
+
+        result = _format_symbols(symbols, [], repo_root)
+
+        # All symbols are in tests/ so should return empty
+        assert result == ""
+
+    def test_marks_high_centrality_symbols(self) -> None:
+        """Adds star to high-centrality symbols."""
+        repo_root = Path("/fake/repo")
+        symbols = [
+            Symbol(id="core", name="core", kind="function", language="python",
+                   path="/fake/repo/app.py", span=Span(1, 1, 1, 10)),
+            Symbol(id="leaf", name="leaf", kind="function", language="python",
+                   path="/fake/repo/app.py", span=Span(5, 1, 5, 10)),
+        ]
+        # Many edges pointing to core
+        edges = [
+            Edge.create(src=f"caller{i}", dst="core", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(10)
+        ]
+
+        result = _format_symbols(symbols, edges, repo_root)
+
+        assert "`core`" in result
+        assert "★" in result  # High centrality marker
+
+
+class TestGenerateSketchWithBudget:
+    """Tests for budget-based sketch expansion."""
+
+    def test_expands_with_larger_budget(self, tmp_path: Path) -> None:
+        """Larger budgets include more content."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("def main():\n    pass\n")
+        (src / "utils.py").write_text("def helper():\n    pass\n")
+
+        small_sketch = generate_sketch(tmp_path, max_tokens=50)
+        large_sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        assert len(large_sketch) > len(small_sketch)
+
+    def test_includes_source_files_at_medium_budget(self, tmp_path: Path) -> None:
+        """Medium budget includes source file listing."""
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=200)
+
+        assert "## Source Files" in sketch
+
+    def test_includes_symbols_at_large_budget(self, tmp_path: Path) -> None:
+        """Large budget includes key symbols."""
+        (tmp_path / "main.py").write_text("def main():\n    pass\n\ndef helper():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=800)
+
+        assert "## Key Symbols" in sketch or "## Entry Points" in sketch
+
+    def test_very_small_budget_truncates_base(self, tmp_path: Path) -> None:
+        """Very small budget truncates even the base sketch."""
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        # Budget smaller than the base overview
+        sketch = generate_sketch(tmp_path, max_tokens=10)
+
+        # Should be truncated
+        assert len(sketch) < 100
+
+    def test_symbols_section_with_many_files(self, tmp_path: Path) -> None:
+        """Symbols section properly handles multiple files."""
+        # Create multiple files to test cross-file symbol listing
+        for i in range(5):
+            (tmp_path / f"module_{i}.py").write_text(
+                f"def func_{i}_a():\n    pass\n\n"
+                f"def func_{i}_b():\n    pass\n"
+            )
+
+        # Need large budget to trigger symbols section
+        sketch = generate_sketch(tmp_path, max_tokens=3000)
+
+        # Should include Key Symbols section with multiple files
+        assert "## Key Symbols" in sketch
+        assert "###" in sketch  # File headers
 
 
 class TestCLISketch:
