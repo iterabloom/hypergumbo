@@ -37,6 +37,10 @@ c = [
   "tree-sitter>=0.21",
   "tree-sitter-c>=0.21",
 ]
+java = [
+  "tree-sitter>=0.21",
+  "tree-sitter-java>=0.21",
+]
 llm-assist = [
   "openai>=1.0",
 ]
