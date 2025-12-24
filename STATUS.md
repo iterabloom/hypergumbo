@@ -115,7 +115,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Language | Parser | Symbols | Edges | Notes |
 |----------|--------|---------|-------|-------|
-| Python | [x] AST | function, class | calls, imports | Full support |
+| Python | [x] AST | function, class, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`) |
 | HTML | [x] regex | file | script_src | Script tag detection |
 | JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. Optional: `pip install hypergumbo[javascript]` |
 | TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. Optional: `pip install hypergumbo[javascript]` |

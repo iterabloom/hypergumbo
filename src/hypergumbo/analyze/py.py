@@ -292,28 +292,8 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
     symbol_by_name: dict[str, Symbol] = {}
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            end_line = node.end_lineno or node.lineno
-            end_col = node.end_col_offset or 0
-            span = Span(
-                start_line=node.lineno,
-                end_line=end_line,
-                start_col=node.col_offset,
-                end_col=end_col,
-            )
-            symbol = Symbol(
-                id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
-                name=node.name,
-                kind="function",
-                language="python",
-                path=str(py_file),
-                span=span,
-                stable_id=_compute_stable_id(node),
-                shape_id=_compute_shape_id(node),
-            )
-            symbols.append(symbol)
-            symbol_by_name[node.name] = symbol
-        elif isinstance(node, ast.ClassDef):
+        if isinstance(node, ast.ClassDef):
+            class_name = node.name
             end_line = node.end_lineno or node.lineno
             end_col = node.end_col_offset or 0
             span = Span(
@@ -335,6 +315,60 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
 
+            # Extract methods inside the class
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef):
+                    method_end_line = item.end_lineno or item.lineno
+                    method_end_col = item.end_col_offset or 0
+                    method_span = Span(
+                        start_line=item.lineno,
+                        end_line=method_end_line,
+                        start_col=item.col_offset,
+                        end_col=method_end_col,
+                    )
+                    method_name = f"{class_name}.{item.name}"
+                    method_symbol = Symbol(
+                        id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
+                        name=method_name,
+                        kind="method",
+                        language="python",
+                        path=str(py_file),
+                        span=method_span,
+                        stable_id=_compute_stable_id(item),
+                        shape_id=_compute_shape_id(item),
+                    )
+                    symbols.append(method_symbol)
+                    # Store by short name for self.method() lookups
+                    symbol_by_name[item.name] = method_symbol
+
+        elif isinstance(node, ast.FunctionDef):
+            # Check if this is a top-level function (not inside a class)
+            # We do this by checking if the parent is the module
+            # ast.walk doesn't give parent info, so we need to handle this differently
+            # For now, we skip functions that were already processed as methods
+            # by checking if the function is at module level (column 0)
+            if node.col_offset == 0:
+                end_line = node.end_lineno or node.lineno
+                end_col = node.end_col_offset or 0
+                span = Span(
+                    start_line=node.lineno,
+                    end_line=end_line,
+                    start_col=node.col_offset,
+                    end_col=end_col,
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
+                    name=node.name,
+                    kind="function",
+                    language="python",
+                    path=str(py_file),
+                    span=span,
+                    stable_id=_compute_stable_id(node),
+                    shape_id=_compute_shape_id(node),
+                )
+                symbols.append(symbol)
+                symbol_by_name[node.name] = symbol
+
     # Compute module name for import resolution
     if repo_root is not None:
         importing_module = _module_name_from_path(py_file, repo_root)
@@ -350,7 +384,10 @@ def _extract_edges(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], Symbol],
 ) -> list[Edge]:
-    """Extract call edges from an AST, resolving both local and cross-file calls."""
+    """Extract call and instantiation edges from an AST.
+
+    Resolves both local and cross-file calls/instantiations.
+    """
     edges = []
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef):
@@ -360,16 +397,23 @@ def _extract_edges(
                     if isinstance(child, ast.Call):
                         callee_name = None
                         callee_symbol = None
+                        is_instantiation = False
 
-                        # Handle simple name calls: helper()
+                        # Handle simple name calls: helper() or ClassName()
                         if isinstance(child.func, ast.Name):
                             callee_name = child.func.id
                             # First check local symbols
                             callee_symbol = local_symbols.get(callee_name)
+
+                            # Check if this is a class instantiation
+                            if callee_symbol and callee_symbol.kind == "class":
+                                is_instantiation = True
                             # Then check imports for cross-file resolution
-                            if not callee_symbol and callee_name in imports:
+                            elif not callee_symbol and callee_name in imports:
                                 module_name, original_name = imports[callee_name]
                                 callee_symbol = global_symbols.get((module_name, original_name))
+                                if callee_symbol and callee_symbol.kind == "class":
+                                    is_instantiation = True
 
                         # Handle method calls: self.helper() or obj.method()
                         elif isinstance(child.func, ast.Attribute):
@@ -380,19 +424,29 @@ def _extract_edges(
                                 callee_symbol = local_symbols.get(callee_name)
 
                         if callee_symbol:
-                            # Determine evidence type based on call pattern
-                            if isinstance(child.func, ast.Attribute):
-                                evidence_type = "ast_call_method"
+                            if is_instantiation:
+                                edges.append(Edge.create(
+                                    src=caller_symbol.id,
+                                    dst=callee_symbol.id,
+                                    edge_type="instantiates",
+                                    line=child.lineno,
+                                    evidence_type="ast_new",
+                                    confidence=0.95,
+                                ))
                             else:
-                                evidence_type = "ast_call_direct"
+                                # Determine evidence type based on call pattern
+                                if isinstance(child.func, ast.Attribute):
+                                    evidence_type = "ast_call_method"
+                                else:
+                                    evidence_type = "ast_call_direct"
 
-                            edges.append(Edge.create(
-                                src=caller_symbol.id,
-                                dst=callee_symbol.id,
-                                edge_type="calls",
-                                line=child.lineno,
-                                evidence_type=evidence_type,
-                            ))
+                                edges.append(Edge.create(
+                                    src=caller_symbol.id,
+                                    dst=callee_symbol.id,
+                                    edge_type="calls",
+                                    line=child.lineno,
+                                    evidence_type=evidence_type,
+                                ))
     return edges
 
 

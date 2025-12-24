@@ -368,3 +368,88 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     assert edge["type"] == "calls"
     assert "run" in edge["src"]
     assert "helper" in edge["dst"]
+
+
+def test_run_detects_class_instantiation(tmp_path: Path) -> None:
+    """Running analysis should detect ClassName() instantiation as edges."""
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "class User:\n"
+        "    def __init__(self, name):\n"
+        "        self.name = name\n"
+        "\n"
+        "def create_user():\n"
+        "    return User('test')\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Should have instantiation edge: create_user -> User
+    inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+    assert len(inst_edges) == 1
+    assert "create_user" in inst_edges[0]["src"]
+    assert "User" in inst_edges[0]["dst"]
+    assert inst_edges[0]["meta"]["evidence_type"] == "ast_new"
+
+
+def test_run_detects_cross_file_instantiation(tmp_path: Path) -> None:
+    """Running analysis should detect ClassName() across files via imports."""
+    # Create a models module with a class
+    models_file = tmp_path / "models.py"
+    models_file.write_text(
+        "class User:\n"
+        "    def __init__(self, name):\n"
+        "        self.name = name\n"
+    )
+
+    # Create a main module that imports and instantiates the class
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from models import User\n"
+        "\n"
+        "def create_user():\n"
+        "    return User('test')\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Should have instantiation edge: create_user -> User (in models.py)
+    inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+    assert len(inst_edges) == 1
+    assert "create_user" in inst_edges[0]["src"]
+    assert "User" in inst_edges[0]["dst"]
+    # Target should reference models.py
+    assert "models.py" in inst_edges[0]["dst"]
+
+
+def test_method_symbols_include_class_prefix(tmp_path: Path) -> None:
+    """Method symbols should include class prefix in name (ClassName.methodName)."""
+    py_file = tmp_path / "service.py"
+    py_file.write_text(
+        "class UserService:\n"
+        "    def create_user(self):\n"
+        "        pass\n"
+        "\n"
+        "    def delete_user(self):\n"
+        "        pass\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Find method nodes
+    methods = [n for n in data["nodes"] if n["kind"] == "method"]
+    assert len(methods) == 2
+
+    # Method names should include class prefix
+    method_names = [m["name"] for m in methods]
+    assert "UserService.create_user" in method_names
+    assert "UserService.delete_user" in method_names
