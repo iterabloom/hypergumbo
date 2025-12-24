@@ -2902,10 +2902,104 @@ Measure on 10 full-stack repos (from benchmark suite):
 
 **Milestone gate:** Successfully link 3/3 design partner repos (HTTP + IPC)
 
-**DEFERRED to B1.5:**
-* SQL linker (requires annotation framework + schema tracking)
-* Protobuf/gRPC linker (need parser for .proto files)
-* GraphQL linker (need schema + resolver matching)
+**DEFERRED to B1.5: Inter-Process Call Detection**
+
+Beyond HTTP and Electron IPC, microservice architectures use many inter-process communication patterns. These are deferred to B1.5 due to complexity and dataflow requirements.
+
+**Message Queue Linkers:**
+* **Redis pub/sub:**
+  ```python
+  # Publisher (service A)
+  redis.publish("user.created", json.dumps(user))
+
+  # Subscriber (service B)
+  pubsub.subscribe("user.created")  # Match!
+  ```
+  - Detection: Match channel name strings
+  - Confidence: 0.80 (string literal), 0.50 (variable)
+  - Frameworks: redis-py, ioredis, node-redis
+
+* **RabbitMQ/AMQP:**
+  ```python
+  channel.basic_publish(exchange='', routing_key='task_queue', body=msg)
+  channel.basic_consume(queue='task_queue', on_message_callback=callback)
+  ```
+  - Detection: Match routing_key/queue names
+  - Support: pika (Python), amqplib (Node.js)
+
+* **Kafka:**
+  ```python
+  producer.send('user-events', value=event)
+  consumer.subscribe(['user-events'])
+  ```
+  - Detection: Match topic names
+  - Support: kafka-python, kafkajs
+
+**RPC Linkers:**
+* **gRPC/Protobuf:**
+  - Parse `.proto` files for service definitions
+  - Match `stub.MethodName()` calls to service implementations
+  - Requires: Protobuf parser, service registry
+  - Confidence: 0.95 (schema-validated)
+
+* **JSON-RPC / XML-RPC:**
+  ```python
+  client.call("user.get", params={"id": 123})
+  @rpc_method("user.get")
+  def get_user(id): ...
+  ```
+  - Detection: Match method name strings
+  - Lower confidence (0.60) due to dynamic nature
+
+**Schema-Based Linkers:**
+* **GraphQL:**
+  ```javascript
+  // Client
+  query GetUser { user(id: 1) { name } }
+
+  // Server resolver
+  const resolvers = { Query: { user: (_, {id}) => db.getUser(id) } }
+  ```
+  - Parse `.graphql` schema files
+  - Match query/mutation names to resolver implementations
+  - Requires: GraphQL parser, schema introspection
+
+* **SQL/Database:**
+  ```python
+  # Writer (service A)
+  db.execute("INSERT INTO events ...")
+
+  # Reader (service B)
+  db.execute("SELECT * FROM events WHERE ...")
+  ```
+  - Detection: Shared table access patterns
+  - Very low confidence (0.30) without schema context
+  - Requires: SQL parser, schema tracking
+
+**WebSocket Linkers:**
+```javascript
+// Server
+ws.on('message', (data) => { if (data.type === 'chat') ... })
+
+// Client
+ws.send(JSON.stringify({type: 'chat', text: '...'}))
+```
+- Detection: Match message type/event fields
+- Requires: JSON structure inference
+- Confidence: 0.50 (heuristic matching)
+
+**Why defer to B1.5:**
+1. Many patterns require dataflow analysis (resolving variable values)
+2. Schema parsers needed (Protobuf, GraphQL, SQL)
+3. Lower confidence without type information
+4. Each pattern needs dedicated detection + matching logic
+
+**B1.5 Implementation priority:**
+1. gRPC/Protobuf (high value, schema-validated = high confidence)
+2. Message queues (common in microservices)
+3. GraphQL (growing adoption)
+4. WebSocket (case-by-case)
+5. SQL-mediated (lowest priority, very noisy)
 
 #### Phase 3: Basic Context Assembly (months 10-12, parallel with Phase 2)
 
