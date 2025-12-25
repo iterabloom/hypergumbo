@@ -14,6 +14,7 @@ Detects common entrypoint patterns:
 - Laravel controllers (app/Http/Controllers/*Controller.php)
 - Rust handlers (Actix-web, Axum, Rocket, Warp - *_handler.rs, handlers/)
 - ASP.NET Core controllers (Controllers/*Controller.cs)
+- Sinatra routes (app.rb, application.rb, server.rb, routes/)
 
 How It Works
 ------------
@@ -83,6 +84,7 @@ class EntrypointKind(Enum):
     LARAVEL_CONTROLLER = "laravel_controller"
     RUST_HANDLER = "rust_handler"
     ASPNET_CONTROLLER = "aspnet_controller"
+    SINATRA_ROUTE = "sinatra_route"
 
 
 @dataclass
@@ -180,6 +182,11 @@ RUST_HANDLER_DIRS = {"handlers", "controllers"}
 # Files ending in Controller.cs, typically in Controllers/ directory
 ASPNET_CONTROLLER_SUFFIX = "Controller.cs"
 ASPNET_CONTROLLER_DIRS = {"Controllers"}
+
+# Sinatra (Ruby) route patterns
+# Common entry point filenames and routes directory
+SINATRA_ROUTE_FILES = {"app.rb", "application.rb", "server.rb"}
+SINATRA_ROUTE_DIRS = {"routes"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -712,6 +719,53 @@ def _detect_aspnet_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_sinatra_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Sinatra route patterns.
+
+    Matches:
+    - Files named app.rb, application.rb, server.rb
+    - Any .rb file inside a routes/ directory
+    """
+    if language != "ruby":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Sinatra main files
+    if filename in SINATRA_ROUTE_FILES:
+        return True
+
+    # Check if file is in a routes/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in SINATRA_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_sinatra_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Sinatra route endpoints from file patterns.
+
+    Sinatra is a lightweight Ruby web framework. Routes are typically
+    defined in app.rb, application.rb, server.rb, or files in routes/.
+
+    Only function/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_sinatra_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.SINATRA_ROUTE,
+                confidence=0.85,
+                label="Sinatra route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -784,6 +838,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_laravel_controllers(nodes))
     entrypoints.extend(_detect_rust_handlers(nodes))
     entrypoints.extend(_detect_aspnet_controllers(nodes))
+    entrypoints.extend(_detect_sinatra_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()

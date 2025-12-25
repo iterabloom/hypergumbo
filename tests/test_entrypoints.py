@@ -1420,3 +1420,116 @@ class TestAspNetCoreEntrypoints:
 
         aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
         assert len(aspnet_eps) == 0
+
+
+class TestSinatraEntrypoints:
+    """Tests for Sinatra (Ruby) route detection.
+
+    Sinatra is a lightweight Ruby web framework that uses DSL-based routing.
+    Common patterns include app.rb, application.rb, and files in routes/.
+    """
+
+    def test_detect_sinatra_app_file(self) -> None:
+        """Detect methods in app.rb as Sinatra routes."""
+        sym = make_symbol("get_index", path="app.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 1
+        assert sinatra_eps[0].symbol_id == sym.id
+
+    def test_detect_sinatra_application_file(self) -> None:
+        """Detect methods in application.rb as Sinatra routes."""
+        sym = make_symbol("post_users", path="application.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 1
+
+    def test_detect_sinatra_server_file(self) -> None:
+        """Detect methods in server.rb as Sinatra routes."""
+        sym = make_symbol("handle_request", path="server.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 1
+
+    def test_detect_sinatra_routes_directory(self) -> None:
+        """Detect methods in routes/ directory."""
+        sym = make_symbol("show_user", path="routes/users.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 1
+
+    def test_detect_multiple_sinatra_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("index", path="app.rb", language="ruby", start_line=10)
+        sym2 = make_symbol("create", path="app.rb", language="ruby", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 2
+
+    def test_sinatra_route_confidence(self) -> None:
+        """Sinatra route detection has appropriate confidence."""
+        sym = make_symbol("update", path="app.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 1
+        assert sinatra_eps[0].confidence >= 0.80
+
+    def test_sinatra_route_label(self) -> None:
+        """Sinatra route entrypoints have descriptive labels."""
+        sym = make_symbol("delete_item", path="app.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 1
+        assert "Sinatra" in sinatra_eps[0].label or "route" in sinatra_eps[0].label.lower()
+
+    def test_sinatra_only_ruby_files(self) -> None:
+        """Only Ruby files are detected as Sinatra routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("get_index", path="app.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 0
+
+    def test_sinatra_file_symbol_not_detected(self) -> None:
+        """File symbols in Sinatra files are not detected."""
+        sym = make_symbol("file", kind="file", path="app.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 0
+
+    def test_sinatra_non_route_file_not_detected(self) -> None:
+        """Non-route Ruby files are not detected as Sinatra."""
+        sym = make_symbol("helper", path="lib/utils.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 0
