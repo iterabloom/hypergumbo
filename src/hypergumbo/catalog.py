@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -212,6 +212,12 @@ def get_default_catalog() -> Catalog:
                 description="Lua via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[lua]",
+            ),
+            Pass(
+                id="haskell-ts-v1",
+                description="Haskell via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[haskell]",
             ),
             Pass(
                 id="websocket-linker-v1",

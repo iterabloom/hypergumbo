@@ -51,6 +51,7 @@ from .analyze.kotlin import analyze_kotlin
 from .analyze.swift import analyze_swift
 from .analyze.scala import analyze_scala
 from .analyze.lua import analyze_lua
+from .analyze.haskell import analyze_haskell
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -789,6 +790,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(lua_result.run.to_dict())
             all_symbols.extend(lua_result.symbols)
             all_edges.extend(lua_result.edges)
+
+    # Run Haskell analysis (optional, requires tree-sitter-haskell)
+    haskell_result = analyze_haskell(repo_root)
+    if haskell_result.run is not None:
+        if haskell_result.skipped:
+            limits.skipped_passes.append({
+                "pass": haskell_result.run.pass_id,
+                "reason": haskell_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(haskell_result.run.to_dict())
+            all_symbols.extend(haskell_result.symbols)
+            all_edges.extend(haskell_result.edges)
 
     # Run cross-language linkers
 
