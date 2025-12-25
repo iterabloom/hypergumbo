@@ -89,8 +89,9 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Command | Status | Description |
 |---------|--------|-------------|
-| `hypergumbo [path] [-t N]` | [x] | Default sketch mode with optional token budget |
-| `hypergumbo sketch [path] [-t N]` | [x] | Explicit sketch command |
+| `hypergumbo [path] [-t N] [-x]` | [x] | Default sketch mode with optional token budget |
+| `hypergumbo sketch [path] [-t N] [-x]` | [x] | Explicit sketch command |
+| `-x` / `--exclude-tests` | [x] | Skip test files during analysis (17% faster on large codebases) |
 | `hypergumbo --version` | [x] | Print version |
 | `hypergumbo init [path]` | [x] | Initialize capsule |
 | `hypergumbo run [path]` | [x] | Run analysis |
@@ -161,4 +162,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-24*
+*Last updated: 2025-12-25*
