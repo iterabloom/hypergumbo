@@ -490,6 +490,39 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     assert "tree-sitter-scala" in skipped[0]["reason"]
 
 
+def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
+    """Test run with Lua analyzer skipped (tree-sitter-lua not available)."""
+    from unittest.mock import patch
+    from hypergumbo.ir import AnalysisRun
+    from hypergumbo.analyze.lua import LuaAnalysisResult
+
+    # Create mock result with skipped flag
+    mock_run = AnalysisRun.create(pass_id="lua-v1", version="test")
+    mock_result = LuaAnalysisResult(
+        symbols=[],
+        edges=[],
+        run=mock_run,
+        skipped=True,
+        skip_reason="requires tree-sitter-lua",
+    )
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "results.json")
+
+    with patch("hypergumbo.cli.analyze_lua", return_value=mock_result):
+        result = cmd_run(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "results.json").read_text())
+    # Should have recorded skipped pass in limits
+    assert "skipped_passes" in data["limits"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "lua-v1"]
+    assert len(skipped) == 1
+    assert "tree-sitter-lua" in skipped[0]["reason"]
+
+
 def test_cmd_run_with_jni_linker(tmp_path: Path) -> None:
     """Test that JNI linker runs when Java and C files with JNI patterns exist."""
     # Create Java file with native method
