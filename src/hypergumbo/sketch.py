@@ -423,6 +423,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Haskell analysis failed or tree-sitter not available
 
+    if "ocaml" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.ocaml import analyze_ocaml  # pragma: no cover
+            result = analyze_ocaml(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # OCaml analysis failed or tree-sitter not available
+
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files
