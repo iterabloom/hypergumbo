@@ -196,8 +196,102 @@ members = ["crates/*"]
         roots = detect_package_roots(tmp_path)
         assert crate_dir in roots
 
+        # Files in workspace src/ are tier 1 (the workspace IS the library)
         result = classify_file(crate_dir / "src" / "lib.rs", tmp_path, roots)
+        assert result.tier == Tier.FIRST_PARTY
+        assert "source" in result.reason
+
+    def test_workspace_source_is_first_party(self, tmp_path):
+        """Files in workspace src/lib/app are tier 1 (library monorepos)."""
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": ["packages/*"]}')
+
+        # Create workspace with lib/ directory
+        pkg_dir = tmp_path / "packages" / "socket.io"
+        (pkg_dir / "lib").mkdir(parents=True)
+        (pkg_dir / "lib" / "index.ts").write_text("export class Server {}")
+
+        roots = detect_package_roots(tmp_path)
+
+        # lib/index.ts in workspace should be tier 1
+        result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
+        assert result.tier == Tier.FIRST_PARTY
+        assert "socket.io" in result.reason
+        assert "source" in result.reason
+
+    def test_workspace_non_source_is_internal_dep(self, tmp_path):
+        """Files in workspace outside src/lib/app are tier 2."""
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": ["packages/*"]}')
+
+        pkg_dir = tmp_path / "packages" / "core"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "package.json").write_text("{}")
+        (pkg_dir / "index.js").write_text("// root index")
+
+        roots = detect_package_roots(tmp_path)
+
+        # Root-level files in workspace are tier 2
+        result = classify_file(pkg_dir / "index.js", tmp_path, roots)
         assert result.tier == Tier.INTERNAL_DEP
+
+    def test_examples_dir_is_internal_dep(self, tmp_path):
+        """Examples directory is tier 2 (lower priority than workspace source)."""
+        # Create examples directory
+        examples_dir = tmp_path / "examples" / "basic"
+        examples_dir.mkdir(parents=True)
+        (examples_dir / "app.js").write_text("// example")
+
+        result = classify_file(examples_dir / "app.js", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "examples" in result.reason
+
+    def test_demos_dir_is_internal_dep(self, tmp_path):
+        """Demos directory is tier 2."""
+        demos_dir = tmp_path / "demos"
+        demos_dir.mkdir()
+        (demos_dir / "demo.py").write_text("# demo")
+
+        result = classify_file(demos_dir / "demo.py", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_samples_dir_is_internal_dep(self, tmp_path):
+        """Samples directory is tier 2."""
+        samples_dir = tmp_path / "samples"
+        samples_dir.mkdir()
+        (samples_dir / "sample.rs").write_text("// sample")
+
+        result = classify_file(samples_dir / "sample.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_examples_lower_priority_than_workspace_source(self, tmp_path):
+        """Examples (tier 2) have lower priority than workspace source (tier 1)."""
+        # Set up a library monorepo like socket.io
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": ["packages/*"]}')
+
+        # Workspace package with lib/
+        pkg_dir = tmp_path / "packages" / "mylib"
+        (pkg_dir / "lib").mkdir(parents=True)
+        (pkg_dir / "lib" / "index.ts").write_text("export class MyLib {}")
+
+        # Examples outside workspaces
+        examples_dir = tmp_path / "examples" / "basic"
+        examples_dir.mkdir(parents=True)
+        (examples_dir / "app.ts").write_text("import { MyLib } from 'mylib'")
+
+        roots = detect_package_roots(tmp_path)
+
+        # Workspace lib/ should be tier 1
+        lib_result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
+        assert lib_result.tier == Tier.FIRST_PARTY
+
+        # Examples should be tier 2
+        example_result = classify_file(examples_dir / "app.ts", tmp_path, roots)
+        assert example_result.tier == Tier.INTERNAL_DEP
+
+        # Tier 1 < Tier 2, so workspace source has higher priority
+        assert lib_result.tier < example_result.tier
 
 
 class TestMinificationDetection:
