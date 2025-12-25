@@ -12,41 +12,46 @@ set -euo pipefail
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 echo "🔍 Running pre-commit checks..."
 
-# Check if ruff is available
-if command -v ruff &> /dev/null; then
-    echo -n "  Ruff (linting)... "
-    if ruff check src/ tests/ --quiet 2>/dev/null; then
-        echo -e "${GREEN}✓${NC}"
-    else
-        echo -e "${RED}✗${NC}"
-        echo ""
-        echo -e "${RED}Ruff found issues:${NC}"
-        ruff check src/ tests/
-        exit 1
-    fi
-else
-    echo -e "  ${YELLOW}Ruff not installed, skipping lint check${NC}"
+# Require ruff
+if ! command -v ruff &> /dev/null; then
+    echo -e "${RED}✗ ruff not installed${NC}"
+    echo "  Install with: pip install ruff"
+    exit 1
 fi
 
-# Check if bandit is available
-if command -v bandit &> /dev/null; then
-    echo -n "  Bandit (security)... "
-    if bandit -r src/ -c pyproject.toml --quiet 2>/dev/null; then
-        echo -e "${GREEN}✓${NC}"
-    else
-        echo -e "${RED}✗${NC}"
-        echo ""
-        echo -e "${RED}Bandit found security issues:${NC}"
-        bandit -r src/ -c pyproject.toml
-        exit 1
-    fi
+# Require bandit
+if ! command -v bandit &> /dev/null; then
+    echo -e "${RED}✗ bandit not installed${NC}"
+    echo "  Install with: pip install bandit"
+    exit 1
+fi
+
+# Run ruff
+echo -n "  Ruff (linting)... "
+if ruff check src/ tests/ --quiet 2>/dev/null; then
+    echo -e "${GREEN}✓${NC}"
 else
-    echo -e "  ${YELLOW}Bandit not installed, skipping security check${NC}"
+    echo -e "${RED}✗${NC}"
+    echo ""
+    echo -e "${RED}Ruff found issues:${NC}"
+    ruff check src/ tests/
+    exit 1
+fi
+
+# Run bandit
+echo -n "  Bandit (security)... "
+if bandit -r src/ -c pyproject.toml --quiet 2>/dev/null; then
+    echo -e "${GREEN}✓${NC}"
+else
+    echo -e "${RED}✗${NC}"
+    echo ""
+    echo -e "${RED}Bandit found security issues:${NC}"
+    bandit -r src/ -c pyproject.toml
+    exit 1
 fi
 
 echo -e "${GREEN}✅ Pre-commit checks passed${NC}"
