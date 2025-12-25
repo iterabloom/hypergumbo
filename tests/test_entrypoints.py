@@ -1526,6 +1526,20 @@ class TestSinatraEntrypoints:
         sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
         assert len(sinatra_eps) == 0
 
+    def test_sinatra_test_file_not_detected(self) -> None:
+        """Test files named app.rb are not detected as Sinatra routes."""
+        # This was a real bug: test/integration/app.rb was misdetected in Sinatra repo
+        syms = [
+            make_symbol("TestApp", path="test/integration/app.rb", language="ruby"),
+            make_symbol("describe", path="spec/app.rb", language="ruby"),
+            make_symbol("helper", path="tests/server.rb", language="ruby"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
+
+        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
+        assert len(sinatra_eps) == 0
+
 
 class TestKtorEntrypoints:
     """Tests for Ktor (Kotlin) route detection.
@@ -2299,6 +2313,18 @@ class TestGrapeEntrypoints:
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 0
+
+    def test_grape_test_file_not_detected(self) -> None:
+        """Test files in api directory are not detected as Grape APIs."""
+        syms = [
+            make_symbol("describe", path="spec/api/users_spec.rb", language="ruby"),
+            make_symbol("test_api", path="test/users_api.rb", language="ruby"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
 
         grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
         assert len(grape_eps) == 0

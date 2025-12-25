@@ -826,8 +826,14 @@ def _is_sinatra_route_file(path: str, language: str) -> bool:
     Matches:
     - Files named app.rb, application.rb, server.rb
     - Any .rb file inside a routes/ directory
+
+    Excludes test files.
     """
     if language != "ruby":
+        return False
+
+    # Exclude test files
+    if _is_test_file(path):
         return False
 
     filename = _get_filename(path)
@@ -1157,8 +1163,14 @@ def _is_grape_api_file(path: str, language: str) -> bool:
     Matches:
     - Files ending in _api.rb
     - Any .rb file inside an api/, endpoints/, or entities/ directory
+
+    Excludes test files.
     """
     if language != "ruby":
+        return False
+
+    # Exclude test files
+    if _is_test_file(path):
         return False
 
     filename = _get_filename(path)
