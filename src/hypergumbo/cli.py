@@ -53,6 +53,8 @@ from .analyze.scala import analyze_scala
 from .analyze.lua import analyze_lua
 from .analyze.haskell import analyze_haskell
 from .analyze.ocaml import analyze_ocaml
+from .analyze.solidity import analyze_solidity
+from .analyze.csharp import analyze_csharp
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -816,6 +818,32 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(ocaml_result.run.to_dict())
             all_symbols.extend(ocaml_result.symbols)
             all_edges.extend(ocaml_result.edges)
+
+    # Run Solidity analysis (optional, requires tree-sitter-solidity)
+    solidity_result = analyze_solidity(repo_root)
+    if solidity_result.run is not None:
+        if solidity_result.skipped:  # pragma: no cover - solidity installed
+            limits.skipped_passes.append({
+                "pass": solidity_result.run.pass_id,
+                "reason": solidity_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(solidity_result.run.to_dict())
+            all_symbols.extend(solidity_result.symbols)
+            all_edges.extend(solidity_result.edges)
+
+    # Run C# analysis (optional, requires tree-sitter-c-sharp)
+    csharp_result = analyze_csharp(repo_root)
+    if csharp_result.run is not None:
+        if csharp_result.skipped:  # pragma: no cover - c-sharp installed
+            limits.skipped_passes.append({
+                "pass": csharp_result.run.pass_id,
+                "reason": csharp_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(csharp_result.run.to_dict())
+            all_symbols.extend(csharp_result.symbols)
+            all_edges.extend(csharp_result.edges)
 
     # Run cross-language linkers
 

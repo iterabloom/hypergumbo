@@ -432,6 +432,24 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # OCaml analysis failed or tree-sitter not available
 
+    if "solidity" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.solidity import analyze_solidity  # pragma: no cover
+            result = analyze_solidity(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Solidity analysis failed or tree-sitter not available
+
+    if "csharp" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.csharp import analyze_csharp  # pragma: no cover
+            result = analyze_csharp(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # C# analysis failed or tree-sitter not available
+
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files

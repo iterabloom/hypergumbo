@@ -53,6 +53,13 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "swift": ["*.swift"],
     "kotlin": ["*.kt", "*.kts"],
     "shell": ["*.sh", "*.bash", "*.zsh"],
+    "scala": ["*.scala", "*.sc"],
+    "elixir": ["*.ex", "*.exs"],
+    "lua": ["*.lua"],
+    "haskell": ["*.hs", "*.lhs"],
+    "ocaml": ["*.ml", "*.mli"],
+    "solidity": ["*.sol"],
+    "csharp": ["*.cs"],
 }
 
 # Framework detection patterns
