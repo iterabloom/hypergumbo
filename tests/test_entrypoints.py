@@ -2310,3 +2310,111 @@ class TestGrapeEntrypoints:
 
         grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
         assert len(grape_eps) == 0
+
+
+class TestTornadoEntrypoints:
+    """Tests for Tornado (Python) handler detection."""
+
+    def test_detect_tornado_handler_file(self) -> None:
+        """Detect functions in *_handler.py as Tornado handlers."""
+        sym = make_symbol("UserHandler", path="app/user_handler.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 1
+
+    def test_detect_tornado_handlers_directory(self) -> None:
+        """Detect functions in handlers/ directory as Tornado handlers."""
+        sym = make_symbol("MainHandler", path="app/handlers/main.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 1
+
+    def test_detect_tornado_views_directory(self) -> None:
+        """Detect functions in views/ directory as Tornado views."""
+        sym = make_symbol("HomeView", path="app/views/home.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 1
+
+    def test_detect_tornado_websocket_handler(self) -> None:
+        """Detect WebSocket handlers."""
+        sym = make_symbol("ChatSocket", path="app/websocket_handler.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 1
+
+    def test_detect_multiple_tornado_handlers(self) -> None:
+        """Detect multiple handlers in same file."""
+        sym1 = make_symbol("get", path="app/handlers/api.py", language="python", start_line=10)
+        sym2 = make_symbol("post", path="app/handlers/api.py", language="python", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 2
+
+    def test_tornado_handler_confidence(self) -> None:
+        """Tornado handler detection has appropriate confidence."""
+        sym = make_symbol("Handler", path="app/handlers/items.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 1
+        assert tornado_eps[0].confidence >= 0.80
+
+    def test_tornado_handler_label(self) -> None:
+        """Tornado handler entrypoints have descriptive labels."""
+        sym = make_symbol("DeleteHandler", path="app/user_handler.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 1
+        assert "Tornado" in tornado_eps[0].label or "handler" in tornado_eps[0].label.lower()
+
+    def test_tornado_only_python_files(self) -> None:
+        """Only Python files are detected as Tornado handlers."""
+        # Ruby file should NOT be detected
+        sym = make_symbol("UserHandler", path="app/user_handler.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 0
+
+    def test_tornado_file_symbol_not_detected(self) -> None:
+        """File symbols in Tornado files are not detected."""
+        sym = make_symbol("file", kind="file", path="app/handlers/main.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 0
+
+    def test_tornado_non_handler_file_not_detected(self) -> None:
+        """Non-handler Python files are not detected as Tornado."""
+        sym = make_symbol("helper", path="app/utils/helper.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 0

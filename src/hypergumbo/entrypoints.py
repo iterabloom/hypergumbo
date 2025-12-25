@@ -22,6 +22,7 @@ Detects common entrypoint patterns:
 - Fastify routes (*.routes.js/ts, *.route.js/ts, *.schema.js/ts)
 - Koa routes (*.router.js/ts, *.controller.js/ts, *.middleware.js/ts)
 - Grape APIs (*_api.rb, api/, endpoints/, entities/)
+- Tornado handlers (*_handler.py, handlers/, views/)
 
 How It Works
 ------------
@@ -99,6 +100,7 @@ class EntrypointKind(Enum):
     FASTIFY_ROUTE = "fastify_route"
     KOA_ROUTE = "koa_route"
     GRAPE_API = "grape_api"
+    TORNADO_HANDLER = "tornado_handler"
 
 
 @dataclass
@@ -237,6 +239,11 @@ KOA_ROUTE_PATTERNS = {".router.", ".controller.", ".middleware."}
 # Files ending in _api.rb, or in api/endpoints/entities directories
 GRAPE_API_SUFFIX = "_api.rb"
 GRAPE_API_DIRS = {"api", "endpoints", "entities"}
+
+# Tornado (Python) handler patterns
+# Files ending in _handler.py, or in handlers/views directories
+TORNADO_HANDLER_SUFFIX = "_handler.py"
+TORNADO_HANDLER_DIRS = {"handlers", "views"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -1147,6 +1154,53 @@ def _detect_grape_apis(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_tornado_handler_file(path: str, language: str) -> bool:
+    """Check if a file path matches Tornado handler patterns.
+
+    Matches:
+    - Files ending in _handler.py
+    - Any .py file inside a handlers/ or views/ directory
+    """
+    if language != "python":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for *_handler.py suffix
+    if filename.endswith(TORNADO_HANDLER_SUFFIX):
+        return True
+
+    # Check if file is in a handlers/ or views/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in TORNADO_HANDLER_DIRS for part in path_parts)
+
+
+def _detect_tornado_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Tornado handler endpoints from file patterns.
+
+    Tornado is a Python web framework. Handlers are typically defined in
+    files ending in _handler.py or in handlers/views directories.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_tornado_handler_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.TORNADO_HANDLER,
+                confidence=0.85,
+                label="Tornado handler",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1227,6 +1281,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_fastify_routes(nodes))
     entrypoints.extend(_detect_hapi_routes(nodes))
     entrypoints.extend(_detect_grape_apis(nodes))
+    entrypoints.extend(_detect_tornado_handlers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
