@@ -42,7 +42,7 @@ hypergumbo . -t 2000  # include symbols and entry points
 pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
 ```
 
-All language analyzers (Python, JavaScript, TypeScript, PHP, C, Java, Elixir, Rust, Go, Ruby, Kotlin) are included by default.
+All language analyzers (Python, JavaScript, TypeScript, PHP, C, Java, Elixir, Rust, Go, Ruby, Kotlin, Swift) are included by default.
 
 For LLM-assisted plan generation:
 ```bash
@@ -108,6 +108,7 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | Go | tree-sitter | function, method, struct, interface, type | calls, imports |
 | Ruby | tree-sitter | method, class, module | calls, imports |
 | Kotlin | tree-sitter | function, class, object, interface, method | calls, imports |
+| Swift | tree-sitter | function, class, struct, protocol, enum, method | calls, imports |
 | HTML | regex | file | script_src |
 
 ### Cross-Language Linkers

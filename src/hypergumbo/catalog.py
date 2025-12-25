@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -194,6 +194,12 @@ def get_default_catalog() -> Catalog:
                 description="Kotlin via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[kotlin]",
+            ),
+            Pass(
+                id="swift-ts-v1",
+                description="Swift via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[swift]",
             ),
             Pass(
                 id="websocket-linker-v1",

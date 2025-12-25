@@ -48,6 +48,7 @@ from .analyze.rust import analyze_rust
 from .analyze.go import analyze_go
 from .analyze.ruby import analyze_ruby
 from .analyze.kotlin import analyze_kotlin
+from .analyze.swift import analyze_swift
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -740,6 +741,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(kotlin_result.run.to_dict())
             all_symbols.extend(kotlin_result.symbols)
             all_edges.extend(kotlin_result.edges)
+
+    # Run Swift analysis (optional, requires tree-sitter-swift)
+    swift_result = analyze_swift(repo_root)
+    if swift_result.run is not None:
+        if swift_result.skipped:
+            limits.skipped_passes.append({
+                "pass": swift_result.run.pass_id,
+                "reason": swift_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(swift_result.run.to_dict())
+            all_symbols.extend(swift_result.symbols)
+            all_edges.extend(swift_result.edges)
 
     # Run cross-language linkers
 
