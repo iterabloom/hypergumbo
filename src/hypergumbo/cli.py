@@ -84,8 +84,12 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
     max_tokens = args.tokens if args.tokens else None
     exclude_tests = getattr(args, "exclude_tests", False)
+    first_party_priority = getattr(args, "first_party_priority", True)
     sketch = generate_sketch(
-        repo_root, max_tokens=max_tokens, exclude_tests=exclude_tests
+        repo_root,
+        max_tokens=max_tokens,
+        exclude_tests=exclude_tests,
+        first_party_priority=first_party_priority,
     )
     print(sketch)
     return 0
@@ -416,7 +420,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="exclude_tests",
         help="Exclude test files from analysis (faster for large codebases)",
     )
-    p_sketch.set_defaults(func=cmd_sketch)
+    p_sketch.add_argument(
+        "--no-first-party-priority",
+        action="store_false",
+        dest="first_party_priority",
+        help="Disable supply chain tier weighting in symbol ranking",
+    )
+    p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
 
     # hypergumbo init
     p_init = sub.add_parser("init", help="Initialize a hypergumbo capsule")

@@ -614,12 +614,21 @@ def _format_symbols(
     edges: list,
     repo_root: Path,
     max_symbols: int = 100,
+    first_party_priority: bool = True,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
     Uses graph centrality to prioritize the most-called symbols first.
     Test files are excluded from both symbols and edge sources to avoid
     inflating centrality of production code called by tests.
+
+    Args:
+        symbols: List of symbols from analysis.
+        edges: List of edges from analysis.
+        repo_root: Repository root path.
+        max_symbols: Maximum symbols to include.
+        first_party_priority: If True (default), boost first-party symbols.
+            If False, use raw centrality scores without tier weighting.
     """
     if not symbols:
         return ""
@@ -649,8 +658,11 @@ def _format_symbols(
     # Compute centrality scores using only production edges
     raw_centrality = _compute_centrality(key_symbols, production_edges)
 
-    # Apply tier-based weighting (first-party symbols boosted)
-    centrality = _apply_tier_weights(raw_centrality, key_symbols)
+    # Apply tier-based weighting (first-party symbols boosted) if enabled
+    if first_party_priority:
+        centrality = _apply_tier_weights(raw_centrality, key_symbols)
+    else:
+        centrality = raw_centrality
 
     # Sort by weighted centrality (most called first), then by name
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
@@ -707,6 +719,7 @@ def generate_sketch(
     repo_root: Path,
     max_tokens: Optional[int] = None,
     exclude_tests: bool = False,
+    first_party_priority: bool = True,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -723,6 +736,8 @@ def generate_sketch(
         repo_root: Path to the repository root.
         max_tokens: Target tokens for output. If None, returns minimal sketch.
         exclude_tests: If True, skip analyzing test files for faster performance.
+        first_party_priority: If True (default), boost first-party symbols in
+            ranking. Set False to use raw centrality scores.
 
     Returns:
         Markdown-formatted sketch string.
@@ -821,7 +836,11 @@ def generate_sketch(
         max_symbols = max(10, budget_for_symbols // tokens_per_item)
 
         symbols_section = _format_symbols(
-            symbols, edges, repo_root, max_symbols=max_symbols
+            symbols,
+            edges,
+            repo_root,
+            max_symbols=max_symbols,
+            first_party_priority=first_party_priority,
         )
         if symbols_section:
             sections.append(symbols_section)
