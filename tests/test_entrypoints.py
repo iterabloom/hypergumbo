@@ -1193,3 +1193,117 @@ class TestLaravelEntrypoints:
 
         laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
         assert len(laravel_eps) == 0
+
+
+class TestRustEntrypoints:
+    """Tests for Rust web framework handler detection.
+
+    Rust web frameworks (Actix-web, Axum, Rocket, Warp) typically use:
+    - *_handler.rs or *_controller.rs files
+    - handlers/ or controllers/ directories
+    """
+
+    def test_detect_rust_handler_file(self) -> None:
+        """Detect functions in *_handler.rs as Rust handlers."""
+        sym = make_symbol("get_user", path="src/user_handler.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 1
+        assert rust_eps[0].symbol_id == sym.id
+
+    def test_detect_rust_controller_file(self) -> None:
+        """Detect functions in *_controller.rs as Rust handlers."""
+        sym = make_symbol("create_user", path="src/user_controller.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 1
+
+    def test_detect_rust_handlers_directory(self) -> None:
+        """Detect functions in handlers/ directory."""
+        sym = make_symbol("list_users", path="src/handlers/users.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 1
+
+    def test_detect_rust_controllers_directory(self) -> None:
+        """Detect functions in controllers/ directory."""
+        sym = make_symbol("delete_user", path="src/controllers/user.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 1
+
+    def test_detect_multiple_rust_handlers(self) -> None:
+        """Detect multiple handlers in same file."""
+        sym1 = make_symbol("create", path="src/api_handler.rs", language="rust", start_line=10)
+        sym2 = make_symbol("update", path="src/api_handler.rs", language="rust", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 2
+
+    def test_rust_handler_confidence(self) -> None:
+        """Rust handler detection has appropriate confidence."""
+        sym = make_symbol("handle_request", path="src/handlers/api.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 1
+        assert rust_eps[0].confidence >= 0.80
+
+    def test_rust_handler_label(self) -> None:
+        """Rust handler entrypoints have descriptive labels."""
+        sym = make_symbol("get_items", path="src/item_handler.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 1
+        assert "Rust" in rust_eps[0].label or "handler" in rust_eps[0].label.lower()
+
+    def test_rust_only_rust_files(self) -> None:
+        """Only Rust files are detected as Rust handlers."""
+        # Python file should NOT be detected
+        sym = make_symbol("get_user", path="src/user_handler.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 0
+
+    def test_rust_file_symbol_not_detected(self) -> None:
+        """File symbols in handler files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/user_handler.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 0
+
+    def test_rust_non_handler_file_not_detected(self) -> None:
+        """Non-handler Rust files are not detected."""
+        sym = make_symbol("helper", path="src/utils.rs", language="rust")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
+        assert len(rust_eps) == 0
