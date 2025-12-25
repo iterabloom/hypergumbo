@@ -16,6 +16,7 @@ Detects common entrypoint patterns:
 - ASP.NET Core controllers (Controllers/*Controller.cs)
 - Sinatra routes (app.rb, application.rb, server.rb, routes/)
 - Ktor routes (*Routes.kt, *Routing.kt, routes/)
+- Vapor routes (*Controller.swift, routes.swift, Controllers/)
 
 How It Works
 ------------
@@ -87,6 +88,7 @@ class EntrypointKind(Enum):
     ASPNET_CONTROLLER = "aspnet_controller"
     SINATRA_ROUTE = "sinatra_route"
     KTOR_ROUTE = "ktor_route"
+    VAPOR_ROUTE = "vapor_route"
 
 
 @dataclass
@@ -194,6 +196,12 @@ SINATRA_ROUTE_DIRS = {"routes"}
 # Files ending in Routes.kt or Routing.kt, or in routes/routing directories
 KTOR_ROUTE_SUFFIXES = {"Routes.kt", "Routing.kt"}
 KTOR_ROUTE_DIRS = {"routes", "routing"}
+
+# Vapor (Swift) route patterns
+# Files ending in Controller.swift or routes.swift, or in Controllers/Routes directories
+VAPOR_CONTROLLER_SUFFIX = "Controller.swift"
+VAPOR_ROUTE_FILES = {"routes.swift"}
+VAPOR_ROUTE_DIRS = {"Controllers", "Routes"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -820,6 +828,58 @@ def _detect_ktor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_vapor_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Vapor route patterns.
+
+    Matches:
+    - Files ending in Controller.swift
+    - Files named routes.swift
+    - Any .swift file inside a Controllers/ or Routes/ directory
+    """
+    if language != "swift":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Controller.swift suffix
+    if filename.endswith(VAPOR_CONTROLLER_SUFFIX):
+        return True
+
+    # Check for routes.swift
+    if filename in VAPOR_ROUTE_FILES:
+        return True
+
+    # Check if file is in a Controllers/ or Routes/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in VAPOR_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_vapor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Vapor route endpoints from file patterns.
+
+    Vapor is a Swift web framework. Routes are typically defined in
+    files named *Controller.swift, routes.swift, or in Controllers/Routes directories.
+
+    Only function/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_vapor_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.VAPOR_ROUTE,
+                confidence=0.85,
+                label="Vapor route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -894,6 +954,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_aspnet_controllers(nodes))
     entrypoints.extend(_detect_sinatra_routes(nodes))
     entrypoints.extend(_detect_ktor_routes(nodes))
+    entrypoints.extend(_detect_vapor_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()

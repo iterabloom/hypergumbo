@@ -1646,3 +1646,116 @@ class TestKtorEntrypoints:
 
         ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
         assert len(ktor_eps) == 0
+
+
+class TestVaporEntrypoints:
+    """Tests for Vapor (Swift) route detection.
+
+    Vapor is a Swift web framework. Routes are typically defined in
+    Controllers/*Controller.swift or routes.swift files.
+    """
+
+    def test_detect_vapor_controller_file(self) -> None:
+        """Detect methods in *Controller.swift as Vapor routes."""
+        sym = make_symbol("index", path="Sources/App/Controllers/UserController.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 1
+        assert vapor_eps[0].symbol_id == sym.id
+
+    def test_detect_vapor_routes_file(self) -> None:
+        """Detect methods in routes.swift as Vapor routes."""
+        sym = make_symbol("configureRoutes", path="Sources/App/routes.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 1
+
+    def test_detect_vapor_controllers_directory(self) -> None:
+        """Detect methods in Controllers/ directory."""
+        sym = make_symbol("create", path="Sources/App/Controllers/TodoController.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 1
+
+    def test_detect_vapor_routes_directory(self) -> None:
+        """Detect methods in routes/ directory."""
+        sym = make_symbol("setup", path="Sources/App/Routes/UserRoutes.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 1
+
+    def test_detect_multiple_vapor_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("list", path="Sources/App/Controllers/ItemController.swift", language="swift", start_line=10)
+        sym2 = make_symbol("show", path="Sources/App/Controllers/ItemController.swift", language="swift", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 2
+
+    def test_vapor_route_confidence(self) -> None:
+        """Vapor route detection has appropriate confidence."""
+        sym = make_symbol("update", path="Sources/App/Controllers/OrderController.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 1
+        assert vapor_eps[0].confidence >= 0.80
+
+    def test_vapor_route_label(self) -> None:
+        """Vapor route entrypoints have descriptive labels."""
+        sym = make_symbol("delete", path="Sources/App/Controllers/ProductController.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 1
+        assert "Vapor" in vapor_eps[0].label or "route" in vapor_eps[0].label.lower()
+
+    def test_vapor_only_swift_files(self) -> None:
+        """Only Swift files are detected as Vapor routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("index", path="Sources/App/Controllers/UserController.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 0
+
+    def test_vapor_file_symbol_not_detected(self) -> None:
+        """File symbols in Vapor files are not detected."""
+        sym = make_symbol("file", kind="file", path="Sources/App/Controllers/UserController.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 0
+
+    def test_vapor_non_route_file_not_detected(self) -> None:
+        """Non-route Swift files are not detected as Vapor."""
+        sym = make_symbol("helper", path="Sources/App/Services/UserService.swift", language="swift")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
+        assert len(vapor_eps) == 0
