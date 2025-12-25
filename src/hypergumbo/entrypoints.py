@@ -5,6 +5,7 @@ Detects common entrypoint patterns:
 - CLI entrypoints (main guard, Click commands)
 - Electron app entry points (electron.js, preload.js)
 - Django views (functions imported by urls.py)
+- Express.js routes (routes.js, router.js, routes/ directory)
 
 How It Works
 ------------
@@ -23,10 +24,11 @@ Detection is based on:
    `cli`, `run` are *probably* entrypoints but could be false positives.
    The lower confidence lets callers filter if desired.
 
-3. **File patterns** (medium confidence ~0.85): For Electron apps,
+3. **File patterns** (medium-high confidence ~0.85): For Electron apps,
    files named `electron.js`, `preload.js` indicate entry points.
-   Generic names like `renderer.js` and `index.js` are NOT matched
-   to avoid false positives (many frameworks use these names).
+   For Express.js, files named `routes.js`, `router.js`, or files in
+   a `routes/` directory are detected. Generic names like `renderer.js`
+   and `index.js` are NOT matched to avoid false positives.
 
 4. **Import patterns** (high confidence ~0.90): For Django, functions
    imported by urls.py files are likely views. This leverages the fact
@@ -36,14 +38,13 @@ Confidence Scores
 -----------------
 - 0.95: Decorator-based (very reliable)
 - 0.90: Django urls.py imports (explicit URL mappings)
-- 0.85: File-pattern-based (specific Electron files)
+- 0.85: File-pattern-based (Electron, Express route files)
 - 0.70: Name-pattern-based (heuristic, may have false positives)
 
 Current Limitations
 -------------------
 - Decorator detection relies on stable_id containing decorator names,
   which is a temporary hack. Proper decorator storage in IR is needed.
-- No Express.js detection yet (requires JS analysis).
 - Django detection doesn't catch views defined inline in urls.py.
 """
 from __future__ import annotations
@@ -65,6 +66,7 @@ class EntrypointKind(Enum):
     ELECTRON_PRELOAD = "electron_preload"
     ELECTRON_RENDERER = "electron_renderer"
     DJANGO_VIEW = "django_view"
+    EXPRESS_ROUTE = "express_route"
 
 
 @dataclass
@@ -114,6 +116,11 @@ CLI_NAME_PATTERNS = {
 # Note: renderer.js/ts and index.js are too generic - many frameworks use these names
 ELECTRON_MAIN_FILES = {"electron.js", "electron.ts", "electron-main.js", "electron-main.ts"}
 ELECTRON_PRELOAD_FILES = {"preload.js", "preload.ts", "electron-preload.js", "electron-preload.ts"}
+
+# Express.js route file patterns
+# Files named routes.js/ts or router.js/ts, or files in a routes/ directory
+EXPRESS_ROUTE_FILENAMES = {"routes.js", "routes.ts", "router.js", "router.ts"}
+EXPRESS_ROUTE_DIRS = {"routes", "routers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -222,6 +229,51 @@ def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_express_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Express route patterns.
+
+    Matches:
+    - Files named routes.js/ts or router.js/ts
+    - Any .js/.ts file inside a routes/ or routers/ directory
+    """
+    if language not in ("javascript", "typescript"):
+        return False
+
+    filename = _get_filename(path)
+    if filename in EXPRESS_ROUTE_FILENAMES:
+        return True
+
+    # Check if file is in a routes/ or routers/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in EXPRESS_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_express_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Express.js route handlers from file patterns.
+
+    Express routes are typically defined in files named routes.js/ts,
+    router.js/ts, or files inside a routes/ directory.
+
+    Only function-like symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_express_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.EXPRESS_ROUTE,
+                confidence=0.85,
+                label="Express route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -285,6 +337,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_cli_entrypoints(nodes))
     entrypoints.extend(_detect_electron_entrypoints(nodes))
     entrypoints.extend(_detect_django_views(nodes, edges))
+    entrypoints.extend(_detect_express_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
