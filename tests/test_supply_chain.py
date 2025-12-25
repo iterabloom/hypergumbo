@@ -259,6 +259,35 @@ public class Schema {
 """)
         assert is_likely_minified(generated) is True
 
+    def test_webpack_bootstrap_detected(self, tmp_path):
+        """Files with webpack bootstrap pattern are detected as bundled."""
+        bundled = tmp_path / "bundle.js"
+        bundled.write_text("""#!/usr/bin/env node
+module.exports =
+/******/ (function(modules) { // webpackBootstrap
+/******/    // The module cache
+/******/    var installedModules = {};
+/******/
+/******/    // The require function
+/******/    function __webpack_require__(moduleId) {
+/******/        // Check if module is in cache
+/******/    }
+/******/ })([]);
+""")
+        assert is_likely_minified(bundled) is True
+
+    def test_webpack_require_detected(self, tmp_path):
+        """Files with __webpack_require__ in early lines are detected."""
+        bundled = tmp_path / "app.bundle.js"
+        bundled.write_text("""
+var modules = {};
+function __webpack_require__(id) {
+    return modules[id];
+}
+module.exports = __webpack_require__(0);
+""")
+        assert is_likely_minified(bundled) is True
+
 
 class TestClassificationPriority:
     """Test that classification checks are applied in correct order."""

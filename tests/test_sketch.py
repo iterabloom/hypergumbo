@@ -642,6 +642,41 @@ class TestFormatSymbols:
             f"Expected first-party (line {first_party_pos}) before external (line {external_pos})"
         )
 
+    def test_tier_4_derived_excluded(self) -> None:
+        """Tier 4 (derived/bundled) symbols are excluded from Key Symbols."""
+        repo_root = Path("/fake/repo")
+        # Derived symbol (bundled webpack code)
+        bundled_sym = Symbol(
+            id="bundled", name="__webpack_require__", kind="function",
+            language="javascript",
+            path="/fake/repo/dist/bundle.js", span=Span(1, 1, 1, 10),
+            supply_chain_tier=4, supply_chain_reason="detected as minified/generated"
+        )
+        # First-party symbol
+        first_party_sym = Symbol(
+            id="first_party", name="my_func", kind="function",
+            language="javascript",
+            path="/fake/repo/src/app.js", span=Span(1, 1, 1, 10),
+            supply_chain_tier=1, supply_chain_reason="matches ^src/"
+        )
+
+        # Both have calls, but bundled has more
+        edges = [
+            Edge.create(src=f"caller{i}", dst="bundled", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(100)  # High centrality
+        ] + [
+            Edge.create(src="caller_fp", dst="first_party", edge_type="calls",
+                        line=1, confidence=1.0)
+        ]
+
+        result = _format_symbols([bundled_sym, first_party_sym], edges, repo_root)
+
+        # First-party should be present
+        assert "my_func" in result
+        # Bundled/derived should be excluded entirely
+        assert "__webpack_require__" not in result
+
 
 class TestGenerateSketchWithBudget:
     """Tests for budget-based sketch expansion."""

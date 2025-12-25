@@ -288,8 +288,11 @@ def _run_analysis(repo_root: Path, profile: RepoProfile) -> tuple[list[Symbol], 
     """Run static analysis to get symbols and edges.
 
     Only runs analysis for detected languages to avoid unnecessary work.
+    Applies supply chain classification to all symbols.
     Returns (symbols, edges) tuple.
     """
+    from .supply_chain import classify_file, detect_package_roots
+
     all_symbols: list[Symbol] = []
     all_edges: list = []
 
@@ -311,6 +314,14 @@ def _run_analysis(repo_root: Path, profile: RepoProfile) -> tuple[list[Symbol], 
             all_edges.extend(result.edges)  # pragma: no cover
         except Exception:  # pragma: no cover
             pass  # JS/TS analysis failed or tree-sitter not available
+
+    # Apply supply chain classification to all symbols
+    package_roots = detect_package_roots(repo_root)
+    for symbol in all_symbols:
+        file_path = repo_root / symbol.path
+        classification = classify_file(file_path, repo_root, package_roots)
+        symbol.supply_chain_tier = classification.tier.value
+        symbol.supply_chain_reason = classification.reason
 
     return all_symbols, all_edges
 
@@ -442,12 +453,13 @@ def _format_symbols(
     if not symbols:
         return ""
 
-    # Filter to functions and classes, exclude test files
+    # Filter to functions and classes, exclude test files and derived artifacts
     key_symbols = [
         s for s in symbols
         if s.kind in ("function", "class", "method")
         and not _is_test_path(s.path)
         and "test_" not in s.name  # Exclude test functions
+        and s.supply_chain_tier != 4  # Exclude derived artifacts (bundles, etc.)
     ]
 
     # Build lookup: symbol ID -> path (for filtering edges by source)
