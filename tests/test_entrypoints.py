@@ -1986,3 +1986,111 @@ class TestHapiEntrypoints:
 
         hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
         assert len(hapi_eps) == 0
+
+
+class TestFastifyEntrypoints:
+    """Tests for Fastify (Node.js) route detection."""
+
+    def test_detect_fastify_routes_file(self) -> None:
+        """Detect functions in *.routes.js as Fastify routes."""
+        sym = make_symbol("getUsers", path="src/user.routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 1
+
+    def test_detect_fastify_routes_ts_file(self) -> None:
+        """Detect functions in *.routes.ts as Fastify routes."""
+        sym = make_symbol("createOrder", path="src/order.routes.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 1
+
+    def test_detect_fastify_route_singular_file(self) -> None:
+        """Detect functions in *.route.js (singular) as Fastify routes."""
+        sym = make_symbol("getProduct", path="src/product.route.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 1
+
+    def test_detect_fastify_schema_file(self) -> None:
+        """Detect functions in *.schema.js as Fastify schema (route adjacent)."""
+        sym = make_symbol("validateUser", path="src/user.schema.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 1
+
+    def test_detect_multiple_fastify_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("get", path="src/api.routes.js", language="javascript", start_line=10)
+        sym2 = make_symbol("post", path="src/api.routes.js", language="javascript", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 2
+
+    def test_fastify_route_confidence(self) -> None:
+        """Fastify route detection has appropriate confidence."""
+        sym = make_symbol("handler", path="src/item.routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 1
+        assert fastify_eps[0].confidence >= 0.80
+
+    def test_fastify_route_label(self) -> None:
+        """Fastify route entrypoints have descriptive labels."""
+        sym = make_symbol("deleteUser", path="src/user.routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 1
+        assert "Fastify" in fastify_eps[0].label or "route" in fastify_eps[0].label.lower()
+
+    def test_fastify_only_js_ts_files(self) -> None:
+        """Only JS/TS files are detected as Fastify routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("getUsers", path="src/user.routes.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 0
+
+    def test_fastify_file_symbol_not_detected(self) -> None:
+        """File symbols in Fastify files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/user.routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 0
+
+    def test_fastify_non_route_file_not_detected(self) -> None:
+        """Non-route JS files are not detected as Fastify."""
+        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
+        assert len(fastify_eps) == 0

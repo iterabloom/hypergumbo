@@ -19,6 +19,7 @@ Detects common entrypoint patterns:
 - Vapor routes (*Controller.swift, routes.swift, Controllers/)
 - Plug routes (router.ex, *_router.ex, *_plug.ex)
 - Hapi routes (*routes.js/ts, routes/, plugins/)
+- Fastify routes (*.routes.js/ts, *.route.js/ts, *.schema.js/ts)
 
 How It Works
 ------------
@@ -93,6 +94,7 @@ class EntrypointKind(Enum):
     VAPOR_ROUTE = "vapor_route"
     PLUG_ROUTE = "plug_route"
     HAPI_ROUTE = "hapi_route"
+    FASTIFY_ROUTE = "fastify_route"
 
 
 @dataclass
@@ -218,6 +220,10 @@ PLUG_ROUTE_DIRS = {"plugs"}
 # Note: We don't include routes/ since Express.js catches that first
 HAPI_ROUTE_SUFFIXES = {"routes.js", "routes.ts", "Routes.js", "Routes.ts"}
 HAPI_ROUTE_DIRS = {"plugins"}
+
+# Fastify (Node.js) route patterns
+# Files with .routes. or .route. or .schema. in the name (Fastify convention)
+FASTIFY_ROUTE_PATTERNS = {".routes.", ".route.", ".schema."}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -995,6 +1001,49 @@ def _detect_hapi_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_fastify_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Fastify route patterns.
+
+    Matches:
+    - Files with .routes. pattern (e.g., user.routes.js)
+    - Files with .route. pattern (e.g., user.route.js)
+    - Files with .schema. pattern (e.g., user.schema.js)
+    """
+    if language not in ("javascript", "typescript"):
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Fastify patterns (.routes., .route., .schema.)
+    return any(pattern in filename for pattern in FASTIFY_ROUTE_PATTERNS)
+
+
+def _detect_fastify_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Fastify route endpoints from file patterns.
+
+    Fastify is a Node.js web framework. Routes are typically defined in
+    files with .routes., .route., or .schema. patterns.
+
+    Only function/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_fastify_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.FASTIFY_ROUTE,
+                confidence=0.85,
+                label="Fastify route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1071,6 +1120,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_ktor_routes(nodes))
     entrypoints.extend(_detect_vapor_routes(nodes))
     entrypoints.extend(_detect_plug_routes(nodes))
+    entrypoints.extend(_detect_fastify_routes(nodes))
     entrypoints.extend(_detect_hapi_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
