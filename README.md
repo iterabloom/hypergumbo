@@ -3,7 +3,7 @@
 Get a quick overview of any codebase, sized to fit your context window.
 
 ```bash
-pip install git+https://codeberg.org/iterabloom/hypergumbo.git
+pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
 hypergumbo .
 ```
 
@@ -39,23 +39,23 @@ hypergumbo . -t 2000  # include symbols and entry points
 ## Installation
 
 ```bash
-pip install git+https://codeberg.org/iterabloom/hypergumbo.git
+pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
 ```
 
 Optional extras for additional language support:
 ```bash
-pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo.git"  # JS/TS/Vue/Svelte
-pip install "hypergumbo[php] @ git+https://codeberg.org/iterabloom/hypergumbo.git"         # PHP
-pip install "hypergumbo[c] @ git+https://codeberg.org/iterabloom/hypergumbo.git"           # C
-pip install "hypergumbo[java] @ git+https://codeberg.org/iterabloom/hypergumbo.git"        # Java
-pip install "hypergumbo[elixir] @ git+https://codeberg.org/iterabloom/hypergumbo.git"      # Elixir
-pip install "hypergumbo[rust] @ git+https://codeberg.org/iterabloom/hypergumbo.git"        # Rust
+pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"  # JS/TS/Vue/Svelte
+pip install "hypergumbo[php] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"         # PHP
+pip install "hypergumbo[c] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"           # C
+pip install "hypergumbo[java] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"        # Java
+pip install "hypergumbo[elixir] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"      # Elixir
+pip install "hypergumbo[rust] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"        # Rust
 ```
 
 For LLM-assisted plan generation:
 ```bash
-pip install "hypergumbo[llm-assist] @ git+https://codeberg.org/iterabloom/hypergumbo.git"  # OpenRouter/OpenAI
-pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergumbo.git"   # local models via llm
+pip install "hypergumbo[llm-assist] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"  # OpenRouter/OpenAI
+pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"   # local models via llm
 ```
 
 ## CLI Commands
@@ -129,8 +129,8 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 To contribute to hypergumbo:
 
 ```bash
-git clone https://codeberg.org/iterabloom/hypergumbo.git
-cd hypergumbo
+git clone https://codeberg.org/iterabloom/hypergumbo-experimental.git
+cd hypergumbo-experimental
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]

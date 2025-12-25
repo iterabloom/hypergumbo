@@ -23,6 +23,15 @@ dev = [
   "pytest>=8",
   "pytest-cov>=5",
   "openai>=1.0",  # For testing LLM-assisted plan generation
+  # All language analyzers needed for full test suite
+  "tree-sitter>=0.21",
+  "tree-sitter-javascript>=0.21",
+  "tree-sitter-typescript>=0.21",
+  "tree-sitter-php>=0.23",
+  "tree-sitter-c>=0.21",
+  "tree-sitter-java>=0.21",
+  "tree-sitter-rust>=0.21",
+  "tree-sitter-language-pack>=0.13",  # Elixir
 ]
 javascript = [
   "tree-sitter>=0.21",
