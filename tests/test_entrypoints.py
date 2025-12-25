@@ -622,3 +622,117 @@ class TestNestJSEntrypoints:
 
         nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
         assert len(nestjs_eps) == 0
+
+
+class TestSpringBootEntrypoints:
+    """Tests for Spring Boot controller detection.
+
+    Spring Boot uses @Controller and @RestController annotations on classes.
+    Detection strategy: Files matching *Controller.java or *Resource.java,
+    or files in a controller/ or controllers/ directory.
+    """
+
+    def test_detect_spring_controller_file(self) -> None:
+        """Detect methods in *Controller.java as Spring endpoints."""
+        sym = make_symbol("getUsers", path="src/main/java/com/app/UserController.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 1
+        assert spring_eps[0].symbol_id == sym.id
+
+    def test_detect_spring_rest_resource_file(self) -> None:
+        """Detect methods in *Resource.java as Spring endpoints."""
+        sym = make_symbol("createUser", path="src/main/java/com/app/UserResource.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 1
+
+    def test_detect_spring_in_controller_directory(self) -> None:
+        """Detect files in controller/ directory as Spring."""
+        sym = make_symbol("listProducts", path="src/main/java/com/app/controller/Products.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 1
+
+    def test_detect_spring_kotlin(self) -> None:
+        """Detect Spring endpoints in Kotlin files."""
+        sym = make_symbol("getItems", path="src/main/kotlin/com/app/ItemController.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 1
+
+    def test_detect_multiple_spring_methods(self) -> None:
+        """Detect multiple methods in same controller file."""
+        sym1 = make_symbol("getAll", path="src/main/java/UserController.java", language="java", start_line=10)
+        sym2 = make_symbol("create", path="src/main/java/UserController.java", language="java", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 2
+
+    def test_spring_controller_confidence(self) -> None:
+        """Spring controller detection has high confidence."""
+        sym = make_symbol("handleRequest", path="src/main/java/ApiController.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 1
+        assert spring_eps[0].confidence >= 0.85
+
+    def test_spring_controller_label(self) -> None:
+        """Spring controller entrypoints have descriptive labels."""
+        sym = make_symbol("update", path="src/main/java/ProductController.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 1
+        assert "Spring" in spring_eps[0].label or "controller" in spring_eps[0].label.lower()
+
+    def test_spring_only_java_kotlin(self) -> None:
+        """Only Java/Kotlin files are detected as Spring controllers."""
+        # TypeScript file should NOT be detected
+        sym = make_symbol("getUsers", path="src/UserController.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 0
+
+    def test_spring_file_symbol_not_detected(self) -> None:
+        """File symbols in controller files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/main/java/UserController.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 0
+
+    def test_spring_non_controller_file_not_detected(self) -> None:
+        """Non-controller Java files are not detected as Spring."""
+        sym = make_symbol("helper", path="src/main/java/UserService.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
+        assert len(spring_eps) == 0
