@@ -20,6 +20,7 @@ Detects common entrypoint patterns:
 - Plug routes (router.ex, *_router.ex, *_plug.ex)
 - Hapi routes (*routes.js/ts, routes/, plugins/)
 - Fastify routes (*.routes.js/ts, *.route.js/ts, *.schema.js/ts)
+- Koa routes (*.router.js/ts, *.controller.js/ts, *.middleware.js/ts)
 
 How It Works
 ------------
@@ -95,6 +96,7 @@ class EntrypointKind(Enum):
     PLUG_ROUTE = "plug_route"
     HAPI_ROUTE = "hapi_route"
     FASTIFY_ROUTE = "fastify_route"
+    KOA_ROUTE = "koa_route"
 
 
 @dataclass
@@ -224,6 +226,10 @@ HAPI_ROUTE_DIRS = {"plugins"}
 # Fastify (Node.js) route patterns
 # Files with .routes. or .route. or .schema. in the name (Fastify convention)
 FASTIFY_ROUTE_PATTERNS = {".routes.", ".route.", ".schema."}
+
+# Koa (Node.js) route patterns
+# Files with .router. or .controller. or .middleware. in the name (Koa convention)
+KOA_ROUTE_PATTERNS = {".router.", ".controller.", ".middleware."}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -1044,6 +1050,49 @@ def _detect_fastify_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_koa_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Koa route patterns.
+
+    Matches:
+    - Files with .router. pattern (e.g., user.router.js)
+    - Files with .controller. pattern (e.g., user.controller.js)
+    - Files with .middleware. pattern (e.g., auth.middleware.js)
+    """
+    if language not in ("javascript", "typescript"):
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Koa patterns (.router., .controller., .middleware.)
+    return any(pattern in filename for pattern in KOA_ROUTE_PATTERNS)
+
+
+def _detect_koa_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Koa route endpoints from file patterns.
+
+    Koa is a Node.js web framework. Routes are typically defined in
+    files with .router., .controller., or .middleware. patterns.
+
+    Only function/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_koa_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.KOA_ROUTE,
+                confidence=0.85,
+                label="Koa route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1120,6 +1169,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_ktor_routes(nodes))
     entrypoints.extend(_detect_vapor_routes(nodes))
     entrypoints.extend(_detect_plug_routes(nodes))
+    entrypoints.extend(_detect_koa_routes(nodes))
     entrypoints.extend(_detect_fastify_routes(nodes))
     entrypoints.extend(_detect_hapi_routes(nodes))
 

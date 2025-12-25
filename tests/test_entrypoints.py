@@ -2094,3 +2094,111 @@ class TestFastifyEntrypoints:
 
         fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
         assert len(fastify_eps) == 0
+
+
+class TestKoaEntrypoints:
+    """Tests for Koa (Node.js) route detection."""
+
+    def test_detect_koa_router_file(self) -> None:
+        """Detect functions in *.router.js as Koa routes."""
+        sym = make_symbol("getUsers", path="src/user.router.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 1
+
+    def test_detect_koa_router_ts_file(self) -> None:
+        """Detect functions in *.router.ts as Koa routes."""
+        sym = make_symbol("createOrder", path="src/order.router.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 1
+
+    def test_detect_koa_controller_file(self) -> None:
+        """Detect functions in *.controller.js as Koa controllers."""
+        sym = make_symbol("getProduct", path="src/product.controller.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 1
+
+    def test_detect_koa_middleware_file(self) -> None:
+        """Detect functions in *.middleware.js as Koa middleware."""
+        sym = make_symbol("authCheck", path="src/auth.middleware.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 1
+
+    def test_detect_multiple_koa_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("get", path="src/api.router.js", language="javascript", start_line=10)
+        sym2 = make_symbol("post", path="src/api.router.js", language="javascript", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 2
+
+    def test_koa_route_confidence(self) -> None:
+        """Koa route detection has appropriate confidence."""
+        sym = make_symbol("handler", path="src/item.router.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 1
+        assert koa_eps[0].confidence >= 0.80
+
+    def test_koa_route_label(self) -> None:
+        """Koa route entrypoints have descriptive labels."""
+        sym = make_symbol("deleteUser", path="src/user.router.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 1
+        assert "Koa" in koa_eps[0].label or "route" in koa_eps[0].label.lower()
+
+    def test_koa_only_js_ts_files(self) -> None:
+        """Only JS/TS files are detected as Koa routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("getUsers", path="src/user.router.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 0
+
+    def test_koa_file_symbol_not_detected(self) -> None:
+        """File symbols in Koa files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/user.router.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 0
+
+    def test_koa_non_route_file_not_detected(self) -> None:
+        """Non-route JS files are not detected as Koa."""
+        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 0
