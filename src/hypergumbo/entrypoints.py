@@ -8,6 +8,7 @@ Detects common entrypoint patterns:
 - Express.js routes (routes.js, router.js, routes/ directory)
 - NestJS controllers (*.controller.ts files)
 - Spring Boot controllers (*Controller.java/*Resource.java files)
+- Rails controllers (app/controllers/*_controller.rb files)
 
 How It Works
 ------------
@@ -71,6 +72,7 @@ class EntrypointKind(Enum):
     EXPRESS_ROUTE = "express_route"
     NESTJS_CONTROLLER = "nestjs_controller"
     SPRING_CONTROLLER = "spring_controller"
+    RAILS_CONTROLLER = "rails_controller"
 
 
 @dataclass
@@ -135,6 +137,11 @@ NESTJS_CONTROLLER_DIRS = {"controllers"}
 # Files ending in Controller.java/kt or Resource.java/kt, or in controller(s)/ directory
 SPRING_CONTROLLER_SUFFIXES = {"Controller.java", "Controller.kt", "Resource.java", "Resource.kt"}
 SPRING_CONTROLLER_DIRS = {"controller", "controllers"}
+
+# Rails controller patterns
+# Files ending in _controller.rb inside app/controllers/ directory
+RAILS_CONTROLLER_SUFFIX = "_controller.rb"
+RAILS_CONTROLLER_PATH = "app/controllers/"
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -378,6 +385,52 @@ def _detect_spring_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_rails_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches Rails controller patterns.
+
+    Matches:
+    - Files ending in _controller.rb inside app/controllers/ directory
+    """
+    if language != "ruby":
+        return False
+
+    # Normalize path separators
+    normalized_path = path.replace("\\", "/")
+
+    # Must be in app/controllers/ directory
+    if RAILS_CONTROLLER_PATH not in normalized_path:
+        return False
+
+    filename = _get_filename(path)
+    return filename.endswith(RAILS_CONTROLLER_SUFFIX)
+
+
+def _detect_rails_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Rails controller actions from file patterns.
+
+    Rails uses a naming convention of *_controller.rb for controller files
+    inside the app/controllers/ directory. Methods in these files are actions.
+
+    Only function/class/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_rails_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.RAILS_CONTROLLER,
+                confidence=0.90,
+                label="Rails controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -444,6 +497,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_express_routes(nodes))
     entrypoints.extend(_detect_nestjs_controllers(nodes))
     entrypoints.extend(_detect_spring_controllers(nodes))
+    entrypoints.extend(_detect_rails_controllers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
