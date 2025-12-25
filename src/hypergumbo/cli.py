@@ -294,6 +294,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"  {entry}")
 
     # Build slice query
+    max_tier = getattr(args, "max_tier", None)
     query = SliceQuery(
         entrypoint=entry,
         max_hops=args.max_hops,
@@ -301,6 +302,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         min_confidence=args.min_confidence,
         exclude_tests=args.exclude_tests,
         reverse=args.reverse,
+        max_tier=max_tier,
     )
 
     # Perform slice
@@ -542,6 +544,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--reverse",
         action="store_true",
         help="Reverse slice: find callers of the entry point (what calls X?)",
+    )
+    p_slice.add_argument(
+        "--max-tier",
+        type=int,
+        choices=[1, 2, 3, 4],
+        default=None,
+        dest="max_tier",
+        help="Stop at supply chain tier boundary (1=first-party only, "
+             "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
     )
     p_slice.set_defaults(func=cmd_slice)
 
