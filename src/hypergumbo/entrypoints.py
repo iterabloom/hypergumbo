@@ -9,6 +9,7 @@ Detects common entrypoint patterns:
 - NestJS controllers (*.controller.ts files)
 - Spring Boot controllers (*Controller.java/*Resource.java files)
 - Rails controllers (app/controllers/*_controller.rb files)
+- Phoenix controllers (lib/*_web/controllers/*_controller.ex, LiveView)
 
 How It Works
 ------------
@@ -73,6 +74,7 @@ class EntrypointKind(Enum):
     NESTJS_CONTROLLER = "nestjs_controller"
     SPRING_CONTROLLER = "spring_controller"
     RAILS_CONTROLLER = "rails_controller"
+    PHOENIX_CONTROLLER = "phoenix_controller"
 
 
 @dataclass
@@ -142,6 +144,14 @@ SPRING_CONTROLLER_DIRS = {"controller", "controllers"}
 # Files ending in _controller.rb inside app/controllers/ directory
 RAILS_CONTROLLER_SUFFIX = "_controller.rb"
 RAILS_CONTROLLER_PATH = "app/controllers/"
+
+# Phoenix controller patterns
+# Files ending in _controller.ex inside lib/*_web/controllers/, or
+# Files ending in _live.ex inside lib/*_web/live/ (LiveView)
+PHOENIX_CONTROLLER_SUFFIX = "_controller.ex"
+PHOENIX_LIVEVIEW_SUFFIX = "_live.ex"
+PHOENIX_CONTROLLER_PATH_PATTERN = "_web/controllers/"
+PHOENIX_LIVEVIEW_PATH_PATTERN = "_web/live/"
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -431,6 +441,60 @@ def _detect_rails_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_phoenix_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches Phoenix controller patterns.
+
+    Matches:
+    - Files ending in _controller.ex inside lib/*_web/controllers/
+    - Files ending in _live.ex inside lib/*_web/live/ (LiveView)
+    """
+    if language != "elixir":
+        return False
+
+    # Normalize path separators
+    normalized_path = path.replace("\\", "/")
+    filename = _get_filename(path)
+
+    # Check for controller files in _web/controllers/
+    if (PHOENIX_CONTROLLER_PATH_PATTERN in normalized_path and
+            filename.endswith(PHOENIX_CONTROLLER_SUFFIX)):
+        return True
+
+    # Check for LiveView files in _web/live/
+    if (PHOENIX_LIVEVIEW_PATH_PATTERN in normalized_path and
+            filename.endswith(PHOENIX_LIVEVIEW_SUFFIX)):
+        return True
+
+    return False
+
+
+def _detect_phoenix_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Phoenix controller actions from file patterns.
+
+    Phoenix uses a naming convention of *_controller.ex for controller files
+    inside the lib/*_web/controllers/ directory. Also detects LiveView files
+    (*_live.ex in lib/*_web/live/).
+
+    Only function/class/module symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class/module symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_phoenix_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.PHOENIX_CONTROLLER,
+                confidence=0.90,
+                label="Phoenix controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -498,6 +562,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_nestjs_controllers(nodes))
     entrypoints.extend(_detect_spring_controllers(nodes))
     entrypoints.extend(_detect_rails_controllers(nodes))
+    entrypoints.extend(_detect_phoenix_controllers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()

@@ -851,3 +851,117 @@ class TestRailsEntrypoints:
 
         rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
         assert len(rails_eps) == 0
+
+
+class TestPhoenixEntrypoints:
+    """Tests for Phoenix controller detection.
+
+    Phoenix uses *_controller.ex naming convention in lib/*_web/controllers/.
+    Also detects LiveView files (*_live.ex in lib/*_web/live/).
+    """
+
+    def test_detect_phoenix_controller_file(self) -> None:
+        """Detect functions in *_controller.ex as Phoenix endpoints."""
+        sym = make_symbol("index", path="lib/myapp_web/controllers/user_controller.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 1
+        assert phoenix_eps[0].symbol_id == sym.id
+
+    def test_detect_phoenix_nested_controller(self) -> None:
+        """Detect controllers in nested namespaces."""
+        sym = make_symbol("show", path="lib/myapp_web/controllers/api/v1/user_controller.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 1
+
+    def test_detect_phoenix_liveview(self) -> None:
+        """Detect LiveView files as Phoenix endpoints."""
+        sym = make_symbol("mount", path="lib/myapp_web/live/user_live.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 1
+
+    def test_detect_multiple_phoenix_actions(self) -> None:
+        """Detect multiple actions in same controller."""
+        sym1 = make_symbol("index", path="lib/app_web/controllers/page_controller.ex", language="elixir", start_line=10)
+        sym2 = make_symbol("show", path="lib/app_web/controllers/page_controller.ex", language="elixir", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 2
+
+    def test_phoenix_controller_confidence(self) -> None:
+        """Phoenix controller detection has high confidence."""
+        sym = make_symbol("create", path="lib/myapp_web/controllers/post_controller.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 1
+        assert phoenix_eps[0].confidence >= 0.85
+
+    def test_phoenix_controller_label(self) -> None:
+        """Phoenix controller entrypoints have descriptive labels."""
+        sym = make_symbol("delete", path="lib/myapp_web/controllers/item_controller.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 1
+        assert "Phoenix" in phoenix_eps[0].label or "controller" in phoenix_eps[0].label.lower()
+
+    def test_phoenix_only_elixir_files(self) -> None:
+        """Only Elixir files are detected as Phoenix controllers."""
+        # Ruby file should NOT be detected
+        sym = make_symbol("index", path="lib/myapp_web/controllers/user_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 0
+
+    def test_phoenix_file_symbol_not_detected(self) -> None:
+        """File symbols in controller files are not detected."""
+        sym = make_symbol("file", kind="file", path="lib/myapp_web/controllers/user_controller.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 0
+
+    def test_phoenix_non_controller_file_not_detected(self) -> None:
+        """Non-controller Elixir files are not detected as Phoenix."""
+        sym = make_symbol("helper", path="lib/myapp/user.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 0
+
+    def test_phoenix_requires_web_controllers_path(self) -> None:
+        """Controller files must be in proper Phoenix path."""
+        # A *_controller.ex outside _web/controllers should NOT be detected
+        sym = make_symbol("index", path="lib/myapp/user_controller.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
+        assert len(phoenix_eps) == 0
