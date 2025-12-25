@@ -60,6 +60,7 @@ from .analyze.zig import analyze_zig
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
+from .linkers.phoenix_ipc import link_phoenix_ipc
 from .linkers.websocket import link_websocket
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
@@ -941,6 +942,13 @@ def run_behavior_map(
         analysis_runs.append(ws_result.run.to_dict())
         all_symbols.extend(ws_result.symbols)
         all_edges.extend(ws_result.edges)
+
+    # Phoenix IPC linker: detect Phoenix Channels and LiveView patterns
+    phoenix_result = link_phoenix_ipc(repo_root)
+    if phoenix_result.run is not None:
+        analysis_runs.append(phoenix_result.run.to_dict())
+        all_symbols.extend(phoenix_result.symbols)
+        all_edges.extend(phoenix_result.edges)
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
