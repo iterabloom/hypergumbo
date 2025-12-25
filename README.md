@@ -55,6 +55,7 @@ pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergu
 ```bash
 hypergumbo [path]            # default: generate Markdown sketch
 hypergumbo . -t 1000         # sketch with 1000 token budget
+hypergumbo . -x              # exclude test files (faster on large codebases)
 hypergumbo run [path]        # full analysis → hypergumbo.results.json
 hypergumbo slice --entry X   # extract subgraph from entry point
 hypergumbo init [path]       # initialize .hypergumbo/ capsule
