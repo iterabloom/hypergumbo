@@ -593,6 +593,55 @@ class TestFormatSymbols:
         assert "`core`" in result
         assert "★" in result  # High centrality marker
 
+    def test_tier_weighted_ranking(self) -> None:
+        """First-party symbols rank higher than external deps with similar centrality.
+
+        Tier weighting (2x for first-party, 1x for external) boosts first-party
+        symbols to overcome moderate raw centrality differences.
+        """
+        repo_root = Path("/fake/repo")
+        # External dep symbol with slightly higher raw centrality
+        external_sym = Symbol(
+            id="external", name="lodash_util", kind="function", language="javascript",
+            path="/fake/repo/node_modules/lodash/util.js", span=Span(1, 1, 1, 10),
+            supply_chain_tier=3, supply_chain_reason="in node_modules/"
+        )
+        # First-party symbol with lower raw centrality
+        first_party_sym = Symbol(
+            id="first_party", name="my_func", kind="function", language="javascript",
+            path="/fake/repo/src/app.js", span=Span(1, 1, 1, 10),
+            supply_chain_tier=1, supply_chain_reason="matches ^src/"
+        )
+
+        # External has 5 callers, first-party has 3
+        # Raw centrality: external=1.0, first-party=0.6
+        # Weighted (tier 1 = 2x, tier 3 = 1x): external=1.0, first-party=1.2
+        # So first-party should win
+        edges = [
+            Edge.create(src=f"caller{i}", dst="external", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(5)
+        ] + [
+            Edge.create(src=f"caller_fp{i}", dst="first_party", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(3)
+        ]
+
+        result = _format_symbols([external_sym, first_party_sym], edges, repo_root)
+
+        # First-party should appear first due to tier weighting
+        lines = result.split('\n')
+        first_party_pos = next((i for i, l in enumerate(lines) if "my_func" in l), -1)
+        external_pos = next((i for i, l in enumerate(lines) if "lodash_util" in l), -1)
+
+        # Both should be present
+        assert first_party_pos > 0, "first_party symbol not found"
+        assert external_pos > 0, "external symbol not found"
+        # First-party should come before external
+        assert first_party_pos < external_pos, (
+            f"Expected first-party (line {first_party_pos}) before external (line {external_pos})"
+        )
+
 
 class TestGenerateSketchWithBudget:
     """Tests for budget-based sketch expansion."""
