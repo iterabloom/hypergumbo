@@ -81,14 +81,15 @@ echo "   core.hooksPath=$(git config --local --get core.hooksPath)"
 echo "   Dependencies look OK for commit-msg hook."
 echo "   Secret will be auto-generated on first commit by commit-msg hook."
 echo ""
-echo "   Pre-commit hook checks (optional, install via 'pip install ruff bandit'):"
+echo "   Pre-commit hook requires: ruff, bandit"
+echo "   Install with: pip install ruff bandit"
 if have ruff; then
-  echo "     ✓ ruff (linting)"
+  echo "     ✓ ruff installed"
 else
-  echo "     ✗ ruff (not installed, linting will be skipped)"
+  echo "     ✗ ruff NOT installed (commits will fail)"
 fi
 if have bandit; then
-  echo "     ✓ bandit (security)"
+  echo "     ✓ bandit installed"
 else
-  echo "     ✗ bandit (not installed, security check will be skipped)"
+  echo "     ✗ bandit NOT installed (commits will fail)"
 fi
