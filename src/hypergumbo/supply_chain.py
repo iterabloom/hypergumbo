@@ -18,8 +18,14 @@ checked in order; first match wins:
 
 1. Derived artifact detection (tier 4) - path patterns + content heuristics
 2. External dependency detection (tier 3) - node_modules/, vendor/, etc.
-3. Internal dependency detection (tier 2) - workspace/monorepo packages
-4. First-party detection (tier 1) - src/, lib/, app/ or default
+3. Example/demo detection (tier 2) - examples/, demos/, samples/, tutorials/
+4. Workspace package detection:
+   - If file is in src/, lib/, or app/ within workspace → tier 1
+   - Otherwise (tests, configs, etc.) → tier 2
+5. First-party detection (tier 1) - src/, lib/, app/ or default
+
+This ensures library monorepos classify workspace source code as tier 1,
+while examples outside workspaces are tier 2 (lower priority).
 
 See §8.6 of the hypergumbo spec for full details.
 """
@@ -96,6 +102,21 @@ FIRST_PARTY_PATTERNS = [
     r"^packages/[^/]+/src/",
 ]
 
+# Patterns for example/demo code (lower priority than workspace packages)
+EXAMPLE_PATTERNS = [
+    r"^examples?/",  # examples/ or example/
+    r"^demos?/",     # demos/ or demo/
+    r"^samples?/",   # samples/ or sample/
+    r"^tutorials?/",  # tutorials/ or tutorial/
+]
+
+# Simple first-party patterns to check within workspaces
+WORKSPACE_FIRST_PARTY_PATTERNS = [
+    r"^src/",
+    r"^lib/",
+    r"^app/",
+]
+
 
 def classify_file(
     path: Path,
@@ -141,18 +162,33 @@ def classify_file(
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
 
-    # 4. Check internal packages (monorepo workspaces)
+    # 4. Check example/demo patterns (lower priority than workspace packages)
+    for pattern in EXAMPLE_PATTERNS:
+        if re.match(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"path matches {pattern}")
+
+    # 5. Check internal packages (monorepo workspaces)
     if package_roots:
         for pkg_root in package_roots:
             try:
                 if path.is_relative_to(pkg_root):
+                    # Check if file is in src/lib/app within the workspace
+                    # If so, treat as first-party (the workspace IS the library)
+                    rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
+                    for pattern in WORKSPACE_FIRST_PARTY_PATTERNS:
+                        if re.match(pattern, rel_to_pkg):
+                            return FileClassification(
+                                Tier.FIRST_PARTY,
+                                f"in workspace {pkg_root.name} (source)",
+                            )
+                    # Other workspace files (tests, configs, etc.) are tier 2
                     return FileClassification(
                         Tier.INTERNAL_DEP, f"in workspace {pkg_root.name}"
                     )
             except (ValueError, TypeError):
                 continue
 
-    # 5. Check first-party patterns
+    # 6. Check first-party patterns
     for pattern in FIRST_PARTY_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(Tier.FIRST_PARTY, f"path matches {pattern}")
