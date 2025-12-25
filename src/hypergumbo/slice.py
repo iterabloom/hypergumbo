@@ -72,6 +72,8 @@ class SliceQuery:
         method: Traversal method, currently only "bfs" supported.
         reverse: If True, find callers of the entry point (backward traversal).
                  If False (default), find callees (forward traversal).
+        max_tier: Maximum supply chain tier to include (1-4). None means no
+                  tier filtering. Lower tiers are higher priority.
     """
 
     entrypoint: str
@@ -81,10 +83,11 @@ class SliceQuery:
     exclude_tests: bool = False
     method: str = "bfs"
     reverse: bool = False
+    max_tier: int | None = None
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
-        return {
+        result = {
             "method": self.method,
             "entrypoint": self.entrypoint,
             "hops": self.max_hops,
@@ -92,6 +95,9 @@ class SliceQuery:
             "exclude_tests": self.exclude_tests,
             "reverse": self.reverse,
         }
+        if self.max_tier is not None:
+            result["max_tier"] = self.max_tier
+        return result
 
 
 @dataclass
@@ -317,6 +323,14 @@ def slice_graph(
             # Filter test files
             if query.exclude_tests and _is_test_file(next_node.path):
                 continue
+
+            # Check tier limit
+            if query.max_tier is not None:
+                node_tier = getattr(next_node, 'supply_chain_tier', 1)
+                if node_tier > query.max_tier:
+                    if "tier_limit" not in limits_hit:
+                        limits_hit.append("tier_limit")
+                    continue
 
             # Check file limit
             if next_node.path not in files_seen:
