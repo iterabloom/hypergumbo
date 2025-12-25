@@ -2526,3 +2526,111 @@ class TestAiohttpEntrypoints:
 
         aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
         assert len(aiohttp_eps) == 0
+
+
+class TestSlimEntrypoints:
+    """Tests for Slim (PHP) route detection."""
+
+    def test_detect_slim_routes_file(self) -> None:
+        """Detect functions in routes.php as Slim routes."""
+        sym = make_symbol("registerRoutes", path="src/routes.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 1
+
+    def test_detect_slim_middleware_file(self) -> None:
+        """Detect functions in *Middleware.php as Slim middleware."""
+        sym = make_symbol("AuthMiddleware", path="src/AuthMiddleware.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 1
+
+    def test_detect_slim_actions_directory(self) -> None:
+        """Detect classes in Actions/ directory as Slim actions."""
+        sym = make_symbol("CreateUserAction", path="src/Actions/CreateUserAction.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 1
+
+    def test_detect_slim_handlers_directory(self) -> None:
+        """Detect classes in Handlers/ directory as Slim handlers."""
+        sym = make_symbol("HomeHandler", path="src/Handlers/HomeHandler.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 1
+
+    def test_detect_multiple_slim_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("get", path="src/routes.php", language="php", start_line=10)
+        sym2 = make_symbol("post", path="src/routes.php", language="php", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 2
+
+    def test_slim_route_confidence(self) -> None:
+        """Slim route detection has appropriate confidence."""
+        sym = make_symbol("handler", path="src/routes.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 1
+        assert slim_eps[0].confidence >= 0.80
+
+    def test_slim_route_label(self) -> None:
+        """Slim route entrypoints have descriptive labels."""
+        sym = make_symbol("deleteUser", path="src/routes.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 1
+        assert "Slim" in slim_eps[0].label or "route" in slim_eps[0].label.lower()
+
+    def test_slim_only_php_files(self) -> None:
+        """Only PHP files are detected as Slim routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("handler", path="src/routes.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 0
+
+    def test_slim_file_symbol_not_detected(self) -> None:
+        """File symbols in Slim files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/routes.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 0
+
+    def test_slim_non_route_file_not_detected(self) -> None:
+        """Non-route PHP files are not detected as Slim."""
+        sym = make_symbol("helper", path="src/Utils/Helper.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
+        assert len(slim_eps) == 0
