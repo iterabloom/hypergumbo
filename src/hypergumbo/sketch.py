@@ -405,6 +405,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Scala analysis failed or tree-sitter not available
 
+    if "lua" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.lua import analyze_lua  # pragma: no cover
+            result = analyze_lua(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Lua analysis failed or tree-sitter not available
+
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files

@@ -50,6 +50,7 @@ from .analyze.ruby import analyze_ruby
 from .analyze.kotlin import analyze_kotlin
 from .analyze.swift import analyze_swift
 from .analyze.scala import analyze_scala
+from .analyze.lua import analyze_lua
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -775,6 +776,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(scala_result.run.to_dict())
             all_symbols.extend(scala_result.symbols)
             all_edges.extend(scala_result.edges)
+
+    # Run Lua analysis (optional, requires tree-sitter-lua)
+    lua_result = analyze_lua(repo_root)
+    if lua_result.run is not None:
+        if lua_result.skipped:
+            limits.skipped_passes.append({
+                "pass": lua_result.run.pass_id,
+                "reason": lua_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(lua_result.run.to_dict())
+            all_symbols.extend(lua_result.symbols)
+            all_edges.extend(lua_result.edges)
 
     # Run cross-language linkers
 
