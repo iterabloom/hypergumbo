@@ -1307,3 +1307,116 @@ class TestRustEntrypoints:
 
         rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
         assert len(rust_eps) == 0
+
+
+class TestAspNetCoreEntrypoints:
+    """Tests for ASP.NET Core controller detection.
+
+    ASP.NET Core uses *Controller.cs files, typically in a Controllers/ directory.
+    Web API controllers follow the same convention.
+    """
+
+    def test_detect_aspnet_controller_file(self) -> None:
+        """Detect methods in *Controller.cs as ASP.NET Core endpoints."""
+        sym = make_symbol("GetUser", path="Controllers/UserController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 1
+        assert aspnet_eps[0].symbol_id == sym.id
+
+    def test_detect_aspnet_nested_controller(self) -> None:
+        """Detect controllers in nested namespaces."""
+        sym = make_symbol("Create", path="src/Api/Controllers/V1/ItemController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 1
+
+    def test_detect_aspnet_controllers_directory(self) -> None:
+        """Detect controllers in Controllers/ directory."""
+        sym = make_symbol("Index", path="Controllers/HomeController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 1
+
+    def test_detect_aspnet_class_symbol(self) -> None:
+        """Detect controller class symbols."""
+        sym = make_symbol("UserController", kind="class", path="Controllers/UserController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 1
+
+    def test_detect_multiple_aspnet_actions(self) -> None:
+        """Detect multiple actions in same controller."""
+        sym1 = make_symbol("GetAll", path="Controllers/ProductController.cs", language="csharp", start_line=10)
+        sym2 = make_symbol("GetById", path="Controllers/ProductController.cs", language="csharp", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 2
+
+    def test_aspnet_controller_confidence(self) -> None:
+        """ASP.NET Core controller detection has high confidence."""
+        sym = make_symbol("Update", path="Controllers/OrderController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 1
+        assert aspnet_eps[0].confidence >= 0.85
+
+    def test_aspnet_controller_label(self) -> None:
+        """ASP.NET Core controller entrypoints have descriptive labels."""
+        sym = make_symbol("Delete", path="Controllers/CustomerController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 1
+        assert "ASP.NET" in aspnet_eps[0].label or "controller" in aspnet_eps[0].label.lower()
+
+    def test_aspnet_only_csharp_files(self) -> None:
+        """Only C# files are detected as ASP.NET controllers."""
+        # Python file should NOT be detected
+        sym = make_symbol("GetUser", path="Controllers/UserController.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 0
+
+    def test_aspnet_file_symbol_not_detected(self) -> None:
+        """File symbols in controller files are not detected."""
+        sym = make_symbol("file", kind="file", path="Controllers/UserController.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 0
+
+    def test_aspnet_non_controller_file_not_detected(self) -> None:
+        """Non-controller C# files are not detected as ASP.NET."""
+        sym = make_symbol("Helper", path="Services/UserService.cs", language="csharp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
+        assert len(aspnet_eps) == 0
