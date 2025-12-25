@@ -289,6 +289,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         max_files=args.max_files,
         min_confidence=args.min_confidence,
         exclude_tests=args.exclude_tests,
+        reverse=args.reverse,
     )
 
     # Perform slice
@@ -305,7 +306,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(output, indent=2))
 
-    print(f"[hypergumbo slice] Wrote slice to {out_path}")
+    mode = "reverse" if args.reverse else "forward"
+    print(f"[hypergumbo slice] Wrote {mode} slice to {out_path}")
     print(f"  entry: {entry}")
     print(f"  nodes: {len(result.node_ids)}")
     print(f"  edges: {len(result.edge_ids)}")
@@ -502,6 +504,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--exclude-tests",
         action="store_true",
         help="Exclude test files from the slice",
+    )
+    p_slice.add_argument(
+        "--reverse",
+        action="store_true",
+        help="Reverse slice: find callers of the entry point (what calls X?)",
     )
     p_slice.set_defaults(func=cmd_slice)
 
