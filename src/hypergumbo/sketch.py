@@ -315,6 +315,42 @@ def _run_analysis(repo_root: Path, profile: RepoProfile) -> tuple[list[Symbol], 
         except Exception:  # pragma: no cover
             pass  # JS/TS analysis failed or tree-sitter not available
 
+    if "c" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.c import analyze_c  # pragma: no cover
+            result = analyze_c(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # C analysis failed or tree-sitter not available
+
+    if "rust" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.rust import analyze_rust  # pragma: no cover
+            result = analyze_rust(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Rust analysis failed or tree-sitter not available
+
+    if "php" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.php import analyze_php  # pragma: no cover
+            result = analyze_php(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # PHP analysis failed or tree-sitter not available
+
+    if "java" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.java import analyze_java  # pragma: no cover
+            result = analyze_java(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Java analysis failed or tree-sitter not available
+
     # Apply supply chain classification to all symbols
     package_roots = detect_package_roots(repo_root)
     for symbol in all_symbols:
@@ -370,7 +406,10 @@ def _is_test_path(path: str) -> bool:
     filename = os.path.basename(path)
 
     # Directory patterns (actual test directories, not temp dirs)
-    if "/tests/" in path or "/__tests__/" in path:
+    if "/test/" in path or "/tests/" in path or "/__tests__/" in path:
+        return True
+    # Handle paths that start with test/ (no leading slash)
+    if path.startswith("test/") or path.startswith("tests/"):
         return True
 
     # File name patterns: test_*.py, test_*.js, etc.
