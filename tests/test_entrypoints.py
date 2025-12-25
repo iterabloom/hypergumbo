@@ -736,3 +736,118 @@ class TestSpringBootEntrypoints:
 
         spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
         assert len(spring_eps) == 0
+
+
+class TestRailsEntrypoints:
+    """Tests for Rails controller detection.
+
+    Rails uses *_controller.rb naming convention in app/controllers/.
+    Actions are public methods inside controller classes.
+    """
+
+    def test_detect_rails_controller_file(self) -> None:
+        """Detect methods in *_controller.rb as Rails actions."""
+        sym = make_symbol("index", path="app/controllers/users_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 1
+        assert rails_eps[0].symbol_id == sym.id
+
+    def test_detect_rails_nested_controller(self) -> None:
+        """Detect controllers in nested namespaces."""
+        sym = make_symbol("show", path="app/controllers/api/v1/users_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 1
+
+    def test_detect_rails_application_controller(self) -> None:
+        """Detect ApplicationController as base controller."""
+        sym = make_symbol("ApplicationController", kind="class", path="app/controllers/application_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 1
+
+    def test_detect_multiple_rails_actions(self) -> None:
+        """Detect multiple actions in same controller."""
+        sym1 = make_symbol("index", path="app/controllers/posts_controller.rb", language="ruby", start_line=10)
+        sym2 = make_symbol("show", path="app/controllers/posts_controller.rb", language="ruby", start_line=20)
+        sym3 = make_symbol("create", path="app/controllers/posts_controller.rb", language="ruby", start_line=30)
+        nodes = [sym1, sym2, sym3]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 3
+
+    def test_rails_controller_confidence(self) -> None:
+        """Rails controller detection has high confidence."""
+        sym = make_symbol("update", path="app/controllers/items_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 1
+        assert rails_eps[0].confidence >= 0.85
+
+    def test_rails_controller_label(self) -> None:
+        """Rails controller entrypoints have descriptive labels."""
+        sym = make_symbol("destroy", path="app/controllers/comments_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 1
+        assert "Rails" in rails_eps[0].label or "controller" in rails_eps[0].label.lower()
+
+    def test_rails_only_ruby_files(self) -> None:
+        """Only Ruby files are detected as Rails controllers."""
+        # Python file should NOT be detected
+        sym = make_symbol("index", path="app/controllers/users_controller.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 0
+
+    def test_rails_file_symbol_not_detected(self) -> None:
+        """File symbols in controller files are not detected."""
+        sym = make_symbol("file", kind="file", path="app/controllers/users_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 0
+
+    def test_rails_non_controller_file_not_detected(self) -> None:
+        """Non-controller Ruby files are not detected as Rails."""
+        sym = make_symbol("helper", path="app/models/user.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 0
+
+    def test_rails_requires_controllers_directory(self) -> None:
+        """Controller files must be in app/controllers/ directory."""
+        # A file named *_controller.rb elsewhere should NOT be detected
+        sym = make_symbol("index", path="lib/users_controller.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
+        assert len(rails_eps) == 0
