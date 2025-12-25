@@ -135,6 +135,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Scala | [x] tree-sitter | function, class, object, trait, method | calls, imports | Detects `def`, `class`, `object`, `trait`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[scala]` |
 | Lua | [x] tree-sitter | function, method | calls, imports | Detects `function`, `local function`, method-style `Table:method()`, `require()` imports. Two-pass cross-file resolution. Optional: `pip install hypergumbo[lua]` |
 | Haskell | [x] tree-sitter | function, data, class, instance | calls, imports | Detects functions (with/without type signatures), data types, type classes, instances, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[haskell]` |
+| OCaml | [x] tree-sitter | function, type, module | calls, imports | Detects let bindings (functions), types, modules, `open` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ocaml]` |
 
 ## Supply Chain Classification (§8.6)
 
