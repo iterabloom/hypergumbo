@@ -32,6 +32,7 @@ dependencies = [
   "tree-sitter-swift>=0.0.1",
   "tree-sitter-scala>=0.23",
   "tree-sitter-lua>=0.0.14",
+  "tree-sitter-haskell>=0.21",
   "tree-sitter-language-pack>=0.13",  # Elixir
 ]
 
