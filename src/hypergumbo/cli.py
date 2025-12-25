@@ -46,6 +46,7 @@ from .analyze.php import analyze_php
 from .analyze.py import analyze_python
 from .analyze.rust import analyze_rust
 from .analyze.go import analyze_go
+from .analyze.ruby import analyze_ruby
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -712,6 +713,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(go_result.run.to_dict())
             all_symbols.extend(go_result.symbols)
             all_edges.extend(go_result.edges)
+
+    # Run Ruby analysis (optional, requires tree-sitter-ruby)
+    ruby_result = analyze_ruby(repo_root)
+    if ruby_result.run is not None:
+        if ruby_result.skipped:
+            limits.skipped_passes.append({
+                "pass": ruby_result.run.pass_id,
+                "reason": ruby_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(ruby_result.run.to_dict())
+            all_symbols.extend(ruby_result.symbols)
+            all_edges.extend(ruby_result.edges)
 
     # Run cross-language linkers
 
