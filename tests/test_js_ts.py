@@ -1,7 +1,7 @@
 """Tests for JavaScript/TypeScript analyzer."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 import sys
 
 
@@ -605,7 +605,7 @@ class TestMockedTreeSitter:
         end_byte: int = 10,
         start_point: tuple = (0, 0),
         end_point: tuple = (0, 10),
-        children: list = None,
+        children: list | None = None,
         has_error: bool = False,
     ) -> MagicMock:
         """Create a mock tree-sitter node."""

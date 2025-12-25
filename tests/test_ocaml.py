@@ -13,11 +13,8 @@ Test coverage includes:
 - Two-pass cross-file resolution
 """
 from pathlib import Path
-from typing import List, Set
 
-import pytest
 
-from hypergumbo.ir import Symbol, Edge
 
 
 def make_ocaml_file(tmp_path: Path, name: str, content: str) -> Path:

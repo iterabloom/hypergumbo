@@ -1,15 +1,11 @@
 """Tests for the slice module (graph slicing for LLM context)."""
-import hashlib
-import json
 from typing import List
 
-import pytest
 
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.slice import (
     slice_graph,
     SliceQuery,
-    SliceResult,
     find_entry_nodes,
 )
 

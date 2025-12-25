@@ -4,7 +4,6 @@ import subprocess
 import sys
 from unittest import mock
 
-import pytest
 
 from hypergumbo.cli import cmd_init
 from hypergumbo.llm_assist import LLMBackend, LLMResult

@@ -1,5 +1,4 @@
 """Tests for limits tracking."""
-import pytest
 
 from hypergumbo.limits import Limits, FailedFile
 

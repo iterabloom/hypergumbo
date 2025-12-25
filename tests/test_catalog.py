@@ -1,5 +1,4 @@
 """Tests for catalog module and command."""
-import pytest
 from unittest.mock import patch
 
 from hypergumbo.catalog import (

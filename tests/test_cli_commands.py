@@ -9,7 +9,6 @@ from hypergumbo.cli import (
     cmd_catalog,
     cmd_export_capsule,
     main,
-    build_parser,
 )
 
 
@@ -75,8 +74,8 @@ def test_cmd_run_creates_behavior_map(tmp_path: Path) -> None:
 
 def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     """Test run with mocked JS analyzer returning successful results."""
-    from unittest.mock import patch, MagicMock
-    from hypergumbo.ir import Symbol, Edge, Span, AnalysisRun
+    from unittest.mock import patch
+    from hypergumbo.ir import Symbol, Span, AnalysisRun
     from hypergumbo.analyze.js_ts import JsAnalysisResult
 
     # Create a JS file to trigger analysis

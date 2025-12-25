@@ -38,11 +38,10 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Generator, Optional, Tuple
 
 from .catalog import Catalog
 from .plan import (

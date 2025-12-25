@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from hypergumbo.cli import run_behavior_map
 

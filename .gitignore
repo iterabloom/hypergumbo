@@ -24,3 +24,8 @@ hypergumbo.results.json
 **/.gemini/cache/
 **/.cursor/state/
 **/*-session/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/

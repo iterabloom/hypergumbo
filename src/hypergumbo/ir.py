@@ -22,7 +22,6 @@ Provenance Fields
 """
 import hashlib
 import platform
-import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone

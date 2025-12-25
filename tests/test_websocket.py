@@ -8,19 +8,15 @@ Tests cover:
 """
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
 from hypergumbo.linkers.websocket import (
-    WebSocketPattern,
-    WebSocketLinkResult,
     find_js_ts_files,
     _detect_patterns,
     _make_symbol_id,
     _make_file_id,
     link_websocket,
     PASS_ID,
-    PASS_VERSION,
 )
 
 

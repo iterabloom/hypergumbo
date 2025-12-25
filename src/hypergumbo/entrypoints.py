@@ -288,7 +288,7 @@ def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
 
         if matching:
             # High confidence for decorator-based detection
-            label = f"HTTP {list(matching)[0].upper()}"
+            label = f"HTTP {next(iter(matching)).upper()}"
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.HTTP_ROUTE,

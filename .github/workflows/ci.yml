@@ -7,6 +7,38 @@ on:
     branches: [ "main" ]
 
 jobs:
+  lint:
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install linting tools
+        run: |
+          pip install --upgrade pip
+          pip install ruff bandit
+      - name: Run Ruff (linting)
+        run: ruff check src/ tests/
+      - name: Run Bandit (security)
+        run: bandit -r src/ -c pyproject.toml
+
+  audit:
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pip-audit
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: pip-audit --skip-editable
+
   pytest:
     runs-on: codeberg-small-lazy
     steps:

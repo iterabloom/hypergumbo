@@ -230,21 +230,18 @@ def _extract_edges_from_file(
         if node.type == "function_call":
             # Extract function name being called
             callee_name = None
-            call_node = None
 
             # Direct call: identifier(args)
             first_child = node.children[0] if node.children else None
             if first_child:
                 if first_child.type == "identifier":
                     callee_name = _node_text(first_child, source)
-                    call_node = first_child
                 elif first_child.type == "method_index_expression":
                     # Method call: obj:method(args)
                     # Get the method name (last identifier)
                     for child in first_child.children:
                         if child.type == "identifier":
                             callee_name = _node_text(child, source)
-                            call_node = child
 
             # Check for require() call - special handling for imports
             if callee_name == "require":

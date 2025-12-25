@@ -5,11 +5,10 @@ from unittest import mock
 
 import pytest
 
-from hypergumbo.catalog import Catalog, Pack, Pass, get_default_catalog
+from hypergumbo.catalog import get_default_catalog
 from hypergumbo.llm_assist import (
     LLMBackend,
     LLMConfig,
-    LLMResult,
     OPENROUTER_FREE_MODELS,
     _build_prompt,
     _call_llm_package,
@@ -23,7 +22,7 @@ from hypergumbo.llm_assist import (
     generate_plan_with_fallback,
     generate_plan_with_llm,
 )
-from hypergumbo.plan import PLAN_VERSION, CapsulePlan
+from hypergumbo.plan import PLAN_VERSION
 from hypergumbo.profile import LanguageStats, RepoProfile
 
 
