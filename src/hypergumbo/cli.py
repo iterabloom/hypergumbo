@@ -541,6 +541,40 @@ def _classify_symbols(
         symbol.supply_chain_reason = classification.reason
 
 
+def _compute_supply_chain_summary(
+    symbols: list[Symbol], derived_paths: list[str]
+) -> Dict[str, Any]:
+    """Compute supply chain summary from classified symbols.
+
+    Returns a dict with counts per tier plus derived_skipped info.
+    """
+    # Count unique files and symbols per tier
+    tier_files: Dict[int, set] = {1: set(), 2: set(), 3: set(), 4: set()}
+    tier_symbols: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
+
+    for symbol in symbols:
+        tier = symbol.supply_chain_tier
+        tier_files[tier].add(symbol.path)
+        tier_symbols[tier] += 1
+
+    tier_names = {1: "first_party", 2: "internal_dep", 3: "external_dep"}
+
+    summary: Dict[str, Any] = {}
+    for tier, name in tier_names.items():
+        summary[name] = {
+            "files": len(tier_files[tier]),
+            "symbols": tier_symbols[tier],
+        }
+
+    # Cap derived_skipped paths at 10
+    summary["derived_skipped"] = {
+        "files": len(tier_files[4]) + len(derived_paths),
+        "paths": derived_paths[:10],
+    }
+
+    return summary
+
+
 def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -692,6 +726,12 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
 
     # Compute metrics from analyzed nodes and edges
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
+
+    # Compute supply chain summary
+    # Note: derived_paths would be tracked during file discovery in a full implementation
+    behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
+        all_symbols, derived_paths=[]
+    )
 
     # Record skipped files from analysis runs
     for run in analysis_runs:
