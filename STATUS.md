@@ -55,7 +55,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 |---------|--------|-------|
 | Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal; includes file-level imports |
 | Reverse slice (find callers) | [x] | `--reverse` flag on `hypergumbo slice` finds what calls X |
-| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron, Django, Express.js, NestJS, Spring Boot, Rails, Phoenix |
+| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron, Django, Express.js, NestJS, Spring Boot, Rails, Phoenix, Go (Gin/Echo/Fiber) |
 | Feature generation with query specs | [x] | Stable feature IDs from query |
 | Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
 

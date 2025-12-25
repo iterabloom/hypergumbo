@@ -965,3 +965,117 @@ class TestPhoenixEntrypoints:
 
         phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
         assert len(phoenix_eps) == 0
+
+
+class TestGoFrameworkEntrypoints:
+    """Tests for Go framework route detection.
+
+    Go web frameworks (Gin, Echo, Fiber, Chi) typically use:
+    - *_handler.go or *_controller.go naming
+    - handlers/, controllers/, or routes/ directories
+    """
+
+    def test_detect_go_handler_file(self) -> None:
+        """Detect functions in *_handler.go as Go endpoints."""
+        sym = make_symbol("GetUser", path="internal/handlers/user_handler.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 1
+        assert go_eps[0].symbol_id == sym.id
+
+    def test_detect_go_controller_file(self) -> None:
+        """Detect functions in *_controller.go as Go endpoints."""
+        sym = make_symbol("CreatePost", path="internal/api/post_controller.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 1
+
+    def test_detect_go_handlers_directory(self) -> None:
+        """Detect files in handlers/ directory as Go endpoints."""
+        sym = make_symbol("ListItems", path="pkg/handlers/items.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 1
+
+    def test_detect_go_controllers_directory(self) -> None:
+        """Detect files in controllers/ directory as Go endpoints."""
+        sym = make_symbol("DeleteUser", path="app/controllers/user.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 1
+
+    def test_detect_multiple_go_handlers(self) -> None:
+        """Detect multiple handlers in same file."""
+        sym1 = make_symbol("GetUser", path="handlers/user_handler.go", language="go", start_line=10)
+        sym2 = make_symbol("CreateUser", path="handlers/user_handler.go", language="go", start_line=30)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 2
+
+    def test_go_handler_confidence(self) -> None:
+        """Go handler detection has high confidence."""
+        sym = make_symbol("UpdateItem", path="internal/handlers/item_handler.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 1
+        assert go_eps[0].confidence >= 0.85
+
+    def test_go_handler_label(self) -> None:
+        """Go handler entrypoints have descriptive labels."""
+        sym = make_symbol("DeleteOrder", path="handlers/order_handler.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 1
+        assert "Go" in go_eps[0].label or "handler" in go_eps[0].label.lower()
+
+    def test_go_only_go_files(self) -> None:
+        """Only Go files are detected as Go handlers."""
+        # Python file should NOT be detected
+        sym = make_symbol("get_user", path="handlers/user_handler.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 0
+
+    def test_go_file_symbol_not_detected(self) -> None:
+        """File symbols in handler files are not detected."""
+        sym = make_symbol("file", kind="file", path="handlers/user_handler.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 0
+
+    def test_go_non_handler_file_not_detected(self) -> None:
+        """Non-handler Go files are not detected."""
+        sym = make_symbol("helper", path="internal/utils/helpers.go", language="go")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
+        assert len(go_eps) == 0

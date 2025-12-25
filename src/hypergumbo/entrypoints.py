@@ -10,6 +10,7 @@ Detects common entrypoint patterns:
 - Spring Boot controllers (*Controller.java/*Resource.java files)
 - Rails controllers (app/controllers/*_controller.rb files)
 - Phoenix controllers (lib/*_web/controllers/*_controller.ex, LiveView)
+- Go handlers (Gin, Echo, Fiber, Chi - *_handler.go, handlers/)
 
 How It Works
 ------------
@@ -75,6 +76,7 @@ class EntrypointKind(Enum):
     SPRING_CONTROLLER = "spring_controller"
     RAILS_CONTROLLER = "rails_controller"
     PHOENIX_CONTROLLER = "phoenix_controller"
+    GO_HANDLER = "go_handler"
 
 
 @dataclass
@@ -152,6 +154,11 @@ PHOENIX_CONTROLLER_SUFFIX = "_controller.ex"
 PHOENIX_LIVEVIEW_SUFFIX = "_live.ex"
 PHOENIX_CONTROLLER_PATH_PATTERN = "_web/controllers/"
 PHOENIX_LIVEVIEW_PATH_PATTERN = "_web/live/"
+
+# Go framework handler patterns (Gin, Echo, Fiber, Chi)
+# Files ending in _handler.go or _controller.go, or in handlers/controllers/ directory
+GO_HANDLER_SUFFIXES = {"_handler.go", "_controller.go"}
+GO_HANDLER_DIRS = {"handlers", "controllers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -495,6 +502,54 @@ def _detect_phoenix_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_go_handler_file(path: str, language: str) -> bool:
+    """Check if a file path matches Go handler patterns.
+
+    Matches:
+    - Files ending in _handler.go or _controller.go
+    - Any .go file inside a handlers/ or controllers/ directory
+    """
+    if language != "go":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for handler/controller suffix
+    if any(filename.endswith(suffix) for suffix in GO_HANDLER_SUFFIXES):
+        return True
+
+    # Check if file is in a handlers/ or controllers/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in GO_HANDLER_DIRS for part in path_parts)
+
+
+def _detect_go_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Go framework handlers from file patterns.
+
+    Go web frameworks (Gin, Echo, Fiber, Chi) typically use:
+    - *_handler.go or *_controller.go naming
+    - handlers/ or controllers/ directories
+
+    Only function/struct symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_go_handler_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.GO_HANDLER,
+                confidence=0.85,
+                label="Go handler",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -563,6 +618,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_spring_controllers(nodes))
     entrypoints.extend(_detect_rails_controllers(nodes))
     entrypoints.extend(_detect_phoenix_controllers(nodes))
+    entrypoints.extend(_detect_go_handlers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
