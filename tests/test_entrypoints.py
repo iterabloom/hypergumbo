@@ -2418,3 +2418,111 @@ class TestTornadoEntrypoints:
 
         tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
         assert len(tornado_eps) == 0
+
+
+class TestAiohttpEntrypoints:
+    """Tests for Aiohttp (Python) view detection."""
+
+    def test_detect_aiohttp_view_file(self) -> None:
+        """Detect classes in *_view.py as Aiohttp views."""
+        sym = make_symbol("UserView", path="app/user_view.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 1
+
+    def test_detect_aiohttp_resource_file(self) -> None:
+        """Detect classes in *_resource.py as Aiohttp resources."""
+        sym = make_symbol("UserResource", path="app/user_resource.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 1
+
+    def test_detect_aiohttp_resources_directory(self) -> None:
+        """Detect classes in resources/ directory as Aiohttp resources."""
+        sym = make_symbol("ProductResource", path="app/resources/product.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 1
+
+    def test_detect_aiohttp_routes_file(self) -> None:
+        """Detect handlers in routes.py file."""
+        sym = make_symbol("setup_routes", path="app/routes.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 1
+
+    def test_detect_multiple_aiohttp_views(self) -> None:
+        """Detect multiple views in same file."""
+        sym1 = make_symbol("get", path="app/user_view.py", language="python", start_line=10)
+        sym2 = make_symbol("post", path="app/user_view.py", language="python", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 2
+
+    def test_aiohttp_view_confidence(self) -> None:
+        """Aiohttp view detection has appropriate confidence."""
+        sym = make_symbol("Handler", path="app/user_view.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 1
+        assert aiohttp_eps[0].confidence >= 0.80
+
+    def test_aiohttp_view_label(self) -> None:
+        """Aiohttp view entrypoints have descriptive labels."""
+        sym = make_symbol("DeleteView", path="app/user_view.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 1
+        assert "Aiohttp" in aiohttp_eps[0].label or "view" in aiohttp_eps[0].label.lower()
+
+    def test_aiohttp_only_python_files(self) -> None:
+        """Only Python files are detected as Aiohttp views."""
+        # Ruby file should NOT be detected
+        sym = make_symbol("UserView", path="app/user_view.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 0
+
+    def test_aiohttp_file_symbol_not_detected(self) -> None:
+        """File symbols in Aiohttp files are not detected."""
+        sym = make_symbol("file", kind="file", path="app/user_view.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 0
+
+    def test_aiohttp_non_view_file_not_detected(self) -> None:
+        """Non-view Python files are not detected as Aiohttp."""
+        sym = make_symbol("helper", path="app/utils/helper.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 0

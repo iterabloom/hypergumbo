@@ -23,6 +23,7 @@ Detects common entrypoint patterns:
 - Koa routes (*.router.js/ts, *.controller.js/ts, *.middleware.js/ts)
 - Grape APIs (*_api.rb, api/, endpoints/, entities/)
 - Tornado handlers (*_handler.py, handlers/, views/)
+- Aiohttp views (*_view.py, *_resource.py, routes.py, resources/)
 
 How It Works
 ------------
@@ -101,6 +102,7 @@ class EntrypointKind(Enum):
     KOA_ROUTE = "koa_route"
     GRAPE_API = "grape_api"
     TORNADO_HANDLER = "tornado_handler"
+    AIOHTTP_VIEW = "aiohttp_view"
 
 
 @dataclass
@@ -244,6 +246,12 @@ GRAPE_API_DIRS = {"api", "endpoints", "entities"}
 # Files ending in _handler.py, or in handlers/views directories
 TORNADO_HANDLER_SUFFIX = "_handler.py"
 TORNADO_HANDLER_DIRS = {"handlers", "views"}
+
+# Aiohttp (Python) view patterns
+# Files ending in _view.py or _resource.py, or in resources/ directory, or routes.py
+AIOHTTP_VIEW_SUFFIXES = {"_view.py", "_resource.py"}
+AIOHTTP_VIEW_FILES = {"routes.py"}
+AIOHTTP_VIEW_DIRS = {"resources"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -1201,6 +1209,58 @@ def _detect_tornado_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_aiohttp_view_file(path: str, language: str) -> bool:
+    """Check if a file path matches Aiohttp view patterns.
+
+    Matches:
+    - Files ending in _view.py or _resource.py
+    - Files named routes.py
+    - Any .py file inside a resources/ directory
+    """
+    if language != "python":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for *_view.py or *_resource.py suffix
+    if any(filename.endswith(suffix) for suffix in AIOHTTP_VIEW_SUFFIXES):
+        return True
+
+    # Check for routes.py
+    if filename in AIOHTTP_VIEW_FILES:
+        return True
+
+    # Check if file is in a resources/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in AIOHTTP_VIEW_DIRS for part in path_parts)
+
+
+def _detect_aiohttp_views(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Aiohttp view endpoints from file patterns.
+
+    Aiohttp is a Python async web framework. Views are typically defined in
+    files ending in _view.py or _resource.py, or in resources/ directories.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_aiohttp_view_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.AIOHTTP_VIEW,
+                confidence=0.85,
+                label="Aiohttp view",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1282,6 +1342,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_hapi_routes(nodes))
     entrypoints.extend(_detect_grape_apis(nodes))
     entrypoints.extend(_detect_tornado_handlers(nodes))
+    entrypoints.extend(_detect_aiohttp_views(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
