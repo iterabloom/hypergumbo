@@ -138,6 +138,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | OCaml | [x] tree-sitter | function, type, module | calls, imports | Detects let bindings (functions), types, modules, `open` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ocaml]` |
 | Solidity | [x] tree-sitter | contract, interface, library, function, constructor, modifier, event | calls, imports | Ethereum smart contracts. Detects contracts, interfaces, libraries, functions, constructors, modifiers, events, and import statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-solidity` |
 | C# | [x] tree-sitter | class, interface, struct, enum, method, constructor, property | calls, imports, instantiates | Two-pass cross-file resolution. Detects method calls, `using` directives, `new ClassName()`. Optional: `pip install hypergumbo[csharp]` |
+| C++ | [x] tree-sitter | class, struct, enum, function, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects function/method calls, `#include` directives, `new ClassName()`. Handles qualified names (Namespace::Class::method). Optional: `pip install hypergumbo[cpp]` |
 
 ## Supply Chain Classification (§8.6)
 
