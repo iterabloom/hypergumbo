@@ -56,6 +56,7 @@ from .analyze.ocaml import analyze_ocaml
 from .analyze.solidity import analyze_solidity
 from .analyze.csharp import analyze_csharp
 from .analyze.cpp import analyze_cpp
+from .analyze.zig import analyze_zig
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -858,6 +859,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(cpp_result.run.to_dict())
             all_symbols.extend(cpp_result.symbols)
             all_edges.extend(cpp_result.edges)
+
+    # Run Zig analysis (optional, requires tree-sitter-zig)
+    zig_result = analyze_zig(repo_root)
+    if zig_result.run is not None:
+        if zig_result.skipped:  # pragma: no cover - zig installed
+            limits.skipped_passes.append({
+                "pass": zig_result.run.pass_id,
+                "reason": zig_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(zig_result.run.to_dict())
+            all_symbols.extend(zig_result.symbols)
+            all_edges.extend(zig_result.edges)
 
     # Run cross-language linkers
 
