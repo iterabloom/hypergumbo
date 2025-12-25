@@ -42,15 +42,7 @@ hypergumbo . -t 2000  # include symbols and entry points
 pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
 ```
 
-Optional extras for additional language support:
-```bash
-pip install "hypergumbo[javascript] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"  # JS/TS/Vue/Svelte
-pip install "hypergumbo[php] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"         # PHP
-pip install "hypergumbo[c] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"           # C
-pip install "hypergumbo[java] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"        # Java
-pip install "hypergumbo[elixir] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"      # Elixir
-pip install "hypergumbo[rust] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"        # Rust
-```
+All language analyzers (Python, JavaScript, TypeScript, PHP, C, Java, Elixir, Rust) are included by default.
 
 For LLM-assisted plan generation:
 ```bash
