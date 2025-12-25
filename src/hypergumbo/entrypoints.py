@@ -12,6 +12,7 @@ Detects common entrypoint patterns:
 - Phoenix controllers (lib/*_web/controllers/*_controller.ex, LiveView)
 - Go handlers (Gin, Echo, Fiber, Chi - *_handler.go, handlers/)
 - Laravel controllers (app/Http/Controllers/*Controller.php)
+- Rust handlers (Actix-web, Axum, Rocket, Warp - *_handler.rs, handlers/)
 
 How It Works
 ------------
@@ -79,6 +80,7 @@ class EntrypointKind(Enum):
     PHOENIX_CONTROLLER = "phoenix_controller"
     GO_HANDLER = "go_handler"
     LARAVEL_CONTROLLER = "laravel_controller"
+    RUST_HANDLER = "rust_handler"
 
 
 @dataclass
@@ -166,6 +168,11 @@ GO_HANDLER_DIRS = {"handlers", "controllers"}
 # Files ending in Controller.php inside app/Http/Controllers/
 LARAVEL_CONTROLLER_SUFFIX = "Controller.php"
 LARAVEL_CONTROLLER_PATH = "app/Http/Controllers/"
+
+# Rust framework handler patterns (Actix-web, Axum, Rocket, Warp)
+# Files ending in _handler.rs or _controller.rs, or in handlers/controllers/ directory
+RUST_HANDLER_SUFFIXES = {"_handler.rs", "_controller.rs"}
+RUST_HANDLER_DIRS = {"handlers", "controllers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -603,6 +610,54 @@ def _detect_laravel_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_rust_handler_file(path: str, language: str) -> bool:
+    """Check if a file path matches Rust handler patterns.
+
+    Matches:
+    - Files ending in _handler.rs or _controller.rs
+    - Any .rs file inside a handlers/ or controllers/ directory
+    """
+    if language != "rust":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for handler/controller suffix
+    if any(filename.endswith(suffix) for suffix in RUST_HANDLER_SUFFIXES):
+        return True
+
+    # Check if file is in a handlers/ or controllers/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in RUST_HANDLER_DIRS for part in path_parts)
+
+
+def _detect_rust_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Rust framework handlers from file patterns.
+
+    Rust web frameworks (Actix-web, Axum, Rocket, Warp) typically use:
+    - *_handler.rs or *_controller.rs naming
+    - handlers/ or controllers/ directories
+
+    Only function/struct symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_rust_handler_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.RUST_HANDLER,
+                confidence=0.85,
+                label="Rust handler",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -673,6 +728,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_phoenix_controllers(nodes))
     entrypoints.extend(_detect_go_handlers(nodes))
     entrypoints.extend(_detect_laravel_controllers(nodes))
+    entrypoints.extend(_detect_rust_handlers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
