@@ -375,6 +375,11 @@ def _is_test_path(path: str) -> bool:
     return False
 
 
+# Tier weights for supply chain ranking (first-party prioritized)
+# Tier 4 (derived) gets 0 weight since those files shouldn't be analyzed
+_TIER_WEIGHTS = {1: 2.0, 2: 1.5, 3: 1.0, 4: 0.0}
+
+
 def _compute_centrality(
     symbols: list[Symbol],
     edges: list,
@@ -399,6 +404,27 @@ def _compute_centrality(
         max_degree = 1
 
     return {sid: count / max_degree for sid, count in in_degree.items()}
+
+
+def _apply_tier_weights(
+    centrality: dict[str, float],
+    symbols: list[Symbol],
+) -> dict[str, float]:
+    """Apply tier-based weighting to centrality scores.
+
+    First-party symbols (tier 1) get a 2x boost, internal deps (tier 2) get 1.5x,
+    external deps (tier 3) get 1x, and derived (tier 4) gets 0x.
+
+    This ensures first-party code ranks higher than bundled dependencies
+    even when dependencies have higher raw centrality.
+    """
+    symbol_tiers = {s.id: s.supply_chain_tier for s in symbols}
+    weighted = {}
+    for sid, score in centrality.items():
+        tier = symbol_tiers.get(sid, 1)
+        weight = _TIER_WEIGHTS.get(tier, 1.0)
+        weighted[sid] = score * weight
+    return weighted
 
 
 def _format_symbols(
@@ -438,9 +464,12 @@ def _format_symbols(
         return ""
 
     # Compute centrality scores using only production edges
-    centrality = _compute_centrality(key_symbols, production_edges)
+    raw_centrality = _compute_centrality(key_symbols, production_edges)
 
-    # Sort by centrality (most called first), then by name
+    # Apply tier-based weighting (first-party symbols boosted)
+    centrality = _apply_tier_weights(raw_centrality, key_symbols)
+
+    # Sort by weighted centrality (most called first), then by name
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
 
     # Group by file, preserving centrality order within files

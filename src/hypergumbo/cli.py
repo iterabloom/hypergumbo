@@ -60,6 +60,7 @@ from .llm_assist import generate_plan_with_fallback, LLMBackend
 from .schema import new_behavior_map
 from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph
+from .supply_chain import classify_file, detect_package_roots
 
 
 def cmd_sketch(args: argparse.Namespace) -> int:
@@ -525,6 +526,55 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _classify_symbols(
+    symbols: list[Symbol], repo_root: Path, package_roots: set[Path]
+) -> None:
+    """Apply supply chain classification to symbols in-place.
+
+    Classifies each symbol's file path and updates supply_chain_tier
+    and supply_chain_reason fields.
+    """
+    for symbol in symbols:
+        file_path = repo_root / symbol.path
+        classification = classify_file(file_path, repo_root, package_roots)
+        symbol.supply_chain_tier = classification.tier.value
+        symbol.supply_chain_reason = classification.reason
+
+
+def _compute_supply_chain_summary(
+    symbols: list[Symbol], derived_paths: list[str]
+) -> Dict[str, Any]:
+    """Compute supply chain summary from classified symbols.
+
+    Returns a dict with counts per tier plus derived_skipped info.
+    """
+    # Count unique files and symbols per tier
+    tier_files: Dict[int, set] = {1: set(), 2: set(), 3: set(), 4: set()}
+    tier_symbols: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
+
+    for symbol in symbols:
+        tier = symbol.supply_chain_tier
+        tier_files[tier].add(symbol.path)
+        tier_symbols[tier] += 1
+
+    tier_names = {1: "first_party", 2: "internal_dep", 3: "external_dep"}
+
+    summary: Dict[str, Any] = {}
+    for tier, name in tier_names.items():
+        summary[name] = {
+            "files": len(tier_files[tier]),
+            "symbols": tier_symbols[tier],
+        }
+
+    # Cap derived_skipped paths at 10
+    summary["derived_skipped"] = {
+        "files": len(tier_files[4]) + len(derived_paths),
+        "paths": derived_paths[:10],
+    }
+
+    return summary
+
+
 def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -535,24 +585,27 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
     profile = detect_profile(repo_root)
     behavior_map["profile"] = profile.to_dict()
 
+    # Detect internal package roots for supply chain classification
+    package_roots = detect_package_roots(repo_root)
+
     analysis_runs = []
-    all_nodes = []
-    all_edges = []
+    all_symbols: list[Symbol] = []
+    all_edges: list[Edge] = []
     limits = Limits()
 
     # Run Python analysis
     py_result = analyze_python(repo_root)
     if py_result.run is not None:
         analysis_runs.append(py_result.run.to_dict())
-    all_nodes.extend(s.to_dict() for s in py_result.symbols)
-    all_edges.extend(e.to_dict() for e in py_result.edges)
+    all_symbols.extend(py_result.symbols)
+    all_edges.extend(py_result.edges)
 
     # Run HTML analysis
     html_result = analyze_html(repo_root)
     if html_result.run is not None:
         analysis_runs.append(html_result.run.to_dict())
-    all_nodes.extend(s.to_dict() for s in html_result.symbols)
-    all_edges.extend(e.to_dict() for e in html_result.edges)
+    all_symbols.extend(html_result.symbols)
+    all_edges.extend(html_result.edges)
 
     # Run JavaScript/TypeScript/Svelte analysis (optional, requires tree-sitter)
     js_result = analyze_javascript(repo_root)
@@ -565,8 +618,8 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             })
         else:
             analysis_runs.append(js_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in js_result.symbols)
-            all_edges.extend(e.to_dict() for e in js_result.edges)
+            all_symbols.extend(js_result.symbols)
+            all_edges.extend(js_result.edges)
 
     # Run PHP analysis (optional, requires tree-sitter-php)
     php_result = analyze_php(repo_root)
@@ -578,11 +631,10 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             })
         else:
             analysis_runs.append(php_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in php_result.symbols)
-            all_edges.extend(e.to_dict() for e in php_result.edges)
+            all_symbols.extend(php_result.symbols)
+            all_edges.extend(php_result.edges)
 
     # Run C analysis (optional, requires tree-sitter-c)
-    # Keep raw symbols for JNI linker
     c_symbols: list[Symbol] = []
     c_result = analyze_c(repo_root)
     if c_result.run is not None:
@@ -594,11 +646,10 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
         else:
             analysis_runs.append(c_result.run.to_dict())
             c_symbols = list(c_result.symbols)
-            all_nodes.extend(s.to_dict() for s in c_symbols)
-            all_edges.extend(e.to_dict() for e in c_result.edges)
+            all_symbols.extend(c_symbols)
+            all_edges.extend(c_result.edges)
 
     # Run Java analysis (optional, requires tree-sitter-java)
-    # Keep raw symbols for JNI linker
     java_symbols: list[Symbol] = []
     java_result = analyze_java(repo_root)
     if java_result.run is not None:
@@ -610,8 +661,8 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
         else:
             analysis_runs.append(java_result.run.to_dict())
             java_symbols = list(java_result.symbols)
-            all_nodes.extend(s.to_dict() for s in java_symbols)
-            all_edges.extend(e.to_dict() for e in java_result.edges)
+            all_symbols.extend(java_symbols)
+            all_edges.extend(java_result.edges)
 
     # Run Elixir analysis (optional, requires tree-sitter-language-pack)
     elixir_result = analyze_elixir(repo_root)
@@ -623,8 +674,8 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             })
         else:
             analysis_runs.append(elixir_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in elixir_result.symbols)
-            all_edges.extend(e.to_dict() for e in elixir_result.edges)
+            all_symbols.extend(elixir_result.symbols)
+            all_edges.extend(elixir_result.edges)
 
     # Run Rust analysis (optional, requires tree-sitter-rust)
     rust_result = analyze_rust(repo_root)
@@ -636,8 +687,8 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             })
         else:
             analysis_runs.append(rust_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in rust_result.symbols)
-            all_edges.extend(e.to_dict() for e in rust_result.edges)
+            all_symbols.extend(rust_result.symbols)
+            all_edges.extend(rust_result.edges)
 
     # Run cross-language linkers
 
@@ -646,28 +697,41 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
         jni_result = link_jni(java_symbols, c_symbols)
         if jni_result.run is not None:
             analysis_runs.append(jni_result.run.to_dict())
-            all_edges.extend(e.to_dict() for e in jni_result.edges)
+            all_edges.extend(jni_result.edges)
 
     # IPC linker: detect Electron IPC, postMessage, Web Workers
     ipc_result = link_ipc(repo_root)
     if ipc_result.run is not None:
         analysis_runs.append(ipc_result.run.to_dict())
-        all_nodes.extend(s.to_dict() for s in ipc_result.symbols)
-        all_edges.extend(e.to_dict() for e in ipc_result.edges)
+        all_symbols.extend(ipc_result.symbols)
+        all_edges.extend(ipc_result.edges)
 
     # WebSocket linker: detect Socket.io, native WebSocket, ws package patterns
     ws_result = link_websocket(repo_root)
     if ws_result.run is not None:
         analysis_runs.append(ws_result.run.to_dict())
-        all_nodes.extend(s.to_dict() for s in ws_result.symbols)
-        all_edges.extend(e.to_dict() for e in ws_result.edges)
+        all_symbols.extend(ws_result.symbols)
+        all_edges.extend(ws_result.edges)
+
+    # Apply supply chain classification to all symbols
+    _classify_symbols(all_symbols, repo_root, package_roots)
+
+    # Convert to dicts for output
+    all_nodes = [s.to_dict() for s in all_symbols]
+    all_edge_dicts = [e.to_dict() for e in all_edges]
 
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes
-    behavior_map["edges"] = all_edges
+    behavior_map["edges"] = all_edge_dicts
 
     # Compute metrics from analyzed nodes and edges
-    behavior_map["metrics"] = compute_metrics(all_nodes, all_edges)
+    behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
+
+    # Compute supply chain summary
+    # Note: derived_paths would be tracked during file discovery in a full implementation
+    behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
+        all_symbols, derived_paths=[]
+    )
 
     # Record skipped files from analysis runs
     for run in analysis_runs:
