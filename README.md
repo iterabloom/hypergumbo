@@ -106,6 +106,7 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | Elixir | tree-sitter | module, function, macro | calls, imports |
 | Rust | tree-sitter | function, struct, enum, trait, method | calls, imports |
 | Go | tree-sitter | function, method, struct, interface, type | calls, imports |
+| Ruby | tree-sitter | method, class, module | calls, imports |
 | HTML | regex | file | script_src |
 
 ### Cross-Language Linkers
