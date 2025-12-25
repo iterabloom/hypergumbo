@@ -72,7 +72,10 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         return 1
 
     max_tokens = args.tokens if args.tokens else None
-    sketch = generate_sketch(repo_root, max_tokens=max_tokens)
+    exclude_tests = getattr(args, "exclude_tests", False)
+    sketch = generate_sketch(
+        repo_root, max_tokens=max_tokens, exclude_tests=exclude_tests
+    )
     print(sketch)
     return 0
 
@@ -392,6 +395,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Limit output to approximately N tokens",
+    )
+    p_sketch.add_argument(
+        "-x", "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        help="Exclude test files from analysis (faster for large codebases)",
     )
     p_sketch.set_defaults(func=cmd_sketch)
 

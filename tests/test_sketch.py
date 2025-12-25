@@ -790,3 +790,85 @@ class TestCLISketch:
         assert result == 0
         captured = capsys.readouterr()
         assert "## Overview" in captured.out
+
+    def test_sketch_exclude_tests_flag(self, tmp_path: Path, capsys) -> None:
+        """Sketch respects --exclude-tests flag."""
+        from hypergumbo.cli import main
+
+        (tmp_path / "app.py").write_text("def main():\n    pass\n")
+
+        result = main([str(tmp_path), "-x"])
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "## Overview" in captured.out
+
+
+class TestExcludeTests:
+    """Tests for --exclude-tests functionality."""
+
+    def test_run_analysis_excludes_test_symbols(self, tmp_path: Path) -> None:
+        """_run_analysis with exclude_tests=True filters test symbols."""
+        # Create source file
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "app.py").write_text("def main():\n    pass\n")
+
+        # Create test file
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_app.py").write_text("def test_main():\n    pass\n")
+
+        profile = detect_profile(tmp_path)
+
+        # Without exclude_tests, should include test symbols
+        symbols_all, _ = _run_analysis(tmp_path, profile, exclude_tests=False)
+        all_names = [s.name for s in symbols_all]
+        assert "main" in all_names
+        assert "test_main" in all_names
+
+        # With exclude_tests, should exclude test symbols
+        symbols_filtered, _ = _run_analysis(tmp_path, profile, exclude_tests=True)
+        filtered_names = [s.name for s in symbols_filtered]
+        assert "main" in filtered_names
+        assert "test_main" not in filtered_names
+
+    def test_run_analysis_filters_edges_to_test_symbols(self, tmp_path: Path) -> None:
+        """Edges involving test symbols are filtered when exclude_tests=True."""
+        # Create source file that calls a function
+        (tmp_path / "app.py").write_text(
+            "def main():\n    helper()\n\ndef helper():\n    pass\n"
+        )
+
+        # Create test file with edges
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_app.py").write_text(
+            "from app import main\n\ndef test_main():\n    main()\n"
+        )
+
+        profile = detect_profile(tmp_path)
+
+        # With exclude_tests, edges from test files should be filtered
+        _, edges = _run_analysis(tmp_path, profile, exclude_tests=True)
+
+        # All remaining edges should only reference non-test symbols
+        for edge in edges:
+            src_path = getattr(edge, "src", "")
+            dst_path = getattr(edge, "dst", "")
+            assert "test_" not in src_path or "tests/" not in src_path
+            assert "test_" not in dst_path or "tests/" not in dst_path
+
+    def test_generate_sketch_with_exclude_tests(self, tmp_path: Path) -> None:
+        """generate_sketch with exclude_tests=True works correctly."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "app.py").write_text("def main():\n    pass\n")
+
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_app.py").write_text("def test_main():\n    pass\n")
+
+        # Should complete without error
+        sketch = generate_sketch(tmp_path, max_tokens=1000, exclude_tests=True)
+        assert "## Overview" in sketch
