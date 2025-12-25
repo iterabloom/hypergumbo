@@ -590,3 +590,163 @@ class TestEdgeCases:
         result = classify_file(file_path, tmp_path, package_roots)
         # Should still classify correctly, ignoring the bad root
         assert result.tier == Tier.FIRST_PARTY
+
+
+class TestSupplyChainConfig:
+    """Tests for capsule plan supply_chain configuration."""
+
+    def test_custom_first_party_pattern(self, tmp_path: Path) -> None:
+        """Custom first_party_patterns override default classification."""
+        from hypergumbo.supply_chain import SupplyChainConfig
+
+        # File in custom_code/ would normally be tier 1 by default
+        # but we can explicitly configure it
+        file_path = tmp_path / "custom_code" / "app.py"
+        file_path.parent.mkdir(parents=True)
+        file_path.write_text("# code")
+
+        config = SupplyChainConfig(
+            first_party_patterns=["custom_code/"],
+        )
+        result = classify_file(file_path, tmp_path, config=config)
+        assert result.tier == Tier.FIRST_PARTY
+        assert "custom_code/" in result.reason
+
+    def test_custom_derived_pattern(self, tmp_path: Path) -> None:
+        """Custom derived_patterns classify as tier 4."""
+        from hypergumbo.supply_chain import SupplyChainConfig
+
+        # File in generated/ would normally be tier 1 by default
+        file_path = tmp_path / "generated" / "types.py"
+        file_path.parent.mkdir(parents=True)
+        file_path.write_text("# generated code")
+
+        config = SupplyChainConfig(
+            derived_patterns=["generated/"],
+        )
+        result = classify_file(file_path, tmp_path, config=config)
+        assert result.tier == Tier.DERIVED
+        assert "generated/" in result.reason
+
+    def test_custom_internal_package_roots(self, tmp_path: Path) -> None:
+        """Custom internal_package_roots override detection."""
+        from hypergumbo.supply_chain import SupplyChainConfig
+
+        # File in custom_packages/shared would be internal dep
+        file_path = tmp_path / "custom_packages" / "shared" / "utils.py"
+        file_path.parent.mkdir(parents=True)
+        file_path.write_text("# shared code")
+
+        config = SupplyChainConfig(
+            internal_package_roots=["custom_packages/shared"],
+        )
+        result = classify_file(file_path, tmp_path, config=config)
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "custom_packages/shared" in result.reason
+
+    def test_config_defaults(self) -> None:
+        """SupplyChainConfig has sensible defaults."""
+        from hypergumbo.supply_chain import SupplyChainConfig
+
+        config = SupplyChainConfig()
+        assert config.first_party_patterns == []
+        assert config.derived_patterns == []
+        assert config.internal_package_roots == []
+        assert config.analysis_tiers == [1, 2, 3]
+
+    def test_config_to_dict(self) -> None:
+        """SupplyChainConfig serializes correctly."""
+        from hypergumbo.supply_chain import SupplyChainConfig
+
+        config = SupplyChainConfig(
+            analysis_tiers=[1, 2],
+            first_party_patterns=["src/", "lib/"],
+            derived_patterns=["build/"],
+            internal_package_roots=["packages/core"],
+        )
+        d = config.to_dict()
+        assert d["analysis_tiers"] == [1, 2]
+        assert d["first_party_patterns"] == ["src/", "lib/"]
+        assert d["derived_patterns"] == ["build/"]
+        assert d["internal_package_roots"] == ["packages/core"]
+
+    def test_config_from_dict(self) -> None:
+        """SupplyChainConfig parses from dict."""
+        from hypergumbo.supply_chain import SupplyChainConfig
+
+        data = {
+            "analysis_tiers": [1],
+            "first_party_patterns": ["custom/"],
+            "derived_patterns": ["out/"],
+            "internal_package_roots": ["libs/common"],
+        }
+        config = SupplyChainConfig.from_dict(data)
+        assert config.analysis_tiers == [1]
+        assert config.first_party_patterns == ["custom/"]
+        assert config.derived_patterns == ["out/"]
+        assert config.internal_package_roots == ["libs/common"]
+
+
+class TestSupplyChainLimits:
+    """Tests for limits.supply_chain logging."""
+
+    def test_limits_has_supply_chain_section(self) -> None:
+        """Limits includes supply_chain section."""
+        from hypergumbo.limits import Limits
+
+        limits = Limits()
+        result = limits.to_dict()
+        assert "supply_chain" in result
+
+    def test_add_classification_failure(self) -> None:
+        """Can add classification failure."""
+        from hypergumbo.limits import Limits
+
+        limits = Limits()
+        limits.add_classification_failure("weird/path.py", "unable to classify")
+
+        result = limits.to_dict()
+        assert len(result["supply_chain"]["classification_failures"]) == 1
+        assert result["supply_chain"]["classification_failures"][0]["path"] == "weird/path.py"
+
+    def test_add_ambiguous_path(self) -> None:
+        """Can add ambiguous path."""
+        from hypergumbo.limits import Limits
+
+        limits = Limits()
+        limits.add_ambiguous_path(
+            "lib/vendor/custom.py",
+            assigned_tier=1,
+            note="could be tier 2 or 3",
+        )
+
+        result = limits.to_dict()
+        assert len(result["supply_chain"]["ambiguous_paths"]) == 1
+        entry = result["supply_chain"]["ambiguous_paths"][0]
+        assert entry["path"] == "lib/vendor/custom.py"
+        assert entry["assigned"] == 1
+        assert entry["note"] == "could be tier 2 or 3"
+
+    def test_empty_supply_chain_section(self) -> None:
+        """Empty limits has empty supply_chain section."""
+        from hypergumbo.limits import Limits
+
+        limits = Limits()
+        result = limits.to_dict()
+        assert result["supply_chain"]["classification_failures"] == []
+        assert result["supply_chain"]["ambiguous_paths"] == []
+
+    def test_merge_preserves_supply_chain(self) -> None:
+        """Merging limits preserves supply_chain data."""
+        from hypergumbo.limits import Limits
+
+        limits1 = Limits()
+        limits1.add_classification_failure("file1.py", "reason1")
+
+        limits2 = Limits()
+        limits2.add_ambiguous_path("file2.py", 2, "note")
+
+        merged = limits1.merge(limits2)
+        result = merged.to_dict()
+        assert len(result["supply_chain"]["classification_failures"]) == 1
+        assert len(result["supply_chain"]["ambiguous_paths"]) == 1
