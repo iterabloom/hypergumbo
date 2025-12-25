@@ -21,6 +21,7 @@ Detects common entrypoint patterns:
 - Hapi routes (*routes.js/ts, routes/, plugins/)
 - Fastify routes (*.routes.js/ts, *.route.js/ts, *.schema.js/ts)
 - Koa routes (*.router.js/ts, *.controller.js/ts, *.middleware.js/ts)
+- Grape APIs (*_api.rb, api/, endpoints/, entities/)
 
 How It Works
 ------------
@@ -97,6 +98,7 @@ class EntrypointKind(Enum):
     HAPI_ROUTE = "hapi_route"
     FASTIFY_ROUTE = "fastify_route"
     KOA_ROUTE = "koa_route"
+    GRAPE_API = "grape_api"
 
 
 @dataclass
@@ -230,6 +232,11 @@ FASTIFY_ROUTE_PATTERNS = {".routes.", ".route.", ".schema."}
 # Koa (Node.js) route patterns
 # Files with .router. or .controller. or .middleware. in the name (Koa convention)
 KOA_ROUTE_PATTERNS = {".router.", ".controller.", ".middleware."}
+
+# Grape (Ruby) API patterns
+# Files ending in _api.rb, or in api/endpoints/entities directories
+GRAPE_API_SUFFIX = "_api.rb"
+GRAPE_API_DIRS = {"api", "endpoints", "entities"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -1093,6 +1100,53 @@ def _detect_koa_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_grape_api_file(path: str, language: str) -> bool:
+    """Check if a file path matches Grape API patterns.
+
+    Matches:
+    - Files ending in _api.rb
+    - Any .rb file inside an api/, endpoints/, or entities/ directory
+    """
+    if language != "ruby":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for *_api.rb suffix
+    if filename.endswith(GRAPE_API_SUFFIX):
+        return True
+
+    # Check if file is in an api/, endpoints/, or entities/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in GRAPE_API_DIRS for part in path_parts)
+
+
+def _detect_grape_apis(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Grape API endpoints from file patterns.
+
+    Grape is a Ruby API framework. APIs are typically defined in
+    files ending in _api.rb or in api/endpoints/entities directories.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_grape_api_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.GRAPE_API,
+                confidence=0.85,
+                label="Grape API",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1172,6 +1226,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_koa_routes(nodes))
     entrypoints.extend(_detect_fastify_routes(nodes))
     entrypoints.extend(_detect_hapi_routes(nodes))
+    entrypoints.extend(_detect_grape_apis(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()

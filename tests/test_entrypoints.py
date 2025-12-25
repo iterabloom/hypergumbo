@@ -2202,3 +2202,111 @@ class TestKoaEntrypoints:
 
         koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
         assert len(koa_eps) == 0
+
+
+class TestGrapeEntrypoints:
+    """Tests for Grape (Ruby) API detection."""
+
+    def test_detect_grape_api_file(self) -> None:
+        """Detect classes in *_api.rb as Grape APIs."""
+        sym = make_symbol("UsersAPI", path="lib/users_api.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 1
+
+    def test_detect_grape_api_directory(self) -> None:
+        """Detect classes in api/ directory as Grape APIs."""
+        sym = make_symbol("Users", path="app/api/v1/users.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 1
+
+    def test_detect_grape_endpoints_directory(self) -> None:
+        """Detect classes in endpoints/ directory as Grape endpoints."""
+        sym = make_symbol("ProductsEndpoint", path="lib/endpoints/products.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 1
+
+    def test_detect_grape_entities_directory(self) -> None:
+        """Detect classes in entities/ directory as Grape entities."""
+        sym = make_symbol("UserEntity", path="app/api/entities/user.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 1
+
+    def test_detect_multiple_grape_apis(self) -> None:
+        """Detect multiple APIs in same file."""
+        sym1 = make_symbol("get", path="app/api/users.rb", language="ruby", start_line=10)
+        sym2 = make_symbol("post", path="app/api/users.rb", language="ruby", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 2
+
+    def test_grape_api_confidence(self) -> None:
+        """Grape API detection has appropriate confidence."""
+        sym = make_symbol("handler", path="app/api/items.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 1
+        assert grape_eps[0].confidence >= 0.80
+
+    def test_grape_api_label(self) -> None:
+        """Grape API entrypoints have descriptive labels."""
+        sym = make_symbol("delete_user", path="lib/users_api.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 1
+        assert "Grape" in grape_eps[0].label or "API" in grape_eps[0].label
+
+    def test_grape_only_ruby_files(self) -> None:
+        """Only Ruby files are detected as Grape APIs."""
+        # Python file should NOT be detected
+        sym = make_symbol("UsersAPI", path="lib/users_api.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 0
+
+    def test_grape_file_symbol_not_detected(self) -> None:
+        """File symbols in Grape files are not detected."""
+        sym = make_symbol("file", kind="file", path="app/api/users.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 0
+
+    def test_grape_non_api_file_not_detected(self) -> None:
+        """Non-API Ruby files are not detected as Grape."""
+        sym = make_symbol("helper", path="lib/utils/helper.rb", language="ruby")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
+        assert len(grape_eps) == 0
