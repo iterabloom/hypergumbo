@@ -2626,3 +2626,105 @@ class TestSlimEntrypoints:
 
         slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
         assert len(slim_eps) == 0
+
+
+class TestMicronautEntrypoints:
+    """Tests for Micronaut (Java/Kotlin) HTTP client detection.
+
+    Micronaut HTTP clients are distinct from controllers - they're declarative
+    interfaces for calling external services. Controllers use the same patterns
+    as Spring and are detected by Spring detection.
+    """
+
+    def test_detect_micronaut_client_java(self) -> None:
+        """Detect Micronaut HTTP client from *Client.java naming."""
+        sym = make_symbol("UserClient", path="src/main/java/UserClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 1
+        assert micronaut_eps[0].symbol_id == sym.id
+
+    def test_detect_micronaut_client_kotlin(self) -> None:
+        """Detect Micronaut HTTP client from *Client.kt naming."""
+        sym = make_symbol("OrderClient", path="src/main/kotlin/OrderClient.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 1
+
+    def test_detect_micronaut_client_directory(self) -> None:
+        """Detect clients in client/ directory."""
+        sym = make_symbol("getUsers", path="src/main/java/client/UserApi.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 1
+
+    def test_detect_multiple_micronaut_clients(self) -> None:
+        """Detect multiple Micronaut HTTP clients."""
+        sym1 = make_symbol("UserClient", path="src/UserClient.java", language="java")
+        sym2 = make_symbol("OrderClient", path="src/OrderClient.kt", language="kotlin")
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 2
+
+    def test_micronaut_client_confidence(self) -> None:
+        """Micronaut client has medium-high confidence."""
+        sym = make_symbol("UserClient", path="src/UserClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert micronaut_eps[0].confidence == 0.85
+
+    def test_micronaut_client_label(self) -> None:
+        """Micronaut client has appropriate label."""
+        sym = make_symbol("UserClient", path="src/UserClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert micronaut_eps[0].label == "Micronaut controller"
+
+    def test_micronaut_only_java_kotlin_files(self) -> None:
+        """Only Java/Kotlin files are detected as Micronaut clients."""
+        # Python file should NOT be detected
+        sym = make_symbol("UserClient", path="src/UserClient.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_micronaut_file_symbol_not_detected(self) -> None:
+        """File symbols in Micronaut files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/UserClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_micronaut_non_client_file_not_detected(self) -> None:
+        """Non-client Java files are not detected as Micronaut."""
+        sym = make_symbol("Helper", path="src/utils/Helper.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0

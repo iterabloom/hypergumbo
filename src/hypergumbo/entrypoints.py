@@ -24,6 +24,8 @@ Detects common entrypoint patterns:
 - Grape APIs (*_api.rb, api/, endpoints/, entities/)
 - Tornado handlers (*_handler.py, handlers/, views/)
 - Aiohttp views (*_view.py, *_resource.py, routes.py, resources/)
+- Slim routes (routes.php, *Middleware.php, Actions/, Handlers/)
+- Micronaut HTTP clients (*Client.java/kt, client/)
 
 How It Works
 ------------
@@ -104,6 +106,7 @@ class EntrypointKind(Enum):
     TORNADO_HANDLER = "tornado_handler"
     AIOHTTP_VIEW = "aiohttp_view"
     SLIM_ROUTE = "slim_route"
+    MICRONAUT_CONTROLLER = "micronaut_controller"
 
 
 @dataclass
@@ -259,6 +262,12 @@ AIOHTTP_VIEW_DIRS = {"resources"}
 SLIM_ROUTE_FILES = {"routes.php"}
 SLIM_ROUTE_SUFFIXES = {"Middleware.php"}
 SLIM_ROUTE_DIRS = {"Actions", "Handlers"}
+
+# Micronaut (Java/Kotlin) HTTP client patterns
+# Micronaut-specific: declarative HTTP clients (*Client.java/kt) or client/ directory
+# Controllers are detected by Spring detection which covers both frameworks
+MICRONAUT_CLIENT_SUFFIXES = {"Client.java", "Client.kt"}
+MICRONAUT_CLIENT_DIRS = {"client"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -1320,6 +1329,54 @@ def _detect_slim_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_micronaut_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches Micronaut HTTP client patterns.
+
+    Matches:
+    - Files ending in Client.java/kt (Micronaut declarative HTTP clients)
+    - Any .java/.kt file inside a client/ directory
+    """
+    if language not in ("java", "kotlin"):
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Client suffix
+    if any(filename.endswith(suffix) for suffix in MICRONAUT_CLIENT_SUFFIXES):
+        return True
+
+    # Check if file is in a client/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in MICRONAUT_CLIENT_DIRS for part in path_parts)
+
+
+def _detect_micronaut_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Micronaut controller endpoints from file patterns.
+
+    Micronaut is a Java/Kotlin microframework. Controllers are typically
+    in *Controller.java/kt files or in controller/ directories.
+    Also detects Micronaut HTTP clients (*Client.java/kt).
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_micronaut_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.MICRONAUT_CONTROLLER,
+                confidence=0.85,
+                label="Micronaut controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1385,6 +1442,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_django_views(nodes, edges))
     entrypoints.extend(_detect_express_routes(nodes))
     entrypoints.extend(_detect_nestjs_controllers(nodes))
+    entrypoints.extend(_detect_micronaut_controllers(nodes))
     entrypoints.extend(_detect_spring_controllers(nodes))
     entrypoints.extend(_detect_rails_controllers(nodes))
     entrypoints.extend(_detect_phoenix_controllers(nodes))
