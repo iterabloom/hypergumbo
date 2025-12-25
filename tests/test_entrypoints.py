@@ -270,3 +270,133 @@ class TestAsyncHandlers:
 
         assert len(entrypoints) == 1
         assert entrypoints[0].kind == EntrypointKind.HTTP_ROUTE
+
+
+class TestDjangoEntrypoints:
+    """Tests for Django URL route detection.
+
+    Django uses path() or url() calls in urls.py files to map URLs to views.
+    Detection strategy: If a urls.py file imports a function, that function
+    is likely a Django view entrypoint.
+    """
+
+    def test_detect_django_view_by_urls_import(self) -> None:
+        """Detect Django views imported by urls.py."""
+        from hypergumbo.ir import Edge
+
+        # views.py: index function
+        view_func = make_symbol("index", path="myapp/views.py")
+
+        # urls.py: imports index from views
+        urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
+
+        # Import edge from urls.py to the view function
+        import_edge = Edge.create(
+            src=urls_file.id,
+            dst=view_func.id,
+            edge_type="imports",
+            line=1,
+        )
+
+        nodes = [view_func, urls_file]
+        edges = [import_edge]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        # The view function should be detected as Django view entrypoint
+        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
+        assert len(django_eps) == 1
+        assert django_eps[0].symbol_id == view_func.id
+
+    def test_detect_multiple_django_views(self) -> None:
+        """Detect multiple views imported by urls.py."""
+        from hypergumbo.ir import Edge
+
+        # Multiple view functions
+        view1 = make_symbol("index", path="myapp/views.py", start_line=1)
+        view2 = make_symbol("detail", path="myapp/views.py", start_line=10)
+        view3 = make_symbol("helper", path="myapp/utils.py")  # Not in urls.py
+
+        urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
+
+        # Import edges from urls.py
+        edge1 = Edge.create(src=urls_file.id, dst=view1.id, edge_type="imports", line=1)
+        edge2 = Edge.create(src=urls_file.id, dst=view2.id, edge_type="imports", line=2)
+
+        nodes = [view1, view2, view3, urls_file]
+        edges = [edge1, edge2]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
+        assert len(django_eps) == 2
+        assert {e.symbol_id for e in django_eps} == {view1.id, view2.id}
+
+    def test_django_view_confidence(self) -> None:
+        """Django view detection has appropriate confidence score."""
+        from hypergumbo.ir import Edge
+
+        view_func = make_symbol("index", path="myapp/views.py")
+        urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
+        import_edge = Edge.create(src=urls_file.id, dst=view_func.id, edge_type="imports", line=1)
+
+        nodes = [view_func, urls_file]
+        edges = [import_edge]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
+        assert len(django_eps) == 1
+        # Should have high confidence - urls.py imports are intentional
+        assert django_eps[0].confidence >= 0.85
+
+    def test_django_urls_nested_path(self) -> None:
+        """Detect views from nested urls.py files (app/urls.py)."""
+        from hypergumbo.ir import Edge
+
+        view_func = make_symbol("api_list", path="api/views.py")
+        urls_file = make_symbol("file", kind="file", path="api/urls.py")
+        import_edge = Edge.create(src=urls_file.id, dst=view_func.id, edge_type="imports", line=1)
+
+        nodes = [view_func, urls_file]
+        edges = [import_edge]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
+        assert len(django_eps) == 1
+
+    def test_django_ignore_non_urls_imports(self) -> None:
+        """Non-urls.py imports don't trigger Django view detection."""
+        from hypergumbo.ir import Edge
+
+        # views.py imports from utils.py - this is NOT a Django route
+        view_func = make_symbol("helper", path="myapp/utils.py")
+        views_file = make_symbol("file", kind="file", path="myapp/views.py")
+        import_edge = Edge.create(src=views_file.id, dst=view_func.id, edge_type="imports", line=1)
+
+        nodes = [view_func, views_file]
+        edges = [import_edge]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        # Should not detect as Django view - views.py importing utils.py is not a route
+        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
+        assert len(django_eps) == 0
+
+    def test_django_view_label(self) -> None:
+        """Django view entrypoints have descriptive labels."""
+        from hypergumbo.ir import Edge
+
+        view_func = make_symbol("article_detail", path="blog/views.py")
+        urls_file = make_symbol("file", kind="file", path="blog/urls.py")
+        import_edge = Edge.create(src=urls_file.id, dst=view_func.id, edge_type="imports", line=1)
+
+        nodes = [view_func, urls_file]
+        edges = [import_edge]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
+        assert len(django_eps) == 1
+        assert "Django" in django_eps[0].label or "view" in django_eps[0].label.lower()

@@ -4,6 +4,7 @@ Detects common entrypoint patterns:
 - HTTP routes (FastAPI, Flask decorators)
 - CLI entrypoints (main guard, Click commands)
 - Electron app entry points (electron.js, preload.js)
+- Django views (functions imported by urls.py)
 
 How It Works
 ------------
@@ -27,9 +28,14 @@ Detection is based on:
    Generic names like `renderer.js` and `index.js` are NOT matched
    to avoid false positives (many frameworks use these names).
 
+4. **Import patterns** (high confidence ~0.90): For Django, functions
+   imported by urls.py files are likely views. This leverages the fact
+   that Django's URL configuration explicitly references view functions.
+
 Confidence Scores
 -----------------
 - 0.95: Decorator-based (very reliable)
+- 0.90: Django urls.py imports (explicit URL mappings)
 - 0.85: File-pattern-based (specific Electron files)
 - 0.70: Name-pattern-based (heuristic, may have false positives)
 
@@ -38,7 +44,7 @@ Current Limitations
 - Decorator detection relies on stable_id containing decorator names,
   which is a temporary hack. Proper decorator storage in IR is needed.
 - No Express.js detection yet (requires JS analysis).
-- No Django URL pattern detection yet.
+- Django detection doesn't catch views defined inline in urls.py.
 """
 from __future__ import annotations
 
@@ -58,6 +64,7 @@ class EntrypointKind(Enum):
     ELECTRON_MAIN = "electron_main"
     ELECTRON_PRELOAD = "electron_preload"
     ELECTRON_RENDERER = "electron_renderer"
+    DJANGO_VIEW = "django_view"
 
 
 @dataclass
@@ -215,6 +222,44 @@ def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _detect_django_views(
+    symbols: List[Symbol],
+    edges: List[Edge],
+) -> List[Entrypoint]:
+    """Detect Django view entrypoints from urls.py imports.
+
+    Django uses path() and url() calls in urls.py files to map URLs to views.
+    Rather than parsing the Python AST for these calls, we use a simpler heuristic:
+    any function imported by a urls.py file is likely a Django view.
+
+    This has high precision (urls.py imports are intentional) but may miss
+    views defined inline or in the same file.
+    """
+    entrypoints = []
+
+    # Find all urls.py file nodes
+    urls_files = {
+        sym.id for sym in symbols
+        if sym.path.endswith("urls.py") and sym.kind == "file"
+    }
+
+    if not urls_files:
+        return entrypoints
+
+    # Find all imports from urls.py files
+    for edge in edges:
+        if edge.src in urls_files and edge.edge_type == "imports":
+            # The destination is a symbol imported by urls.py - likely a view
+            entrypoints.append(Entrypoint(
+                symbol_id=edge.dst,
+                kind=EntrypointKind.DJANGO_VIEW,
+                confidence=0.90,
+                label="Django view",
+            ))
+
+    return entrypoints
+
+
 def detect_entrypoints(
     nodes: List[Symbol],
     edges: List[Edge],
@@ -239,6 +284,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_http_routes(nodes))
     entrypoints.extend(_detect_cli_entrypoints(nodes))
     entrypoints.extend(_detect_electron_entrypoints(nodes))
+    entrypoints.extend(_detect_django_views(nodes, edges))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
