@@ -89,3 +89,58 @@ class TestComputeMetrics:
         metrics = compute_metrics(nodes=nodes, edges=edges)
 
         assert metrics["total_files"] == 2
+
+    def test_groups_by_supply_chain_tier(self) -> None:
+        """Groups node and edge counts by supply chain tier."""
+        nodes = [
+            {
+                "id": "1",
+                "language": "python",
+                "path": "src/a.py",
+                "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "src/"},
+            },
+            {
+                "id": "2",
+                "language": "python",
+                "path": "src/b.py",
+                "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "src/"},
+            },
+            {
+                "id": "3",
+                "language": "javascript",
+                "path": "node_modules/pkg/index.js",
+                "supply_chain": {"tier": 3, "tier_name": "external_dep", "reason": "node_modules/"},
+            },
+        ]
+        edges = [
+            {"id": "e1", "src": "1", "dst": "2", "confidence": 0.9},
+            {"id": "e2", "src": "1", "dst": "3", "confidence": 0.8},
+        ]
+
+        metrics = compute_metrics(nodes=nodes, edges=edges)
+
+        assert "by_supply_chain_tier" in metrics
+        assert metrics["by_supply_chain_tier"]["first_party"]["nodes"] == 2
+        assert metrics["by_supply_chain_tier"]["first_party"]["edges"] == 2
+        assert metrics["by_supply_chain_tier"]["external_dep"]["nodes"] == 1
+        assert metrics["by_supply_chain_tier"]["external_dep"]["edges"] == 0
+
+    def test_supply_chain_tier_handles_missing_data(self) -> None:
+        """Handles nodes without supply_chain field gracefully."""
+        nodes = [
+            {"id": "1", "language": "python", "path": "src/a.py"},  # No supply_chain
+            {
+                "id": "2",
+                "language": "python",
+                "path": "src/b.py",
+                "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "src/"},
+            },
+        ]
+        edges = []
+
+        metrics = compute_metrics(nodes=nodes, edges=edges)
+
+        # Should still work, unknown tier for nodes without supply_chain
+        assert "by_supply_chain_tier" in metrics
+        assert metrics["by_supply_chain_tier"]["first_party"]["nodes"] == 1
+        assert metrics["by_supply_chain_tier"]["unknown"]["nodes"] == 1
