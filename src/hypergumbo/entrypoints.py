@@ -17,6 +17,7 @@ Detects common entrypoint patterns:
 - Sinatra routes (app.rb, application.rb, server.rb, routes/)
 - Ktor routes (*Routes.kt, *Routing.kt, routes/)
 - Vapor routes (*Controller.swift, routes.swift, Controllers/)
+- Plug routes (router.ex, *_router.ex, *_plug.ex)
 
 How It Works
 ------------
@@ -89,6 +90,7 @@ class EntrypointKind(Enum):
     SINATRA_ROUTE = "sinatra_route"
     KTOR_ROUTE = "ktor_route"
     VAPOR_ROUTE = "vapor_route"
+    PLUG_ROUTE = "plug_route"
 
 
 @dataclass
@@ -202,6 +204,12 @@ KTOR_ROUTE_DIRS = {"routes", "routing"}
 VAPOR_CONTROLLER_SUFFIX = "Controller.swift"
 VAPOR_ROUTE_FILES = {"routes.swift"}
 VAPOR_ROUTE_DIRS = {"Controllers", "Routes"}
+
+# Plug (Elixir) route patterns
+# Files named router.ex or ending in _router.ex/_plug.ex, or in plugs/ directory
+PLUG_ROUTE_FILES = {"router.ex"}
+PLUG_ROUTE_SUFFIXES = {"_router.ex", "_plug.ex"}
+PLUG_ROUTE_DIRS = {"plugs"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -880,6 +888,58 @@ def _detect_vapor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_plug_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Plug route patterns.
+
+    Matches:
+    - Files named router.ex
+    - Files ending in _router.ex or _plug.ex
+    - Any .ex file inside a plugs/ directory
+    """
+    if language != "elixir":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for router.ex
+    if filename in PLUG_ROUTE_FILES:
+        return True
+
+    # Check for *_router.ex or *_plug.ex suffix
+    if any(filename.endswith(suffix) for suffix in PLUG_ROUTE_SUFFIXES):
+        return True
+
+    # Check if file is in a plugs/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in PLUG_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_plug_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Plug route endpoints from file patterns.
+
+    Plug is Elixir's HTTP middleware library. Routes are typically defined
+    in files named router.ex, *_router.ex, or *_plug.ex.
+
+    Only function/module symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_plug_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.PLUG_ROUTE,
+                confidence=0.85,
+                label="Plug route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -955,6 +1015,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_sinatra_routes(nodes))
     entrypoints.extend(_detect_ktor_routes(nodes))
     entrypoints.extend(_detect_vapor_routes(nodes))
+    entrypoints.extend(_detect_plug_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()

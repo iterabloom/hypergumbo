@@ -1759,3 +1759,116 @@ class TestVaporEntrypoints:
 
         vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
         assert len(vapor_eps) == 0
+
+
+class TestPlugEntrypoints:
+    """Tests for Plug (Elixir) route detection.
+
+    Plug is Elixir's HTTP middleware library. Routes are typically defined in
+    router.ex files or files ending in _router.ex.
+    """
+
+    def test_detect_plug_router_file(self) -> None:
+        """Detect functions in router.ex as Plug routes."""
+        sym = make_symbol("match", path="lib/myapp/router.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 1
+        assert plug_eps[0].symbol_id == sym.id
+
+    def test_detect_plug_named_router(self) -> None:
+        """Detect functions in *_router.ex as Plug routes."""
+        sym = make_symbol("call", path="lib/myapp/api_router.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 1
+
+    def test_detect_plug_in_plugs_directory(self) -> None:
+        """Detect functions in plugs/ directory."""
+        sym = make_symbol("init", path="lib/myapp/plugs/auth.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 1
+
+    def test_detect_plug_endpoint(self) -> None:
+        """Detect functions in *_plug.ex files."""
+        sym = make_symbol("call", path="lib/myapp/auth_plug.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 1
+
+    def test_detect_multiple_plug_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("get_user", path="lib/myapp/router.ex", language="elixir", start_line=10)
+        sym2 = make_symbol("create_user", path="lib/myapp/router.ex", language="elixir", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 2
+
+    def test_plug_route_confidence(self) -> None:
+        """Plug route detection has appropriate confidence."""
+        sym = make_symbol("call", path="lib/myapp/router.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 1
+        assert plug_eps[0].confidence >= 0.80
+
+    def test_plug_route_label(self) -> None:
+        """Plug route entrypoints have descriptive labels."""
+        sym = make_symbol("match", path="lib/myapp/router.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 1
+        assert "Plug" in plug_eps[0].label or "route" in plug_eps[0].label.lower()
+
+    def test_plug_only_elixir_files(self) -> None:
+        """Only Elixir files are detected as Plug routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("match", path="lib/myapp/router.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 0
+
+    def test_plug_file_symbol_not_detected(self) -> None:
+        """File symbols in Plug files are not detected."""
+        sym = make_symbol("file", kind="file", path="lib/myapp/router.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 0
+
+    def test_plug_non_route_file_not_detected(self) -> None:
+        """Non-route Elixir files are not detected as Plug."""
+        sym = make_symbol("helper", path="lib/myapp/utils.ex", language="elixir")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
+        assert len(plug_eps) == 0
