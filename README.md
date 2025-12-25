@@ -130,6 +130,10 @@ pip install -e .[dev]
 pytest
 ```
 
+> **Note:** A few warnings like "C analysis skipped: requires tree-sitter-c" are expected—
+> they come from fallback tests that mock dependencies as unavailable. If you see many
+> such warnings or actual test failures, double-check that `pip install -e .[dev]` succeeded.
+
 All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
 
