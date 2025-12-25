@@ -287,6 +287,26 @@ def _get_filename(path: str) -> str:
     return path.rsplit("/", 1)[-1] if "/" in path else path
 
 
+def _is_test_file(path: str) -> bool:
+    """Check if a file path appears to be a test file.
+
+    Excludes:
+    - Files starting with test_ or ending with _test.py
+    - Files in tests/, test/, spec/ directories
+    """
+    filename = _get_filename(path)
+
+    # Check filename patterns
+    if filename.startswith("test_") or filename.endswith("_test.py"):
+        return True
+    if filename.startswith("spec_") or filename.endswith("_spec.py"):
+        return True
+
+    # Check directory patterns
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in {"tests", "test", "spec", "__tests__"} for part in path_parts)
+
+
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect HTTP route entrypoints from decorators."""
     entrypoints = []
@@ -1184,8 +1204,14 @@ def _is_tornado_handler_file(path: str, language: str) -> bool:
     Matches:
     - Files ending in _handler.py
     - Any .py file inside a handlers/ or views/ directory
+
+    Excludes test files.
     """
     if language != "python":
+        return False
+
+    # Exclude test files (e.g. test_user_error_handler.py)
+    if _is_test_file(path):
         return False
 
     filename = _get_filename(path)
@@ -1232,8 +1258,14 @@ def _is_aiohttp_view_file(path: str, language: str) -> bool:
     - Files ending in _view.py or _resource.py
     - Files named routes.py
     - Any .py file inside a resources/ directory
+
+    Excludes test files.
     """
     if language != "python":
+        return False
+
+    # Exclude test files
+    if _is_test_file(path):
         return False
 
     filename = _get_filename(path)
