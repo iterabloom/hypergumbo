@@ -76,6 +76,14 @@ chmod +x "$hooks_path"/* 2>/dev/null || true
 
 git config --local core.hooksPath "$hooks_path"
 
+# -----------------------------
+# Initialize AUTONOMOUS_MODE.txt from default if missing
+# -----------------------------
+if [[ ! -f "AUTONOMOUS_MODE.txt" ]] && [[ -f "AUTONOMOUS_MODE.txt.default" ]]; then
+  cp "AUTONOMOUS_MODE.txt.default" "AUTONOMOUS_MODE.txt"
+  echo "✅ Created AUTONOMOUS_MODE.txt from default (set to FALSE)"
+fi
+
 echo "✅ Git hooks installed for this clone"
 echo "   core.hooksPath=$(git config --local --get core.hooksPath)"
 echo "   Dependencies look OK for commit-msg hook."
