@@ -103,6 +103,7 @@ class EntrypointKind(Enum):
     GRAPE_API = "grape_api"
     TORNADO_HANDLER = "tornado_handler"
     AIOHTTP_VIEW = "aiohttp_view"
+    SLIM_ROUTE = "slim_route"
 
 
 @dataclass
@@ -252,6 +253,12 @@ TORNADO_HANDLER_DIRS = {"handlers", "views"}
 AIOHTTP_VIEW_SUFFIXES = {"_view.py", "_resource.py"}
 AIOHTTP_VIEW_FILES = {"routes.py"}
 AIOHTTP_VIEW_DIRS = {"resources"}
+
+# Slim (PHP) route patterns
+# Files named routes.php, *Middleware.php, or in Actions/Handlers directories
+SLIM_ROUTE_FILES = {"routes.php"}
+SLIM_ROUTE_SUFFIXES = {"Middleware.php"}
+SLIM_ROUTE_DIRS = {"Actions", "Handlers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -1261,6 +1268,58 @@ def _detect_aiohttp_views(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_slim_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Slim route patterns.
+
+    Matches:
+    - Files named routes.php
+    - Files ending in Middleware.php
+    - Any .php file inside an Actions/ or Handlers/ directory
+    """
+    if language != "php":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for routes.php
+    if filename in SLIM_ROUTE_FILES:
+        return True
+
+    # Check for *Middleware.php suffix
+    if any(filename.endswith(suffix) for suffix in SLIM_ROUTE_SUFFIXES):
+        return True
+
+    # Check if file is in an Actions/ or Handlers/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in SLIM_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_slim_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Slim route endpoints from file patterns.
+
+    Slim is a PHP micro framework. Routes are typically defined in
+    routes.php files, middleware files, or in Actions/Handlers directories.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_slim_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.SLIM_ROUTE,
+                confidence=0.85,
+                label="Slim route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1343,6 +1402,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_grape_apis(nodes))
     entrypoints.extend(_detect_tornado_handlers(nodes))
     entrypoints.extend(_detect_aiohttp_views(nodes))
+    entrypoints.extend(_detect_slim_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
