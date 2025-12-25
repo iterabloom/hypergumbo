@@ -49,6 +49,7 @@ from .analyze.go import analyze_go
 from .analyze.ruby import analyze_ruby
 from .analyze.kotlin import analyze_kotlin
 from .analyze.swift import analyze_swift
+from .analyze.scala import analyze_scala
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -754,6 +755,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(swift_result.run.to_dict())
             all_symbols.extend(swift_result.symbols)
             all_edges.extend(swift_result.edges)
+
+    # Run Scala analysis (optional, requires tree-sitter-scala)
+    scala_result = analyze_scala(repo_root)
+    if scala_result.run is not None:
+        if scala_result.skipped:
+            limits.skipped_passes.append({
+                "pass": scala_result.run.pass_id,
+                "reason": scala_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(scala_result.run.to_dict())
+            all_symbols.extend(scala_result.symbols)
+            all_edges.extend(scala_result.edges)
 
     # Run cross-language linkers
 
