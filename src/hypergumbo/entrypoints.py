@@ -7,6 +7,7 @@ Detects common entrypoint patterns:
 - Django views (functions imported by urls.py)
 - Express.js routes (routes.js, router.js, routes/ directory)
 - NestJS controllers (*.controller.ts files)
+- Spring Boot controllers (*Controller.java/*Resource.java files)
 
 How It Works
 ------------
@@ -69,6 +70,7 @@ class EntrypointKind(Enum):
     DJANGO_VIEW = "django_view"
     EXPRESS_ROUTE = "express_route"
     NESTJS_CONTROLLER = "nestjs_controller"
+    SPRING_CONTROLLER = "spring_controller"
 
 
 @dataclass
@@ -128,6 +130,11 @@ EXPRESS_ROUTE_DIRS = {"routes", "routers"}
 # Files ending in .controller.ts, or files in a controllers/ directory
 NESTJS_CONTROLLER_SUFFIX = ".controller.ts"
 NESTJS_CONTROLLER_DIRS = {"controllers"}
+
+# Spring Boot controller patterns
+# Files ending in Controller.java/kt or Resource.java/kt, or in controller(s)/ directory
+SPRING_CONTROLLER_SUFFIXES = {"Controller.java", "Controller.kt", "Resource.java", "Resource.kt"}
+SPRING_CONTROLLER_DIRS = {"controller", "controllers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -326,6 +333,51 @@ def _detect_nestjs_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_spring_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches Spring Boot controller patterns.
+
+    Matches:
+    - Files ending in Controller.java/kt or Resource.java/kt
+    - Any .java/.kt file inside a controller/ or controllers/ directory
+    """
+    if language not in ("java", "kotlin"):
+        return False
+
+    filename = _get_filename(path)
+    if any(filename.endswith(suffix) for suffix in SPRING_CONTROLLER_SUFFIXES):
+        return True
+
+    # Check if file is in a controller/ or controllers/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in SPRING_CONTROLLER_DIRS for part in path_parts)
+
+
+def _detect_spring_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Spring Boot controller endpoints from file patterns.
+
+    Spring Boot uses a naming convention of *Controller.java or *Resource.java
+    for controller files. Classes and methods in these files are API endpoints.
+
+    Only function/class/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_spring_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.SPRING_CONTROLLER,
+                confidence=0.90,
+                label="Spring controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -391,6 +443,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_django_views(nodes, edges))
     entrypoints.extend(_detect_express_routes(nodes))
     entrypoints.extend(_detect_nestjs_controllers(nodes))
+    entrypoints.extend(_detect_spring_controllers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
