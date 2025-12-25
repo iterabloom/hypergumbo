@@ -1872,3 +1872,117 @@ class TestPlugEntrypoints:
 
         plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
         assert len(plug_eps) == 0
+
+
+class TestHapiEntrypoints:
+    """Tests for Hapi (Node.js) route detection.
+
+    Hapi is a Node.js web framework. Routes are typically defined in
+    files named *routes.js/ts or in routes/ directory.
+    """
+
+    def test_detect_hapi_routes_file(self) -> None:
+        """Detect functions in *routes.js as Hapi routes."""
+        sym = make_symbol("getUsers", path="src/userRoutes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 1
+        assert hapi_eps[0].symbol_id == sym.id
+
+    def test_detect_hapi_routes_ts_file(self) -> None:
+        """Detect functions in *routes.ts as Hapi routes."""
+        sym = make_symbol("createUser", path="src/apiRoutes.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 1
+
+    def test_detect_hapi_routes_directory(self) -> None:
+        """Detect functions in plugins/ directory (Hapi-specific)."""
+        # Note: routes/ is shared with Express, plugins/ is Hapi-specific
+        sym = make_symbol("listItems", path="src/plugins/items.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 1
+
+    def test_detect_hapi_plugins_directory(self) -> None:
+        """Detect functions in plugins/ directory (Hapi convention)."""
+        sym = make_symbol("register", path="src/plugins/auth.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 1
+
+    def test_detect_multiple_hapi_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("get", path="src/userRoutes.js", language="javascript", start_line=10)
+        sym2 = make_symbol("post", path="src/userRoutes.js", language="javascript", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 2
+
+    def test_hapi_route_confidence(self) -> None:
+        """Hapi route detection has appropriate confidence."""
+        sym = make_symbol("handler", path="src/plugins/api.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 1
+        assert hapi_eps[0].confidence >= 0.80
+
+    def test_hapi_route_label(self) -> None:
+        """Hapi route entrypoints have descriptive labels."""
+        sym = make_symbol("deleteUser", path="src/userRoutes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 1
+        assert "Hapi" in hapi_eps[0].label or "route" in hapi_eps[0].label.lower()
+
+    def test_hapi_only_js_ts_files(self) -> None:
+        """Only JS/TS files are detected as Hapi routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("getUsers", path="src/userRoutes.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 0
+
+    def test_hapi_file_symbol_not_detected(self) -> None:
+        """File symbols in Hapi files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/userRoutes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 0
+
+    def test_hapi_non_route_file_not_detected(self) -> None:
+        """Non-route JS files are not detected as Hapi."""
+        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 0

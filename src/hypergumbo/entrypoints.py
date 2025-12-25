@@ -18,6 +18,7 @@ Detects common entrypoint patterns:
 - Ktor routes (*Routes.kt, *Routing.kt, routes/)
 - Vapor routes (*Controller.swift, routes.swift, Controllers/)
 - Plug routes (router.ex, *_router.ex, *_plug.ex)
+- Hapi routes (*routes.js/ts, routes/, plugins/)
 
 How It Works
 ------------
@@ -91,6 +92,7 @@ class EntrypointKind(Enum):
     KTOR_ROUTE = "ktor_route"
     VAPOR_ROUTE = "vapor_route"
     PLUG_ROUTE = "plug_route"
+    HAPI_ROUTE = "hapi_route"
 
 
 @dataclass
@@ -210,6 +212,12 @@ VAPOR_ROUTE_DIRS = {"Controllers", "Routes"}
 PLUG_ROUTE_FILES = {"router.ex"}
 PLUG_ROUTE_SUFFIXES = {"_router.ex", "_plug.ex"}
 PLUG_ROUTE_DIRS = {"plugs"}
+
+# Hapi (Node.js) route patterns
+# Files ending in routes.js/ts or Routes.js/ts, or in plugins directory
+# Note: We don't include routes/ since Express.js catches that first
+HAPI_ROUTE_SUFFIXES = {"routes.js", "routes.ts", "Routes.js", "Routes.ts"}
+HAPI_ROUTE_DIRS = {"plugins"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -940,6 +948,53 @@ def _detect_plug_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_hapi_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Hapi route patterns.
+
+    Matches:
+    - Files ending in routes.js/ts or Routes.js/ts
+    - Any .js/.ts file inside a routes/ or plugins/ directory
+    """
+    if language not in ("javascript", "typescript"):
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for *routes.js/ts suffix
+    if any(filename.endswith(suffix) for suffix in HAPI_ROUTE_SUFFIXES):
+        return True
+
+    # Check if file is in a routes/ or plugins/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in HAPI_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_hapi_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Hapi route endpoints from file patterns.
+
+    Hapi is a Node.js web framework. Routes are typically defined in
+    files ending in routes.js/ts or in routes/plugins directories.
+
+    Only function/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_hapi_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.HAPI_ROUTE,
+                confidence=0.85,
+                label="Hapi route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1016,6 +1071,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_ktor_routes(nodes))
     entrypoints.extend(_detect_vapor_routes(nodes))
     entrypoints.extend(_detect_plug_routes(nodes))
+    entrypoints.extend(_detect_hapi_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
