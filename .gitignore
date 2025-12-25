@@ -24,6 +24,7 @@ hypergumbo.results.json
 **/.gemini/cache/
 **/.cursor/state/
 **/*-session/
+AUTONOMOUS_MODE.txt
 
 # Coverage
 .coverage
