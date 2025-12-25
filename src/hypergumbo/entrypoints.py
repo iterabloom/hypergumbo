@@ -11,6 +11,7 @@ Detects common entrypoint patterns:
 - Rails controllers (app/controllers/*_controller.rb files)
 - Phoenix controllers (lib/*_web/controllers/*_controller.ex, LiveView)
 - Go handlers (Gin, Echo, Fiber, Chi - *_handler.go, handlers/)
+- Laravel controllers (app/Http/Controllers/*Controller.php)
 
 How It Works
 ------------
@@ -77,6 +78,7 @@ class EntrypointKind(Enum):
     RAILS_CONTROLLER = "rails_controller"
     PHOENIX_CONTROLLER = "phoenix_controller"
     GO_HANDLER = "go_handler"
+    LARAVEL_CONTROLLER = "laravel_controller"
 
 
 @dataclass
@@ -159,6 +161,11 @@ PHOENIX_LIVEVIEW_PATH_PATTERN = "_web/live/"
 # Files ending in _handler.go or _controller.go, or in handlers/controllers/ directory
 GO_HANDLER_SUFFIXES = {"_handler.go", "_controller.go"}
 GO_HANDLER_DIRS = {"handlers", "controllers"}
+
+# Laravel controller patterns
+# Files ending in Controller.php inside app/Http/Controllers/
+LARAVEL_CONTROLLER_SUFFIX = "Controller.php"
+LARAVEL_CONTROLLER_PATH = "app/Http/Controllers/"
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -550,6 +557,52 @@ def _detect_go_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_laravel_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches Laravel controller patterns.
+
+    Matches:
+    - Files ending in Controller.php inside app/Http/Controllers/
+    """
+    if language != "php":
+        return False
+
+    # Normalize path separators
+    normalized_path = path.replace("\\", "/")
+
+    # Must be in app/Http/Controllers/ directory
+    if LARAVEL_CONTROLLER_PATH not in normalized_path:
+        return False
+
+    filename = _get_filename(path)
+    return filename.endswith(LARAVEL_CONTROLLER_SUFFIX)
+
+
+def _detect_laravel_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Laravel controller actions from file patterns.
+
+    Laravel uses a naming convention of *Controller.php for controller files
+    inside the app/Http/Controllers/ directory.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_laravel_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.LARAVEL_CONTROLLER,
+                confidence=0.90,
+                label="Laravel controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -619,6 +672,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_rails_controllers(nodes))
     entrypoints.extend(_detect_phoenix_controllers(nodes))
     entrypoints.extend(_detect_go_handlers(nodes))
+    entrypoints.extend(_detect_laravel_controllers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
