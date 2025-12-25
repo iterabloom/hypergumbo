@@ -130,6 +130,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Go | [x] tree-sitter | function, method, struct, interface, type | calls, imports | Detects `func`, methods with receivers, `type X struct/interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[go]` |
 | Ruby | [x] tree-sitter | method, class, module | calls, imports | Detects `def`, `class`, `module`, `require/require_relative`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ruby]` |
 | Kotlin | [x] tree-sitter | function, class, object, interface, method | calls, imports | Detects `fun`, `class`, `object`, `interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[kotlin]` |
+| Swift | [x] tree-sitter | function, class, struct, protocol, enum, method | calls, imports | Detects `func`, `class`, `struct`, `protocol`, `enum`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[swift]` |
 
 ## Supply Chain Classification (§8.6)
 

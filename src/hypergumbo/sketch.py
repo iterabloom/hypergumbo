@@ -387,6 +387,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Kotlin analysis failed or tree-sitter not available
 
+    if "swift" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.swift import analyze_swift  # pragma: no cover
+            result = analyze_swift(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Swift analysis failed or tree-sitter not available
+
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files
