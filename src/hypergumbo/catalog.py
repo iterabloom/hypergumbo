@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -176,6 +176,12 @@ def get_default_catalog() -> Catalog:
                 description="Rust via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[rust]",
+            ),
+            Pass(
+                id="go-ts-v1",
+                description="Go via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[go]",
             ),
             Pass(
                 id="websocket-linker-v1",

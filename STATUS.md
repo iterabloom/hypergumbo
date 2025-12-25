@@ -127,6 +127,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Vue | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` and `<script setup>` blocks from `.vue` SFCs, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
 | Elixir | [x] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[elixir]` |
 | Rust | [x] tree-sitter | function, struct, enum, trait, method | calls, imports | Detects `fn`, `struct`, `enum`, `trait`, `impl` blocks, `use` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[rust]` |
+| Go | [x] tree-sitter | function, method, struct, interface, type | calls, imports | Detects `func`, methods with receivers, `type X struct/interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[go]` |
 
 ## Supply Chain Classification (§8.6)
 

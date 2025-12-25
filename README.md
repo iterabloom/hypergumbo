@@ -105,6 +105,7 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | Java | tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates |
 | Elixir | tree-sitter | module, function, macro | calls, imports |
 | Rust | tree-sitter | function, struct, enum, trait, method | calls, imports |
+| Go | tree-sitter | function, method, struct, interface, type | calls, imports |
 | HTML | regex | file | script_src |
 
 ### Cross-Language Linkers
