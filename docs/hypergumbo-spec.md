@@ -167,6 +167,7 @@ Initialization may use language detection; **analysis execution requires no netw
 * `hypergumbo/metrics.py` — analysis statistics computation
 * `hypergumbo/limits.py` — error tracking and analysis gaps
 * `hypergumbo/export.py` — privacy-safe capsule export
+* `hypergumbo/supply_chain.py` — file classification by dependency position (tier 1-4)
 * `hypergumbo/analyze/py.py` — Python AST parser
 * `hypergumbo/analyze/js_ts.py` — JS/TS/Svelte parser via tree-sitter
 * `hypergumbo/analyze/php.py` — PHP parser via tree-sitter
@@ -203,6 +204,8 @@ class Symbol:
     span: Span
     origin: str                # which pass created this
     origin_run_id: str         # references AnalysisRun.execution_id
+    supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
+    supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore
 
@@ -730,6 +733,11 @@ This prevents confidence score refinements from forcing schema migrations.
   "quality": {
     "score": 0.9,
     "reason": "AST-based definition, unambiguous scope"
+  },
+  "supply_chain": {
+    "tier": 1,
+    "tier_name": "first_party",
+    "reason": "matches ^src/"
   }
 }
 ```
@@ -737,6 +745,12 @@ This prevents confidence score refinements from forcing schema migrations.
 - `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node.
 - If unavailable, they MUST be set to `null` (not omitted).
 - This supports forward-compatible consumers and Spec B prerequisites without forcing every pass to compute every field.
+
+**supply_chain** (object, required):
+- `tier` (integer, 1-4): Numeric tier for filtering/sorting
+- `tier_name` (string): Human-readable name (`first_party`, `internal_dep`, `external_dep`, `derived`)
+- `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
+- See §8.6 for classification algorithm and tier definitions.
 
 **origin_run_id**: References `analysis_runs[].execution_id` (unique per run). When present, indicates exactly which analysis run created this node.
 
@@ -879,9 +893,32 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
   "languages": {
     "python": {"nodes": 320, "edges": 1200},
     "javascript": {"nodes": 203, "edges": 647}
+  },
+  "by_supply_chain_tier": {
+    "first_party": {"nodes": 380, "edges": 1200},
+    "internal_dep": {"nodes": 85, "edges": 150},
+    "external_dep": {"nodes": 58, "edges": 497}
   }
 }
 ```
+
+### supply_chain_summary — classification overview
+
+```json
+{
+  "supply_chain_summary": {
+    "first_party": {"files": 42, "symbols": 380},
+    "internal_dep": {"files": 12, "symbols": 85},
+    "external_dep": {"files": 8, "symbols": 58},
+    "derived_skipped": {
+      "files": 3,
+      "paths": ["dist/bundle.js", "build/app.min.js", "out/compiled.js"]
+    }
+  }
+}
+```
+
+**derived_skipped.paths**: Capped at 10 entries. Full list available via `--verbose` flag.
 
 ### limits — explicit gaps
 
@@ -1220,6 +1257,268 @@ Cross-language linkers log unresolved patterns for debugging:
           "receivers": [],
           "reason": "no_receiver_found"
         }
+      ]
+    }
+  }
+}
+```
+
+## 8.6) Supply Chain Classification
+
+Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
+
+### Motivation
+
+Static analysis of modern codebases faces a fundamental signal-to-noise problem: the code a developer wrote is often mixed with code they imported, bundled, or generated. A webpack bundle contains both application logic and lodash internals. A monorepo contains both project packages and vendored forks.
+
+Without supply chain awareness, analysis results are polluted:
+- Key Symbols rankings dominated by utility functions from bundled dependencies
+- Edge counts inflated by calls within third-party libraries
+- Sketch output filled with framework internals rather than application logic
+
+The solution is not to exclude dependencies entirely—sometimes tracing into them is valuable—but to **classify** code by its position in the supply chain and let users control their viewport.
+
+### Tiers
+
+Code is classified into four tiers based on its relationship to the project:
+
+| Tier | Name | Description | Examples |
+|------|------|-------------|----------|
+| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` |
+| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks |
+| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` |
+| 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files |
+
+**Default behavior:**
+- Tiers 1-3: Analyzed, with tier used for ranking/filtering
+- Tier 4: Excluded from analysis entirely (pure noise)
+
+**Design principle:** Analyze the canonical source, skip derived artifacts. If both `src/app.ts` and `dist/app.js` exist, analyze the TypeScript (tier 1), skip the transpiled JavaScript (tier 4).
+
+### Classification Algorithm
+
+Classification happens at discovery time, before analysis. Signals are checked in order; first match wins.
+
+#### 1. Derived artifact detection (tier 4)
+
+Checked first because derived files should never be analyzed.
+
+**Path patterns:**
+```
+dist/, build/, out/, target/
+.next/, .nuxt/, .output/, .svelte-kit/
+*.min.js, *.min.css, *.bundle.js, *.compiled.js
+*.pyc, *.pyo, __pycache__/
+```
+
+**Content heuristics** (checked if path inconclusive):
+```python
+def is_likely_derived(path: Path) -> bool:
+    content = path.read_text()
+    lines = content.splitlines()
+
+    # Heuristic 1: Average line length > 150 chars (minified)
+    if len(content) / max(len(lines), 1) > 150:
+        return True
+
+    # Heuristic 2: Source map reference in last 3 lines
+    tail = '\n'.join(lines[-3:])
+    if re.search(r'//[#@]\s*sourceMappingURL=', tail):
+        return True
+
+    # Heuristic 3: Generator header in first 5 lines
+    head = '\n'.join(lines[:5])
+    if re.search(r'(Generated by|@generated|DO NOT EDIT)', head, re.I):
+        return True
+
+    return False
+```
+
+**Rationale for thresholds:**
+- 150 chars/line: GitHub Linguist uses 110; hypergumbo uses 150 to reduce false positives on legitimately long lines (e.g., data URIs, long strings). Minified code typically has 1000+ chars/line.
+- Source map check: Presence of `sourceMappingURL` is a strong signal that this file was generated from another source.
+- Generator header: Many tools (protoc, swagger-codegen, etc.) add header comments.
+
+#### 2. External dependency detection (tier 3)
+
+**Path patterns:**
+```
+node_modules/
+vendor/              # PHP (Composer), Go (historical)
+third_party/
+Pods/, Carthage/     # iOS
+.yarn/cache/
+_vendor/             # Hugo
+```
+
+**Package name extraction:**
+For `node_modules/`, the package name is extracted for metadata:
+```python
+def extract_package_name(rel_path: str) -> str | None:
+    if 'node_modules/' not in rel_path:
+        return None
+    parts = rel_path.split('node_modules/')[-1].split('/')
+    if parts[0].startswith('@'):
+        return '/'.join(parts[:2])  # @scope/package
+    return parts[0]
+```
+
+#### 3. Internal dependency detection (tier 2)
+
+Detected via workspace/monorepo configuration files.
+
+**npm/yarn/pnpm workspaces:**
+```json
+// package.json
+{
+  "workspaces": ["packages/*", "apps/*"]
+}
+```
+Files under matched workspace globs are tier 2.
+
+**Cargo workspaces:**
+```toml
+# Cargo.toml
+[workspace]
+members = ["crates/*"]
+```
+
+**Python monorepos:**
+```toml
+# pyproject.toml (using hatch, pdm, or similar)
+[tool.hatch.envs.default]
+dependencies = ["./packages/core", "./packages/utils"]
+```
+
+#### 4. First-party detection (tier 1)
+
+**Explicit first-party patterns:**
+```
+src/, lib/, app/, pkg/
+cmd/, internal/          # Go conventions
+crates/*/src/            # Rust workspace source
+packages/*/src/          # JS monorepo source dirs
+```
+
+**Default rule:** If no other tier matches, classify as tier 1 (first-party). This ensures unknown directories are analyzed rather than skipped.
+
+### CLI Integration
+
+#### Analysis scope flags
+
+```bash
+# Default: analyze tiers 1-3, skip tier 4 (derived)
+hypergumbo run .
+
+# First-party only (fast, focused)
+hypergumbo run . --first-party-only
+# Equivalent to: --max-tier 1
+
+# Include readable external dependencies
+hypergumbo run . --include-deps
+# Equivalent to: --max-tier 3 (default)
+
+# Analyze everything except derived (rarely needed)
+hypergumbo run . --max-tier 3
+```
+
+#### Slice tier filtering
+
+```bash
+# Slice stops at first-party boundary
+hypergumbo slice --entry main --max-tier 1
+
+# Slice includes internal deps but not external
+hypergumbo slice --entry main --max-tier 2
+
+# Default: slice can traverse into external deps
+hypergumbo slice --entry main --max-tier 3
+```
+
+#### Sketch prioritization
+
+The `--first-party-priority` flag (default: true) applies tier-based weighting to Key Symbols ranking:
+
+```bash
+# Key Symbols prioritizes first-party (default)
+hypergumbo sketch .
+
+# Disable tier weighting (raw centrality)
+hypergumbo sketch . --no-first-party-priority
+```
+
+### Impact on Analysis
+
+#### Sketch Key Symbols ranking
+
+Without supply chain awareness, centrality-based ranking can be dominated by utility functions from bundled dependencies.
+
+**Tier-weighted ranking:**
+```python
+TIER_WEIGHTS = {1: 2.0, 2: 1.5, 3: 1.0, 4: 0.0}
+
+def weighted_score(symbol: Symbol, centrality: float) -> float:
+    tier = symbol.supply_chain.tier
+    weight = TIER_WEIGHTS.get(tier, 1.0)
+    return centrality * weight
+```
+
+This ensures first-party symbols appear first even when third-party utilities have higher raw centrality.
+
+#### Slicing behavior
+
+When `--max-tier N` is specified, BFS traversal stops at tier boundaries:
+
+```python
+def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
+    if target.supply_chain.tier > max_tier:
+        return False  # Don't cross into lower tier
+    return True
+```
+
+**Use case:** "Show me everything my code calls, but don't trace into lodash internals."
+
+### Capsule Plan Integration
+
+Supply chain configuration can be customized in `capsule_plan.json`:
+
+```json
+{
+  "supply_chain": {
+    "analysis_tiers": [1, 2, 3],
+    "first_party_patterns": ["src/", "lib/", "custom_code/"],
+    "derived_patterns": ["dist/", "build/", "generated/"],
+    "internal_package_roots": ["packages/core", "packages/shared"]
+  }
+}
+```
+
+**Fields:**
+- `analysis_tiers`: Which tiers to include in analysis (default: [1, 2, 3])
+- `first_party_patterns`: Additional patterns to classify as tier 1
+- `derived_patterns`: Additional patterns to classify as tier 4
+- `internal_package_roots`: Explicit internal package paths (supplements auto-detection)
+
+### Limitations
+
+**What supply chain classification does NOT do:**
+
+1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment.
+
+2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party). Use `derived_patterns` in capsule plan to exclude.
+
+3. **Understand build pipelines**: Classification doesn't know that `dist/app.js` was built from `src/app.ts`. It relies on path conventions and content heuristics.
+
+4. **Handle unconventional structures**: Projects with unusual layouts (e.g., source in root, deps in `lib/`) need capsule plan customization.
+
+**Logged in limits:**
+```json
+{
+  "limits": {
+    "supply_chain": {
+      "classification_failures": [],
+      "ambiguous_paths": [
+        {"path": "lib/vendor/custom.py", "assigned": 1, "note": "could be tier 2 or 3"}
       ]
     }
   }
@@ -2365,6 +2664,10 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
    * Schema ties (database columns, API contracts) — **B1.5**
    * Tests referencing the area — **B1**
    * Configuration/deployment ties — **B1.5**
+   * **Supply chain tier boundaries** (from Spec A §8.6) — **B1**
+     - First-party code (tier 1) always included
+     - External deps (tier 3) only when edges cross the boundary
+     - Tier boundaries as natural "blast radius" limits
   
 3. **Assemble context bundle**:
    * Minimal code excerpts (only changed + affected) — **B1**
