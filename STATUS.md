@@ -127,6 +127,27 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Elixir | [x] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[elixir]` |
 | Rust | [x] tree-sitter | function, struct, enum, trait, method | calls, imports | Detects `fn`, `struct`, `enum`, `trait`, `impl` blocks, `use` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[rust]` |
 
+## Supply Chain Classification (§8.6)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `supply_chain.py` module | [ ] | File classification by dependency position |
+| Tier 4 detection (derived artifacts) | [ ] | Path patterns + content heuristics (minification, source maps) |
+| Tier 3 detection (external deps) | [ ] | `node_modules/`, `vendor/`, etc. |
+| Tier 2 detection (internal deps) | [ ] | Workspace/monorepo detection from manifests |
+| Tier 1 detection (first-party) | [ ] | `src/`, `lib/`, `app/` patterns + default |
+| Symbol fields (`supply_chain_tier`, `supply_chain_reason`) | [ ] | Add to `ir.py` Symbol class |
+| Node output (`supply_chain` object) | [ ] | `tier`, `tier_name`, `reason` on each node |
+| `supply_chain_summary` in output | [ ] | File/symbol counts per tier |
+| `by_supply_chain_tier` in metrics | [ ] | Nodes/edges breakdown by tier |
+| CLI `--max-tier` flag | [ ] | Filter analysis scope by tier |
+| CLI `--first-party-only` flag | [ ] | Shortcut for `--max-tier 1` |
+| Tier-weighted sketch ranking | [ ] | First-party symbols prioritized in Key Symbols |
+| CLI `--no-first-party-priority` flag | [ ] | Disable tier weighting |
+| Slice tier filtering | [ ] | `--max-tier` stops BFS at tier boundary |
+| Capsule plan `supply_chain` config | [ ] | Custom patterns for tiers |
+| `limits.supply_chain` logging | [ ] | Classification failures, ambiguous paths |
+
 ## Cross-Language Linkers
 
 Linkers run automatically as part of `hypergumbo run` after all language analyzers complete.
