@@ -2411,6 +2411,24 @@ class TestTornadoEntrypoints:
         tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
         assert len(tornado_eps) == 0
 
+    def test_tornado_test_file_not_detected(self) -> None:
+        """Test files ending in _handler.py are not detected as Tornado handlers."""
+        # This was a real bug: tests/test_user_error_handler.py was misdetected
+        syms = [
+            make_symbol("test_handler", path="tests/test_user_error_handler.py", language="python"),
+            make_symbol("TestClass", path="test/test_handler.py", language="python"),
+            make_symbol("test_func", path="spec/user_handler_test.py", language="python"),
+            # Cover spec_ prefix pattern: file in handlers/ dir with spec_ prefix
+            make_symbol("spec_func", path="app/handlers/spec_user.py", language="python"),
+            # Cover _spec.py suffix pattern: file ending in _handler.py but also _spec.py
+            make_symbol("describe", path="app/user_handler_spec.py", language="python"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 0
+
 
 class TestAiohttpEntrypoints:
     """Tests for Aiohttp (Python) view detection."""
@@ -2515,6 +2533,18 @@ class TestAiohttpEntrypoints:
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
+
+        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
+        assert len(aiohttp_eps) == 0
+
+    def test_aiohttp_test_file_not_detected(self) -> None:
+        """Test files ending in _view.py are not detected as Aiohttp views."""
+        syms = [
+            make_symbol("test_view", path="tests/test_view.py", language="python"),
+            make_symbol("TestView", path="test/user_view_test.py", language="python"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
 
         aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
         assert len(aiohttp_eps) == 0
