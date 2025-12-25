@@ -7,7 +7,6 @@ Tests the classification of files into supply chain tiers:
 - Tier 4 (derived): Build artifacts, minified/bundled output
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -483,7 +482,6 @@ class TestEdgeCases:
         file_path.write_text("// content")
 
         # Mock by using a path that will fail to read
-        from pathlib import Path
         import os
 
         # On Unix, remove read permission

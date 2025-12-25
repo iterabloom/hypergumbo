@@ -62,9 +62,8 @@ from .export import export_capsule
 from .ir import Symbol, Edge, Span
 from .limits import Limits
 from .metrics import compute_metrics
-from .plan import generate_plan
 from .profile import detect_profile
-from .llm_assist import generate_plan_with_fallback, LLMBackend
+from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
 from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph

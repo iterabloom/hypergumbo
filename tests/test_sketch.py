@@ -1,5 +1,4 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
-import pytest
 from pathlib import Path
 
 from hypergumbo.sketch import (

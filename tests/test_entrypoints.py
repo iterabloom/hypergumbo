@@ -1,10 +1,8 @@
 """Tests for entrypoint detection heuristics."""
-import pytest
 
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import (
     detect_entrypoints,
-    Entrypoint,
     EntrypointKind,
 )
 
@@ -282,7 +280,6 @@ class TestDjangoEntrypoints:
 
     def test_detect_django_view_by_urls_import(self) -> None:
         """Detect Django views imported by urls.py."""
-        from hypergumbo.ir import Edge
 
         # views.py: index function
         view_func = make_symbol("index", path="myapp/views.py")
@@ -310,7 +307,6 @@ class TestDjangoEntrypoints:
 
     def test_detect_multiple_django_views(self) -> None:
         """Detect multiple views imported by urls.py."""
-        from hypergumbo.ir import Edge
 
         # Multiple view functions
         view1 = make_symbol("index", path="myapp/views.py", start_line=1)
@@ -334,7 +330,6 @@ class TestDjangoEntrypoints:
 
     def test_django_view_confidence(self) -> None:
         """Django view detection has appropriate confidence score."""
-        from hypergumbo.ir import Edge
 
         view_func = make_symbol("index", path="myapp/views.py")
         urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
@@ -352,7 +347,6 @@ class TestDjangoEntrypoints:
 
     def test_django_urls_nested_path(self) -> None:
         """Detect views from nested urls.py files (app/urls.py)."""
-        from hypergumbo.ir import Edge
 
         view_func = make_symbol("api_list", path="api/views.py")
         urls_file = make_symbol("file", kind="file", path="api/urls.py")
@@ -368,7 +362,6 @@ class TestDjangoEntrypoints:
 
     def test_django_ignore_non_urls_imports(self) -> None:
         """Non-urls.py imports don't trigger Django view detection."""
-        from hypergumbo.ir import Edge
 
         # views.py imports from utils.py - this is NOT a Django route
         view_func = make_symbol("helper", path="myapp/utils.py")
@@ -386,7 +379,6 @@ class TestDjangoEntrypoints:
 
     def test_django_view_label(self) -> None:
         """Django view entrypoints have descriptive labels."""
-        from hypergumbo.ir import Edge
 
         view_func = make_symbol("article_detail", path="blog/views.py")
         urls_file = make_symbol("file", kind="file", path="blog/urls.py")

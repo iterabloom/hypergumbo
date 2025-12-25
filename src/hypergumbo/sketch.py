@@ -536,7 +536,7 @@ def _compute_centrality(
     This uses in-degree as a simple proxy for "authority" in the codebase.
     """
     symbol_ids = {s.id for s in symbols}
-    in_degree: dict[str, int] = {sid: 0 for sid in symbol_ids}
+    in_degree: dict[str, int] = dict.fromkeys(symbol_ids, 0)
 
     for edge in edges:
         # Edge uses 'dst' for target in IR

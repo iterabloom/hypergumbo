@@ -1,5 +1,4 @@
 """Tests for plan generation module."""
-import pytest
 from unittest.mock import patch
 
 from hypergumbo.plan import (

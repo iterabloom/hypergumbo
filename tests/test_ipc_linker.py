@@ -1,9 +1,7 @@
 """Tests for IPC linker."""
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock
 
-from hypergumbo.ir import AnalysisRun, Symbol, Edge, Span
+from hypergumbo.ir import AnalysisRun, Symbol, Span
 
 
 class TestIpcPatternDetection:

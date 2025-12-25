@@ -3,7 +3,6 @@ import json
 import tarfile
 from pathlib import Path
 
-import pytest
 
 from hypergumbo.export import (
     sanitize_plan,
