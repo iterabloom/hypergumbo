@@ -400,3 +400,118 @@ class TestDjangoEntrypoints:
         django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
         assert len(django_eps) == 1
         assert "Django" in django_eps[0].label or "view" in django_eps[0].label.lower()
+
+
+class TestExpressEntrypoints:
+    """Tests for Express.js route detection.
+
+    Express uses app.get/post/etc. or router.get/post/etc. to define routes.
+    Detection strategy: Functions in files that match route patterns
+    (routes.js, routes/*.js, router.js) or files that import express.
+    """
+
+    def test_detect_express_route_in_routes_file(self) -> None:
+        """Detect functions in routes.js as Express routes."""
+        sym = make_symbol("getUsers", path="src/routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+        assert express_eps[0].symbol_id == sym.id
+
+    def test_detect_express_route_in_router_file(self) -> None:
+        """Detect functions in router.js as Express routes."""
+        sym = make_symbol("createUser", path="api/router.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+
+    def test_detect_express_route_in_routes_directory(self) -> None:
+        """Detect functions in routes/*.js as Express routes."""
+        sym = make_symbol("deleteItem", path="src/routes/items.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+
+    def test_detect_express_route_typescript(self) -> None:
+        """Detect Express routes in TypeScript files."""
+        sym = make_symbol("updateUser", path="src/routes/users.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+
+    def test_detect_multiple_express_routes(self) -> None:
+        """Detect multiple route handlers in same file."""
+        sym1 = make_symbol("getUser", path="src/routes.js", language="javascript", start_line=10)
+        sym2 = make_symbol("createUser", path="src/routes.js", language="javascript", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 2
+
+    def test_express_route_confidence(self) -> None:
+        """Express route detection has medium-high confidence."""
+        sym = make_symbol("handler", path="routes/api.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+        # File pattern based - medium-high confidence
+        assert express_eps[0].confidence >= 0.80
+
+    def test_express_route_label(self) -> None:
+        """Express route entrypoints have descriptive labels."""
+        sym = make_symbol("getProducts", path="src/routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+        assert "Express" in express_eps[0].label or "route" in express_eps[0].label.lower()
+
+    def test_express_non_route_file_not_detected(self) -> None:
+        """Functions in non-route files are not detected as Express routes."""
+        sym = make_symbol("helper", path="src/utils.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
+
+    def test_express_only_js_ts_files(self) -> None:
+        """Only JavaScript/TypeScript files are detected as Express routes."""
+        # Python file named routes.py should NOT be detected as Express
+        sym = make_symbol("get_users", path="src/routes.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
+
+    def test_express_file_symbol_not_detected(self) -> None:
+        """File symbols in route files are not detected as routes."""
+        sym = make_symbol("file", kind="file", path="src/routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
