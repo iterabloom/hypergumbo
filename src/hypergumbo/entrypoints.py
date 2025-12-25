@@ -13,6 +13,7 @@ Detects common entrypoint patterns:
 - Go handlers (Gin, Echo, Fiber, Chi - *_handler.go, handlers/)
 - Laravel controllers (app/Http/Controllers/*Controller.php)
 - Rust handlers (Actix-web, Axum, Rocket, Warp - *_handler.rs, handlers/)
+- ASP.NET Core controllers (Controllers/*Controller.cs)
 
 How It Works
 ------------
@@ -81,6 +82,7 @@ class EntrypointKind(Enum):
     GO_HANDLER = "go_handler"
     LARAVEL_CONTROLLER = "laravel_controller"
     RUST_HANDLER = "rust_handler"
+    ASPNET_CONTROLLER = "aspnet_controller"
 
 
 @dataclass
@@ -173,6 +175,11 @@ LARAVEL_CONTROLLER_PATH = "app/Http/Controllers/"
 # Files ending in _handler.rs or _controller.rs, or in handlers/controllers/ directory
 RUST_HANDLER_SUFFIXES = {"_handler.rs", "_controller.rs"}
 RUST_HANDLER_DIRS = {"handlers", "controllers"}
+
+# ASP.NET Core controller patterns
+# Files ending in Controller.cs, typically in Controllers/ directory
+ASPNET_CONTROLLER_SUFFIX = "Controller.cs"
+ASPNET_CONTROLLER_DIRS = {"Controllers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -658,6 +665,53 @@ def _detect_rust_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_aspnet_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches ASP.NET Core controller patterns.
+
+    Matches:
+    - Files ending in Controller.cs
+    - Must be C# files and typically in a Controllers/ directory
+    """
+    if language != "csharp":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Controller.cs suffix
+    if not filename.endswith(ASPNET_CONTROLLER_SUFFIX):
+        return False
+
+    # Check if file is in a Controllers/ directory (common convention)
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in ASPNET_CONTROLLER_DIRS for part in path_parts)
+
+
+def _detect_aspnet_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect ASP.NET Core controller endpoints from file patterns.
+
+    ASP.NET Core uses a naming convention of *Controller.cs for controller files,
+    typically in a Controllers/ directory. Methods in these files are actions.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_aspnet_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.ASPNET_CONTROLLER,
+                confidence=0.90,
+                label="ASP.NET controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -729,6 +783,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_go_handlers(nodes))
     entrypoints.extend(_detect_laravel_controllers(nodes))
     entrypoints.extend(_detect_rust_handlers(nodes))
+    entrypoints.extend(_detect_aspnet_controllers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
