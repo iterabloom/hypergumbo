@@ -285,3 +285,91 @@ def test_edge_with_custom_meta() -> None:
 
     assert d["meta"]["evidence_type"] == "ast_call_direct"
     assert d["meta"]["channel"] == "my-channel"
+
+
+# ==================== SUPPLY CHAIN FIELDS TESTS ====================
+
+
+def test_symbol_has_supply_chain_fields() -> None:
+    """Symbol should have supply_chain_tier and supply_chain_reason fields."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="python:src/test.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="src/test.py",
+        span=span,
+        supply_chain_tier=1,
+        supply_chain_reason="matches ^src/",
+    )
+
+    assert symbol.supply_chain_tier == 1
+    assert symbol.supply_chain_reason == "matches ^src/"
+
+
+def test_symbol_supply_chain_defaults() -> None:
+    """Symbol supply_chain_tier should default to 1 (first_party)."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="python:test.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=span,
+    )
+
+    assert symbol.supply_chain_tier == 1
+    assert symbol.supply_chain_reason == ""
+
+
+def test_symbol_to_dict_includes_supply_chain() -> None:
+    """Symbol.to_dict should include supply_chain object with tier, tier_name, reason."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="python:src/test.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="src/test.py",
+        span=span,
+        supply_chain_tier=1,
+        supply_chain_reason="matches ^src/",
+    )
+    d = symbol.to_dict()
+
+    assert "supply_chain" in d
+    assert d["supply_chain"]["tier"] == 1
+    assert d["supply_chain"]["tier_name"] == "first_party"
+    assert d["supply_chain"]["reason"] == "matches ^src/"
+
+
+def test_symbol_to_dict_supply_chain_all_tiers() -> None:
+    """Symbol.to_dict should produce correct tier_name for all tiers."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+
+    # Test each tier
+    tier_names = {
+        1: "first_party",
+        2: "internal_dep",
+        3: "external_dep",
+        4: "derived",
+    }
+
+    for tier, tier_name in tier_names.items():
+        symbol = Symbol(
+            id="python:test.py:1-2:greet:function",
+            name="greet",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=span,
+            supply_chain_tier=tier,
+            supply_chain_reason=f"test reason for tier {tier}",
+        )
+        d = symbol.to_dict()
+
+        assert d["supply_chain"]["tier"] == tier
+        assert d["supply_chain"]["tier_name"] == tier_name
+        assert d["supply_chain"]["reason"] == f"test reason for tier {tier}"

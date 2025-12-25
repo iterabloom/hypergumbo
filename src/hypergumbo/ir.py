@@ -144,6 +144,15 @@ class AnalysisRun:
         }
 
 
+# Supply chain tier names for JSON output
+_TIER_NAMES = {
+    1: "first_party",
+    2: "internal_dep",
+    3: "external_dep",
+    4: "derived",
+}
+
+
 @dataclass
 class Symbol:
     """A code symbol (function, class, etc.) detected by analysis.
@@ -164,6 +173,9 @@ class Symbol:
         fingerprint: Content hash of source bytes (sha256)
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
+        supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
+            3=external_dep, 4=derived). See §8.6 of spec.
+        supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
     """
 
     id: str
@@ -181,6 +193,8 @@ class Symbol:
     fingerprint: Optional[str] = None
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
+    supply_chain_tier: int = 1  # Default to first_party
+    supply_chain_reason: str = ""
 
     # Keep line/end_line for backwards compatibility during transition
     @property
@@ -209,6 +223,11 @@ class Symbol:
             "fingerprint": self.fingerprint,
             "quality": self.quality,
             "meta": self.meta,
+            "supply_chain": {
+                "tier": self.supply_chain_tier,
+                "tier_name": _TIER_NAMES.get(self.supply_chain_tier, "first_party"),
+                "reason": self.supply_chain_reason,
+            },
         }
 
 
