@@ -353,6 +353,12 @@ class TestIsTestPath:
         assert _is_test_path("/project/tests/test_app.py") is True
         assert _is_test_path("src/tests/helpers.py") is True
 
+    def test_test_singular_directory(self) -> None:
+        """Detects /test/ directory pattern (singular, common in JS projects)."""
+        assert _is_test_path("/project/test/app.router.js") is True
+        assert _is_test_path("test/utils.js") is True
+        assert _is_test_path("/express/test/res.send.js") is True
+
     def test_dunder_tests_directory(self) -> None:
         """Detects /__tests__/ directory pattern (JavaScript)."""
         assert _is_test_path("/src/__tests__/App.test.js") is True

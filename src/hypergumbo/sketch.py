@@ -370,7 +370,10 @@ def _is_test_path(path: str) -> bool:
     filename = os.path.basename(path)
 
     # Directory patterns (actual test directories, not temp dirs)
-    if "/tests/" in path or "/__tests__/" in path:
+    if "/test/" in path or "/tests/" in path or "/__tests__/" in path:
+        return True
+    # Handle paths that start with test/ (no leading slash)
+    if path.startswith("test/") or path.startswith("tests/"):
         return True
 
     # File name patterns: test_*.py, test_*.js, etc.
