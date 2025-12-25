@@ -47,6 +47,7 @@ from .analyze.py import analyze_python
 from .analyze.rust import analyze_rust
 from .analyze.go import analyze_go
 from .analyze.ruby import analyze_ruby
+from .analyze.kotlin import analyze_kotlin
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -726,6 +727,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(ruby_result.run.to_dict())
             all_symbols.extend(ruby_result.symbols)
             all_edges.extend(ruby_result.edges)
+
+    # Run Kotlin analysis (optional, requires tree-sitter-kotlin)
+    kotlin_result = analyze_kotlin(repo_root)
+    if kotlin_result.run is not None:
+        if kotlin_result.skipped:
+            limits.skipped_passes.append({
+                "pass": kotlin_result.run.pass_id,
+                "reason": kotlin_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(kotlin_result.run.to_dict())
+            all_symbols.extend(kotlin_result.symbols)
+            all_edges.extend(kotlin_result.edges)
 
     # Run cross-language linkers
 
