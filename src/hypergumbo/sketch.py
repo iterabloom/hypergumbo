@@ -284,12 +284,21 @@ def _format_all_files(
     return "\n".join(lines)
 
 
-def _run_analysis(repo_root: Path, profile: RepoProfile) -> tuple[list[Symbol], list]:
+def _run_analysis(
+    repo_root: Path, profile: RepoProfile, exclude_tests: bool = False
+) -> tuple[list[Symbol], list]:
     """Run static analysis to get symbols and edges.
 
     Only runs analysis for detected languages to avoid unnecessary work.
     Applies supply chain classification to all symbols.
-    Returns (symbols, edges) tuple.
+
+    Args:
+        repo_root: Path to the repository root.
+        profile: Detected repository profile with language info.
+        exclude_tests: If True, filter out symbols from test files after analysis.
+
+    Returns:
+        (symbols, edges) tuple.
     """
     from .supply_chain import classify_file, detect_package_roots
 
@@ -350,6 +359,21 @@ def _run_analysis(repo_root: Path, profile: RepoProfile) -> tuple[list[Symbol], 
             all_edges.extend(result.edges)  # pragma: no cover
         except Exception:  # pragma: no cover
             pass  # Java analysis failed or tree-sitter not available
+
+    # Filter out test files if requested (significant speedup for large codebases)
+    if exclude_tests:
+        # Filter symbols from test files
+        filtered_symbols = [s for s in all_symbols if not _is_test_path(s.path)]
+        # Get IDs of remaining symbols for edge filtering
+        remaining_ids = {s.id for s in filtered_symbols}
+        # Filter edges to only include those between remaining symbols
+        filtered_edges = [
+            e for e in all_edges
+            if getattr(e, "src", None) in remaining_ids
+            and getattr(e, "dst", None) in remaining_ids
+        ]
+        all_symbols = filtered_symbols
+        all_edges = filtered_edges
 
     # Apply supply chain classification to all symbols
     package_roots = detect_package_roots(repo_root)
@@ -574,6 +598,7 @@ def _format_symbols(
 def generate_sketch(
     repo_root: Path,
     max_tokens: Optional[int] = None,
+    exclude_tests: bool = False,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -589,6 +614,7 @@ def generate_sketch(
     Args:
         repo_root: Path to the repository root.
         max_tokens: Target tokens for output. If None, returns minimal sketch.
+        exclude_tests: If True, skip analyzing test files for faster performance.
 
     Returns:
         Markdown-formatted sketch string.
@@ -659,7 +685,7 @@ def generate_sketch(
     symbols: list[Symbol] = []
     edges: list = []
     if remaining_tokens > 100:
-        symbols, edges = _run_analysis(repo_root, profile)
+        symbols, edges = _run_analysis(repo_root, profile, exclude_tests=exclude_tests)
 
     # Section 5: Entry points (if we have analysis results and budget)
     if remaining_tokens > 50 and symbols:
