@@ -515,3 +515,110 @@ class TestExpressEntrypoints:
 
         express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
         assert len(express_eps) == 0
+
+
+class TestNestJSEntrypoints:
+    """Tests for NestJS controller detection.
+
+    NestJS uses @Controller decorator on classes and @Get/@Post/etc.
+    decorators on methods. Detection strategy: Files matching the
+    *.controller.ts naming convention.
+    """
+
+    def test_detect_nestjs_controller_file(self) -> None:
+        """Detect methods in *.controller.ts as NestJS endpoints."""
+        sym = make_symbol("findAll", path="src/users.controller.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 1
+        assert nestjs_eps[0].symbol_id == sym.id
+
+    def test_detect_nestjs_class_controller(self) -> None:
+        """Detect classes in *.controller.ts as NestJS controllers."""
+        sym = make_symbol("UsersController", kind="class", path="src/users.controller.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 1
+
+    def test_detect_nestjs_in_controllers_directory(self) -> None:
+        """Detect files in controllers/ directory as NestJS."""
+        sym = make_symbol("getUsers", path="src/controllers/users.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 1
+
+    def test_detect_multiple_nestjs_methods(self) -> None:
+        """Detect multiple methods in same controller file."""
+        sym1 = make_symbol("findAll", path="src/users.controller.ts", language="typescript", start_line=10)
+        sym2 = make_symbol("create", path="src/users.controller.ts", language="typescript", start_line=20)
+        sym3 = make_symbol("delete", path="src/users.controller.ts", language="typescript", start_line=30)
+        nodes = [sym1, sym2, sym3]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 3
+
+    def test_nestjs_controller_confidence(self) -> None:
+        """NestJS controller detection has high confidence."""
+        sym = make_symbol("findOne", path="src/items.controller.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 1
+        # File pattern based - high confidence for .controller.ts
+        assert nestjs_eps[0].confidence >= 0.85
+
+    def test_nestjs_controller_label(self) -> None:
+        """NestJS controller entrypoints have descriptive labels."""
+        sym = make_symbol("update", path="src/products.controller.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 1
+        assert "NestJS" in nestjs_eps[0].label or "controller" in nestjs_eps[0].label.lower()
+
+    def test_nestjs_only_typescript(self) -> None:
+        """Only TypeScript files are detected as NestJS controllers."""
+        # JavaScript file should NOT be detected
+        sym = make_symbol("findAll", path="src/users.controller.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        # NestJS is TypeScript-only framework
+        assert len(nestjs_eps) == 0
+
+    def test_nestjs_file_symbol_not_detected(self) -> None:
+        """File symbols in controller files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/users.controller.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 0
+
+    def test_nestjs_non_controller_file_not_detected(self) -> None:
+        """Non-controller TypeScript files are not detected as NestJS."""
+        sym = make_symbol("helper", path="src/users.service.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
+        assert len(nestjs_eps) == 0

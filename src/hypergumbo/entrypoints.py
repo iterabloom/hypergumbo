@@ -6,6 +6,7 @@ Detects common entrypoint patterns:
 - Electron app entry points (electron.js, preload.js)
 - Django views (functions imported by urls.py)
 - Express.js routes (routes.js, router.js, routes/ directory)
+- NestJS controllers (*.controller.ts files)
 
 How It Works
 ------------
@@ -37,7 +38,7 @@ Detection is based on:
 Confidence Scores
 -----------------
 - 0.95: Decorator-based (very reliable)
-- 0.90: Django urls.py imports (explicit URL mappings)
+- 0.90: Django urls.py imports, NestJS *.controller.ts (explicit conventions)
 - 0.85: File-pattern-based (Electron, Express route files)
 - 0.70: Name-pattern-based (heuristic, may have false positives)
 
@@ -67,6 +68,7 @@ class EntrypointKind(Enum):
     ELECTRON_RENDERER = "electron_renderer"
     DJANGO_VIEW = "django_view"
     EXPRESS_ROUTE = "express_route"
+    NESTJS_CONTROLLER = "nestjs_controller"
 
 
 @dataclass
@@ -121,6 +123,11 @@ ELECTRON_PRELOAD_FILES = {"preload.js", "preload.ts", "electron-preload.js", "el
 # Files named routes.js/ts or router.js/ts, or files in a routes/ directory
 EXPRESS_ROUTE_FILENAMES = {"routes.js", "routes.ts", "router.js", "router.ts"}
 EXPRESS_ROUTE_DIRS = {"routes", "routers"}
+
+# NestJS controller patterns
+# Files ending in .controller.ts, or files in a controllers/ directory
+NESTJS_CONTROLLER_SUFFIX = ".controller.ts"
+NESTJS_CONTROLLER_DIRS = {"controllers"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -274,6 +281,51 @@ def _detect_express_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_nestjs_controller_file(path: str, language: str) -> bool:
+    """Check if a file path matches NestJS controller patterns.
+
+    Matches:
+    - Files ending in .controller.ts (NestJS naming convention)
+    - Any .ts file inside a controllers/ directory
+    """
+    if language != "typescript":
+        return False
+
+    filename = _get_filename(path)
+    if filename.endswith(NESTJS_CONTROLLER_SUFFIX):
+        return True
+
+    # Check if file is in a controllers/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in NESTJS_CONTROLLER_DIRS for part in path_parts)
+
+
+def _detect_nestjs_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect NestJS controller endpoints from file patterns.
+
+    NestJS uses a naming convention of *.controller.ts for controller files.
+    Classes and methods in these files are API endpoints.
+
+    Only function/class/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like and class symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_nestjs_controller_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.NESTJS_CONTROLLER,
+                confidence=0.90,
+                label="NestJS controller",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -338,6 +390,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_electron_entrypoints(nodes))
     entrypoints.extend(_detect_django_views(nodes, edges))
     entrypoints.extend(_detect_express_routes(nodes))
+    entrypoints.extend(_detect_nestjs_controllers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
