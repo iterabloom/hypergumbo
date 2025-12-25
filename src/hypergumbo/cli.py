@@ -55,6 +55,7 @@ from .analyze.haskell import analyze_haskell
 from .analyze.ocaml import analyze_ocaml
 from .analyze.solidity import analyze_solidity
 from .analyze.csharp import analyze_csharp
+from .analyze.cpp import analyze_cpp
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -844,6 +845,19 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
             analysis_runs.append(csharp_result.run.to_dict())
             all_symbols.extend(csharp_result.symbols)
             all_edges.extend(csharp_result.edges)
+
+    # Run C++ analysis (optional, requires tree-sitter-cpp)
+    cpp_result = analyze_cpp(repo_root)
+    if cpp_result.run is not None:
+        if cpp_result.skipped:  # pragma: no cover - cpp installed
+            limits.skipped_passes.append({
+                "pass": cpp_result.run.pass_id,
+                "reason": cpp_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(cpp_result.run.to_dict())
+            all_symbols.extend(cpp_result.symbols)
+            all_edges.extend(cpp_result.edges)
 
     # Run cross-language linkers
 
