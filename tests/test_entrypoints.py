@@ -1079,3 +1079,117 @@ class TestGoFrameworkEntrypoints:
 
         go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
         assert len(go_eps) == 0
+
+
+class TestLaravelEntrypoints:
+    """Tests for Laravel controller detection.
+
+    Laravel uses *Controller.php files in app/Http/Controllers/.
+    Routes are defined in routes/*.php files.
+    """
+
+    def test_detect_laravel_controller_file(self) -> None:
+        """Detect functions in *Controller.php as Laravel endpoints."""
+        sym = make_symbol("index", path="app/Http/Controllers/UserController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 1
+        assert laravel_eps[0].symbol_id == sym.id
+
+    def test_detect_laravel_nested_controller(self) -> None:
+        """Detect controllers in nested namespaces."""
+        sym = make_symbol("show", path="app/Http/Controllers/Api/V1/UserController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 1
+
+    def test_detect_laravel_class_controller(self) -> None:
+        """Detect controller classes."""
+        sym = make_symbol("UserController", kind="class", path="app/Http/Controllers/UserController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 1
+
+    def test_detect_multiple_laravel_actions(self) -> None:
+        """Detect multiple actions in same controller."""
+        sym1 = make_symbol("index", path="app/Http/Controllers/PostController.php", language="php", start_line=10)
+        sym2 = make_symbol("store", path="app/Http/Controllers/PostController.php", language="php", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 2
+
+    def test_laravel_controller_confidence(self) -> None:
+        """Laravel controller detection has high confidence."""
+        sym = make_symbol("update", path="app/Http/Controllers/ItemController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 1
+        assert laravel_eps[0].confidence >= 0.85
+
+    def test_laravel_controller_label(self) -> None:
+        """Laravel controller entrypoints have descriptive labels."""
+        sym = make_symbol("destroy", path="app/Http/Controllers/OrderController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 1
+        assert "Laravel" in laravel_eps[0].label or "controller" in laravel_eps[0].label.lower()
+
+    def test_laravel_only_php_files(self) -> None:
+        """Only PHP files are detected as Laravel controllers."""
+        # Python file should NOT be detected
+        sym = make_symbol("index", path="app/Http/Controllers/UserController.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 0
+
+    def test_laravel_file_symbol_not_detected(self) -> None:
+        """File symbols in controller files are not detected."""
+        sym = make_symbol("file", kind="file", path="app/Http/Controllers/UserController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 0
+
+    def test_laravel_non_controller_file_not_detected(self) -> None:
+        """Non-controller PHP files are not detected as Laravel."""
+        sym = make_symbol("helper", path="app/Models/User.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 0
+
+    def test_laravel_requires_controllers_path(self) -> None:
+        """Controller files must be in app/Http/Controllers/."""
+        # A *Controller.php outside the proper path should NOT be detected
+        sym = make_symbol("index", path="src/UserController.php", language="php")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
+        assert len(laravel_eps) == 0
