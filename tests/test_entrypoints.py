@@ -1533,3 +1533,116 @@ class TestSinatraEntrypoints:
 
         sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
         assert len(sinatra_eps) == 0
+
+
+class TestKtorEntrypoints:
+    """Tests for Ktor (Kotlin) route detection.
+
+    Ktor is a Kotlin web framework. Routes are typically defined in
+    files named *Routes.kt, *Routing.kt, or in routes/routing directories.
+    """
+
+    def test_detect_ktor_routes_file(self) -> None:
+        """Detect functions in *Routes.kt as Ktor routes."""
+        sym = make_symbol("getUsers", path="src/UserRoutes.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 1
+        assert ktor_eps[0].symbol_id == sym.id
+
+    def test_detect_ktor_routing_file(self) -> None:
+        """Detect functions in *Routing.kt as Ktor routes."""
+        sym = make_symbol("configureRouting", path="src/ApiRouting.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 1
+
+    def test_detect_ktor_routes_directory(self) -> None:
+        """Detect functions in routes/ directory."""
+        sym = make_symbol("createUser", path="src/routes/Users.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 1
+
+    def test_detect_ktor_routing_directory(self) -> None:
+        """Detect functions in routing/ directory."""
+        sym = make_symbol("deleteItem", path="src/routing/Items.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 1
+
+    def test_detect_multiple_ktor_routes(self) -> None:
+        """Detect multiple routes in same file."""
+        sym1 = make_symbol("listProducts", path="src/ProductRoutes.kt", language="kotlin", start_line=10)
+        sym2 = make_symbol("getProduct", path="src/ProductRoutes.kt", language="kotlin", start_line=20)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 2
+
+    def test_ktor_route_confidence(self) -> None:
+        """Ktor route detection has appropriate confidence."""
+        sym = make_symbol("updateOrder", path="src/OrderRoutes.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 1
+        assert ktor_eps[0].confidence >= 0.80
+
+    def test_ktor_route_label(self) -> None:
+        """Ktor route entrypoints have descriptive labels."""
+        sym = make_symbol("cancelOrder", path="src/OrderRoutes.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 1
+        assert "Ktor" in ktor_eps[0].label or "route" in ktor_eps[0].label.lower()
+
+    def test_ktor_only_kotlin_files(self) -> None:
+        """Only Kotlin files are detected as Ktor routes."""
+        # Python file should NOT be detected
+        sym = make_symbol("getUsers", path="src/UserRoutes.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 0
+
+    def test_ktor_file_symbol_not_detected(self) -> None:
+        """File symbols in Ktor files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/UserRoutes.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 0
+
+    def test_ktor_non_route_file_not_detected(self) -> None:
+        """Non-route Kotlin files are not detected as Ktor."""
+        sym = make_symbol("helper", path="src/utils/Helper.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
+        assert len(ktor_eps) == 0

@@ -15,6 +15,7 @@ Detects common entrypoint patterns:
 - Rust handlers (Actix-web, Axum, Rocket, Warp - *_handler.rs, handlers/)
 - ASP.NET Core controllers (Controllers/*Controller.cs)
 - Sinatra routes (app.rb, application.rb, server.rb, routes/)
+- Ktor routes (*Routes.kt, *Routing.kt, routes/)
 
 How It Works
 ------------
@@ -85,6 +86,7 @@ class EntrypointKind(Enum):
     RUST_HANDLER = "rust_handler"
     ASPNET_CONTROLLER = "aspnet_controller"
     SINATRA_ROUTE = "sinatra_route"
+    KTOR_ROUTE = "ktor_route"
 
 
 @dataclass
@@ -187,6 +189,11 @@ ASPNET_CONTROLLER_DIRS = {"Controllers"}
 # Common entry point filenames and routes directory
 SINATRA_ROUTE_FILES = {"app.rb", "application.rb", "server.rb"}
 SINATRA_ROUTE_DIRS = {"routes"}
+
+# Ktor (Kotlin) route patterns
+# Files ending in Routes.kt or Routing.kt, or in routes/routing directories
+KTOR_ROUTE_SUFFIXES = {"Routes.kt", "Routing.kt"}
+KTOR_ROUTE_DIRS = {"routes", "routing"}
 
 
 def _get_decorators(symbol: Symbol) -> set[str]:
@@ -766,6 +773,53 @@ def _detect_sinatra_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_ktor_route_file(path: str, language: str) -> bool:
+    """Check if a file path matches Ktor route patterns.
+
+    Matches:
+    - Files ending in Routes.kt or Routing.kt
+    - Any .kt file inside a routes/ or routing/ directory
+    """
+    if language != "kotlin":
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for Ktor route file suffixes
+    if any(filename.endswith(suffix) for suffix in KTOR_ROUTE_SUFFIXES):
+        return True
+
+    # Check if file is in a routes/ or routing/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in KTOR_ROUTE_DIRS for part in path_parts)
+
+
+def _detect_ktor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect Ktor route endpoints from file patterns.
+
+    Ktor is a Kotlin web framework. Routes are typically defined in
+    files named *Routes.kt, *Routing.kt, or in routes/routing directories.
+
+    Only function/method symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_ktor_route_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.KTOR_ROUTE,
+                confidence=0.85,
+                label="Ktor route",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -839,6 +893,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_rust_handlers(nodes))
     entrypoints.extend(_detect_aspnet_controllers(nodes))
     entrypoints.extend(_detect_sinatra_routes(nodes))
+    entrypoints.extend(_detect_ktor_routes(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()
