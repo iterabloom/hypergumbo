@@ -1,0 +1,471 @@
+"""Tests for supply chain classification.
+
+Tests the classification of files into supply chain tiers:
+- Tier 1 (first_party): Project's own source code
+- Tier 2 (internal_dep): Monorepo packages, local forks
+- Tier 3 (external_dep): Third-party dependencies
+- Tier 4 (derived): Build artifacts, minified/bundled output
+"""
+
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from hypergumbo.supply_chain import (
+    Tier,
+    FileClassification,
+    classify_file,
+    detect_package_roots,
+    is_likely_minified,
+)
+
+
+class TestTierEnum:
+    """Test Tier enum values and ordering."""
+
+    def test_tier_values(self):
+        assert Tier.FIRST_PARTY == 1
+        assert Tier.INTERNAL_DEP == 2
+        assert Tier.EXTERNAL_DEP == 3
+        assert Tier.DERIVED == 4
+
+    def test_tier_ordering(self):
+        """Higher priority tiers have lower numeric values."""
+        assert Tier.FIRST_PARTY < Tier.INTERNAL_DEP
+        assert Tier.INTERNAL_DEP < Tier.EXTERNAL_DEP
+        assert Tier.EXTERNAL_DEP < Tier.DERIVED
+
+
+class TestFileClassification:
+    """Test FileClassification dataclass."""
+
+    def test_classification_fields(self):
+        fc = FileClassification(
+            tier=Tier.FIRST_PARTY,
+            reason="matches ^src/",
+            package_name=None,
+        )
+        assert fc.tier == Tier.FIRST_PARTY
+        assert fc.reason == "matches ^src/"
+        assert fc.package_name is None
+
+    def test_classification_with_package(self):
+        fc = FileClassification(
+            tier=Tier.EXTERNAL_DEP,
+            reason="in node_modules/",
+            package_name="lodash",
+        )
+        assert fc.package_name == "lodash"
+
+
+class TestDerivedArtifactDetection:
+    """Test tier 4 (derived) detection via path patterns."""
+
+    @pytest.mark.parametrize("path", [
+        "dist/bundle.js",
+        "build/app.js",
+        "out/index.js",
+        "target/release/main",
+        ".next/static/chunks/main.js",
+        ".nuxt/dist/client.js",
+        ".output/server/index.mjs",
+        ".svelte-kit/output/client.js",
+        "src/app.min.js",
+        "styles/main.min.css",
+        "lib/vendor.bundle.js",
+        "compiled/output.compiled.js",
+        "__pycache__/module.cpython-311.pyc",
+        "src/__pycache__/test.pyc",
+    ])
+    def test_derived_path_patterns(self, path, tmp_path):
+        """Files matching derived patterns are tier 4."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// content")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.DERIVED, f"{path} should be DERIVED"
+
+
+class TestExternalDepDetection:
+    """Test tier 3 (external_dep) detection."""
+
+    @pytest.mark.parametrize("path,expected_pkg", [
+        ("node_modules/lodash/index.js", "lodash"),
+        ("node_modules/@babel/core/lib/index.js", "@babel/core"),
+        ("node_modules/@types/node/index.d.ts", "@types/node"),
+        ("vendor/autoload.php", None),
+        ("third_party/lib/util.py", None),
+        ("Pods/AFNetworking/Source/AFHTTPClient.m", None),
+        ("Carthage/Build/iOS/Alamofire.framework/Alamofire", None),
+        (".yarn/cache/lodash-npm-4.17.21.zip", None),
+        ("_vendor/hugo/tpl/template.go", None),
+    ])
+    def test_external_dep_patterns(self, path, expected_pkg, tmp_path):
+        """Files in dependency directories are tier 3."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// content")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, f"{path} should be EXTERNAL_DEP"
+        if expected_pkg:
+            assert result.package_name == expected_pkg
+
+
+class TestFirstPartyDetection:
+    """Test tier 1 (first_party) detection."""
+
+    @pytest.mark.parametrize("path", [
+        "src/main.py",
+        "src/utils/helpers.py",
+        "lib/core.js",
+        "app/models/user.rb",
+        "pkg/server/main.go",
+        "cmd/cli/main.go",
+        "internal/auth/handler.go",
+        "crates/mylib/src/lib.rs",
+        "packages/core/src/index.ts",
+    ])
+    def test_first_party_patterns(self, path, tmp_path):
+        """Files matching first-party patterns are tier 1."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// content")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.FIRST_PARTY, f"{path} should be FIRST_PARTY"
+
+    def test_default_to_first_party(self, tmp_path):
+        """Unknown paths default to first-party."""
+        file_path = tmp_path / "unknown_dir" / "code.py"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("# code")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.FIRST_PARTY
+        assert "default" in result.reason.lower()
+
+
+class TestInternalDepDetection:
+    """Test tier 2 (internal_dep) detection via workspace configs."""
+
+    def test_npm_workspaces(self, tmp_path):
+        """Detect internal packages from package.json workspaces."""
+        # Create package.json with workspaces
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": ["packages/*"]}')
+
+        # Create a package in the workspace
+        pkg_dir = tmp_path / "packages" / "core"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "index.js").write_text("// core")
+
+        roots = detect_package_roots(tmp_path)
+        assert pkg_dir in roots
+
+        # File in workspace should be tier 2
+        result = classify_file(pkg_dir / "index.js", tmp_path, roots)
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_npm_workspaces_object_format(self, tmp_path):
+        """Handle workspaces as object with packages array."""
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": {"packages": ["apps/*", "libs/*"]}}')
+
+        apps_dir = tmp_path / "apps" / "web"
+        apps_dir.mkdir(parents=True)
+
+        roots = detect_package_roots(tmp_path)
+        assert apps_dir in roots
+
+    def test_cargo_workspaces(self, tmp_path):
+        """Detect internal crates from Cargo.toml workspace."""
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text('''
+[workspace]
+members = ["crates/*"]
+''')
+
+        crate_dir = tmp_path / "crates" / "mylib"
+        crate_dir.mkdir(parents=True)
+        (crate_dir / "src" / "lib.rs").parent.mkdir()
+        (crate_dir / "src" / "lib.rs").write_text("// lib")
+
+        roots = detect_package_roots(tmp_path)
+        assert crate_dir in roots
+
+        result = classify_file(crate_dir / "src" / "lib.rs", tmp_path, roots)
+        assert result.tier == Tier.INTERNAL_DEP
+
+
+class TestMinificationDetection:
+    """Test content-based minification heuristics."""
+
+    def test_long_lines_detected(self, tmp_path):
+        """Files with avg line length > 150 are minified."""
+        minified = tmp_path / "bundle.js"
+        # Create a file with very long lines (simulating minification)
+        long_line = "var a=1;" * 100  # 800 chars
+        minified.write_text(long_line + "\n" + long_line)
+
+        assert is_likely_minified(minified) is True
+
+    def test_normal_code_not_minified(self, tmp_path):
+        """Normal code files are not detected as minified."""
+        normal = tmp_path / "app.js"
+        normal.write_text("""
+function hello() {
+    console.log("Hello, world!");
+}
+
+function goodbye() {
+    console.log("Goodbye!");
+}
+""")
+        assert is_likely_minified(normal) is False
+
+    def test_source_map_reference_detected(self, tmp_path):
+        """Files with sourceMappingURL are detected as derived."""
+        transpiled = tmp_path / "app.js"
+        transpiled.write_text("""
+function hello() {
+    console.log("Hello");
+}
+//# sourceMappingURL=app.js.map
+""")
+        assert is_likely_minified(transpiled) is True
+
+    def test_generated_header_detected(self, tmp_path):
+        """Files with 'Generated by' headers are detected as derived."""
+        generated = tmp_path / "proto.py"
+        generated.write_text("""# Generated by the protocol buffer compiler. DO NOT EDIT!
+# source: myproto.proto
+
+class MyMessage:
+    pass
+""")
+        assert is_likely_minified(generated) is True
+
+    def test_at_generated_annotation(self, tmp_path):
+        """Files with @generated annotation are detected."""
+        generated = tmp_path / "Schema.java"
+        generated.write_text("""// @generated by some-tool v1.2.3
+
+public class Schema {
+    // ...
+}
+""")
+        assert is_likely_minified(generated) is True
+
+
+class TestClassificationPriority:
+    """Test that classification checks are applied in correct order."""
+
+    def test_derived_takes_priority_over_first_party(self, tmp_path):
+        """dist/src/app.js is DERIVED despite 'src' in path."""
+        file_path = tmp_path / "dist" / "src" / "app.js"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// built")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.DERIVED
+
+    def test_minified_in_src_is_derived(self, tmp_path):
+        """Minified file in src/ is DERIVED due to content heuristics."""
+        file_path = tmp_path / "src" / "vendor.min.js"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// minified")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.DERIVED
+
+    def test_external_dep_in_readable_form(self, tmp_path):
+        """node_modules with normal code is EXTERNAL_DEP not DERIVED."""
+        file_path = tmp_path / "node_modules" / "lodash" / "lodash.js"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("""
+/**
+ * Lodash library
+ */
+function chunk(array, size) {
+    // implementation
+}
+""")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP
+
+
+class TestEdgeCases:
+    """Test edge cases and error handling."""
+
+    def test_empty_file(self, tmp_path):
+        """Empty files don't crash minification detection."""
+        empty = tmp_path / "empty.js"
+        empty.write_text("")
+
+        assert is_likely_minified(empty) is False
+
+    def test_nonexistent_file(self, tmp_path):
+        """Nonexistent files return sensible default."""
+        missing = tmp_path / "missing.js"
+
+        # Should not crash, return first_party as default
+        result = classify_file(missing, tmp_path)
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_binary_file(self, tmp_path):
+        """Binary files don't crash."""
+        binary = tmp_path / "image.png"
+        binary.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\x00' * 100)
+
+        # Should handle gracefully
+        result = classify_file(binary, tmp_path)
+        # Binary files in unknown location default to first_party
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_path_outside_repo(self, tmp_path):
+        """File outside repo_root defaults to first-party."""
+        other_dir = tmp_path / "other_project"
+        other_dir.mkdir()
+        file_path = other_dir / "code.py"
+        file_path.write_text("# code")
+
+        repo_root = tmp_path / "my_project"
+        repo_root.mkdir()
+
+        result = classify_file(file_path, repo_root)
+        assert result.tier == Tier.FIRST_PARTY
+        assert "outside repo" in result.reason
+
+    def test_file_detected_as_minified_by_content(self, tmp_path):
+        """File in normal location detected as derived via content heuristics."""
+        # File in unknown dir (not src/, not node_modules/, etc.)
+        # but with minified content
+        file_path = tmp_path / "assets" / "bundle.js"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        long_line = "var a=1,b=2,c=3;" * 50  # 800 chars
+        file_path.write_text(long_line)
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.DERIVED
+        assert "minified" in result.reason
+
+    def test_unreadable_file_for_minification(self, tmp_path):
+        """Files that can't be read don't crash minification detection."""
+        # Create a file then make it unreadable
+        file_path = tmp_path / "secret.js"
+        file_path.write_text("// content")
+
+        # Mock by using a path that will fail to read
+        from pathlib import Path
+        import os
+
+        # On Unix, remove read permission
+        os.chmod(file_path, 0o000)
+        try:
+            assert is_likely_minified(file_path) is False
+        finally:
+            # Restore permissions for cleanup
+            os.chmod(file_path, 0o644)
+
+    def test_malformed_package_json(self, tmp_path):
+        """Malformed package.json doesn't crash."""
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text("{ invalid json }")
+
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
+    def test_malformed_cargo_toml(self, tmp_path):
+        """Cargo.toml that can't be read doesn't crash."""
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text("[workspace]\nmembers = [")
+
+        # Should not crash even with malformed content
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
+    def test_scoped_package_incomplete(self, tmp_path):
+        """Scoped package with only @scope (no package name) is handled."""
+        # Edge case: file directly under @scope (unusual but possible)
+        file_path = tmp_path / "node_modules" / "@types" / "index.d.ts"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// types")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP
+        # Best effort extraction - takes first two path parts
+        # (In real usage, files are like @types/node/index.d.ts)
+        assert result.package_name == "@types/index.d.ts"
+
+    def test_scoped_package_only_scope(self, tmp_path):
+        """Scoped package with just @scope returns just @scope."""
+        from hypergumbo.supply_chain import _extract_package_name
+
+        # Edge case: only @scope in path
+        result = _extract_package_name("node_modules/@types", "node_modules/")
+        assert result == "@types"
+
+    def test_node_modules_empty_path(self, tmp_path):
+        """Handle edge case where path ends at node_modules/."""
+        # Test the _extract_package_name function edge case
+        from hypergumbo.supply_chain import _extract_package_name
+
+        # Empty after split: "node_modules/" -> parts = [""]
+        result = _extract_package_name("node_modules/", "node_modules/")
+        assert result is None
+
+    def test_unreadable_cargo_toml(self, tmp_path):
+        """Unreadable Cargo.toml doesn't crash."""
+        import os
+
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text("[workspace]\nmembers = [\"crates/*\"]")
+
+        # Make unreadable
+        os.chmod(cargo_toml, 0o000)
+        try:
+            roots = detect_package_roots(tmp_path)
+            assert roots == set()
+        finally:
+            os.chmod(cargo_toml, 0o644)
+
+    def test_package_roots_with_invalid_path(self, tmp_path):
+        """Invalid package root in set doesn't crash classification."""
+        file_path = tmp_path / "src" / "app.py"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("# app")
+
+        # Create an invalid package root (not a real path relationship)
+        invalid_root = Path("/nonexistent/path")
+        package_roots = {invalid_root}
+
+        result = classify_file(file_path, tmp_path, package_roots)
+        # Should still classify correctly, ignoring invalid root
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_package_roots_is_relative_to_error(self, tmp_path):
+        """is_relative_to errors are handled gracefully."""
+        file_path = tmp_path / "code" / "app.py"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("# app")
+
+        # Create an object that will cause TypeError when used with is_relative_to
+        # is_relative_to expects a path-like object; passing something weird can trigger errors
+        class BadPath:
+            """A fake path that causes is_relative_to to fail."""
+            name = "bad_pkg"
+
+            def __fspath__(self):
+                # Return something that will cause issues
+                raise TypeError("Cannot convert to path")
+
+        bad_root = BadPath()
+        package_roots = {bad_root}  # type: ignore
+
+        result = classify_file(file_path, tmp_path, package_roots)
+        # Should still classify correctly, ignoring the bad root
+        assert result.tier == Tier.FIRST_PARTY
