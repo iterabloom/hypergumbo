@@ -154,8 +154,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Node output (`supply_chain` object) | [x] | `tier`, `tier_name`, `reason` on each node |
 | `supply_chain_summary` in output | [x] | File/symbol counts per tier |
 | `by_supply_chain_tier` in metrics | [x] | Nodes/edges breakdown by tier |
-| CLI `--max-tier` flag | [ ] | Filter analysis scope by tier |
-| CLI `--first-party-only` flag | [ ] | Shortcut for `--max-tier 1` |
+| CLI `--max-tier` flag | [x] | Filter analysis scope by tier (on `run` command) |
+| CLI `--first-party-only` flag | [x] | Shortcut for `--max-tier 1` (on `run` command) |
 | Tier-weighted sketch ranking | [x] | First-party symbols prioritized in Key Symbols (2x weight) |
 | CLI `--no-first-party-priority` flag | [ ] | Disable tier weighting |
 | Slice tier filtering | [ ] | `--max-tier` stops BFS at tier boundary |

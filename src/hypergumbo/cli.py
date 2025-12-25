@@ -169,8 +169,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     # The positional argument for `run` is called `path` in the parser below.
     repo_root = Path(args.path).resolve()
     out_path = Path(args.out)
+    max_tier = getattr(args, "max_tier", None)
 
-    run_behavior_map(repo_root=repo_root, out_path=out_path)
+    run_behavior_map(repo_root=repo_root, out_path=out_path, max_tier=max_tier)
     return 0
 
 
@@ -457,6 +458,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="hypergumbo.results.json",
         help="Output JSON path (default: hypergumbo.results.json)",
     )
+    p_run.add_argument(
+        "--max-tier",
+        type=int,
+        choices=[1, 2, 3, 4],
+        default=None,
+        dest="max_tier",
+        help="Filter output by supply chain tier (1=first-party, 2=+internal, "
+             "3=+external, 4=all). Default: no filtering.",
+    )
+    p_run.add_argument(
+        "--first-party-only",
+        action="store_const",
+        const=1,
+        dest="max_tier",
+        help="Only include first-party code (shortcut for --max-tier 1)",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -602,9 +619,17 @@ def _compute_supply_chain_summary(
     return summary
 
 
-def run_behavior_map(repo_root: Path, out_path: Path) -> None:
+def run_behavior_map(
+    repo_root: Path, out_path: Path, max_tier: int | None = None
+) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
+
+    Args:
+        repo_root: Root directory of the repository
+        out_path: Path to write the behavior map JSON
+        max_tier: Optional maximum supply chain tier (1-4). Symbols with
+            tier > max_tier are filtered out. None means no filtering.
     """
     behavior_map = new_behavior_map()
 
@@ -898,6 +923,26 @@ def run_behavior_map(repo_root: Path, out_path: Path) -> None:
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
+
+    # Apply max_tier filtering if specified
+    if max_tier is not None:
+        # Filter symbols by tier
+        filtered_symbols = [
+            s for s in all_symbols if s.supply_chain_tier <= max_tier
+        ]
+        filtered_symbol_ids = {s.id for s in filtered_symbols}
+
+        # Filter edges: both src and dst must be in filtered symbols or be file refs
+        filtered_edges = [
+            e
+            for e in all_edges
+            if e.src in filtered_symbol_ids
+            or e.src.endswith((".py", ".js", ".ts", ".tsx", ".jsx"))
+        ]
+
+        all_symbols = filtered_symbols
+        all_edges = filtered_edges
+        limits.max_tier_applied = max_tier
 
     # Convert to dicts for output
     all_nodes = [s.to_dict() for s in all_symbols]

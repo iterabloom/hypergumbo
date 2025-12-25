@@ -57,6 +57,7 @@ class Limits:
     truncated_files: List[Dict[str, Any]] = field(default_factory=list)
     analysis_depth: str = "syntax_only"
     partial_results_reason: str = ""
+    max_tier_applied: int | None = None
 
     def add_failed_file(self, path: str, reason: str, analyzer: str) -> None:
         """Record a file that failed to analyze."""
@@ -93,12 +94,13 @@ class Limits:
             truncated_files=self.truncated_files + other.truncated_files,
             analysis_depth=self.analysis_depth,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,
+            max_tier_applied=self.max_tier_applied or other.max_tier_applied,
         )
         return merged
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict for JSON output."""
-        return {
+        result: Dict[str, Any] = {
             "not_captured": KNOWN_LIMITATIONS.copy(),
             "truncated_files": self.truncated_files,
             "skipped_languages": self.skipped_languages,
@@ -108,3 +110,6 @@ class Limits:
             "analyzer_version": f"hypergumbo-{__version__}",
             "analysis_depth": self.analysis_depth,
         }
+        if self.max_tier_applied is not None:
+            result["max_tier_applied"] = self.max_tier_applied
+        return result
