@@ -547,6 +547,7 @@ def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -594,6 +595,7 @@ def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -615,6 +617,7 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -650,6 +653,7 @@ def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -722,6 +726,7 @@ def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -768,6 +773,7 @@ def test_edge_from_dict_defaults(tmp_path: Path) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -812,6 +818,7 @@ def test_cmd_slice_list_entries(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = True
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -850,6 +857,7 @@ def test_cmd_slice_list_entries_none(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = True
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -888,6 +896,7 @@ def test_cmd_slice_auto_entry(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
@@ -927,12 +936,75 @@ def test_cmd_slice_auto_entry_no_entrypoints(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
+    args.reverse = False
 
     result = cmd_slice(args)
 
     assert result == 1  # Error exit code
     _, err = capsys.readouterr()
     assert "No entrypoints detected" in err
+
+
+def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
+    """Test --reverse flag finds callers instead of callees."""
+    # Create a behavior map where caller -> callee
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:caller->callee",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "callee"  # Start from callee
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = True  # Reverse slice
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    # Reverse slice from callee should find caller
+    assert "python:src/main.py:1-5:caller:function" in data["feature"]["node_ids"]
+    assert "python:src/utils.py:1-5:callee:function" in data["feature"]["node_ids"]
+    assert data["feature"]["query"]["reverse"] is True
+
+    out, _ = capsys.readouterr()
+    assert "reverse slice" in out
 
 
 def test_cmd_catalog_show_all(capsys) -> None:

@@ -609,3 +609,181 @@ class TestSliceEdgeCases:
         # Import edges from both files should be included
         assert import_os.id in result.edge_ids, "Import from main.py should be included"
         assert import_json.id in result.edge_ids, "Import from utils.py should be included"
+
+
+class TestReverseSlice:
+    """Tests for reverse slice - finding callers of a function."""
+
+    def test_reverse_slice_query_has_reverse_flag(self) -> None:
+        """SliceQuery should support a reverse flag."""
+        query = SliceQuery(entrypoint="foo", reverse=True)
+        assert query.reverse is True
+
+    def test_reverse_slice_query_defaults_false(self) -> None:
+        """SliceQuery.reverse should default to False."""
+        query = SliceQuery(entrypoint="foo")
+        assert query.reverse is False
+
+    def test_reverse_slice_finds_callers(self) -> None:
+        """Reverse slice should find functions that call the entry point."""
+        # caller -> callee (entry)
+        sym_caller = make_symbol("caller", start_line=1, end_line=5)
+        sym_callee = make_symbol("callee", start_line=10, end_line=15)
+        edge = make_edge(sym_caller, sym_callee, "calls")
+
+        nodes = [sym_caller, sym_callee]
+        edges = [edge]
+
+        # Slice from callee in REVERSE - should find caller
+        query = SliceQuery(entrypoint="callee", max_hops=3, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_callee.id in result.node_ids
+        assert sym_caller.id in result.node_ids
+        assert edge.id in result.edge_ids
+
+    def test_reverse_slice_multi_hop(self) -> None:
+        """Reverse slice should traverse multiple hops backward."""
+        # a -> b -> c (entry)
+        sym_a = make_symbol("a", start_line=1, end_line=2)
+        sym_b = make_symbol("b", start_line=3, end_line=4)
+        sym_c = make_symbol("c", start_line=5, end_line=6)
+
+        edge_ab = make_edge(sym_a, sym_b)
+        edge_bc = make_edge(sym_b, sym_c)
+
+        nodes = [sym_a, sym_b, sym_c]
+        edges = [edge_ab, edge_bc]
+
+        # Slice from c in reverse - should find b, then a
+        query = SliceQuery(entrypoint="c", max_hops=3, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_c.id in result.node_ids
+        assert sym_b.id in result.node_ids
+        assert sym_a.id in result.node_ids
+        assert edge_bc.id in result.edge_ids
+        assert edge_ab.id in result.edge_ids
+
+    def test_reverse_slice_respects_hop_limit(self) -> None:
+        """Reverse slice should respect max_hops limit."""
+        # a -> b -> c -> d (entry)
+        sym_a = make_symbol("a", start_line=1, end_line=2)
+        sym_b = make_symbol("b", start_line=3, end_line=4)
+        sym_c = make_symbol("c", start_line=5, end_line=6)
+        sym_d = make_symbol("d", start_line=7, end_line=8)
+
+        edge_ab = make_edge(sym_a, sym_b)
+        edge_bc = make_edge(sym_b, sym_c)
+        edge_cd = make_edge(sym_c, sym_d)
+
+        nodes = [sym_a, sym_b, sym_c, sym_d]
+        edges = [edge_ab, edge_bc, edge_cd]
+
+        # From d, max_hops=2: d -> c -> b (NOT a)
+        query = SliceQuery(entrypoint="d", max_hops=2, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_d.id in result.node_ids
+        assert sym_c.id in result.node_ids
+        assert sym_b.id in result.node_ids
+        assert sym_a.id not in result.node_ids
+        assert "hop_limit" in result.limits_hit
+
+    def test_reverse_slice_respects_file_limit(self) -> None:
+        """Reverse slice should respect max_files limit."""
+        sym_a = make_symbol("a", path="file1.py")
+        sym_b = make_symbol("b", path="file2.py")
+        sym_c = make_symbol("c", path="file3.py")
+
+        edge_ab = make_edge(sym_a, sym_b)
+        edge_bc = make_edge(sym_b, sym_c)
+
+        nodes = [sym_a, sym_b, sym_c]
+        edges = [edge_ab, edge_bc]
+
+        query = SliceQuery(entrypoint="c", max_hops=10, max_files=2, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        files_in_result = {n.split(":")[1] for n in result.node_ids}
+        assert len(files_in_result) <= 2
+        assert "file_limit" in result.limits_hit
+
+    def test_reverse_slice_excludes_tests(self) -> None:
+        """Reverse slice should exclude test files when requested."""
+        sym_main = make_symbol("main", path="src/main.py")
+        sym_test = make_symbol("test_main", path="tests/test_main.py")
+
+        # test_main calls main - in reverse from main, should NOT find test
+        edge = make_edge(sym_test, sym_main, "calls")
+
+        nodes = [sym_main, sym_test]
+        edges = [edge]
+
+        query = SliceQuery(entrypoint="main", max_hops=3, reverse=True, exclude_tests=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_main.id in result.node_ids
+        assert sym_test.id not in result.node_ids
+
+    def test_reverse_slice_filters_low_confidence(self) -> None:
+        """Reverse slice should filter edges below confidence threshold."""
+        sym_entry = make_symbol("entry", start_line=1, end_line=2)
+        sym_high = make_symbol("caller_high", start_line=3, end_line=4)
+        sym_low = make_symbol("caller_low", start_line=5, end_line=6)
+
+        edge_high = make_edge(sym_high, sym_entry, confidence=0.90)
+        edge_low = make_edge(sym_low, sym_entry, confidence=0.40)
+
+        nodes = [sym_entry, sym_high, sym_low]
+        edges = [edge_high, edge_low]
+
+        query = SliceQuery(
+            entrypoint="entry",
+            max_hops=3,
+            min_confidence=0.50,
+            reverse=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_entry.id in result.node_ids
+        assert sym_high.id in result.node_ids
+        assert sym_low.id not in result.node_ids
+
+    def test_reverse_slice_handles_cycles(self) -> None:
+        """Reverse slice should handle cycles without infinite loop."""
+        sym_a = make_symbol("a", start_line=1, end_line=2)
+        sym_b = make_symbol("b", start_line=3, end_line=4)
+
+        edge_ab = make_edge(sym_a, sym_b)
+        edge_ba = make_edge(sym_b, sym_a)
+
+        nodes = [sym_a, sym_b]
+        edges = [edge_ab, edge_ba]
+
+        query = SliceQuery(entrypoint="a", max_hops=10, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert len(result.node_ids) == 2
+        assert sym_a.id in result.node_ids
+        assert sym_b.id in result.node_ids
+
+    def test_reverse_slice_to_dict_includes_reverse(self) -> None:
+        """SliceQuery.to_dict should include reverse flag."""
+        query = SliceQuery(entrypoint="foo", reverse=True)
+        d = query.to_dict()
+        assert d["reverse"] is True
+
+    def test_reverse_slice_different_feature_id(self) -> None:
+        """Reverse and forward slices should have different feature IDs."""
+        sym_a = make_symbol("entry")
+        nodes = [sym_a]
+        edges: List[Edge] = []
+
+        query_forward = SliceQuery(entrypoint="entry", reverse=False)
+        query_reverse = SliceQuery(entrypoint="entry", reverse=True)
+
+        result_forward = slice_graph(nodes, edges, query_forward)
+        result_reverse = slice_graph(nodes, edges, query_reverse)
+
+        assert result_forward.feature_id != result_reverse.feature_id

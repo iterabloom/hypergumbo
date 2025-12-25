@@ -14,6 +14,18 @@ collect related nodes. Traversal respects configurable limits:
 - **max_files**: File count limit (default 20). Keeps context focused.
 - **min_confidence**: Edge confidence threshold. Filters speculative edges.
 - **exclude_tests**: Skips test files to focus on production code.
+- **reverse**: Direction of traversal. False = forward (what does X call?),
+  True = reverse (what calls X?).
+
+Forward vs Reverse Slicing
+--------------------------
+Forward slicing (reverse=False, default) answers "what does this function call?"
+by following edges from caller to callee. Useful for understanding dependencies
+and downstream effects.
+
+Reverse slicing (reverse=True) answers "what calls this function?" by following
+edges from callee to caller. Useful for impact analysis - understanding what
+code might be affected by changes to a function.
 
 The result is a "feature" - a subgraph with a stable ID derived from
 the query parameters (sha256 of JSON-serialized query). Same query
@@ -58,6 +70,8 @@ class SliceQuery:
         min_confidence: Minimum edge confidence to follow (default: 0.0).
         exclude_tests: Whether to exclude test files (default: False).
         method: Traversal method, currently only "bfs" supported.
+        reverse: If True, find callers of the entry point (backward traversal).
+                 If False (default), find callees (forward traversal).
     """
 
     entrypoint: str
@@ -66,6 +80,7 @@ class SliceQuery:
     min_confidence: float = 0.0
     exclude_tests: bool = False
     method: str = "bfs"
+    reverse: bool = False
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -75,6 +90,7 @@ class SliceQuery:
             "hops": self.max_hops,
             "max_files": self.max_files,
             "exclude_tests": self.exclude_tests,
+            "reverse": self.reverse,
         }
 
 
@@ -175,6 +191,12 @@ def slice_graph(
 ) -> SliceResult:
     """Perform BFS graph traversal from entry points.
 
+    For forward slicing (reverse=False), follows edges from caller to callee
+    to answer "what does X call?"
+
+    For reverse slicing (reverse=True), follows edges from callee to caller
+    to answer "what calls X?"
+
     Args:
         nodes: All nodes in the graph.
         edges: All edges in the graph.
@@ -185,11 +207,18 @@ def slice_graph(
     """
     # Build lookup structures
     node_by_id: Dict[str, Symbol] = {n.id: n for n in nodes}
-    edges_from: Dict[str, List[Edge]] = {}
+
+    # Build edge maps for both directions
+    edges_from: Dict[str, List[Edge]] = {}  # src -> edges (for forward traversal)
+    edges_to: Dict[str, List[Edge]] = {}    # dst -> edges (for reverse traversal)
     for edge in edges:
         if edge.src not in edges_from:
             edges_from[edge.src] = []
         edges_from[edge.src].append(edge)
+
+        if edge.dst not in edges_to:
+            edges_to[edge.dst] = []
+        edges_to[edge.dst].append(edge)
 
     # Build file path -> file node IDs mapping for import edge lookup
     # Import edges source from file nodes with ID format: {lang}:{path}:1-1:file:file
@@ -247,8 +276,9 @@ def slice_graph(
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
         files_seen.add(entry.path)
-        # Add import edges from this file
-        add_file_imports(entry.path)
+        # Add import edges from this file (forward only)
+        if not query.reverse:
+            add_file_imports(entry.path)
 
     # BFS traversal
     while queue:
@@ -260,39 +290,51 @@ def slice_graph(
                 limits_hit.append("hop_limit")
             continue
 
-        # Get outgoing edges
-        outgoing = edges_from.get(current_id, [])
+        # Get edges to follow based on direction
+        if query.reverse:
+            # Reverse: follow edges TO this node (find callers)
+            relevant_edges = edges_to.get(current_id, [])
+        else:
+            # Forward: follow edges FROM this node (find callees)
+            relevant_edges = edges_from.get(current_id, [])
 
-        for edge in outgoing:
+        for edge in relevant_edges:
             # Filter by confidence
             if edge.confidence < query.min_confidence:
                 continue
 
-            # Get destination node
-            dst_node = node_by_id.get(edge.dst)
-            if dst_node is None:
+            # Get the node at the other end of the edge
+            if query.reverse:
+                # Reverse: we're following edges TO current, so next is src
+                next_node = node_by_id.get(edge.src)
+            else:
+                # Forward: we're following edges FROM current, so next is dst
+                next_node = node_by_id.get(edge.dst)
+
+            if next_node is None:
                 continue
 
             # Filter test files
-            if query.exclude_tests and _is_test_file(dst_node.path):
+            if query.exclude_tests and _is_test_file(next_node.path):
                 continue
 
             # Check file limit
-            if dst_node.path not in files_seen:
+            if next_node.path not in files_seen:
                 if len(files_seen) >= query.max_files:
                     if "file_limit" not in limits_hit:
                         limits_hit.append("file_limit")
                     continue
-                files_seen.add(dst_node.path)
+                files_seen.add(next_node.path)
 
             # Visit edge and node
             visited_edges.add(edge.id)
 
-            if dst_node.id not in visited_nodes:
-                visited_nodes.add(dst_node.id)
-                queue.append((dst_node.id, hop + 1))
-                # Add import edges from the visited file
-                add_file_imports(dst_node.path)
+            if next_node.id not in visited_nodes:
+                visited_nodes.add(next_node.id)
+                queue.append((next_node.id, hop + 1))
+                # Add import edges from the visited file (forward only)
+                if not query.reverse:
+                    add_file_imports(next_node.path)
 
     return SliceResult(
         entry_nodes=[n.id for n in entry_nodes],

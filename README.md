@@ -58,6 +58,7 @@ hypergumbo . -t 1000         # sketch with 1000 token budget
 hypergumbo . -x              # exclude test files (faster on large codebases)
 hypergumbo run [path]        # full analysis → hypergumbo.results.json
 hypergumbo slice --entry X   # extract subgraph from entry point
+hypergumbo slice --entry X --reverse  # find all callers of X
 hypergumbo init [path]       # initialize .hypergumbo/ capsule
 hypergumbo init --assistant llm  # use LLM to generate analysis plan
 hypergumbo catalog           # list available analysis passes

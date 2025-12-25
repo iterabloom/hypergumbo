@@ -74,6 +74,25 @@ git commit -s -m "feat: description"
 - **Specs:** See `docs/hypergumbo-spec.md` for the design contract. Current work targets **Spec A (MVP)**; Spec B (future roadmap) is not in scope.
 - **Status:** See `STATUS.md` for implementation progress against Spec A.
 
+## Autonomous Development Mode
+When authorized for overnight/extended autonomous work:
+- **PUSH IT TO THE LIMIT.** Keep adding languages, frameworks, and features.
+- **Always TDD:** Red → Green → Refactor. Write failing tests first.
+- **Always auto-pr:** Every feature gets its own PR via `./scripts/auto-pr`.
+- **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
+- **Periodically test on real repos:** Use the lab notebook to validate analyzers work on real-world projects.
+- **Keep STATUS.md updated:** Document what's implemented after each merge.
+- **Adjust specs based on experiments:** If experiments reveal better approaches, update Spec A/B.
+- **If you run out of Spec A items, dive into Spec B.**
+- **Don't stop until there's nothing left to add.**
+
+Priority queue for new analyzers:
+1. Check `pip index versions tree-sitter-<lang>` for available grammars
+2. Languages with tree-sitter packages: Lua, Haskell, OCaml, etc.
+3. Framework-specific packs: Django routes, FastAPI routes, Phoenix channels
+
+Lab notebook location: `../hypergumbo-experimental_lab_notebook/notebook.md`
+
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
