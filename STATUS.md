@@ -131,18 +131,18 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `supply_chain.py` module | [ ] | File classification by dependency position |
-| Tier 4 detection (derived artifacts) | [ ] | Path patterns + content heuristics (minification, source maps) |
-| Tier 3 detection (external deps) | [ ] | `node_modules/`, `vendor/`, etc. |
-| Tier 2 detection (internal deps) | [ ] | Workspace/monorepo detection from manifests |
-| Tier 1 detection (first-party) | [ ] | `src/`, `lib/`, `app/` patterns + default |
-| Symbol fields (`supply_chain_tier`, `supply_chain_reason`) | [ ] | Add to `ir.py` Symbol class |
-| Node output (`supply_chain` object) | [ ] | `tier`, `tier_name`, `reason` on each node |
-| `supply_chain_summary` in output | [ ] | File/symbol counts per tier |
+| `supply_chain.py` module | [x] | File classification by dependency position |
+| Tier 4 detection (derived artifacts) | [x] | Path patterns + content heuristics (minification, source maps) |
+| Tier 3 detection (external deps) | [x] | `node_modules/`, `vendor/`, etc. |
+| Tier 2 detection (internal deps) | [x] | Workspace/monorepo detection from manifests |
+| Tier 1 detection (first-party) | [x] | `src/`, `lib/`, `app/` patterns + default |
+| Symbol fields (`supply_chain_tier`, `supply_chain_reason`) | [x] | Added to `ir.py` Symbol class |
+| Node output (`supply_chain` object) | [x] | `tier`, `tier_name`, `reason` on each node |
+| `supply_chain_summary` in output | [x] | File/symbol counts per tier |
 | `by_supply_chain_tier` in metrics | [ ] | Nodes/edges breakdown by tier |
 | CLI `--max-tier` flag | [ ] | Filter analysis scope by tier |
 | CLI `--first-party-only` flag | [ ] | Shortcut for `--max-tier 1` |
-| Tier-weighted sketch ranking | [ ] | First-party symbols prioritized in Key Symbols |
+| Tier-weighted sketch ranking | [x] | First-party symbols prioritized in Key Symbols (2x weight) |
 | CLI `--no-first-party-priority` flag | [ ] | Disable tier weighting |
 | Slice tier filtering | [ ] | `--max-tier` stops BFS at tier boundary |
 | Capsule plan `supply_chain` config | [ ] | Custom patterns for tiers |
