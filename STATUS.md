@@ -136,6 +136,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Lua | [x] tree-sitter | function, method | calls, imports | Detects `function`, `local function`, method-style `Table:method()`, `require()` imports. Two-pass cross-file resolution. Optional: `pip install hypergumbo[lua]` |
 | Haskell | [x] tree-sitter | function, data, class, instance | calls, imports | Detects functions (with/without type signatures), data types, type classes, instances, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[haskell]` |
 | OCaml | [x] tree-sitter | function, type, module | calls, imports | Detects let bindings (functions), types, modules, `open` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ocaml]` |
+| Solidity | [x] tree-sitter | contract, interface, library, function, constructor, modifier, event | calls, imports | Ethereum smart contracts. Detects contracts, interfaces, libraries, functions, constructors, modifiers, events, and import statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-solidity` |
 
 ## Supply Chain Classification (§8.6)
 
@@ -149,7 +150,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Symbol fields (`supply_chain_tier`, `supply_chain_reason`) | [x] | Added to `ir.py` Symbol class |
 | Node output (`supply_chain` object) | [x] | `tier`, `tier_name`, `reason` on each node |
 | `supply_chain_summary` in output | [x] | File/symbol counts per tier |
-| `by_supply_chain_tier` in metrics | [ ] | Nodes/edges breakdown by tier |
+| `by_supply_chain_tier` in metrics | [x] | Nodes/edges breakdown by tier |
 | CLI `--max-tier` flag | [ ] | Filter analysis scope by tier |
 | CLI `--first-party-only` flag | [ ] | Shortcut for `--max-tier 1` |
 | Tier-weighted sketch ranking | [x] | First-party symbols prioritized in Key Symbols (2x weight) |
