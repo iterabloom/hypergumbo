@@ -27,6 +27,46 @@ KNOWN_LIMITATIONS = [
 
 
 @dataclass
+class ClassificationFailure:
+    """A file that failed supply chain classification."""
+
+    path: str
+    reason: str
+
+    def to_dict(self) -> Dict[str, str]:
+        """Serialize to dict."""
+        return {"path": self.path, "reason": self.reason}
+
+
+@dataclass
+class AmbiguousPath:
+    """A file with ambiguous supply chain classification."""
+
+    path: str
+    assigned: int  # The tier that was assigned
+    note: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dict."""
+        return {"path": self.path, "assigned": self.assigned, "note": self.note}
+
+
+@dataclass
+class SupplyChainLimits:
+    """Tracks supply chain classification issues."""
+
+    classification_failures: List["ClassificationFailure"] = field(default_factory=list)
+    ambiguous_paths: List["AmbiguousPath"] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dict."""
+        return {
+            "classification_failures": [f.to_dict() for f in self.classification_failures],
+            "ambiguous_paths": [p.to_dict() for p in self.ambiguous_paths],
+        }
+
+
+@dataclass
 class FailedFile:
     """A file that failed during analysis."""
 
@@ -58,6 +98,7 @@ class Limits:
     analysis_depth: str = "syntax_only"
     partial_results_reason: str = ""
     max_tier_applied: int | None = None
+    supply_chain: SupplyChainLimits = field(default_factory=SupplyChainLimits)
 
     def add_failed_file(self, path: str, reason: str, analyzer: str) -> None:
         """Record a file that failed to analyze."""
@@ -85,8 +126,30 @@ class Limits:
             "reason": reason,
         })
 
+    def add_classification_failure(self, path: str, reason: str) -> None:
+        """Record a file that failed supply chain classification."""
+        self.supply_chain.classification_failures.append(
+            ClassificationFailure(path=path, reason=reason)
+        )
+
+    def add_ambiguous_path(self, path: str, assigned_tier: int, note: str) -> None:
+        """Record a file with ambiguous supply chain classification."""
+        self.supply_chain.ambiguous_paths.append(
+            AmbiguousPath(path=path, assigned=assigned_tier, note=note)
+        )
+
     def merge(self, other: "Limits") -> "Limits":
         """Merge limits from another analysis pass."""
+        # Merge supply chain limits
+        merged_supply_chain = SupplyChainLimits(
+            classification_failures=(
+                self.supply_chain.classification_failures
+                + other.supply_chain.classification_failures
+            ),
+            ambiguous_paths=(
+                self.supply_chain.ambiguous_paths + other.supply_chain.ambiguous_paths
+            ),
+        )
         merged = Limits(
             failed_files=self.failed_files + other.failed_files,
             skipped_languages=list(set(self.skipped_languages + other.skipped_languages)),
@@ -95,6 +158,7 @@ class Limits:
             analysis_depth=self.analysis_depth,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,
             max_tier_applied=self.max_tier_applied or other.max_tier_applied,
+            supply_chain=merged_supply_chain,
         )
         return merged
 
@@ -109,6 +173,7 @@ class Limits:
             "partial_results_reason": self.partial_results_reason,
             "analyzer_version": f"hypergumbo-{__version__}",
             "analysis_depth": self.analysis_depth,
+            "supply_chain": self.supply_chain.to_dict(),
         }
         if self.max_tier_applied is not None:
             result["max_tier_applied"] = self.max_tier_applied

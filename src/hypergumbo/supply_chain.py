@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional
@@ -47,6 +47,44 @@ class Tier(IntEnum):
     INTERNAL_DEP = 2
     EXTERNAL_DEP = 3
     DERIVED = 4
+
+
+@dataclass
+class SupplyChainConfig:
+    """Configuration for supply chain classification.
+
+    Allows customizing tier classification via capsule plan.
+
+    Attributes:
+        analysis_tiers: Which tiers to include in analysis (default: [1, 2, 3])
+        first_party_patterns: Additional patterns to classify as tier 1
+        derived_patterns: Additional patterns to classify as tier 4
+        internal_package_roots: Explicit internal package paths
+    """
+
+    analysis_tiers: list[int] = field(default_factory=lambda: [1, 2, 3])
+    first_party_patterns: list[str] = field(default_factory=list)
+    derived_patterns: list[str] = field(default_factory=list)
+    internal_package_roots: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Serialize to dict for JSON output."""
+        return {
+            "analysis_tiers": self.analysis_tiers,
+            "first_party_patterns": self.first_party_patterns,
+            "derived_patterns": self.derived_patterns,
+            "internal_package_roots": self.internal_package_roots,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SupplyChainConfig":
+        """Parse from dict."""
+        return cls(
+            analysis_tiers=data.get("analysis_tiers", [1, 2, 3]),
+            first_party_patterns=data.get("first_party_patterns", []),
+            derived_patterns=data.get("derived_patterns", []),
+            internal_package_roots=data.get("internal_package_roots", []),
+        )
 
 
 @dataclass
@@ -122,6 +160,7 @@ def classify_file(
     path: Path,
     repo_root: Path,
     package_roots: Optional[set[Path]] = None,
+    config: Optional[SupplyChainConfig] = None,
 ) -> FileClassification:
     """Classify a file's supply chain tier.
 
@@ -129,6 +168,7 @@ def classify_file(
         path: Absolute path to the file
         repo_root: Root directory of the repository
         package_roots: Set of internal package root paths (from detect_package_roots)
+        config: Optional custom classification configuration
 
     Returns:
         FileClassification with tier, reason, and optional package_name
@@ -142,6 +182,12 @@ def classify_file(
 
     # Normalize path separators for consistent matching
     rel = rel.replace("\\", "/")
+
+    # 0. Check custom derived patterns from config first
+    if config and config.derived_patterns:
+        for pattern in config.derived_patterns:
+            if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):
+                return FileClassification(Tier.DERIVED, f"config derived_patterns: {pattern}")
 
     # 1. Check derived patterns first (these should be skipped)
     for pattern in DERIVED_PATH_PATTERNS:
@@ -167,6 +213,14 @@ def classify_file(
         if re.match(pattern, rel):
             return FileClassification(Tier.INTERNAL_DEP, f"path matches {pattern}")
 
+    # 5a. Check custom internal_package_roots from config
+    if config and config.internal_package_roots:
+        for pkg_pattern in config.internal_package_roots:
+            if rel.startswith(pkg_pattern) or rel.startswith(pkg_pattern + "/"):
+                return FileClassification(
+                    Tier.INTERNAL_DEP, f"config internal_package_roots: {pkg_pattern}"
+                )
+
     # 5. Check internal packages (monorepo workspaces)
     if package_roots:
         for pkg_root in package_roots:
@@ -188,12 +242,20 @@ def classify_file(
             except (ValueError, TypeError):
                 continue
 
+    # 5b. Check custom first_party_patterns from config
+    if config and config.first_party_patterns:
+        for pattern in config.first_party_patterns:
+            if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):
+                return FileClassification(
+                    Tier.FIRST_PARTY, f"config first_party_patterns: {pattern}"
+                )
+
     # 6. Check first-party patterns
     for pattern in FIRST_PARTY_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(Tier.FIRST_PARTY, f"path matches {pattern}")
 
-    # 6. Default: assume first-party if no other signals
+    # 7. Default: assume first-party if no other signals
     return FileClassification(Tier.FIRST_PARTY, "default (no matching pattern)")
 
 

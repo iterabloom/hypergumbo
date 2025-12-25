@@ -159,8 +159,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Tier-weighted sketch ranking | [x] | First-party symbols prioritized in Key Symbols (2x weight) |
 | CLI `--no-first-party-priority` flag | [x] | Disable tier weighting (on `sketch` command) |
 | Slice tier filtering | [x] | `--max-tier` stops BFS at tier boundary |
-| Capsule plan `supply_chain` config | [ ] | Custom patterns for tiers |
-| `limits.supply_chain` logging | [ ] | Classification failures, ambiguous paths |
+| Capsule plan `supply_chain` config | [x] | `SupplyChainConfig` class with custom patterns for tiers |
+| `limits.supply_chain` logging | [x] | `SupplyChainLimits` tracks classification_failures and ambiguous_paths |
 
 ## Cross-Language Linkers
 
