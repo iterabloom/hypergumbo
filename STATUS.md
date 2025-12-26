@@ -177,6 +177,7 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | IPC | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`), Web Workers, and `postMessage` patterns. Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Channel stored in `edge.meta.channel` and `symbol.meta.channel`. |
 | WebSocket | [x] | websocket_message, websocket_connection | websocket_endpoint, file | Detects Socket.io (`socket.emit`, `socket.on`, `io.emit`), native WebSocket (`new WebSocket`, `ws.send`), and Node.js ws package patterns. Creates file symbols enabling slice traversal across WebSocket boundaries. Event matching links senders to receivers. |
 | IPC (Phoenix) | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Phoenix Channel patterns (`broadcast!`, `push`, `handle_in`) and LiveView patterns (`handle_event`, `push_event`). Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Event matching links senders to receivers. |
+| Swift/ObjC | [x] | imports | objc_bridge, selector_ref | Detects Swift/Objective-C interop: `@objc` annotations, NSObject subclasses, `#selector()` references, and `*-Bridging-Header.h` imports. Enables slice traversal across Apple platform language boundaries. |
 
 ---
 
