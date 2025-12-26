@@ -75,6 +75,7 @@ from .analyze.nix import analyze_nix_files
 from .analyze.glsl import analyze_glsl_files
 from .analyze.wgsl import analyze_wgsl_files
 from .analyze.xml_config import analyze_xml_files
+from .analyze.json_config import analyze_json_files
 from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
@@ -1395,6 +1396,19 @@ def run_behavior_map(
             analysis_runs.append(xml_result.run.to_dict())
             all_symbols.extend(xml_result.symbols)
             all_edges.extend(xml_result.edges)
+
+    # Run JSON analysis (optional, requires tree-sitter-json)
+    json_result = analyze_json_files(repo_root)
+    if json_result.run is not None:
+        if json_result.skipped:  # pragma: no cover - json installed
+            limits.skipped_passes.append({
+                "pass": json_result.run.pass_id,
+                "reason": json_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(json_result.run.to_dict())
+            all_symbols.extend(json_result.symbols)
+            all_edges.extend(json_result.edges)
 
     # Run Fortran analysis (optional, requires tree-sitter-fortran)
     fortran_result = analyze_fortran_files(repo_root)
