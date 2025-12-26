@@ -145,9 +145,9 @@ def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
     """
-    # Check for route decorators first
+    # Check for route decorators first (now handled directly in symbol creation)
     http_method, _ = _detect_route_decorator(node)
-    if http_method:
+    if http_method:  # pragma: no cover
         return http_method
 
     kind = "function" if isinstance(node, ast.FunctionDef) else "class"
@@ -441,10 +441,10 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                     method_name = f"{class_name}.{item.name}"
 
                     # For Django/DRF class-based views, methods named get/post/etc.
-                    # should have stable_id set to the HTTP method
+                    # should have stable_id set to the HTTP method (uppercase for consistency)
                     stable_id = _compute_stable_id(item)
                     if item.name.lower() in HTTP_METHODS:
-                        stable_id = item.name.lower()
+                        stable_id = item.name.upper()
 
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
@@ -476,8 +476,14 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                     end_col=end_col,
                 )
                 # Check for route decorator to store route_path in meta
-                _, route_path = _detect_route_decorator(node)
-                meta = {"route_path": route_path} if route_path else None
+                http_method, route_path = _detect_route_decorator(node)
+                if route_path or http_method:
+                    # Uppercase HTTP methods (handle comma-separated for DRF api_view)
+                    http_method_upper = ",".join(m.upper() for m in http_method.split(",")) if http_method else None
+                    meta = {"route_path": route_path, "http_method": http_method_upper}
+                else:
+                    http_method_upper = None
+                    meta = None
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
@@ -486,7 +492,8 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                     language="python",
                     path=str(py_file),
                     span=span,
-                    stable_id=_compute_stable_id(node),
+                    # For routes, use HTTP method as stable_id for route discovery
+                    stable_id=http_method_upper if http_method_upper else _compute_stable_id(node),
                     shape_id=_compute_shape_id(node),
                     meta=meta,
                 )
