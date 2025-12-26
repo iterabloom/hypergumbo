@@ -26,6 +26,7 @@ Detects common entrypoint patterns:
 - Aiohttp views (*_view.py, *_resource.py, routes.py, resources/)
 - Slim routes (routes.php, *Middleware.php, Actions/, Handlers/)
 - Micronaut HTTP clients (*Client.java/kt, client/)
+- GraphQL servers (resolvers.js/ts, schema.js/ts, *.resolver.js/ts, resolvers/, graphql/)
 
 How It Works
 ------------
@@ -107,6 +108,7 @@ class EntrypointKind(Enum):
     AIOHTTP_VIEW = "aiohttp_view"
     SLIM_ROUTE = "slim_route"
     MICRONAUT_CONTROLLER = "micronaut_controller"
+    GRAPHQL_SERVER = "graphql_server"
 
 
 @dataclass
@@ -161,6 +163,19 @@ ELECTRON_PRELOAD_FILES = {"preload.js", "preload.ts", "electron-preload.js", "el
 # Files named routes.js/ts or router.js/ts, or files in a routes/ directory
 EXPRESS_ROUTE_FILENAMES = {"routes.js", "routes.ts", "router.js", "router.ts"}
 EXPRESS_ROUTE_DIRS = {"routes", "routers"}
+
+# GraphQL server patterns (Apollo Server, GraphQL Yoga, etc.)
+# Files named with resolver, schema, or typeDefs conventions
+GRAPHQL_SERVER_FILENAMES = {
+    "resolvers.js", "resolvers.ts",
+    "schema.js", "schema.ts",
+    "typeDefs.js", "typeDefs.ts",
+}
+GRAPHQL_SERVER_SUFFIXES = {
+    ".resolver.js", ".resolver.ts",
+    ".resolvers.js", ".resolvers.ts",
+}
+GRAPHQL_SERVER_DIRS = {"resolvers", "graphql"}
 
 # NestJS controller patterns
 # Files ending in .controller.ts, or files in a controllers/ directory
@@ -1421,6 +1436,65 @@ def _detect_micronaut_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def _is_graphql_server_file(path: str, language: str) -> bool:
+    """Check if a file path matches GraphQL server patterns.
+
+    Matches:
+    - Files named resolvers.js/ts, schema.js/ts, typeDefs.js/ts
+    - Files with .resolver.js/ts or .resolvers.js/ts suffix
+    - Any .js/.ts file inside a resolvers/ or graphql/ directory
+
+    Excludes test files.
+    """
+    if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude test files
+    if _is_test_file(path):
+        return False
+
+    filename = _get_filename(path)
+
+    # Check for GraphQL server file names
+    if filename in GRAPHQL_SERVER_FILENAMES:
+        return True
+
+    # Check for resolver suffix patterns (.resolver.js, .resolvers.ts, etc.)
+    if any(filename.endswith(suffix) for suffix in GRAPHQL_SERVER_SUFFIXES):
+        return True
+
+    # Check if file is in a resolvers/ or graphql/ directory
+    path_parts = path.replace("\\", "/").split("/")
+    return any(part in GRAPHQL_SERVER_DIRS for part in path_parts)
+
+
+def _detect_graphql_servers(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect GraphQL server entry points from file patterns.
+
+    GraphQL servers (Apollo Server, GraphQL Yoga, Mercurius, etc.) typically
+    define resolvers in files named resolvers.js/ts, or with .resolver.js/ts
+    suffixes. Schema files and typeDefs files are also entry points.
+
+    Only function/class symbols are detected (not file symbols).
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        # Only detect function-like symbols, not file symbols
+        if sym.kind == "file":
+            continue
+
+        if _is_graphql_server_file(sym.path, sym.language):
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.GRAPHQL_SERVER,
+                confidence=0.85,
+                label="GraphQL resolver",
+            ))
+
+    return entrypoints
+
+
 def _detect_django_views(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1505,6 +1579,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_tornado_handlers(nodes))
     entrypoints.extend(_detect_aiohttp_views(nodes))
     entrypoints.extend(_detect_slim_routes(nodes))
+    entrypoints.extend(_detect_graphql_servers(nodes))
 
     # Remove duplicates (same symbol detected by multiple heuristics)
     seen_ids: set[str] = set()

@@ -2784,3 +2784,178 @@ class TestMicronautEntrypoints:
 
         micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
         assert len(micronaut_eps) == 0
+
+
+class TestGraphQLServerEntrypoints:
+    """Tests for GraphQL server (Apollo, Yoga, Mercurius) detection.
+
+    GraphQL servers typically define resolvers in specific file patterns:
+    - resolvers.js/ts, schema.js/ts, typeDefs.js/ts
+    - *.resolver.js/ts, *.resolvers.js/ts
+    - Files in resolvers/ or graphql/ directories
+    """
+
+    def test_detect_graphql_resolvers_file(self) -> None:
+        """Detect functions in resolvers.js as GraphQL resolvers."""
+        sym = make_symbol("Query", path="src/resolvers.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+        assert graphql_eps[0].symbol_id == sym.id
+
+    def test_detect_graphql_resolvers_ts_file(self) -> None:
+        """Detect functions in resolvers.ts as GraphQL resolvers."""
+        sym = make_symbol("Mutation", path="src/resolvers.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_graphql_schema_file(self) -> None:
+        """Detect functions in schema.js as GraphQL schema."""
+        sym = make_symbol("typeDefs", path="src/schema.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_graphql_typedefs_file(self) -> None:
+        """Detect functions in typeDefs.ts as GraphQL type definitions."""
+        sym = make_symbol("UserType", path="src/typeDefs.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_graphql_resolver_suffix(self) -> None:
+        """Detect functions in *.resolver.ts as GraphQL resolvers."""
+        sym = make_symbol("getUser", path="src/user.resolver.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_graphql_resolvers_suffix(self) -> None:
+        """Detect functions in *.resolvers.js (plural) as GraphQL resolvers."""
+        sym = make_symbol("userResolvers", path="src/user.resolvers.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_graphql_resolvers_directory(self) -> None:
+        """Detect functions in resolvers/ directory as GraphQL resolvers."""
+        sym = make_symbol("userQuery", path="src/resolvers/user.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_graphql_graphql_directory(self) -> None:
+        """Detect functions in graphql/ directory as GraphQL server files."""
+        sym = make_symbol("schema", path="src/graphql/index.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+
+    def test_detect_multiple_graphql_resolvers(self) -> None:
+        """Detect multiple resolvers in same file."""
+        sym1 = make_symbol("Query", path="src/resolvers.ts", language="typescript", start_line=10)
+        sym2 = make_symbol("Mutation", path="src/resolvers.ts", language="typescript", start_line=50)
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 2
+
+    def test_graphql_resolver_confidence(self) -> None:
+        """GraphQL resolver detection has appropriate confidence."""
+        sym = make_symbol("resolver", path="src/resolvers.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+        assert graphql_eps[0].confidence == 0.85
+
+    def test_graphql_resolver_label(self) -> None:
+        """GraphQL resolver entrypoints have descriptive labels."""
+        sym = make_symbol("Query", path="src/resolvers.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 1
+        assert "GraphQL" in graphql_eps[0].label or "resolver" in graphql_eps[0].label.lower()
+
+    def test_graphql_only_js_ts_files(self) -> None:
+        """Only JS/TS files are detected as GraphQL resolvers."""
+        # Python file should NOT be detected
+        sym = make_symbol("Query", path="src/resolvers.py", language="python")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_file_symbol_not_detected(self) -> None:
+        """File symbols in GraphQL files are not detected."""
+        sym = make_symbol("file", kind="file", path="src/resolvers.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_non_resolver_file_not_detected(self) -> None:
+        """Non-resolver JS files are not detected as GraphQL."""
+        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_test_file_not_detected(self) -> None:
+        """Test files with resolver patterns are not detected."""
+        sym = make_symbol("Query", path="tests/resolvers.test.ts", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_spec_file_not_detected(self) -> None:
+        """Spec files with resolver patterns are not detected."""
+        sym = make_symbol("Query", path="spec/resolvers.spec.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
