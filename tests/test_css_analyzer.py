@@ -229,3 +229,82 @@ def test_nested_media_variables(tmp_path):
     # Should find --bg-color inside the media query
     assert len(variables) >= 1
     assert any(v.name == "--bg-color" for v in variables)
+
+
+def test_analyze_class_selector(tmp_path):
+    """Test detection of class selectors (.class)."""
+    css_file = tmp_path / "classes.css"
+    css_file.write_text("""
+.button {
+    padding: 10px;
+}
+
+.nav-item {
+    display: inline-block;
+}
+
+.card.featured {
+    border: 2px solid gold;
+}
+""")
+    result = analyze_css_files(tmp_path)
+
+    classes = [s for s in result.symbols if s.kind == "class_selector"]
+    # Note: .card.featured may be 1 or 2 symbols depending on tree-sitter-css version
+    assert len(classes) >= 3
+    names = [c.name for c in classes]
+    assert ".button" in names
+    assert ".nav-item" in names
+    # Combined selectors like .card.featured may appear as single unit or split
+    assert any(".card" in n for n in names)
+
+
+def test_analyze_id_selector(tmp_path):
+    """Test detection of ID selectors (#id)."""
+    css_file = tmp_path / "ids.css"
+    css_file.write_text("""
+#header {
+    position: fixed;
+}
+
+#main-content {
+    margin: 0 auto;
+}
+
+#footer {
+    background: #333;
+}
+""")
+    result = analyze_css_files(tmp_path)
+
+    ids = [s for s in result.symbols if s.kind == "id_selector"]
+    assert len(ids) >= 3
+    names = [i.name for i in ids]
+    assert "#header" in names
+    assert "#main-content" in names
+    assert "#footer" in names
+
+
+def test_analyze_mixed_selectors(tmp_path):
+    """Test detection of mixed class and ID selectors."""
+    css_file = tmp_path / "mixed.css"
+    css_file.write_text("""
+#app .container {
+    max-width: 1200px;
+}
+
+.sidebar #search-box {
+    width: 100%;
+}
+""")
+    result = analyze_css_files(tmp_path)
+
+    classes = [s for s in result.symbols if s.kind == "class_selector"]
+    ids = [s for s in result.symbols if s.kind == "id_selector"]
+
+    assert len(classes) >= 2
+    assert len(ids) >= 2
+    assert any(c.name == ".container" for c in classes)
+    assert any(c.name == ".sidebar" for c in classes)
+    assert any(i.name == "#app" for i in ids)
+    assert any(i.name == "#search-box" for i in ids)
