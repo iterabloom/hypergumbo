@@ -78,6 +78,53 @@ class TestTruncateToTokens:
         # Third section should be excluded
         assert "C" * 50 not in result
 
+    def test_markdown_headers_stay_with_content(self) -> None:
+        """Markdown section headers must not be separated from their content.
+
+        This prevents orphaned headers like '## Entry Points' appearing
+        without their list of entries.
+        """
+        text = """# Title
+
+## Overview
+Some overview text.
+
+## Source Files
+
+- file1.py
+- file2.py
+- file3.py
+
+## Entry Points
+
+- handler1 (HTTP GET)
+- handler2 (HTTP POST)
+"""
+        # Truncate to a size that can't fit Entry Points section
+        result = truncate_to_tokens(text, max_tokens=35)
+
+        # If "## Entry Points" is in result, its content must be there too
+        if "## Entry Points" in result:
+            assert "handler1" in result
+        else:
+            # Alternatively, the whole section should be excluded
+            assert "handler1" not in result
+
+    def test_markdown_title_preserved(self) -> None:
+        """Title before first ## section is preserved."""
+        text = """# My Project
+
+## Overview
+Some content.
+
+## Details
+More content.
+"""
+        result = truncate_to_tokens(text, max_tokens=15)
+
+        # Title should be in result
+        assert "# My Project" in result
+
 
 class TestGenerateSketch:
     """Tests for full sketch generation."""

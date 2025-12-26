@@ -59,8 +59,9 @@ def estimate_tokens(text: str) -> int:
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
     """Truncate text to approximately fit within token budget.
 
-    Attempts to truncate at section boundaries (double newlines) when
-    possible to maintain coherent output.
+    Attempts to truncate at markdown section boundaries (## headers) to
+    keep headers with their content. Avoids orphaned headers like
+    "## Entry Points" appearing without their content.
 
     Args:
         text: The text to truncate.
@@ -75,10 +76,47 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
     # Target character count
     max_chars = max_tokens * CHARS_PER_TOKEN
 
-    # Try to truncate at section boundaries
-    sections = text.split("\n\n")
-    result_parts = []
-    current_length = 0
+    # Split by markdown section headers (## ...) while keeping them
+    # This ensures headers stay with their content
+    import re
+
+    # Find all section starts (lines beginning with ## )
+    section_pattern = re.compile(r"^(## .+)$", re.MULTILINE)
+    section_starts = [(m.start(), m.group(1)) for m in section_pattern.finditer(text)]
+
+    if not section_starts:
+        # No markdown sections, fall back to paragraph splitting
+        paragraphs = text.split("\n\n")
+        result_parts = []
+        current_length = 0
+
+        for para in paragraphs:
+            para_with_sep = para + "\n\n"
+            if current_length + len(para_with_sep) <= max_chars:
+                result_parts.append(para)
+                current_length += len(para_with_sep)
+            else:
+                break
+
+        if result_parts:
+            return "\n\n".join(result_parts)
+        return text[:max_chars]
+
+    # Extract sections (each section is header + content until next header)
+    sections = []
+    for i, (start, _header) in enumerate(section_starts):
+        if i + 1 < len(section_starts):
+            end = section_starts[i + 1][0]
+        else:
+            end = len(text)
+        sections.append(text[start:end].rstrip())
+
+    # Include any content before the first section (like the title)
+    prefix = text[: section_starts[0][0]].rstrip() if section_starts[0][0] > 0 else ""
+
+    # Build result keeping whole sections
+    result_parts = [prefix] if prefix else []
+    current_length = len(prefix) + 2 if prefix else 0
 
     for section in sections:
         section_with_sep = section + "\n\n"
@@ -92,8 +130,8 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
     if result_parts:
         return "\n\n".join(result_parts)
 
-    # Fallback: hard truncate if no section fits
-    return text[:max_chars]
+    # Fallback: hard truncate if nothing fits
+    return text[:max_chars]  # pragma: no cover - defensive path
 
 
 def _format_language_stats(profile: RepoProfile) -> str:
