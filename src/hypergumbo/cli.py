@@ -69,6 +69,7 @@ from .analyze.cuda import analyze_cuda_files
 from .analyze.verilog import analyze_verilog_files
 from .analyze.cmake import analyze_cmake_files
 from .analyze.make import analyze_make_files
+from .analyze.vhdl import analyze_vhdl_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1089,6 +1090,19 @@ def run_behavior_map(
             analysis_runs.append(make_result.run.to_dict())
             all_symbols.extend(make_result.symbols)
             all_edges.extend(make_result.edges)
+
+    # Run VHDL analysis (optional, requires tree-sitter-vhdl)
+    vhdl_result = analyze_vhdl_files(repo_root)
+    if vhdl_result.run is not None:
+        if vhdl_result.skipped:  # pragma: no cover - vhdl installed
+            limits.skipped_passes.append({
+                "pass": vhdl_result.run.pass_id,
+                "reason": vhdl_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(vhdl_result.run.to_dict())
+            all_symbols.extend(vhdl_result.symbols)
+            all_edges.extend(vhdl_result.edges)
 
     # Run cross-language linkers
 

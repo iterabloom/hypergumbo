@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -260,6 +260,12 @@ def get_default_catalog() -> Catalog:
                 description="Makefile build system analysis via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[make]",
+            ),
+            Pass(
+                id="vhdl-v1",
+                description="VHDL hardware design via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[vhdl]",
             ),
             Pass(
                 id="websocket-linker-v1",
