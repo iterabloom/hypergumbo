@@ -74,15 +74,68 @@ def _make_module_id(module_name: str) -> str:
     return f"python:{module_name}:0-0:module:module"
 
 
+# HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
+
+
+def _detect_route_decorator(
+    node: ast.FunctionDef | ast.ClassDef,
+) -> tuple[str | None, str | None]:
+    """Detect if a function has a route decorator (FastAPI, Flask).
+
+    Returns (http_method, route_path) if a route decorator is found, else (None, None).
+
+    Supported patterns:
+    - @app.get("/path"), @router.post("/path")  # FastAPI/Flask 2.0+
+    - @app.route("/path")  # Flask
+
+    The decorator must be of form @<var>.<method>("/path") where method is an HTTP verb.
+    """
+    if not isinstance(node, ast.FunctionDef):
+        return None, None
+
+    for dec in node.decorator_list:
+        # Route decorators are calls: @app.get("/path")
+        if not isinstance(dec, ast.Call):
+            continue
+
+        # The function being called should be an attribute: app.get
+        if not isinstance(dec.func, ast.Attribute):
+            continue
+
+        method_name = dec.func.attr.lower()
+        if method_name not in HTTP_METHODS:
+            continue
+
+        # Extract the route path from the first argument
+        route_path = None
+        if dec.args:
+            first_arg = dec.args[0]
+            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                route_path = first_arg.value
+
+        return method_name, route_path
+
+    return None, None
+
+
 def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
-    For untyped Python:
+    For route handlers (FastAPI, Flask), returns the HTTP method directly
+    (e.g., "get", "post") to enable route discovery.
+
+    For other functions, returns:
     sha256({kind}:{param_count}:{arity_flags}:{decorators})
 
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
     """
+    # Check for route decorators first
+    http_method, _ = _detect_route_decorator(node)
+    if http_method:
+        return http_method
+
     kind = "function" if isinstance(node, ast.FunctionDef) else "class"
 
     # Extract signature info for functions
@@ -401,6 +454,10 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                     start_col=node.col_offset,
                     end_col=end_col,
                 )
+                # Check for route decorator to store route_path in meta
+                _, route_path = _detect_route_decorator(node)
+                meta = {"route_path": route_path} if route_path else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
                     name=node.name,
@@ -410,6 +467,7 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                     span=span,
                     stable_id=_compute_stable_id(node),
                     shape_id=_compute_shape_id(node),
+                    meta=meta,
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol

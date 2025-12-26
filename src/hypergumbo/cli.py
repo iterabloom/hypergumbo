@@ -488,7 +488,13 @@ def cmd_routes(args: argparse.Namespace) -> int:
             method = route.get("stable_id", "").upper()
             span = route.get("span", {})
             line = span.get("start_line", 0)
-            print(f"  [{method}] {name} (line {line})")
+            # Include route path if available
+            meta = route.get("meta", {}) or {}
+            route_path = meta.get("route_path", "")
+            if route_path:
+                print(f"  [{method}] {route_path} -> {name} (line {line})")
+            else:
+                print(f"  [{method}] {name} (line {line})")
         print()
 
     return 0
