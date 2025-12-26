@@ -75,6 +75,7 @@ from .analyze.nix import analyze_nix_files
 from .analyze.glsl import analyze_glsl_files
 from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
+from .analyze.css import analyze_css_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1173,6 +1174,19 @@ def run_behavior_map(
             analysis_runs.append(toml_result.run.to_dict())
             all_symbols.extend(toml_result.symbols)
             all_edges.extend(toml_result.edges)
+
+    # Run CSS analysis (optional, requires tree-sitter-css)
+    css_result = analyze_css_files(repo_root)
+    if css_result.run is not None:
+        if css_result.skipped:  # pragma: no cover - css installed
+            limits.skipped_passes.append({
+                "pass": css_result.run.pass_id,
+                "reason": css_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(css_result.run.to_dict())
+            all_symbols.extend(css_result.symbols)
+            all_edges.extend(css_result.edges)
 
     # Run cross-language linkers
 
