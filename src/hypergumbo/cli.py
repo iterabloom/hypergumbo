@@ -72,6 +72,7 @@ from .analyze.make import analyze_make_files
 from .analyze.vhdl import analyze_vhdl_files
 from .analyze.graphql import analyze_graphql_files
 from .analyze.nix import analyze_nix_files
+from .analyze.glsl import analyze_glsl_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1131,6 +1132,19 @@ def run_behavior_map(
             analysis_runs.append(nix_result.run.to_dict())
             all_symbols.extend(nix_result.symbols)
             all_edges.extend(nix_result.edges)
+
+    # Run GLSL analysis (optional, requires tree-sitter-glsl)
+    glsl_result = analyze_glsl_files(repo_root)
+    if glsl_result.run is not None:
+        if glsl_result.skipped:  # pragma: no cover - glsl installed
+            limits.skipped_passes.append({
+                "pass": glsl_result.run.pass_id,
+                "reason": glsl_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(glsl_result.run.to_dict())
+            all_symbols.extend(glsl_result.symbols)
+            all_edges.extend(glsl_result.edges)
 
     # Run cross-language linkers
 
