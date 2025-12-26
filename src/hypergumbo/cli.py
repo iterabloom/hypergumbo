@@ -74,6 +74,7 @@ from .analyze.graphql import analyze_graphql_files
 from .analyze.nix import analyze_nix_files
 from .analyze.glsl import analyze_glsl_files
 from .analyze.fortran import analyze_fortran_files
+from .analyze.toml_config import analyze_toml_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1159,6 +1160,19 @@ def run_behavior_map(
             analysis_runs.append(fortran_result.run.to_dict())
             all_symbols.extend(fortran_result.symbols)
             all_edges.extend(fortran_result.edges)
+
+    # Run TOML analysis (optional, requires tree-sitter-toml)
+    toml_result = analyze_toml_files(repo_root)
+    if toml_result.run is not None:
+        if toml_result.skipped:  # pragma: no cover - toml installed
+            limits.skipped_passes.append({
+                "pass": toml_result.run.pass_id,
+                "reason": toml_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(toml_result.run.to_dict())
+            all_symbols.extend(toml_result.symbols)
+            all_edges.extend(toml_result.edges)
 
     # Run cross-language linkers
 
