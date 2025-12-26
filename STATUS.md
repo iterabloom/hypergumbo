@@ -151,6 +151,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | CUDA | [x] tree-sitter | kernel, device_function, host_device_function, function | calls, kernel_launch | Detects `__global__` kernels, `__device__` functions, `__host__ __device__` dual functions. Kernel launch edges for `<<<grid, block>>>` syntax. Optional: `pip install tree-sitter-cuda` |
 | Verilog | [x] tree-sitter | module, interface | instantiates | Detects Verilog/SystemVerilog modules, interfaces, module instantiations. Cross-file module resolution. Optional: `pip install tree-sitter-verilog` |
 | CMake | [x] tree-sitter | project, library, executable, function, macro, package, subdirectory | links | Detects CMake projects, add_library/add_executable targets, function/macro definitions, find_package, add_subdirectory. Target link dependencies. Optional: `pip install tree-sitter-cmake` |
+| Make | [x] tree-sitter | variable, target, pattern_rule, special_target, function, include | depends_on | Detects Makefiles: variables, targets, pattern rules, .PHONY, define blocks, include directives. Prerequisite dependencies. Optional: `pip install tree-sitter-make` |
 
 ## Supply Chain Classification (§8.6)
 
