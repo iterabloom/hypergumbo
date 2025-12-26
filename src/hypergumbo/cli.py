@@ -70,6 +70,7 @@ from .analyze.verilog import analyze_verilog_files
 from .analyze.cmake import analyze_cmake_files
 from .analyze.make import analyze_make_files
 from .analyze.vhdl import analyze_vhdl_files
+from .analyze.graphql import analyze_graphql_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1103,6 +1104,19 @@ def run_behavior_map(
             analysis_runs.append(vhdl_result.run.to_dict())
             all_symbols.extend(vhdl_result.symbols)
             all_edges.extend(vhdl_result.edges)
+
+    # Run GraphQL analysis (optional, requires tree-sitter-graphql)
+    graphql_result = analyze_graphql_files(repo_root)
+    if graphql_result.run is not None:
+        if graphql_result.skipped:  # pragma: no cover - graphql installed
+            limits.skipped_passes.append({
+                "pass": graphql_result.run.pass_id,
+                "reason": graphql_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(graphql_result.run.to_dict())
+            all_symbols.extend(graphql_result.symbols)
+            all_edges.extend(graphql_result.edges)
 
     # Run cross-language linkers
 
