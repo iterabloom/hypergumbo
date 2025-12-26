@@ -146,6 +146,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Objective-C | [x] tree-sitter | class, protocol, method, property | calls, imports | Detects `@interface`, `@implementation`, `@protocol`, methods (`-`/`+`), properties. Message send call resolution `[receiver message]`. Two-pass cross-file resolution. Optional: `pip install tree-sitter-objc` |
 | HCL/Terraform | [x] tree-sitter | resource, data, variable, output, module, provider, local | depends_on, imports | Detects Terraform blocks, variable references, resource dependencies, module sources. Two-pass cross-file resolution. Optional: `pip install tree-sitter-hcl` |
 | YAML/Ansible | [x] tree-sitter | playbook, task, handler, variable | imports | Detects Ansible playbooks, tasks, handlers, variables from YAML files. Extracts `include_tasks`, `import_tasks`, `include_role`, `import_role` references. Two-pass cross-file resolution. Optional: `pip install tree-sitter-yaml` |
+| SQL | [x] tree-sitter | table, view, function, trigger, index, procedure | references | Detects CREATE TABLE, VIEW, FUNCTION, TRIGGER, INDEX statements. Foreign key REFERENCES edges. Two-pass cross-file resolution. Optional: `pip install tree-sitter-sql` |
 
 ## Supply Chain Classification (§8.6)
 
@@ -183,4 +184,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-25*
+*Last updated: 2025-12-26*

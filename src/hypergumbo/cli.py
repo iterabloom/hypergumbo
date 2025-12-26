@@ -63,6 +63,7 @@ from .analyze.bash import analyze_bash
 from .analyze.objc import analyze_objc
 from .analyze.hcl import analyze_hcl
 from .analyze.yaml_ansible import analyze_ansible
+from .analyze.sql import analyze_sql_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1005,6 +1006,19 @@ def run_behavior_map(
             analysis_runs.append(ansible_result.run.to_dict())
             all_symbols.extend(ansible_result.symbols)
             all_edges.extend(ansible_result.edges)
+
+    # Run SQL analysis (optional, requires tree-sitter-sql)
+    sql_result = analyze_sql_files(repo_root)
+    if sql_result.run is not None:
+        if sql_result.skipped:  # pragma: no cover - sql installed
+            limits.skipped_passes.append({
+                "pass": sql_result.run.pass_id,
+                "reason": sql_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(sql_result.run.to_dict())
+            all_symbols.extend(sql_result.symbols)
+            all_edges.extend(sql_result.edges)
 
     # Run cross-language linkers
 
