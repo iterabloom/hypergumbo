@@ -485,7 +485,7 @@ def test_fastapi_get_route_detected(tmp_path: Path) -> None:
     func = functions[0]
     assert func["name"] == "get_users"
     # stable_id should be the HTTP method
-    assert func["stable_id"] == "get"
+    assert func["stable_id"] == "GET"
     # Route path should be stored in meta
     assert func.get("meta", {}).get("route_path") == "/users"
 
@@ -512,7 +512,7 @@ def test_fastapi_post_route_detected(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    assert func["stable_id"] == "post"
+    assert func["stable_id"] == "POST"
     assert func.get("meta", {}).get("route_path") == "/users"
 
 
@@ -538,7 +538,7 @@ def test_fastapi_router_route_detected(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    assert func["stable_id"] == "get"
+    assert func["stable_id"] == "GET"
     assert func.get("meta", {}).get("route_path") == "/items/{item_id}"
 
 
@@ -582,13 +582,13 @@ def test_fastapi_all_http_methods(tmp_path: Path) -> None:
 
     # Check each function has correct stable_id
     func_by_name = {f["name"]: f for f in functions}
-    assert func_by_name["do_get"]["stable_id"] == "get"
-    assert func_by_name["do_post"]["stable_id"] == "post"
-    assert func_by_name["do_put"]["stable_id"] == "put"
-    assert func_by_name["do_patch"]["stable_id"] == "patch"
-    assert func_by_name["do_delete"]["stable_id"] == "delete"
-    assert func_by_name["do_head"]["stable_id"] == "head"
-    assert func_by_name["do_options"]["stable_id"] == "options"
+    assert func_by_name["do_get"]["stable_id"] == "GET"
+    assert func_by_name["do_post"]["stable_id"] == "POST"
+    assert func_by_name["do_put"]["stable_id"] == "PUT"
+    assert func_by_name["do_patch"]["stable_id"] == "PATCH"
+    assert func_by_name["do_delete"]["stable_id"] == "DELETE"
+    assert func_by_name["do_head"]["stable_id"] == "HEAD"
+    assert func_by_name["do_options"]["stable_id"] == "OPTIONS"
 
 
 def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
@@ -635,7 +635,7 @@ def test_flask_route_detected(tmp_path: Path) -> None:
 
     func = functions[0]
     # Flask uses @app.route - detect as "route" method
-    assert func["stable_id"] == "route"
+    assert func["stable_id"] == "ROUTE"
     assert func.get("meta", {}).get("route_path") == "/hello"
 
 
@@ -664,8 +664,8 @@ def test_flask_method_specific_decorators(tmp_path: Path) -> None:
     functions = [n for n in data["nodes"] if n["kind"] == "function"]
     func_by_name = {f["name"]: f for f in functions}
 
-    assert func_by_name["get_users"]["stable_id"] == "get"
-    assert func_by_name["create_user"]["stable_id"] == "post"
+    assert func_by_name["get_users"]["stable_id"] == "GET"
+    assert func_by_name["create_user"]["stable_id"] == "POST"
 
 
 # ============================================================================
@@ -694,7 +694,7 @@ def test_drf_api_view_decorator_single_method(tmp_path: Path) -> None:
 
     func = functions[0]
     assert func["name"] == "user_list"
-    assert func["stable_id"] == "get"
+    assert func["stable_id"] == "GET"
 
 
 def test_drf_api_view_decorator_multiple_methods(tmp_path: Path) -> None:
@@ -720,7 +720,7 @@ def test_drf_api_view_decorator_multiple_methods(tmp_path: Path) -> None:
 
     func = functions[0]
     # Multiple methods joined with comma
-    assert func["stable_id"] == "get,post"
+    assert func["stable_id"] == "GET,POST"
 
 
 def test_drf_api_view_all_methods(tmp_path: Path) -> None:
@@ -743,11 +743,11 @@ def test_drf_api_view_all_methods(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    assert "get" in func["stable_id"]
-    assert "post" in func["stable_id"]
-    assert "put" in func["stable_id"]
-    assert "patch" in func["stable_id"]
-    assert "delete" in func["stable_id"]
+    assert "GET" in func["stable_id"]
+    assert "POST" in func["stable_id"]
+    assert "PUT" in func["stable_id"]
+    assert "PATCH" in func["stable_id"]
+    assert "DELETE" in func["stable_id"]
 
 
 def test_django_cbv_http_methods(tmp_path: Path) -> None:
@@ -775,8 +775,8 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     # Methods named get/post in a View class should be marked as HTTP handlers
     assert "UserView.get" in method_by_name
     assert "UserView.post" in method_by_name
-    assert method_by_name["UserView.get"]["stable_id"] == "get"
-    assert method_by_name["UserView.post"]["stable_id"] == "post"
+    assert method_by_name["UserView.get"]["stable_id"] == "GET"
+    assert method_by_name["UserView.post"]["stable_id"] == "POST"
 
 
 def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:

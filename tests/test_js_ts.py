@@ -2169,12 +2169,12 @@ app.get('/users', function getUsers(req, res) {
 
         # Find the route handler function
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id in ("get", "post", "put", "patch", "delete", "head", "options")]
+        route_handlers = [f for f in functions if f.stable_id in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
         assert handler.name == "getUsers"
-        assert handler.stable_id == "get"
+        assert handler.stable_id == "GET"
         assert handler.meta is not None
         assert handler.meta.get("route_path") == "/users"
 
@@ -2195,7 +2195,7 @@ app.post('/users', function createUser(req, res) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "post"]
+        route_handlers = [f for f in functions if f.stable_id == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -2221,12 +2221,12 @@ router.delete('/items/:id', function deleteItem(req, res) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id in ("get", "delete")]
+        route_handlers = [f for f in functions if f.stable_id in ("GET", "DELETE")]
 
         assert len(route_handlers) == 2
 
-        get_handler = next(f for f in route_handlers if f.stable_id == "get")
-        delete_handler = next(f for f in route_handlers if f.stable_id == "delete")
+        get_handler = next(f for f in route_handlers if f.stable_id == "GET")
+        delete_handler = next(f for f in route_handlers if f.stable_id == "DELETE")
 
         assert get_handler.meta.get("route_path") == "/items/:id"
         assert delete_handler.meta.get("route_path") == "/items/:id"
@@ -2249,7 +2249,7 @@ app.get('/health', (req, res) => {
 
         # Arrow functions in route calls should get route info
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "get"]
+        route_handlers = [f for f in functions if f.stable_id == "GET"]
 
         # Even anonymous arrow functions should be detected as routes
         assert len(route_handlers) >= 0  # May or may not create symbol for anonymous
@@ -2272,13 +2272,13 @@ app.delete('/delete', function doDelete(req, res) { res.send('delete'); });
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = {f.stable_id: f for f in functions if f.stable_id in ("get", "post", "put", "patch", "delete")}
+        route_handlers = {f.stable_id: f for f in functions if f.stable_id in ("GET", "POST", "PUT", "PATCH", "DELETE")}
 
-        assert "get" in route_handlers
-        assert "post" in route_handlers
-        assert "put" in route_handlers
-        assert "patch" in route_handlers
-        assert "delete" in route_handlers
+        assert "GET" in route_handlers
+        assert "POST" in route_handlers
+        assert "PUT" in route_handlers
+        assert "PATCH" in route_handlers
+        assert "DELETE" in route_handlers
 
     def test_non_route_function_keeps_original_stable_id(self, tmp_path: Path) -> None:
         """Functions not in route calls keep their original stable_id."""
@@ -2297,7 +2297,7 @@ function helper() {
         assert len(functions) == 1
 
         # Non-route functions should NOT have HTTP method as stable_id
-        assert functions[0].stable_id not in ("get", "post", "put", "patch", "delete")
+        assert functions[0].stable_id not in ("GET", "POST", "PUT", "PATCH", "DELETE")
 
     def test_typescript_express_route(self, tmp_path: Path) -> None:
         """Express routes in TypeScript files are detected."""
@@ -2316,7 +2316,7 @@ app.get('/users', function getUsers(req: Request, res: Response): void {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "get"]
+        route_handlers = [f for f in functions if f.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -2358,7 +2358,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "get"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.findAll"
@@ -2383,7 +2383,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "post"]
+        route_handlers = [m for m in methods if m.stable_id == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.create"
@@ -2408,7 +2408,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "get"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2448,11 +2448,11 @@ export class ResourceController {
         methods = [s for s in result.symbols if s.kind == "method"]
         stable_ids = {m.stable_id for m in methods}
 
-        assert "get" in stable_ids
-        assert "post" in stable_ids
-        assert "put" in stable_ids
-        assert "patch" in stable_ids
-        assert "delete" in stable_ids
+        assert "GET" in stable_ids
+        assert "POST" in stable_ids
+        assert "PUT" in stable_ids
+        assert "PATCH" in stable_ids
+        assert "DELETE" in stable_ids
 
 
 # ============================================================================
@@ -2494,7 +2494,7 @@ module.exports = router;
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "get"]
+        route_handlers = [f for f in functions if f.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2519,7 +2519,7 @@ router.post('/users', function createUser(ctx) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "post"]
+        route_handlers = [f for f in functions if f.stable_id == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -2541,7 +2541,7 @@ router.delete('/users/:id', async (ctx) => {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "delete"]
+        route_handlers = [f for f in functions if f.stable_id == "DELETE"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users/:id"
@@ -2583,7 +2583,7 @@ fastify.get('/users', function getUsers(request, reply) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "get"]
+        route_handlers = [f for f in functions if f.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2607,7 +2607,7 @@ fastify.post('/users', function createUser(request, reply) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "post"]
+        route_handlers = [f for f in functions if f.stable_id == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -2628,7 +2628,7 @@ fastify.put('/users/:id', async (request, reply) => {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "put"]
+        route_handlers = [f for f in functions if f.stable_id == "PUT"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users/:id"
@@ -2655,11 +2655,11 @@ fastify.options('/g', function handleOptions(r, p) {});
         functions = [s for s in result.symbols if s.kind == "function"]
         stable_ids = {f.stable_id for f in functions}
 
-        assert "get" in stable_ids
-        assert "post" in stable_ids
-        assert "put" in stable_ids
-        assert "patch" in stable_ids
-        assert "delete" in stable_ids
-        assert "head" in stable_ids
-        assert "options" in stable_ids
+        assert "GET" in stable_ids
+        assert "POST" in stable_ids
+        assert "PUT" in stable_ids
+        assert "PATCH" in stable_ids
+        assert "DELETE" in stable_ids
+        assert "HEAD" in stable_ids
+        assert "OPTIONS" in stable_ids
 

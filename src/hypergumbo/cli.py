@@ -1509,7 +1509,11 @@ def run_behavior_map(
         all_edges.extend(grpc_result.edges)
 
     # HTTP linker: connect fetch/requests calls to route handlers
-    route_symbols = [s for s in all_symbols if s.kind == "route"]
+    # Include both kind="route" (Ruby/Go/Rust) and symbols with meta.route_path (Python/JS)
+    route_symbols = [
+        s for s in all_symbols
+        if s.kind == "route" or (s.meta and s.meta.get("route_path"))
+    ]
     http_result = link_http(repo_root, route_symbols)
     if http_result.run is not None:
         analysis_runs.append(http_result.run.to_dict())

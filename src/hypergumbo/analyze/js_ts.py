@@ -311,7 +311,8 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
             route_path = _node_text(child, source).strip("'\"")
             break
 
-    return method_name, route_path
+    # Return uppercase HTTP method for consistency with other analyzers
+    return method_name.upper() if method_name else None, route_path
 
 
 def _find_route_handler_in_call(node: "tree_sitter.Node") -> "tree_sitter.Node | None":
@@ -386,12 +387,13 @@ def _detect_nestjs_decorator(
                                             if arg.type == "string":
                                                 route_path = _node_text(arg, source).strip("'\"")
                                                 break
-                                return name, route_path
+                                # Return uppercase HTTP method for consistency
+                                return name.upper(), route_path
                 # @Get without () -> just identifier (rare in NestJS)
                 elif child.type == "identifier":  # pragma: no cover
                     name = _node_text(child, source).lower()
                     if name in HTTP_METHODS:
-                        return name, None
+                        return name.upper(), None
         # Stop if we hit another method or non-decorator
         elif sibling.type in ("method_definition", "public_field_definition"):
             break
@@ -468,7 +470,7 @@ def _extract_symbols(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         stable_id=http_method,
-                        meta={"route_path": route_path} if route_path else None,
+                        meta={"route_path": route_path, "http_method": http_method} if route_path else None,
                     )
                     symbols.append(symbol)
                     # Don't recurse into this handler - we've already processed it
