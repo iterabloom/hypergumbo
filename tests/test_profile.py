@@ -228,3 +228,111 @@ def test_handles_invalid_package_json(tmp_path: Path) -> None:
     # Should still detect JavaScript, just not frameworks
     assert "javascript" in data["profile"]["languages"]
     assert data["profile"]["frameworks"] == []
+
+
+def test_detects_pytorch_framework(tmp_path: Path) -> None:
+    """Should detect PyTorch from dependencies."""
+    (tmp_path / "train.py").write_text("import torch\n")
+    (tmp_path / "requirements.txt").write_text("torch>=2.0\ntorchvision\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "pytorch" in data["profile"]["frameworks"]
+
+
+def test_detects_tensorflow_framework(tmp_path: Path) -> None:
+    """Should detect TensorFlow from dependencies."""
+    (tmp_path / "model.py").write_text("import tensorflow as tf\n")
+    (tmp_path / "requirements.txt").write_text("tensorflow>=2.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "tensorflow" in data["profile"]["frameworks"]
+
+
+def test_detects_transformers_framework(tmp_path: Path) -> None:
+    """Should detect HuggingFace Transformers from dependencies."""
+    (tmp_path / "nlp.py").write_text("from transformers import pipeline\n")
+    (tmp_path / "requirements.txt").write_text("transformers>=4.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "transformers" in data["profile"]["frameworks"]
+
+
+def test_detects_langchain_framework(tmp_path: Path) -> None:
+    """Should detect LangChain from dependencies."""
+    (tmp_path / "agent.py").write_text("from langchain import LLMChain\n")
+    (tmp_path / "requirements.txt").write_text("langchain>=0.1\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "langchain" in data["profile"]["frameworks"]
+
+
+def test_detects_scikit_learn_framework(tmp_path: Path) -> None:
+    """Should detect scikit-learn from dependencies."""
+    (tmp_path / "ml.py").write_text("from sklearn.linear_model import LogisticRegression\n")
+    (tmp_path / "requirements.txt").write_text("scikit-learn>=1.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "scikit-learn" in data["profile"]["frameworks"]
+
+
+def test_detects_openai_framework(tmp_path: Path) -> None:
+    """Should detect OpenAI client from dependencies."""
+    (tmp_path / "chat.py").write_text("from openai import OpenAI\n")
+    (tmp_path / "requirements.txt").write_text("openai>=1.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "openai" in data["profile"]["frameworks"]
+
+
+def test_detects_anthropic_framework(tmp_path: Path) -> None:
+    """Should detect Anthropic client from dependencies."""
+    (tmp_path / "chat.py").write_text("from anthropic import Anthropic\n")
+    (tmp_path / "requirements.txt").write_text("anthropic>=0.5\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "anthropic" in data["profile"]["frameworks"]
+
+
+def test_detects_llamaindex_framework(tmp_path: Path) -> None:
+    """Should detect LlamaIndex from dependencies."""
+    (tmp_path / "rag.py").write_text("from llama_index import VectorStoreIndex\n")
+    (tmp_path / "requirements.txt").write_text("llama-index>=0.9\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "llamaindex" in data["profile"]["frameworks"]
+
+
+def test_detects_mlflow_framework(tmp_path: Path) -> None:
+    """Should detect MLflow from dependencies."""
+    (tmp_path / "experiment.py").write_text("import mlflow\n")
+    (tmp_path / "requirements.txt").write_text("mlflow>=2.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "mlflow" in data["profile"]["frameworks"]

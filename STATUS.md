@@ -78,7 +78,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Token limit flag | [x] | `-t N` / `--tokens N` |
 | Language breakdown | [x] | Sorted by LOC percentage |
 | Directory structure | [x] | Top-level dirs with type labels |
-| Framework detection | [x] | Via profile.py |
+| Framework detection | [x] | Via profile.py. Detects: FastAPI, Flask, Django, React, Vue, Angular, Express, NestJS, PyTorch, TensorFlow, Keras, Transformers, LangChain, LlamaIndex, Haystack, scikit-learn, MLflow, OpenAI, Anthropic, and more. |
 | Section-boundary truncation | [x] | Preserves coherent sections when truncating |
 | Source file listings | [x] | Progressive expansion based on budget |
 | Entry points section | [x] | CLI, HTTP routes, Electron patterns |
