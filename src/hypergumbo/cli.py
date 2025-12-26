@@ -64,6 +64,7 @@ from .analyze.objc import analyze_objc
 from .analyze.hcl import analyze_hcl
 from .analyze.yaml_ansible import analyze_ansible
 from .catalog import get_default_catalog, is_available
+from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
 from .linkers.phoenix_ipc import link_phoenix_ipc
@@ -1041,6 +1042,13 @@ def run_behavior_map(
         analysis_runs.append(swift_objc_result.run.to_dict())
         all_symbols.extend(swift_objc_result.symbols)
         all_edges.extend(swift_objc_result.edges)
+
+    # gRPC linker: detect gRPC service definitions, stubs, and servers
+    grpc_result = link_grpc(repo_root)
+    if grpc_result.run is not None:
+        analysis_runs.append(grpc_result.run.to_dict())
+        all_symbols.extend(grpc_result.symbols)
+        all_edges.extend(grpc_result.edges)
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
