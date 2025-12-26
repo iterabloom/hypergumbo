@@ -64,6 +64,7 @@ from .analyze.objc import analyze_objc
 from .analyze.hcl import analyze_hcl
 from .analyze.yaml_ansible import analyze_ansible
 from .analyze.sql import analyze_sql_files
+from .analyze.dockerfile import analyze_dockerfiles
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1019,6 +1020,19 @@ def run_behavior_map(
             analysis_runs.append(sql_result.run.to_dict())
             all_symbols.extend(sql_result.symbols)
             all_edges.extend(sql_result.edges)
+
+    # Run Dockerfile analysis (optional, requires tree-sitter-dockerfile)
+    dockerfile_result = analyze_dockerfiles(repo_root)
+    if dockerfile_result.run is not None:
+        if dockerfile_result.skipped:  # pragma: no cover - dockerfile installed
+            limits.skipped_passes.append({
+                "pass": dockerfile_result.run.pass_id,
+                "reason": dockerfile_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(dockerfile_result.run.to_dict())
+            all_symbols.extend(dockerfile_result.symbols)
+            all_edges.extend(dockerfile_result.edges)
 
     # Run cross-language linkers
 

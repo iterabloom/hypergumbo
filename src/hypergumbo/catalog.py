@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -230,6 +230,12 @@ def get_default_catalog() -> Catalog:
                 description="SQL schema analysis via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[sql]",
+            ),
+            Pass(
+                id="dockerfile-v1",
+                description="Dockerfile analysis via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[dockerfile]",
             ),
             Pass(
                 id="websocket-linker-v1",
