@@ -279,3 +279,46 @@ harness = false
     benchmarks = [s for s in result.symbols if s.kind == "benchmark"]
     assert len(benchmarks) >= 1
     assert any(b.name == "perf_test" for b in benchmarks)
+
+
+def test_build_target_source_file_edge(tmp_path):
+    """Test that build targets create edges to their source files."""
+    toml_file = tmp_path / "Cargo.toml"
+    toml_file.write_text("""
+[[bin]]
+name = "cli"
+path = "src/cli.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    # Check edges are created linking targets to source files
+    edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(edges) >= 2
+
+    # Edges should point from target to source file path
+    dst_paths = [e.dst for e in edges]
+    assert any("src/cli.rs" in dst for dst in dst_paths)
+    assert any("tests/integration.rs" in dst for dst in dst_paths)
+
+
+def test_build_target_path_in_meta(tmp_path):
+    """Test that build targets store source path in meta."""
+    toml_file = tmp_path / "Cargo.toml"
+    toml_file.write_text("""
+[[bin]]
+name = "mybin"
+path = "src/bin/main.rs"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    bins = [s for s in result.symbols if s.kind == "binary"]
+    assert len(bins) >= 1
+
+    # Check meta contains the path
+    mybin = next(b for b in bins if b.name == "mybin")
+    assert mybin.meta is not None
+    assert mybin.meta.get("path") == "src/bin/main.rs"
