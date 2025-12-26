@@ -335,6 +335,70 @@ def _find_route_handler_in_call(node: "tree_sitter.Node") -> "tree_sitter.Node |
     return None  # pragma: no cover
 
 
+def _detect_nestjs_decorator(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[str | None, str | None]:
+    """Detect NestJS HTTP method decorators on a method.
+
+    Returns (http_method, route_path) if a NestJS route decorator is found.
+
+    Supported patterns:
+    - @Get(), @Get(':id')
+    - @Post(), @Post('/create')
+    - @Put(), @Patch(), @Delete(), @Head(), @Options()
+
+    Decorators appear as siblings to the method_definition in the class body.
+    """
+    # NestJS decorators are typically in a decorator node before the method
+    # In tree-sitter, we need to look at previous siblings
+    parent = node.parent
+    if parent is None:  # pragma: no cover
+        return None, None
+
+    # Find the index of this node in parent's children
+    idx = None
+    for i, child in enumerate(parent.children):
+        if child == node:
+            idx = i
+            break
+
+    if idx is None or idx == 0:
+        return None, None
+
+    # Look at previous sibling(s) for decorator
+    for i in range(idx - 1, -1, -1):
+        sibling = parent.children[i]
+        if sibling.type == "decorator":
+            # Get the decorator content
+            for child in sibling.children:
+                # @Get() -> call_expression
+                if child.type == "call_expression":
+                    # Get the function name
+                    for grandchild in child.children:
+                        if grandchild.type == "identifier":
+                            name = _node_text(grandchild, source).lower()
+                            if name in HTTP_METHODS:
+                                # Extract route path from first argument if present
+                                route_path = None
+                                for args_child in child.children:
+                                    if args_child.type == "arguments":
+                                        for arg in args_child.children:
+                                            if arg.type == "string":
+                                                route_path = _node_text(arg, source).strip("'\"")
+                                                break
+                                return name, route_path
+                # @Get without () -> just identifier (rare in NestJS)
+                elif child.type == "identifier":  # pragma: no cover
+                    name = _node_text(child, source).lower()
+                    if name in HTTP_METHODS:
+                        return name, None
+        # Stop if we hit another method or non-decorator
+        elif sibling.type in ("method_definition", "public_field_definition"):
+            break
+
+    return None, None
+
+
 def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Find identifier name in node's children."""
     for child in node.children:
@@ -588,6 +652,12 @@ def _extract_symbols(
                 )
                 # Use ClassName.methodName for method symbols
                 full_name = f"{current_class_name}.{name}" if current_class_name else name
+
+                # Check for NestJS route decorators (@Get, @Post, etc.)
+                http_method, route_path = _detect_nestjs_decorator(node, source)
+                stable_id = http_method if http_method else None
+                meta = {"route_path": route_path} if route_path else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, kind, lang),
                     name=full_name,
@@ -597,6 +667,8 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 

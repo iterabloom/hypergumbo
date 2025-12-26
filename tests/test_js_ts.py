@@ -2322,3 +2322,136 @@ app.get('/users', function getUsers(req: Request, res: Response): void {
         assert route_handlers[0].meta.get("route_path") == "/users"
 
 
+# ============================================================================
+# NestJS Route Detection Tests
+# ============================================================================
+
+
+class TestNestJSRouteDetection:
+    """Tests for NestJS decorator-based route detection."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+    def test_nestjs_get_decorator(self, tmp_path: Path) -> None:
+        """NestJS @Get() decorator should set stable_id to 'get'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Get()
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "get"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].name == "UsersController.findAll"
+
+    def test_nestjs_post_decorator(self, tmp_path: Path) -> None:
+        """NestJS @Post() decorator should set stable_id to 'post'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Post, Body } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Post()
+    create(@Body() dto: any) {
+        return {};
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "post"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].name == "UsersController.create"
+
+    def test_nestjs_get_with_path(self, tmp_path: Path) -> None:
+        """NestJS @Get(':id') should extract route path."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get, Param } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Get(':id')
+    findOne(@Param('id') id: string) {
+        return {};
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "get"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        assert handler.name == "UsersController.findOne"
+        assert handler.meta is not None
+        assert handler.meta.get("route_path") == ":id"
+
+    def test_nestjs_all_http_methods(self, tmp_path: Path) -> None:
+        """NestJS should detect all HTTP method decorators."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "resource.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get, Post, Put, Patch, Delete } from '@nestjs/common';
+
+@Controller('resource')
+export class ResourceController {
+    @Get()
+    getAll() {}
+
+    @Post()
+    create() {}
+
+    @Put(':id')
+    update() {}
+
+    @Patch(':id')
+    patch() {}
+
+    @Delete(':id')
+    remove() {}
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        stable_ids = {m.stable_id for m in methods}
+
+        assert "get" in stable_ids
+        assert "post" in stable_ids
+        assert "put" in stable_ids
+        assert "patch" in stable_ids
+        assert "delete" in stable_ids
+
+
