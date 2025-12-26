@@ -155,6 +155,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | VHDL | [x] tree-sitter | entity, architecture, package, component | implements | Detects VHDL hardware designs: entities, architectures, packages, component declarations. Architecture-entity relationships. Optional: `pip install tree-sitter-vhdl` |
 | GraphQL | [x] tree-sitter | type, input, interface, enum, scalar, union, directive, fragment, query, mutation, subscription | — | Detects GraphQL schema definitions: object types, input types, interfaces, enums, scalars, unions, directives, fragments, operations. API schema analysis. Optional: `pip install tree-sitter-graphql` |
 | Nix | [x] tree-sitter | function, binding, input, derivation | imports | Detects Nix expressions: named functions, let bindings, flake inputs, derivation calls. Import edges for `import` expressions. Optional: `pip install tree-sitter-nix` |
+| GLSL | [x] tree-sitter | function, struct, uniform, input, output | calls | Detects OpenGL shaders: functions, structs, uniform/in/out variables. Function call edges. Supports .vert, .frag, .glsl, .geom, .tesc, .tese, .comp files. Optional: `pip install tree-sitter-glsl` |
 
 ## Supply Chain Classification (§8.6)
 
