@@ -27,6 +27,7 @@ Detected Patterns
 - Method calls: self.method(), obj.method()
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
+- Django URL patterns: path(), re_path(), url() calls in urls.py
 
 ID Schemes
 ----------
@@ -76,6 +77,65 @@ def _make_module_id(module_name: str) -> str:
 
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
+
+# Django URL pattern functions
+DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
+
+
+def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, str | None]]:
+    """Extract Django URL patterns from path(), re_path(), url() calls.
+
+    Returns list of (start_line, end_line, route_path, view_name).
+    """
+    patterns: list[tuple[int, int, str, str | None]] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        # Check if it's a Django URL function call
+        func_name = None
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+
+        if func_name not in DJANGO_URL_FUNCTIONS:
+            continue
+
+        # Extract the URL pattern from the first argument
+        if not node.args:  # pragma: no cover
+            continue
+
+        first_arg = node.args[0]
+        route_path = None
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            route_path = first_arg.value
+        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+            continue  # Skip dynamic patterns (f-strings)
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Extract view name from second argument
+        view_name = None
+        if len(node.args) >= 2:
+            second_arg = node.args[1]
+            if isinstance(second_arg, ast.Attribute):
+                # views.user_list -> "user_list"
+                view_name = second_arg.attr
+            elif isinstance(second_arg, ast.Name):
+                # user_list -> "user_list"
+                view_name = second_arg.id
+
+        patterns.append((
+            node.lineno,
+            getattr(node, "end_lineno", node.lineno),
+            route_path,
+            view_name,
+        ))
+
+    return patterns
 
 
 def _detect_route_decorator(
@@ -511,6 +571,34 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
+
+    # Detect Django URL patterns (path, re_path, url calls)
+    django_patterns = _extract_django_url_patterns(tree)
+    for start_line, end_line, route_path, view_name in django_patterns:
+        span = Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=0,
+            end_col=0,
+        )
+        # Normalize route path - ensure it starts with /
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        route_name = f"django:{view_name or 'unknown'}"
+        symbol = Symbol(
+            id=_make_symbol_id(str(py_file), start_line, end_line, normalized_path, "route"),
+            name=route_name,
+            kind="route",
+            language="python",
+            path=str(py_file),
+            span=span,
+            stable_id="GET",  # Django defaults to GET, all methods allowed
+            meta={
+                "route_path": normalized_path,
+                "http_method": "GET",
+                "view_name": view_name,
+            },
+        )
+        symbols.append(symbol)
 
     # Compute module name for import resolution
     if repo_root is not None:
