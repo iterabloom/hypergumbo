@@ -196,8 +196,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     repo_root = Path(args.path).resolve()
     out_path = Path(args.out)
     max_tier = getattr(args, "max_tier", None)
+    max_files = getattr(args, "max_files", None)
 
-    run_behavior_map(repo_root=repo_root, out_path=out_path, max_tier=max_tier)
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        max_tier=max_tier,
+        max_files=max_files,
+    )
     return 0
 
 
@@ -508,6 +514,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="max_tier",
         help="Only include first-party code (shortcut for --max-tier 1)",
     )
+    p_run.add_argument(
+        "--max-files",
+        type=int,
+        default=None,
+        dest="max_files",
+        help="Maximum files to analyze per language (for large repos)",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -663,7 +676,10 @@ def _compute_supply_chain_summary(
 
 
 def run_behavior_map(
-    repo_root: Path, out_path: Path, max_tier: int | None = None
+    repo_root: Path,
+    out_path: Path,
+    max_tier: int | None = None,
+    max_files: int | None = None,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -673,6 +689,8 @@ def run_behavior_map(
         out_path: Path to write the behavior map JSON
         max_tier: Optional maximum supply chain tier (1-4). Symbols with
             tier > max_tier are filtered out. None means no filtering.
+        max_files: Optional maximum files per language analyzer. Limits
+            how many files each analyzer processes (for large repos).
     """
     behavior_map = new_behavior_map()
 
@@ -687,23 +705,24 @@ def run_behavior_map(
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     limits = Limits()
+    limits.max_files_per_analyzer = max_files
 
     # Run Python analysis
-    py_result = analyze_python(repo_root)
+    py_result = analyze_python(repo_root, max_files=max_files)
     if py_result.run is not None:
         analysis_runs.append(py_result.run.to_dict())
     all_symbols.extend(py_result.symbols)
     all_edges.extend(py_result.edges)
 
     # Run HTML analysis
-    html_result = analyze_html(repo_root)
+    html_result = analyze_html(repo_root, max_files=max_files)
     if html_result.run is not None:
         analysis_runs.append(html_result.run.to_dict())
     all_symbols.extend(html_result.symbols)
     all_edges.extend(html_result.edges)
 
     # Run JavaScript/TypeScript/Svelte analysis (optional, requires tree-sitter)
-    js_result = analyze_javascript(repo_root)
+    js_result = analyze_javascript(repo_root, max_files=max_files)
     if js_result.run is not None:
         if js_result.skipped:
             # Track skipped pass in limits

@@ -80,3 +80,26 @@ def test_default_excludes_contains_expected_patterns() -> None:
     ]
     for pattern in expected:
         assert pattern in DEFAULT_EXCLUDES
+
+
+def test_find_files_respects_max_files(tmp_path: Path) -> None:
+    """Should limit the number of files returned when max_files is set."""
+    # Create 5 Python files
+    for i in range(5):
+        (tmp_path / f"file{i}.py").write_text(f"# file {i}")
+
+    # Without limit, should find all 5
+    results = list(find_files(tmp_path, ["*.py"]))
+    assert len(results) == 5
+
+    # With limit of 3, should only return 3
+    results = list(find_files(tmp_path, ["*.py"], max_files=3))
+    assert len(results) == 3
+
+    # With limit of 0, should return none
+    results = list(find_files(tmp_path, ["*.py"], max_files=0))
+    assert len(results) == 0
+
+    # With limit higher than available, should return all
+    results = list(find_files(tmp_path, ["*.py"], max_files=100))
+    assert len(results) == 5

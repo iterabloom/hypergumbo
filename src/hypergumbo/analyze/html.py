@@ -56,9 +56,11 @@ SCRIPT_SRC_PATTERN = re.compile(
 )
 
 
-def find_html_files(repo_root: Path) -> Iterator[Path]:
+def find_html_files(
+    repo_root: Path, max_files: int | None = None
+) -> Iterator[Path]:
     """Yield all HTML files in the repository, excluding common non-source dirs."""
-    yield from find_files(repo_root, ["*.html", "*.htm"])
+    yield from find_files(repo_root, ["*.html", "*.htm"], max_files=max_files)
 
 
 def _make_file_id(path: str) -> str:
@@ -75,11 +77,17 @@ class HtmlAnalysisResult:
     run: AnalysisRun | None = None
 
 
-def analyze_html(repo_root: Path) -> HtmlAnalysisResult:
+def analyze_html(
+    repo_root: Path, max_files: int | None = None
+) -> HtmlAnalysisResult:
     """
     Analyze all HTML files in a repository for script tags.
 
     Returns symbols for HTML files and edges for script references.
+
+    Args:
+        repo_root: Root directory of the repository
+        max_files: Optional limit on number of files to analyze
     """
     start_time = time.time()
 
@@ -91,7 +99,7 @@ def analyze_html(repo_root: Path) -> HtmlAnalysisResult:
     files_analyzed = 0
     files_skipped = 0
 
-    for html_file in find_html_files(repo_root):
+    for html_file in find_html_files(repo_root, max_files=max_files):
         try:
             content = html_file.read_text(errors="ignore")
             files_analyzed += 1

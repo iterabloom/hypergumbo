@@ -98,6 +98,7 @@ class Limits:
     analysis_depth: str = "syntax_only"
     partial_results_reason: str = ""
     max_tier_applied: int | None = None
+    max_files_per_analyzer: int | None = None
     supply_chain: SupplyChainLimits = field(default_factory=SupplyChainLimits)
 
     def add_failed_file(self, path: str, reason: str, analyzer: str) -> None:
@@ -158,6 +159,7 @@ class Limits:
             analysis_depth=self.analysis_depth,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,
             max_tier_applied=self.max_tier_applied or other.max_tier_applied,
+            max_files_per_analyzer=self.max_files_per_analyzer or other.max_files_per_analyzer,
             supply_chain=merged_supply_chain,
         )
         return merged
@@ -177,4 +179,6 @@ class Limits:
         }
         if self.max_tier_applied is not None:
             result["max_tier_applied"] = self.max_tier_applied
+        if self.max_files_per_analyzer is not None:
+            result["max_files_per_analyzer"] = self.max_files_per_analyzer
         return result
