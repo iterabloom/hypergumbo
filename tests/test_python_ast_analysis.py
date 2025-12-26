@@ -634,9 +634,10 @@ def test_flask_route_detected(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    # Flask uses @app.route - detect as "route" method
-    assert func["stable_id"] == "ROUTE"
+    # Flask @app.route with methods=['GET'] extracts the actual HTTP method
+    assert func["stable_id"] == "GET"
     assert func.get("meta", {}).get("route_path") == "/hello"
+    assert func.get("meta", {}).get("http_method") == "GET"
 
 
 def test_flask_method_specific_decorators(tmp_path: Path) -> None:

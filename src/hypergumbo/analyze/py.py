@@ -128,6 +128,18 @@ def _detect_route_decorator(
             if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
                 route_path = first_arg.value
 
+        # For @app.route(), extract HTTP method from methods= keyword argument
+        if method_name == "route":
+            for kw in dec.keywords:
+                if kw.arg == "methods" and isinstance(kw.value, ast.List):
+                    methods = []
+                    for elt in kw.value.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            methods.append(elt.value.lower())
+                    if methods:
+                        method_name = ",".join(methods)
+                        break
+
         return method_name, route_path
 
     return None, None
