@@ -60,6 +60,7 @@ from .analyze.zig import analyze_zig
 from .analyze.groovy import analyze_groovy
 from .analyze.julia import analyze_julia
 from .analyze.bash import analyze_bash
+from .analyze.objc import analyze_objc
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -961,6 +962,19 @@ def run_behavior_map(
             analysis_runs.append(bash_result.run.to_dict())
             all_symbols.extend(bash_result.symbols)
             all_edges.extend(bash_result.edges)
+
+    # Run Objective-C analysis (optional, requires tree-sitter-objc)
+    objc_result = analyze_objc(repo_root)
+    if objc_result.run is not None:
+        if objc_result.skipped:  # pragma: no cover - objc installed
+            limits.skipped_passes.append({
+                "pass": objc_result.run.pass_id,
+                "reason": objc_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(objc_result.run.to_dict())
+            all_symbols.extend(objc_result.symbols)
+            all_edges.extend(objc_result.edges)
 
     # Run cross-language linkers
 

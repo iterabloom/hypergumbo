@@ -143,6 +143,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Groovy | [x] tree-sitter | class, interface, enum, method, function | calls, imports | Detects classes, interfaces, enums, methods, top-level functions (`def`), import statements. Handles `.gradle` build files. Two-pass cross-file resolution. Optional: `pip install tree-sitter-groovy` |
 | Julia | [x] tree-sitter | module, function, struct, abstract, macro, const | calls, imports | Detects modules, functions (full and short-form), structs, abstract types, macros, constants, import/using statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-julia` |
 | Bash | [x] tree-sitter | function, export, alias | calls, sources | Detects functions (both `function name()` and `name()` styles), exported variables, aliases, source/dot statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-bash` |
+| Objective-C | [x] tree-sitter | class, protocol, method, property | calls, imports | Detects `@interface`, `@implementation`, `@protocol`, methods (`-`/`+`), properties. Message send call resolution `[receiver message]`. Two-pass cross-file resolution. Optional: `pip install tree-sitter-objc` |
 
 ## Supply Chain Classification (§8.6)
 
