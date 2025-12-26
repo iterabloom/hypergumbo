@@ -453,3 +453,216 @@ def test_method_symbols_include_class_prefix(tmp_path: Path) -> None:
     method_names = [m["name"] for m in methods]
     assert "UserService.create_user" in method_names
     assert "UserService.delete_user" in method_names
+
+
+# ============================================================================
+# FastAPI Route Detection Tests
+# ============================================================================
+
+
+def test_fastapi_get_route_detected(tmp_path: Path) -> None:
+    """FastAPI @app.get decorator should set stable_id to 'get' and store route path."""
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from fastapi import FastAPI\n"
+        "\n"
+        "app = FastAPI()\n"
+        "\n"
+        "@app.get('/users')\n"
+        "def get_users():\n"
+        "    return []\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Find the route handler function
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    assert func["name"] == "get_users"
+    # stable_id should be the HTTP method
+    assert func["stable_id"] == "get"
+    # Route path should be stored in meta
+    assert func.get("meta", {}).get("route_path") == "/users"
+
+
+def test_fastapi_post_route_detected(tmp_path: Path) -> None:
+    """FastAPI @app.post decorator should set stable_id to 'post'."""
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from fastapi import FastAPI\n"
+        "\n"
+        "app = FastAPI()\n"
+        "\n"
+        "@app.post('/users')\n"
+        "def create_user():\n"
+        "    return {'id': 1}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    assert func["stable_id"] == "post"
+    assert func.get("meta", {}).get("route_path") == "/users"
+
+
+def test_fastapi_router_route_detected(tmp_path: Path) -> None:
+    """FastAPI @router.get decorator should also be detected."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "router = APIRouter()\n"
+        "\n"
+        "@router.get('/items/{item_id}')\n"
+        "def get_item(item_id: int):\n"
+        "    return {'item_id': item_id}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    assert func["stable_id"] == "get"
+    assert func.get("meta", {}).get("route_path") == "/items/{item_id}"
+
+
+def test_fastapi_all_http_methods(tmp_path: Path) -> None:
+    """All HTTP methods should be detected: get, post, put, patch, delete, head, options."""
+    py_file = tmp_path / "api.py"
+    py_file.write_text(
+        "from fastapi import FastAPI\n"
+        "\n"
+        "app = FastAPI()\n"
+        "\n"
+        "@app.get('/get')\n"
+        "def do_get(): pass\n"
+        "\n"
+        "@app.post('/post')\n"
+        "def do_post(): pass\n"
+        "\n"
+        "@app.put('/put')\n"
+        "def do_put(): pass\n"
+        "\n"
+        "@app.patch('/patch')\n"
+        "def do_patch(): pass\n"
+        "\n"
+        "@app.delete('/delete')\n"
+        "def do_delete(): pass\n"
+        "\n"
+        "@app.head('/head')\n"
+        "def do_head(): pass\n"
+        "\n"
+        "@app.options('/options')\n"
+        "def do_options(): pass\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 7
+
+    # Check each function has correct stable_id
+    func_by_name = {f["name"]: f for f in functions}
+    assert func_by_name["do_get"]["stable_id"] == "get"
+    assert func_by_name["do_post"]["stable_id"] == "post"
+    assert func_by_name["do_put"]["stable_id"] == "put"
+    assert func_by_name["do_patch"]["stable_id"] == "patch"
+    assert func_by_name["do_delete"]["stable_id"] == "delete"
+    assert func_by_name["do_head"]["stable_id"] == "head"
+    assert func_by_name["do_options"]["stable_id"] == "options"
+
+
+def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
+    """Functions without route decorators should still use hash-based stable_id."""
+    py_file = tmp_path / "utils.py"
+    py_file.write_text(
+        "def helper():\n"
+        "    pass\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    # Non-route functions should still have sha256:... stable_id
+    assert func["stable_id"].startswith("sha256:")
+
+
+def test_flask_route_detected(tmp_path: Path) -> None:
+    """Flask @app.route decorator should also be detected."""
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "@app.route('/hello', methods=['GET'])\n"
+        "def hello():\n"
+        "    return 'Hello'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    # Flask uses @app.route - detect as "route" method
+    assert func["stable_id"] == "route"
+    assert func.get("meta", {}).get("route_path") == "/hello"
+
+
+def test_flask_method_specific_decorators(tmp_path: Path) -> None:
+    """Flask @app.get, @app.post etc. (Flask 2.0+) should be detected."""
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "@app.get('/users')\n"
+        "def get_users():\n"
+        "    return []\n"
+        "\n"
+        "@app.post('/users')\n"
+        "def create_user():\n"
+        "    return {}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    func_by_name = {f["name"]: f for f in functions}
+
+    assert func_by_name["get_users"]["stable_id"] == "get"
+    assert func_by_name["create_user"]["stable_id"] == "post"

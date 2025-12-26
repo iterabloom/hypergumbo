@@ -250,6 +250,55 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
     assert "src/posts.py" in out
 
 
+def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
+    """Routes with meta.route_path display the route path."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "get",
+                "meta": {"route_path": "/users/{id}"},
+            },
+            {
+                "id": "python:src/api.py:6-10:create_user:function",
+                "name": "create_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
+                "stable_id": "post",
+                "meta": {"route_path": "/users"},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Route paths should be displayed with arrow notation
+    assert "/users/{id}" in out
+    assert "/users" in out
+    assert "get_user" in out
+    assert "create_user" in out
+    assert "->" in out  # Route path arrow
+
+
 def test_main_with_routes(tmp_path: Path, capsys) -> None:
     """Main with routes command."""
     behavior_map = {
