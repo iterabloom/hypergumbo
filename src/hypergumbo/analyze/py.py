@@ -81,6 +81,95 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "rou
 # Django URL pattern functions
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
+# Router constructors that support prefix argument
+ROUTER_CONSTRUCTORS = {"APIRouter", "Blueprint"}
+
+
+def _extract_router_prefixes(tree: ast.Module) -> dict[str, str]:
+    """Extract router variable names and their prefixes.
+
+    Detects patterns like:
+    - router = APIRouter(prefix='/api/v1')
+    - router = APIRouter(prefix='/api')
+    - api = Blueprint('api', __name__, url_prefix='/api')
+
+    Returns dict mapping variable name to prefix string.
+    """
+    prefixes: dict[str, str] = {}
+
+    for node in ast.walk(tree):
+        # Look for assignments: name = SomeRouter(...)
+        if not isinstance(node, ast.Assign):
+            continue
+
+        # Must have exactly one target that's a Name
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+
+        var_name = node.targets[0].id
+
+        # Must be a Call (constructor call)
+        if not isinstance(node.value, ast.Call):
+            continue
+
+        call = node.value
+
+        # Get constructor name
+        constructor_name = None
+        if isinstance(call.func, ast.Name):
+            constructor_name = call.func.id
+        elif isinstance(call.func, ast.Attribute):  # pragma: no cover
+            constructor_name = call.func.attr  # e.g., fastapi.APIRouter()
+
+        if constructor_name not in ROUTER_CONSTRUCTORS:
+            continue
+
+        # Extract prefix from arguments
+        prefix = None
+
+        # Check positional args - not common for prefix
+        # Check keyword args for 'prefix' or 'url_prefix' (Flask Blueprint)
+        for kw in call.keywords:
+            if kw.arg in ("prefix", "url_prefix"):
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    prefix = kw.value.value
+                    break
+
+        if prefix:
+            prefixes[var_name] = prefix
+
+    return prefixes
+
+
+def _combine_prefix_and_path(prefix: str | None, path: str | None) -> str | None:
+    """Combine a router prefix with a route path.
+
+    Args:
+        prefix: The router prefix (e.g., '/api/v1')
+        path: The route path (e.g., '/users')
+
+    Returns:
+        Combined path (e.g., '/api/v1/users')
+    """
+    if not path:  # pragma: no cover
+        return None
+
+    if not prefix:  # pragma: no cover
+        return path
+
+    # Normalize prefix - ensure it starts with /
+    if not prefix.startswith("/"):
+        prefix = "/" + prefix
+
+    # Remove trailing slash from prefix to avoid double slashes
+    prefix = prefix.rstrip("/")
+
+    # Ensure path starts with /
+    if not path.startswith("/"):  # pragma: no cover
+        path = "/" + path
+
+    return prefix + path
+
 
 def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, str | None]]:
     """Extract Django URL patterns from path(), re_path(), url() calls.
@@ -140,6 +229,7 @@ def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, 
 
 def _detect_route_decorator(
     node: ast.FunctionDef | ast.ClassDef,
+    router_prefixes: dict[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
     """Detect if a function has a route decorator (FastAPI, Flask, DRF).
 
@@ -152,9 +242,16 @@ def _detect_route_decorator(
 
     The decorator must be of form @<var>.<method>("/path") where method is an HTTP verb,
     or @api_view(['METHOD', ...]) for DRF.
+
+    Args:
+        node: The function/class AST node
+        router_prefixes: Optional dict mapping router variable names to their prefixes
     """
     if not isinstance(node, ast.FunctionDef):
         return None, None
+
+    if router_prefixes is None:
+        router_prefixes = {}
 
     for dec in node.decorator_list:
         # Route decorators are calls: @app.get("/path") or @api_view(['GET'])
@@ -181,6 +278,11 @@ def _detect_route_decorator(
         if method_name not in HTTP_METHODS:
             continue
 
+        # Get the router variable name (e.g., 'router' in @router.get)
+        router_var_name = None
+        if isinstance(dec.func.value, ast.Name):
+            router_var_name = dec.func.value.id
+
         # Extract the route path from the first argument
         route_path = None
         if dec.args:
@@ -199,6 +301,11 @@ def _detect_route_decorator(
                     if methods:
                         method_name = ",".join(methods)
                         break
+
+        # Apply router prefix if available
+        if router_var_name and router_var_name in router_prefixes:
+            prefix = router_prefixes[router_var_name]
+            route_path = _combine_prefix_and_path(prefix, route_path)
 
         return method_name, route_path
 
@@ -475,6 +582,9 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
 
+    # Extract router prefixes (e.g., APIRouter(prefix='/api/v1'))
+    router_prefixes = _extract_router_prefixes(tree)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             class_name = node.name
@@ -548,7 +658,7 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                     end_col=end_col,
                 )
                 # Check for route decorator to store route_path in meta
-                http_method, route_path = _detect_route_decorator(node)
+                http_method, route_path = _detect_route_decorator(node, router_prefixes)
                 if route_path or http_method:
                     # Uppercase HTTP methods (handle comma-separated for DRF api_view)
                     http_method_upper = ",".join(m.upper() for m in http_method.split(",")) if http_method else None
