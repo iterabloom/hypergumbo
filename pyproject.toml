@@ -40,6 +40,7 @@ dependencies = [
   "tree-sitter-cpp>=0.22",
   "tree-sitter-zig>=0.0.1",
   "tree-sitter-groovy>=0.1",
+  "tree-sitter-julia>=0.23",
 ]
 
 [project.optional-dependencies]

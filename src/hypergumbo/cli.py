@@ -58,6 +58,7 @@ from .analyze.csharp import analyze_csharp
 from .analyze.cpp import analyze_cpp
 from .analyze.zig import analyze_zig
 from .analyze.groovy import analyze_groovy
+from .analyze.julia import analyze_julia
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -933,6 +934,19 @@ def run_behavior_map(
             analysis_runs.append(groovy_result.run.to_dict())
             all_symbols.extend(groovy_result.symbols)
             all_edges.extend(groovy_result.edges)
+
+    # Run Julia analysis (optional, requires tree-sitter-julia)
+    julia_result = analyze_julia(repo_root)
+    if julia_result.run is not None:
+        if julia_result.skipped:  # pragma: no cover - julia installed
+            limits.skipped_passes.append({
+                "pass": julia_result.run.pass_id,
+                "reason": julia_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(julia_result.run.to_dict())
+            all_symbols.extend(julia_result.symbols)
+            all_edges.extend(julia_result.edges)
 
     # Run cross-language linkers
 
