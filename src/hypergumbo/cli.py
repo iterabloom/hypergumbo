@@ -83,6 +83,7 @@ from .analyze.css import analyze_css_files
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.grpc import link_grpc
+from .linkers.http import link_http
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
 from .linkers.phoenix_ipc import link_phoenix_ipc
@@ -1506,6 +1507,14 @@ def run_behavior_map(
         analysis_runs.append(grpc_result.run.to_dict())
         all_symbols.extend(grpc_result.symbols)
         all_edges.extend(grpc_result.edges)
+
+    # HTTP linker: connect fetch/requests calls to route handlers
+    route_symbols = [s for s in all_symbols if s.kind == "route"]
+    http_result = link_http(repo_root, route_symbols)
+    if http_result.run is not None:
+        analysis_runs.append(http_result.run.to_dict())
+        all_symbols.extend(http_result.symbols)
+        all_edges.extend(http_result.edges)
 
     # Dependency linker: connect import statements to manifest declarations
     # Get TOML dependency symbols for linking
