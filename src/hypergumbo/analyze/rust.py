@@ -8,6 +8,7 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - Trait declarations
 - Function call relationships
 - Import relationships (use statements)
+- Axum route handlers (.route("/path", get(handler)))
 
 If tree-sitter with Rust support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -18,8 +19,10 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and use statements
+   - Pass 2: Detect calls, use statements, and Axum routes
+4. Axum route detection:
+   - Find `.route("/path", get(handler))` patterns
+   - Create route symbols with stable_id = HTTP method
 
 Why This Design
 ---------------
@@ -27,6 +30,7 @@ Why This Design
 - Uses tree-sitter-rust package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as Elixir/Java/PHP/C analyzers for consistency
+- Axum route detection enables `hypergumbo routes` command for Rust
 """
 from __future__ import annotations
 
@@ -45,6 +49,10 @@ if TYPE_CHECKING:
 
 PASS_ID = "rust-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
+
+# Axum HTTP method functions that define route handlers
+# Used in patterns like .route("/path", get(handler))
+AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
 
 def find_rust_files(repo_root: Path) -> Iterator[Path]:
@@ -260,6 +268,153 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_axum_routes(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+) -> list[Symbol]:
+    """Extract Axum route handler symbols from a tree-sitter node.
+
+    Detects patterns like:
+    - .route("/path", get(handler))
+    - .route("/users", post(create_user).get(list_users))
+
+    Creates symbols with stable_id = HTTP method for route discovery.
+    """
+    routes: list[Symbol] = []
+
+    def extract_handlers_from_call(
+        call_node: "tree_sitter.Node", route_path: str
+    ) -> None:
+        """Recursively extract handler functions from method chain.
+
+        Handles patterns like: get(handler).post(other_handler)
+        """
+        if call_node.type != "call_expression":
+            return  # pragma: no cover
+
+        func_node = _find_child_by_field(call_node, "function")
+        if not func_node:
+            return  # pragma: no cover
+
+        # Check if this is an HTTP method call like get(handler)
+        if func_node.type == "identifier":
+            method_name = _node_text(func_node, source)
+            if method_name in AXUM_HTTP_METHODS:
+                # Extract handler name from arguments
+                args_node = _find_child_by_type(call_node, "arguments")
+                if args_node:
+                    for arg in args_node.children:
+                        if arg.type == "identifier":
+                            handler_name = _node_text(arg, source)
+                            start_line = call_node.start_point[0] + 1
+                            end_line = call_node.end_point[0] + 1
+
+                            route_sym = Symbol(
+                                id=_make_symbol_id(
+                                    str(file_path), start_line, end_line,
+                                    f"{method_name.upper()} {route_path}", "route"
+                                ),
+                                stable_id=method_name,  # HTTP method for route discovery
+                                name=handler_name,
+                                kind="route",
+                                language="rust",
+                                path=str(file_path),
+                                span=Span(
+                                    start_line=start_line,
+                                    end_line=end_line,
+                                    start_col=call_node.start_point[1],
+                                    end_col=call_node.end_point[1],
+                                ),
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta={"route_path": route_path, "http_method": method_name.upper()},
+                            )
+                            routes.append(route_sym)
+                            break
+
+        # Check for chained methods like get(h1).post(h2)
+        elif func_node.type == "field_expression":
+            # The field is the method name (post)
+            field_node = _find_child_by_field(func_node, "field")
+            # The value is the previous call (get(h1))
+            value_node = _find_child_by_field(func_node, "value")
+
+            if field_node:
+                method_name = _node_text(field_node, source)
+                if method_name in AXUM_HTTP_METHODS:
+                    # Extract handler from this method's arguments
+                    args_node = _find_child_by_type(call_node, "arguments")
+                    if args_node:
+                        for arg in args_node.children:
+                            if arg.type == "identifier":
+                                handler_name = _node_text(arg, source)
+                                start_line = call_node.start_point[0] + 1
+                                end_line = call_node.end_point[0] + 1
+
+                                route_sym = Symbol(
+                                    id=_make_symbol_id(
+                                        str(file_path), start_line, end_line,
+                                        f"{method_name.upper()} {route_path}", "route"
+                                    ),
+                                    stable_id=method_name,
+                                    name=handler_name,
+                                    kind="route",
+                                    language="rust",
+                                    path=str(file_path),
+                                    span=Span(
+                                        start_line=start_line,
+                                        end_line=end_line,
+                                        start_col=call_node.start_point[1],
+                                        end_col=call_node.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    meta={"route_path": route_path, "http_method": method_name.upper()},
+                                )
+                                routes.append(route_sym)
+                                break
+
+            # Recurse into the chained call
+            if value_node and value_node.type == "call_expression":
+                extract_handlers_from_call(value_node, route_path)
+
+    def visit(n: "tree_sitter.Node") -> None:
+        # Look for .route("/path", handler) pattern
+        if n.type == "call_expression":
+            func_node = _find_child_by_field(n, "function")
+
+            # Check if this is a method call .route(...)
+            if func_node and func_node.type == "field_expression":
+                field_node = _find_child_by_field(func_node, "field")
+                if field_node and _node_text(field_node, source) == "route":
+                    # Extract arguments
+                    args_node = _find_child_by_type(n, "arguments")
+                    if args_node:
+                        route_path = None
+                        handler_call = None
+
+                        for arg in args_node.children:
+                            # First string argument is the route path
+                            if arg.type == "string_literal" and route_path is None:
+                                route_path = _node_text(arg, source).strip('"')
+                            # Call expression is the handler(s)
+                            elif arg.type == "call_expression" and route_path:
+                                handler_call = arg
+                                break
+
+                        if route_path and handler_call:
+                            extract_handlers_from_call(handler_call, route_path)
+
+        # Recurse
+        for child in n.children:
+            visit(child)
+
+    visit(node)
+    return routes
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -436,7 +591,7 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges
+    # Pass 2: Extract edges and Axum routes
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -447,6 +602,15 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
             rs_file, parser, analysis.symbol_by_name, global_symbols, run
         )
         all_edges.extend(edges)
+
+        # Extract Axum route handlers
+        try:
+            source = rs_file.read_bytes()
+            tree = parser.parse(source)
+            routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
+            all_symbols.extend(routes)
+        except (OSError, IOError):
+            pass  # Skip files that can't be read
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
