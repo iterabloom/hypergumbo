@@ -41,6 +41,7 @@ dependencies = [
   "tree-sitter-zig>=0.0.1",
   "tree-sitter-groovy>=0.1",
   "tree-sitter-julia>=0.23",
+  "tree-sitter-bash>=0.21",
 ]
 
 [project.optional-dependencies]
