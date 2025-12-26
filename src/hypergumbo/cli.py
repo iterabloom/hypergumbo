@@ -66,6 +66,7 @@ from .analyze.yaml_ansible import analyze_ansible
 from .analyze.sql import analyze_sql_files
 from .analyze.dockerfile import analyze_dockerfiles
 from .analyze.cuda import analyze_cuda_files
+from .analyze.verilog import analyze_verilog_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1047,6 +1048,19 @@ def run_behavior_map(
             analysis_runs.append(cuda_result.run.to_dict())
             all_symbols.extend(cuda_result.symbols)
             all_edges.extend(cuda_result.edges)
+
+    # Run Verilog/SystemVerilog analysis (optional, requires tree-sitter-verilog)
+    verilog_result = analyze_verilog_files(repo_root)
+    if verilog_result.run is not None:
+        if verilog_result.skipped:  # pragma: no cover - verilog installed
+            limits.skipped_passes.append({
+                "pass": verilog_result.run.pass_id,
+                "reason": verilog_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(verilog_result.run.to_dict())
+            all_symbols.extend(verilog_result.symbols)
+            all_edges.extend(verilog_result.edges)
 
     # Run cross-language linkers
 
