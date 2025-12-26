@@ -65,14 +65,45 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
 # Framework detection patterns
 # Maps framework name -> (file to check, pattern to look for)
 PYTHON_FRAMEWORKS = {
+    # Web frameworks
     "fastapi": ["fastapi"],
     "flask": ["flask", "Flask"],
     "django": ["django", "Django"],
+    "aiohttp": ["aiohttp"],
+    # Testing
     "pytest": ["pytest"],
+    # Data/ORM
     "sqlalchemy": ["sqlalchemy", "SQLAlchemy"],
     "pydantic": ["pydantic"],
+    # Task queues
     "celery": ["celery"],
-    "aiohttp": ["aiohttp"],
+    # ML/AI - Deep Learning
+    "pytorch": ["torch", "pytorch"],
+    "tensorflow": ["tensorflow"],
+    "keras": ["keras"],
+    "jax": ["jax", "flax"],
+    # ML/AI - NLP/Transformers
+    "transformers": ["transformers", "huggingface"],
+    "spacy": ["spacy"],
+    "nltk": ["nltk"],
+    # ML/AI - LLM Orchestration
+    "langchain": ["langchain"],
+    "langgraph": ["langgraph"],
+    "langsmith": ["langsmith"],
+    "llamaindex": ["llama-index", "llama_index"],
+    "haystack": ["haystack", "farm-haystack"],
+    # ML/AI - Classical
+    "scikit-learn": ["scikit-learn", "sklearn"],
+    "xgboost": ["xgboost"],
+    "lightgbm": ["lightgbm"],
+    # ML/AI - GPU/CUDA
+    "cuda": ["cupy", "pycuda", "numba"],
+    # ML/AI - MLOps
+    "mlflow": ["mlflow"],
+    "wandb": ["wandb"],
+    # LLM APIs
+    "openai": ["openai"],
+    "anthropic": ["anthropic"],
 }
 
 JS_FRAMEWORKS = {
