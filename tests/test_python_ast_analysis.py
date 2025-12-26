@@ -897,3 +897,170 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
     routes = [n for n in data["nodes"] if n["kind"] == "route"]
     assert len(routes) == 1
     assert routes[0].get("meta", {}).get("view_name") == "my_view"
+
+
+def test_fastapi_router_prefix_combined_with_route(tmp_path: Path) -> None:
+    """FastAPI APIRouter with prefix should combine prefix with route path."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "router = APIRouter(prefix='/api/v1')\n"
+        "\n"
+        "@router.get('/users')\n"
+        "def get_users():\n"
+        "    return []\n"
+        "\n"
+        "@router.post('/users')\n"
+        "def create_user():\n"
+        "    return {}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 2
+
+    func_by_name = {f["name"]: f for f in functions}
+    # Route path should include prefix
+    assert func_by_name["get_users"].get("meta", {}).get("route_path") == "/api/v1/users"
+    assert func_by_name["create_user"].get("meta", {}).get("route_path") == "/api/v1/users"
+
+
+def test_fastapi_router_prefix_no_leading_slash(tmp_path: Path) -> None:
+    """Router prefix without leading slash should be normalized."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "router = APIRouter(prefix='api')\n"
+        "\n"
+        "@router.get('/items')\n"
+        "def get_items():\n"
+        "    return []\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    # Should normalize to /api/items
+    assert functions[0].get("meta", {}).get("route_path") == "/api/items"
+
+
+def test_fastapi_multiple_routers_different_prefixes(tmp_path: Path) -> None:
+    """Multiple routers with different prefixes should each apply their own prefix."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "users_router = APIRouter(prefix='/users')\n"
+        "items_router = APIRouter(prefix='/items')\n"
+        "\n"
+        "@users_router.get('/')\n"
+        "def list_users():\n"
+        "    return []\n"
+        "\n"
+        "@items_router.get('/')\n"
+        "def list_items():\n"
+        "    return []\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 2
+
+    func_by_name = {f["name"]: f for f in functions}
+    assert func_by_name["list_users"].get("meta", {}).get("route_path") == "/users/"
+    assert func_by_name["list_items"].get("meta", {}).get("route_path") == "/items/"
+
+
+def test_fastapi_router_without_prefix(tmp_path: Path) -> None:
+    """Router without prefix should not affect route paths."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "router = APIRouter()\n"
+        "\n"
+        "@router.get('/health')\n"
+        "def health_check():\n"
+        "    return {'status': 'ok'}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    # Route path unchanged
+    assert functions[0].get("meta", {}).get("route_path") == "/health"
+
+
+def test_fastapi_router_prefix_keyword_arg(tmp_path: Path) -> None:
+    """Router prefix can be passed as keyword argument."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "router = APIRouter(tags=['api'], prefix='/v2/api')\n"
+        "\n"
+        "@router.get('/data')\n"
+        "def get_data():\n"
+        "    return {}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    assert functions[0].get("meta", {}).get("route_path") == "/v2/api/data"
+
+
+def test_flask_blueprint_url_prefix(tmp_path: Path) -> None:
+    """Flask Blueprint with url_prefix should combine prefix with route path."""
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from flask import Blueprint\n"
+        "\n"
+        "bp = Blueprint('api', __name__, url_prefix='/api/v1')\n"
+        "\n"
+        "@bp.get('/users')\n"
+        "def get_users():\n"
+        "    return []\n"
+        "\n"
+        "@bp.route('/items', methods=['POST'])\n"
+        "def create_item():\n"
+        "    return {}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 2
+
+    func_by_name = {f["name"]: f for f in functions}
+    # Route paths should include Blueprint prefix
+    assert func_by_name["get_users"].get("meta", {}).get("route_path") == "/api/v1/users"
+    assert func_by_name["create_item"].get("meta", {}).get("route_path") == "/api/v1/items"
