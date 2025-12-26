@@ -117,6 +117,60 @@ JS_FRAMEWORKS = {
     "nestjs": ["@nestjs/core"],
 }
 
+# Rust crate detection patterns (from Cargo.toml)
+RUST_FRAMEWORKS = {
+    # Web frameworks
+    "actix-web": ["actix-web"],
+    "axum": ["axum"],
+    "rocket": ["rocket"],
+    "warp": ["warp"],
+    # Async runtimes
+    "tokio": ["tokio"],
+    "async-std": ["async-std"],
+    # Serialization
+    "serde": ["serde"],
+    # CLI
+    "clap": ["clap"],
+    # Blockchain - Ethereum/EVM
+    "ethers": ["ethers", "ethers-rs"],
+    "alloy": ["alloy"],
+    "foundry": ["foundry-evm", "forge-std"],
+    "revm": ["revm"],
+    # Blockchain - Solana
+    "solana": ["solana-sdk", "solana-program", "anchor-lang"],
+    "anchor": ["anchor-lang", "anchor-spl"],
+    # Blockchain - Substrate/Polkadot
+    "substrate": ["substrate", "sp-core", "sp-runtime", "frame-support"],
+    "polkadot": ["polkadot-sdk"],
+    # Blockchain - Cosmos
+    "cosmwasm": ["cosmwasm-std", "cosmwasm-schema"],
+    # ZKP - General
+    "arkworks": ["ark-ff", "ark-ec", "ark-poly", "ark-snark"],
+    "bellman": ["bellman"],
+    "halo2": ["halo2_proofs", "halo2-base"],
+    # ZKP - Proving systems
+    "plonky2": ["plonky2", "plonky2_field"],
+    "plonky3": ["plonky3", "p3-field", "p3-matrix"],
+    "groth16": ["ark-groth16", "bellman"],
+    "plonk": ["ark-plonk", "plonk"],
+    # ZKP - zkVMs
+    "sp1": ["sp1-sdk", "sp1-core", "sp1-zkvm"],
+    "risc0": ["risc0-zkvm", "risc0-zkp"],
+    "jolt": ["jolt-sdk"],
+    # ZKP - Nova/folding
+    "nova": ["nova-snark", "supernova"],
+    "hypernova": ["hypernova"],
+    # Privacy
+    "zcash": ["zcash_primitives", "zcash_proofs", "orchard"],
+    # IPFS/Content addressing
+    "ipfs": ["ipfs-api", "rust-ipfs", "cid"],
+    "libp2p": ["libp2p"],
+    # Cryptography
+    "curve25519": ["curve25519-dalek"],
+    "ed25519": ["ed25519-dalek"],
+    "secp256k1": ["secp256k1", "k256"],
+}
+
 
 @dataclass
 class LanguageStats:
@@ -223,11 +277,33 @@ def _detect_js_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_rust_frameworks(repo_root: Path) -> list[str]:
+    """Detect Rust frameworks/crates from Cargo.toml."""
+    detected = []
+
+    cargo_toml = repo_root / "Cargo.toml"
+    if cargo_toml.exists():
+        try:
+            content = cargo_toml.read_text(errors="ignore").lower()
+
+            for framework, patterns in RUST_FRAMEWORKS.items():
+                for pattern in patterns:
+                    # Check for crate in dependencies section
+                    if pattern.lower() in content:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError):
+            pass
+
+    return detected
+
+
 def _detect_frameworks(repo_root: Path) -> list[str]:
     """Detect all frameworks in the repository."""
     frameworks = []
     frameworks.extend(_detect_python_frameworks(repo_root))
     frameworks.extend(_detect_js_frameworks(repo_root))
+    frameworks.extend(_detect_rust_frameworks(repo_root))
     return frameworks
 
 
