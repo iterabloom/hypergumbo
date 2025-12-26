@@ -603,3 +603,257 @@ class TestRustFileReadErrors:
             result = _extract_edges_from_file(rs_file, parser, {}, {}, run)
 
         assert result == []
+
+
+class TestAxumRouteDetection:
+    """Tests for Axum route handler detection."""
+
+    def test_detects_simple_get_route(self, tmp_path: Path) -> None:
+        """Detects .route("/path", get(handler)) pattern."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "routes.rs"
+        rs_file.write_text("""
+use axum::{Router, routing::get};
+
+fn app() -> Router {
+    Router::new()
+        .route("/", get(root))
+        .route("/users", get(list_users))
+}
+
+async fn root() -> &'static str {
+    "Hello, World!"
+}
+
+async fn list_users() -> &'static str {
+    "[]"
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "root" in route_names
+        assert "list_users" in route_names
+
+    def test_detects_multiple_http_methods(self, tmp_path: Path) -> None:
+        """Detects post, put, delete routes."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "api.rs"
+        rs_file.write_text("""
+use axum::{Router, routing::{get, post, put, delete}};
+
+fn api_routes() -> Router {
+    Router::new()
+        .route("/items", post(create_item))
+        .route("/items/:id", put(update_item))
+        .route("/items/:id", delete(delete_item))
+}
+
+async fn create_item() {}
+async fn update_item() {}
+async fn delete_item() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "create_item" in route_names
+        assert "update_item" in route_names
+        assert "delete_item" in route_names
+
+        # Check HTTP methods in metadata
+        for route in routes:
+            assert route.meta is not None
+            assert "http_method" in route.meta
+            assert "route_path" in route.meta
+
+    def test_detects_method_chaining(self, tmp_path: Path) -> None:
+        """Detects .route("/path", get(h1).post(h2)) pattern."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "chained.rs"
+        rs_file.write_text("""
+use axum::{Router, routing::{get, post}};
+
+fn app() -> Router {
+    Router::new()
+        .route("/items", get(list_items).post(create_item))
+}
+
+async fn list_items() {}
+async fn create_item() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        # Both handlers should be detected
+        assert "list_items" in route_names
+        assert "create_item" in route_names
+
+        # Verify different HTTP methods
+        http_methods = [s.meta["http_method"] for s in routes if s.meta]
+        assert "GET" in http_methods
+        assert "POST" in http_methods
+
+    def test_route_has_stable_id(self, tmp_path: Path) -> None:
+        """Route symbols have stable_id set to HTTP method."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "stable.rs"
+        rs_file.write_text("""
+use axum::{Router, routing::get};
+
+fn app() -> Router {
+    Router::new().route("/api", get(api_handler))
+}
+
+async fn api_handler() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.stable_id == "get"
+
+    def test_route_path_extraction(self, tmp_path: Path) -> None:
+        """Route path is correctly extracted to metadata."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "paths.rs"
+        rs_file.write_text("""
+use axum::{Router, routing::get};
+
+fn app() -> Router {
+    Router::new()
+        .route("/api/v1/users/:id", get(get_user))
+}
+
+async fn get_user() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta["route_path"] == "/api/v1/users/:id"
+
+    def test_extract_axum_routes_directly(self, tmp_path: Path) -> None:
+        """Tests _extract_axum_routes function directly."""
+        from hypergumbo.analyze.rust import (
+            _extract_axum_routes,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo.ir import AnalysisRun
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        rs_file = tmp_path / "test.rs"
+        rs_file.write_text("""
+fn app() -> Router {
+    Router::new().route("/test", get(handler))
+}
+""")
+
+        source = rs_file.read_bytes()
+        tree = parser.parse(source)
+
+        routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
+
+        assert len(routes) == 1
+        assert routes[0].name == "handler"
+        assert routes[0].kind == "route"
+        assert routes[0].stable_id == "get"
+
+    def test_axum_route_read_error_handled(self, tmp_path: Path) -> None:
+        """Axum route extraction handles read errors in analyze_rust."""
+        from hypergumbo.analyze.rust import analyze_rust, is_rust_tree_sitter_available
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        rs_file = tmp_path / "routes.rs"
+        rs_file.write_text("""
+fn app() -> Router {
+    Router::new().route("/", get(handler))
+}
+async fn handler() {}
+""")
+
+        # The file is read twice - once for symbols, once for routes
+        # We want the second read (for routes) to fail
+        call_count = [0]
+        original_read_bytes = Path.read_bytes
+
+        def mock_read_bytes(self):
+            call_count[0] += 1
+            if call_count[0] <= 2:  # Allow symbol extraction
+                return original_read_bytes(self)
+            raise OSError("Read failed")
+
+        with patch.object(Path, "read_bytes", mock_read_bytes):
+            result = analyze_rust(tmp_path)
+
+        # Should not crash, just skip route extraction for that file
+        assert result.run is not None
+
+    def test_no_routes_in_non_axum_code(self, tmp_path: Path) -> None:
+        """No routes detected in code without Axum patterns."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "plain.rs"
+        rs_file.write_text("""
+fn main() {
+    let x = get_value();
+    println!("{}", x);
+}
+
+fn get_value() -> i32 {
+    42
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
