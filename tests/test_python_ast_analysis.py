@@ -802,3 +802,98 @@ def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
     func = functions[0]
     # Without HTTP methods, should fall back to hash-based stable_id
     assert func["stable_id"].startswith("sha256:")
+
+
+def test_django_path_urlpattern(tmp_path: Path) -> None:
+    """Django path() URL patterns should be detected as routes."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('users/', views.user_list),\n"
+        "    path('users/<int:pk>/', views.user_detail),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2
+
+    route_paths = {r.get("meta", {}).get("route_path") for r in routes}
+    assert "/users/" in route_paths or "users/" in route_paths
+    assert "/users/<int:pk>/" in route_paths or "users/<int:pk>/" in route_paths
+
+
+def test_django_re_path_urlpattern(tmp_path: Path) -> None:
+    """Django re_path() URL patterns should be detected as routes."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import re_path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    re_path(r'^articles/(?P<year>[0-9]{4})/$', views.year_archive),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1
+
+    route = routes[0]
+    assert "articles" in route.get("meta", {}).get("route_path", "")
+
+
+def test_django_url_legacy_urlpattern(tmp_path: Path) -> None:
+    """Django legacy url() patterns should be detected as routes."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.conf.urls import url\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    url(r'^users/$', views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1
+
+
+def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
+    """Django path() with direct function reference (not views.func) is detected."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "\n"
+        "def my_view(request):\n"
+        "    pass\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('items/', my_view),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1
+    assert routes[0].get("meta", {}).get("view_name") == "my_view"
