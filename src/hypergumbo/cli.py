@@ -76,6 +76,7 @@ from .analyze.glsl import analyze_glsl_files
 from .analyze.wgsl import analyze_wgsl_files
 from .analyze.xml_config import analyze_xml_files
 from .analyze.json_config import analyze_json_files
+from .analyze.r_lang import analyze_r_files
 from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
@@ -1409,6 +1410,19 @@ def run_behavior_map(
             analysis_runs.append(json_result.run.to_dict())
             all_symbols.extend(json_result.symbols)
             all_edges.extend(json_result.edges)
+
+    # Run R analysis (optional, requires tree-sitter-r)
+    r_result = analyze_r_files(repo_root)
+    if r_result.run is not None:
+        if r_result.skipped:  # pragma: no cover - r installed
+            limits.skipped_passes.append({
+                "pass": r_result.run.pass_id,
+                "reason": r_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(r_result.run.to_dict())
+            all_symbols.extend(r_result.symbols)
+            all_edges.extend(r_result.edges)
 
     # Run Fortran analysis (optional, requires tree-sitter-fortran)
     fortran_result = analyze_fortran_files(repo_root)
