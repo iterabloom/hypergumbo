@@ -65,6 +65,7 @@ from .analyze.hcl import analyze_hcl
 from .analyze.yaml_ansible import analyze_ansible
 from .analyze.sql import analyze_sql_files
 from .analyze.dockerfile import analyze_dockerfiles
+from .analyze.cuda import analyze_cuda_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1033,6 +1034,19 @@ def run_behavior_map(
             analysis_runs.append(dockerfile_result.run.to_dict())
             all_symbols.extend(dockerfile_result.symbols)
             all_edges.extend(dockerfile_result.edges)
+
+    # Run CUDA analysis (optional, requires tree-sitter-cuda)
+    cuda_result = analyze_cuda_files(repo_root)
+    if cuda_result.run is not None:
+        if cuda_result.skipped:  # pragma: no cover - cuda installed
+            limits.skipped_passes.append({
+                "pass": cuda_result.run.pass_id,
+                "reason": cuda_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(cuda_result.run.to_dict())
+            all_symbols.extend(cuda_result.symbols)
+            all_edges.extend(cuda_result.edges)
 
     # Run cross-language linkers
 
