@@ -256,9 +256,83 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
         return parser
 
 
+# HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+
 def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract text for a tree-sitter node."""
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
+    """Detect if a call_expression is an Express-style route registration.
+
+    Returns (http_method, route_path) if this is a route call, else (None, None).
+
+    Supported patterns:
+    - app.get('/path', handler)
+    - router.post('/path', handler)
+    - app.delete('/path', handler)
+
+    The call must be of form <expr>.<http_method>('/path', ...) where http_method is
+    get, post, put, patch, delete, head, or options.
+    """
+    if node.type != "call_expression":  # pragma: no cover
+        return None, None
+
+    # Find the callee (member_expression) and arguments
+    callee_node = None
+    args_node = None
+    for child in node.children:
+        if child.type == "member_expression":
+            callee_node = child
+        elif child.type == "arguments":
+            args_node = child
+
+    if callee_node is None or args_node is None:
+        return None, None
+
+    # Get the method name from the member_expression
+    method_name = None
+    for child in callee_node.children:
+        if child.type == "property_identifier":
+            method_name = _node_text(child, source).lower()
+            break
+
+    if method_name not in HTTP_METHODS:
+        return None, None
+
+    # Extract the route path from the first argument (should be a string)
+    route_path = None
+    for child in args_node.children:
+        if child.type == "string":
+            # Remove quotes
+            route_path = _node_text(child, source).strip("'\"")
+            break
+
+    return method_name, route_path
+
+
+def _find_route_handler_in_call(node: "tree_sitter.Node") -> "tree_sitter.Node | None":
+    """Find the handler function in an Express-style route call.
+
+    Looks for function_expression or arrow_function as an argument to the call.
+    Returns the first handler function node found, or None.
+    """
+    if node.type != "call_expression":  # pragma: no cover
+        return None
+
+    for child in node.children:
+        if child.type == "arguments":
+            for arg in child.children:
+                # Named function expression: function name(req, res) {}
+                if arg.type == "function_expression" or arg.type == "function":
+                    return arg
+                # Arrow function: (req, res) => {}
+                if arg.type == "arrow_function":
+                    return arg
+    return None  # pragma: no cover
 
 
 def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -297,6 +371,48 @@ def _extract_symbols(
 
     def visit(node: "tree_sitter.Node") -> None:
         nonlocal current_class_name
+
+        # Express-style route handler detection: app.get('/path', handler)
+        if node.type == "call_expression":
+            http_method, route_path = _detect_route_call(node, source)
+            if http_method:
+                handler_node = _find_route_handler_in_call(node)
+                if handler_node:
+                    # Extract function name if it's a named function expression
+                    name = None
+                    if handler_node.type == "function_expression" or handler_node.type == "function":
+                        name = _find_name_in_children(handler_node, source)
+                    # For anonymous functions, generate a name from route
+                    if not name:
+                        # Clean route path for name: /users/:id -> _users_id
+                        clean_path = route_path.replace("/", "_").replace(":", "").replace("{", "").replace("}", "") if route_path else ""
+                        name = f"_{http_method}{clean_path}_handler"
+
+                    span = Span(
+                        start_line=handler_node.start_point[0] + 1 + line_offset,
+                        end_line=handler_node.end_point[0] + 1 + line_offset,
+                        start_col=handler_node.start_point[1],
+                        end_col=handler_node.end_point[1],
+                    )
+                    symbol = Symbol(
+                        id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
+                        name=name,
+                        kind="function",
+                        language=lang,
+                        path=str(file_path),
+                        span=span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        stable_id=http_method,
+                        meta={"route_path": route_path} if route_path else None,
+                    )
+                    symbols.append(symbol)
+                    # Don't recurse into this handler - we've already processed it
+                    # But we need to continue visiting other children
+                    for child in node.children:
+                        if child != handler_node:
+                            visit(child)
+                    return
 
         # Function declarations
         if node.type == "function_declaration":
