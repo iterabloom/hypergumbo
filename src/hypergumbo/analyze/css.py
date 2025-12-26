@@ -338,6 +338,66 @@ def _process_css_node(
             for child in node.children:  # pragma: no cover - rare at-rules
                 _process_css_node(child, symbols, edges, rel_path, source, file_symbol_id)  # pragma: no cover
 
+    elif node.type == "class_selector":
+        # Extract class name (includes the dot)
+        class_name = _get_node_text(node, source)
+        if class_name:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            symbol_id = _make_symbol_id(rel_path, start_line, class_name, "class_selector")
+            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+
+            symbols.append(
+                Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=class_name,
+                    fingerprint=fingerprint,
+                    kind="class_selector",
+                    name=class_name,
+                    path=rel_path,
+                    language="css",
+                    span=Span(
+                        start_line=start_line,
+                        start_col=node.start_point[1],
+                        end_line=end_line,
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+            )
+
+    elif node.type == "id_selector":
+        # Extract ID name (includes the hash)
+        id_name = _get_node_text(node, source)
+        if id_name:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            symbol_id = _make_symbol_id(rel_path, start_line, id_name, "id_selector")
+            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+
+            symbols.append(
+                Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=id_name,
+                    fingerprint=fingerprint,
+                    kind="id_selector",
+                    name=id_name,
+                    path=rel_path,
+                    language="css",
+                    span=Span(
+                        start_line=start_line,
+                        start_col=node.start_point[1],
+                        end_line=end_line,
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+            )
+
     else:
         # Recurse for other node types
         for child in node.children:
