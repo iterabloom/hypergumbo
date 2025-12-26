@@ -818,18 +818,24 @@ def generate_sketch(
     # Collect source files for expansion
     source_files = _collect_source_files(repo_root, profile)
 
-    # Estimate tokens per item (~20 chars average + formatting)
+    # Estimate tokens per file item
+    # Typical line: "- `path/to/long/filename.py`" is ~50 chars = ~12 tokens
+    tokens_per_file = 12
+
+    # Estimate tokens per entry point or symbol item (~25 chars = ~6 tokens)
     tokens_per_item = 6
 
     # Section 4: Source files (if we have budget >= 50 tokens remaining)
     if remaining_tokens > 50 and source_files:
         # Use up to half of remaining budget for source files at small budgets
         # Scale down the fraction as budget grows (files are less important)
+        # Reserve space for Entry Points and Key Symbols sections
         if remaining_tokens < 300:
             budget_for_files = (remaining_tokens * 2) // 3  # 66% at small budgets
         else:
-            budget_for_files = remaining_tokens // 3  # 33% at larger budgets
-        max_source_files = max(5, budget_for_files // tokens_per_item)
+            # At larger budgets, limit files to 25% to leave room for analysis
+            budget_for_files = remaining_tokens // 4  # 25% at larger budgets
+        max_source_files = max(5, budget_for_files // tokens_per_file)
 
         source_section = _format_source_files(
             repo_root, source_files, max_files=max_source_files
