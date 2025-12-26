@@ -7,6 +7,7 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Interface declarations (type X interface)
 - Function call relationships
 - Import relationships (import statements)
+- Web framework routes (Gin, Echo, Fiber)
 
 If tree-sitter with Go support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -17,8 +18,11 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+   - Pass 2: Detect calls, imports, and routes
+4. Route detection:
+   - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
+   - Fiber: app.Get("/path", handler) (lowercase methods)
+   - Creates route symbols with stable_id = HTTP method
 
 Why This Design
 ---------------
@@ -26,6 +30,7 @@ Why This Design
 - Uses tree-sitter-go package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as Rust/Elixir/Java/PHP/C analyzers for consistency
+- Route detection enables `hypergumbo routes` command for Go
 """
 from __future__ import annotations
 
@@ -44,6 +49,14 @@ if TYPE_CHECKING:
 
 PASS_ID = "go-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
+
+# Go web framework HTTP method names
+# Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+# Fiber uses lowercase: Get, Post, Put, Delete, Patch, Head, Options
+GO_HTTP_METHODS = {
+    "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
+    "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
+}
 
 
 def find_go_files(repo_root: Path) -> Iterator[Path]:
@@ -364,6 +377,103 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_go_routes(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+) -> list[Symbol]:
+    """Extract Go web framework route symbols from a tree-sitter node.
+
+    Detects patterns like:
+    - Gin/Echo: r.GET("/path", handler), e.POST("/users", createUser)
+    - Fiber: app.Get("/path", handler) (lowercase methods)
+
+    Creates symbols with stable_id = HTTP method for route discovery.
+    """
+    routes: list[Symbol] = []
+
+    def visit(n: "tree_sitter.Node") -> None:
+        # Look for call_expression with selector_expression function
+        if n.type == "call_expression":
+            func_node = _find_child_by_field(n, "function")
+
+            if func_node and func_node.type == "selector_expression":
+                # Get the method name (e.g., GET, POST, Get, Post)
+                field_node = _find_child_by_field(func_node, "field")
+
+                if field_node:
+                    method_name = _node_text(field_node, source)
+
+                    if method_name in GO_HTTP_METHODS:
+                        # Extract arguments
+                        args_node = _find_child_by_field(n, "arguments")
+                        if args_node:
+                            route_path = None
+                            handler_name = None
+
+                            for arg in args_node.children:
+                                # First string literal is the route path
+                                if arg.type == "interpreted_string_literal" and route_path is None:
+                                    # Get the content without quotes
+                                    content_node = _find_child_by_type(
+                                        arg, "interpreted_string_literal_content"
+                                    )
+                                    if content_node:
+                                        route_path = _node_text(content_node, source)
+                                    else:  # pragma: no cover
+                                        # Fallback: strip quotes manually
+                                        route_path = _node_text(arg, source).strip('"')
+
+                                # Handler is usually an identifier after the path
+                                elif arg.type == "identifier" and route_path is not None:
+                                    handler_name = _node_text(arg, source)
+                                    break
+
+                                # Handler could also be a selector (pkg.Handler)
+                                elif arg.type == "selector_expression" and route_path is not None:
+                                    handler_name = _node_text(arg, source)
+                                    break
+
+                            if route_path and handler_name:
+                                # Normalize method name to uppercase for stable_id
+                                normalized_method = method_name.upper()
+                                start_line = n.start_point[0] + 1
+                                end_line = n.end_point[0] + 1
+
+                                route_sym = Symbol(
+                                    id=_make_symbol_id(
+                                        str(file_path), start_line, end_line,
+                                        f"{normalized_method} {route_path}", "route"
+                                    ),
+                                    stable_id=normalized_method.lower(),
+                                    name=handler_name,
+                                    kind="route",
+                                    language="go",
+                                    path=str(file_path),
+                                    span=Span(
+                                        start_line=start_line,
+                                        end_line=end_line,
+                                        start_col=n.start_point[1],
+                                        end_col=n.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    meta={
+                                        "route_path": route_path,
+                                        "http_method": normalized_method,
+                                    },
+                                )
+                                routes.append(route_sym)
+
+        # Recurse
+        for child in n.children:
+            visit(child)
+
+    visit(node)
+    return routes
+
+
 def analyze_go(repo_root: Path) -> GoAnalysisResult:
     """Analyze all Go files in a repository.
 
@@ -418,7 +528,7 @@ def analyze_go(repo_root: Path) -> GoAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges
+    # Pass 2: Extract edges and routes
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -429,6 +539,15 @@ def analyze_go(repo_root: Path) -> GoAnalysisResult:
             go_file, parser, analysis.symbol_by_name, global_symbols, run
         )
         all_edges.extend(edges)
+
+        # Extract web framework routes (Gin, Echo, Fiber)
+        try:
+            source = go_file.read_bytes()
+            tree = parser.parse(source)
+            routes = _extract_go_routes(tree.root_node, source, go_file, run)
+            all_symbols.extend(routes)
+        except (OSError, IOError):  # pragma: no cover
+            pass  # Skip files that can't be read
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped

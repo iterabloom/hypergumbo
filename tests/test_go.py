@@ -500,3 +500,243 @@ class TestGoFileReadErrors:
             result = _extract_edges_from_file(go_file, parser, {}, {}, run)
 
         assert result == []
+
+
+class TestGoRouteDetection:
+    """Tests for Go web framework route detection."""
+
+    def test_detects_gin_routes(self, tmp_path: Path) -> None:
+        """Detects Gin router.GET("/path", handler) pattern."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+    r := gin.Default()
+    r.GET("/users", listUsers)
+    r.POST("/users", createUser)
+}
+
+func listUsers(c *gin.Context) {}
+func createUser(c *gin.Context) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "listUsers" in route_names
+        assert "createUser" in route_names
+
+    def test_detects_echo_routes(self, tmp_path: Path) -> None:
+        """Detects Echo e.GET("/path", handler) pattern."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/labstack/echo/v4"
+
+func main() {
+    e := echo.New()
+    e.GET("/", home)
+    e.PUT("/users/:id", updateUser)
+    e.DELETE("/users/:id", deleteUser)
+}
+
+func home(c echo.Context) error { return nil }
+func updateUser(c echo.Context) error { return nil }
+func deleteUser(c echo.Context) error { return nil }
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "home" in route_names
+        assert "updateUser" in route_names
+        assert "deleteUser" in route_names
+
+        # Check HTTP methods
+        http_methods = {s.meta["http_method"] for s in routes if s.meta}
+        assert "GET" in http_methods
+        assert "PUT" in http_methods
+        assert "DELETE" in http_methods
+
+    def test_detects_fiber_lowercase_routes(self, tmp_path: Path) -> None:
+        """Detects Fiber app.Get("/path", handler) pattern (lowercase methods)."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gofiber/fiber/v2"
+
+func main() {
+    app := fiber.New()
+    app.Get("/", home)
+    app.Post("/api/data", postData)
+}
+
+func home(c *fiber.Ctx) error { return nil }
+func postData(c *fiber.Ctx) error { return nil }
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "home" in route_names
+        assert "postData" in route_names
+
+    def test_route_has_stable_id(self, tmp_path: Path) -> None:
+        """Route symbols have stable_id set to lowercase HTTP method."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    r.GET("/test", handler)
+}
+
+func handler() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].stable_id == "get"
+
+    def test_route_path_extraction(self, tmp_path: Path) -> None:
+        """Route path is correctly extracted to metadata."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    r.GET("/api/v1/users/:id", getUser)
+}
+
+func getUser() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].meta["route_path"] == "/api/v1/users/:id"
+        assert routes[0].meta["http_method"] == "GET"
+
+    def test_extract_go_routes_directly(self, tmp_path: Path) -> None:
+        """Tests _extract_go_routes function directly."""
+        from hypergumbo.analyze.go import (
+            _extract_go_routes,
+            is_go_tree_sitter_available,
+        )
+        from hypergumbo.ir import AnalysisRun
+
+        if not is_go_tree_sitter_available():
+            pytest.skip("tree-sitter-go not available")
+
+        import tree_sitter_go
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_go.language())
+        parser = tree_sitter.Parser(lang)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        go_file = tmp_path / "test.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    r.POST("/submit", submitHandler)
+}
+""")
+
+        source = go_file.read_bytes()
+        tree = parser.parse(source)
+
+        routes = _extract_go_routes(tree.root_node, source, go_file, run)
+
+        assert len(routes) == 1
+        assert routes[0].name == "submitHandler"
+        assert routes[0].kind == "route"
+        assert routes[0].stable_id == "post"
+
+    def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
+        """No routes detected in code without web framework patterns."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    result := GetData()
+    PostProcess(result)
+}
+
+func GetData() string { return "data" }
+func PostProcess(s string) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+    def test_selector_handler(self, tmp_path: Path) -> None:
+        """Handles selector expression handlers like pkg.Handler."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    r.GET("/api", handlers.GetAPI)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-go not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "handlers.GetAPI"
+
