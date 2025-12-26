@@ -358,6 +358,72 @@ def cmd_slice(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_search(args: argparse.Namespace) -> int:
+    """Search for symbols by name pattern."""
+    repo_root = Path(args.path).resolve()
+
+    # Determine input file
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
+    else:
+        # Look for default results file
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+
+    # Search pattern (case-insensitive substring match)
+    pattern = args.pattern.lower()
+    matches = []
+
+    for node in nodes:
+        name = node.get("name", "")
+        # Check if pattern matches name (fuzzy substring match)
+        if pattern in name.lower():
+            # Apply filters
+            if args.kind and node.get("kind") != args.kind:
+                continue
+            if args.language and node.get("language") != args.language:
+                continue
+            matches.append(node)
+
+    # Apply limit
+    if args.limit and len(matches) > args.limit:
+        matches = matches[: args.limit]
+
+    # Output results
+    if not matches:
+        print(f"No symbols found matching '{args.pattern}'")
+        return 0
+
+    print(f"Found {len(matches)} symbol(s) matching '{args.pattern}':\n")
+    for node in matches:
+        name = node.get("name", "")
+        kind = node.get("kind", "")
+        lang = node.get("language", "")
+        path = node.get("path", "")
+        span = node.get("span", {})
+        line = span.get("start_line", 0)
+
+        print(f"  {name} ({kind})")
+        print(f"    {path}:{line}")
+        print(f"    language: {lang}")
+        print()
+
+    return 0
+
+
 def cmd_catalog(args: argparse.Namespace) -> int:
     """Display available passes and packs."""
     catalog = get_default_catalog()
@@ -590,6 +656,40 @@ def build_parser() -> argparse.ArgumentParser:
              "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
     )
     p_slice.set_defaults(func=cmd_slice)
+
+    # hypergumbo search
+    p_search = sub.add_parser("search", help="Search for symbols by name")
+    p_search.add_argument(
+        "pattern",
+        help="Pattern to search for (case-insensitive substring match)",
+    )
+    p_search.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_search.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_search.add_argument(
+        "--kind",
+        default=None,
+        help="Filter by symbol kind (e.g., function, class, method)",
+    )
+    p_search.add_argument(
+        "--language",
+        default=None,
+        help="Filter by language (e.g., python, javascript)",
+    )
+    p_search.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of results to show (default: 20)",
+    )
+    p_search.set_defaults(func=cmd_search)
 
     # hypergumbo catalog
     p_catalog = sub.add_parser("catalog", help="[stub] Show available passes/packs")
@@ -1310,7 +1410,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    subcommands = {"init", "run", "slice", "catalog", "export-capsule", "sketch"}
+    subcommands = {"init", "run", "slice", "search", "catalog", "export-capsule", "sketch"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
