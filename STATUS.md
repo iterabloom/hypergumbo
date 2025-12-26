@@ -199,6 +199,7 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | IPC (Phoenix) | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Phoenix Channel patterns (`broadcast!`, `push`, `handle_in`) and LiveView patterns (`handle_event`, `push_event`). Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Event matching links senders to receivers. |
 | Swift/ObjC | [x] | imports | objc_bridge, selector_ref | Detects Swift/Objective-C interop: `@objc` annotations, NSObject subclasses, `#selector()` references, and `*-Bridging-Header.h` imports. Enables slice traversal across Apple platform language boundaries. |
 | gRPC | [x] | grpc_calls | grpc_service, grpc_servicer, grpc_stub, grpc_client, grpc_server | Detects gRPC/Protobuf patterns across Python, Go, Java, TypeScript. Parses `.proto` service definitions, servicer implementations, stub/client usage. Links clients to servers by service name. |
+| HTTP | [x] | http_calls | http_client | Links HTTP client calls to server route handlers across languages. Detects `fetch()`, `axios`, `requests`, `httpx` patterns. Matches URLs to route patterns (supports `:id`, `{id}`, `<id>` parameters). Enables full-stack call graph traversal. |
 
 ---
 
