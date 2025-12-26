@@ -666,3 +666,138 @@ def test_flask_method_specific_decorators(tmp_path: Path) -> None:
 
     assert func_by_name["get_users"]["stable_id"] == "get"
     assert func_by_name["create_user"]["stable_id"] == "post"
+
+
+# ============================================================================
+# Django Route Detection Tests
+# ============================================================================
+
+
+def test_drf_api_view_decorator_single_method(tmp_path: Path) -> None:
+    """DRF @api_view(['GET']) decorator should set stable_id to 'get'."""
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from rest_framework.decorators import api_view\n"
+        "\n"
+        "@api_view(['GET'])\n"
+        "def user_list(request):\n"
+        "    return []\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    assert func["name"] == "user_list"
+    assert func["stable_id"] == "get"
+
+
+def test_drf_api_view_decorator_multiple_methods(tmp_path: Path) -> None:
+    """DRF @api_view(['GET', 'POST']) should set stable_id to 'get,post'."""
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from rest_framework.decorators import api_view\n"
+        "\n"
+        "@api_view(['GET', 'POST'])\n"
+        "def user_list(request):\n"
+        "    if request.method == 'GET':\n"
+        "        return []\n"
+        "    return {}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    # Multiple methods joined with comma
+    assert func["stable_id"] == "get,post"
+
+
+def test_drf_api_view_all_methods(tmp_path: Path) -> None:
+    """DRF @api_view with all HTTP methods."""
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from rest_framework.decorators import api_view\n"
+        "\n"
+        "@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])\n"
+        "def resource(request):\n"
+        "    pass\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    assert "get" in func["stable_id"]
+    assert "post" in func["stable_id"]
+    assert "put" in func["stable_id"]
+    assert "patch" in func["stable_id"]
+    assert "delete" in func["stable_id"]
+
+
+def test_django_cbv_http_methods(tmp_path: Path) -> None:
+    """Django class-based view methods (get, post) should be detected as routes."""
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from django.views import View\n"
+        "\n"
+        "class UserView(View):\n"
+        "    def get(self, request):\n"
+        "        return []\n"
+        "\n"
+        "    def post(self, request):\n"
+        "        return {}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    methods = [n for n in data["nodes"] if n["kind"] == "method"]
+    method_by_name = {m["name"]: m for m in methods}
+
+    # Methods named get/post in a View class should be marked as HTTP handlers
+    assert "UserView.get" in method_by_name
+    assert "UserView.post" in method_by_name
+    assert method_by_name["UserView.get"]["stable_id"] == "get"
+    assert method_by_name["UserView.post"]["stable_id"] == "post"
+
+
+def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
+    """DRF @api_view() without args should not crash and use hash stable_id."""
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from rest_framework.decorators import api_view\n"
+        "\n"
+        "@api_view()\n"
+        "def no_args_view(request):\n"
+        "    return []\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    # Without HTTP methods, should fall back to hash-based stable_id
+    assert func["stable_id"].startswith("sha256:")
