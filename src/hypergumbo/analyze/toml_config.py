@@ -210,6 +210,8 @@ def _process_toml_node(
             _extract_cargo_dependencies(node, rel_path, symbols, content)
         elif is_cargo and table_name.endswith(".dependencies"):  # pragma: no cover - nested deps
             _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
+        elif is_pyproject and table_name == "project":
+            _extract_pyproject_dependencies(node, rel_path, symbols, content)
 
         # Recurse into table children
         for child in node.children:
@@ -391,3 +393,75 @@ def _extract_cargo_dependencies(
                         origin=PASS_ID,
                     )
                 )
+
+
+def _parse_pyproject_dependency(dep_str: str) -> str:
+    """Parse a PEP 508 dependency string and extract the package name.
+
+    Examples:
+        "requests>=2.0" -> "requests"
+        "click" -> "click"
+        "pytest[testing]>=7.0" -> "pytest"
+        "numpy>=1.0,<2.0" -> "numpy"
+    """
+    import re
+    # PEP 508: package name is alphanumeric, underscores, hyphens
+    # followed by optional extras, version specifiers, etc.
+    match = re.match(r"^([a-zA-Z0-9_-]+)", dep_str.strip())
+    if match:
+        return match.group(1)
+    return dep_str.strip()  # pragma: no cover - fallback
+
+
+def _extract_pyproject_dependencies(
+    table_node, rel_path: str, symbols: list[Symbol], content: str
+):
+    """Extract dependencies from a pyproject.toml [project] table.
+
+    Looks for:
+    - dependencies = ["pkg1", "pkg2>=1.0"]
+    """
+    for child in table_node.children:
+        if child.type == "pair":
+            pair_key = None
+            pair_value = None
+            for pair_child in child.children:
+                if pair_child.type in ("bare_key", "quoted_key", "dotted_key"):
+                    pair_key = _get_key_text(pair_child)
+                elif pair_child.type == "array":
+                    pair_value = pair_child
+
+            if pair_key == "dependencies" and pair_value is not None:
+                # Extract each dependency from the array
+                for elem in pair_value.children:
+                    if elem.type == "string":
+                        dep_str = _get_string_value(elem)
+                        dep_name = _parse_pyproject_dependency(dep_str)
+
+                        start_line = elem.start_point[0] + 1
+                        end_line = elem.end_point[0] + 1
+                        symbol_id = _make_symbol_id(
+                            rel_path, start_line, dep_name, "dependency"
+                        )
+                        node_bytes = content[elem.start_byte : elem.end_byte].encode()
+
+                        symbols.append(
+                            Symbol(
+                                id=symbol_id,
+                                stable_id=None,
+                                shape_id=None,
+                                canonical_name=dep_name,
+                                fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                                kind="dependency",
+                                name=dep_name,
+                                path=rel_path,
+                                language="toml",
+                                span=Span(
+                                    start_line=start_line,
+                                    start_col=elem.start_point[1],
+                                    end_line=end_line,
+                                    end_col=elem.end_point[1],
+                                ),
+                                origin=PASS_ID,
+                            )
+                        )

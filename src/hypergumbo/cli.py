@@ -77,6 +77,7 @@ from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
 from .catalog import get_default_catalog, is_available
+from .linkers.dependency import link_dependencies
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -1438,6 +1439,18 @@ def run_behavior_map(
         analysis_runs.append(grpc_result.run.to_dict())
         all_symbols.extend(grpc_result.symbols)
         all_edges.extend(grpc_result.edges)
+
+    # Dependency linker: connect import statements to manifest declarations
+    # Get TOML dependency symbols for linking
+    toml_symbols = [s for s in all_symbols if s.language == "toml"]
+    dep_link_result = link_dependencies(
+        toml_symbols=toml_symbols,
+        code_edges=all_edges,
+        code_symbols=all_symbols,
+    )
+    if dep_link_result.run is not None:
+        analysis_runs.append(dep_link_result.run.to_dict())
+        all_edges.extend(dep_link_result.edges)
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
