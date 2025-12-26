@@ -90,6 +90,7 @@ from .linkers.jni import link_jni
 from .linkers.phoenix_ipc import link_phoenix_ipc
 from .linkers.swift_objc import link_swift_objc
 from .linkers.websocket import link_websocket
+from .linkers.message_queue import link_message_queues
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -1508,6 +1509,13 @@ def run_behavior_map(
         analysis_runs.append(grpc_result.run.to_dict())
         all_symbols.extend(grpc_result.symbols)
         all_edges.extend(grpc_result.edges)
+
+    # Message queue linker: detect Kafka, RabbitMQ, SQS, Redis Pub/Sub patterns
+    mq_result = link_message_queues(repo_root)
+    if mq_result.run is not None:
+        analysis_runs.append(mq_result.run.to_dict())
+        all_symbols.extend(mq_result.symbols)
+        all_edges.extend(mq_result.edges)
 
     # HTTP linker: connect fetch/requests calls to route handlers
     # Include both kind="route" (Ruby/Go/Rust) and symbols with meta.route_path (Python/JS)
