@@ -35,6 +35,11 @@ dependencies = [
   "tree-sitter-haskell>=0.21",
   "tree-sitter-ocaml>=0.21",
   "tree-sitter-language-pack>=0.13",  # Elixir
+  "tree-sitter-solidity>=0.0.1",
+  "tree-sitter-c-sharp>=0.21",
+  "tree-sitter-cpp>=0.22",
+  "tree-sitter-zig>=0.0.1",
+  "tree-sitter-groovy>=0.1",
 ]
 
 [project.optional-dependencies]

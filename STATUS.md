@@ -140,6 +140,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | C# | [x] tree-sitter | class, interface, struct, enum, method, constructor, property | calls, imports, instantiates | Two-pass cross-file resolution. Detects method calls, `using` directives, `new ClassName()`. Optional: `pip install hypergumbo[csharp]` |
 | C++ | [x] tree-sitter | class, struct, enum, function, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects function/method calls, `#include` directives, `new ClassName()`. Handles qualified names (Namespace::Class::method). Optional: `pip install hypergumbo[cpp]` |
 | Zig | [x] tree-sitter | function, struct, enum, union, error_set, method, test | calls, imports | Detects `fn`, `struct`, `enum`, `union`, `error` sets, `test` blocks, `@import()` statements. Methods distinguished by `self` parameter. Two-pass cross-file resolution. Optional: `pip install tree-sitter-zig` |
+| Groovy | [x] tree-sitter | class, interface, enum, method, function | calls, imports | Detects classes, interfaces, enums, methods, top-level functions (`def`), import statements. Handles `.gradle` build files. Two-pass cross-file resolution. Optional: `pip install tree-sitter-groovy` |
 
 ## Supply Chain Classification (§8.6)
 
