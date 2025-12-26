@@ -564,3 +564,129 @@ public class Factory
             if "DoWork" in e.src and "Process" in e.dst
         ]
         assert len(direct_calls) >= 1
+
+
+class TestAspNetCoreRouteDetection:
+    """Tests for ASP.NET Core route detection with [HttpGet], [HttpPost], etc."""
+
+    def test_http_get_attribute(self, tmp_path: Path) -> None:
+        """Detects [HttpGet] attribute on controller action."""
+        (tmp_path / "UsersController.cs").write_text(
+            """using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
+[Route("api/[controller]")]
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public IActionResult GetUsers()
+    {
+        return Ok();
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "GetUsers" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("http_method") == "GET"
+        assert method.stable_id == "GET"
+
+    def test_http_post_attribute(self, tmp_path: Path) -> None:
+        """Detects [HttpPost] attribute on controller action."""
+        (tmp_path / "UsersController.cs").write_text(
+            """[ApiController]
+public class UsersController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult CreateUser()
+    {
+        return Ok();
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "CreateUser" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("http_method") == "POST"
+        assert method.stable_id == "POST"
+
+    def test_http_get_with_route_template(self, tmp_path: Path) -> None:
+        """Detects [HttpGet("{id}")] with route template."""
+        (tmp_path / "UsersController.cs").write_text(
+            """[ApiController]
+public class UsersController : ControllerBase
+{
+    [HttpGet("{id}")]
+    public IActionResult GetById(int id)
+    {
+        return Ok();
+    }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "GetById" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "{id}"
+        assert method.meta.get("http_method") == "GET"
+
+    def test_all_http_methods(self, tmp_path: Path) -> None:
+        """Detects all ASP.NET Core HTTP method attributes."""
+        (tmp_path / "ItemsController.cs").write_text(
+            """[ApiController]
+public class ItemsController : ControllerBase
+{
+    [HttpGet]
+    public IActionResult GetAll() { return Ok(); }
+
+    [HttpPost]
+    public IActionResult Create() { return Ok(); }
+
+    [HttpPut("{id}")]
+    public IActionResult Update() { return Ok(); }
+
+    [HttpDelete("{id}")]
+    public IActionResult Delete() { return Ok(); }
+
+    [HttpPatch("{id}")]
+    public IActionResult Patch() { return Ok(); }
+}
+"""
+        )
+
+        result = analyze_csharp(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
+
+        assert len(methods) == 5
+        http_methods = {m.stable_id for m in methods}
+        assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
