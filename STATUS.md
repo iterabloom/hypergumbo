@@ -153,6 +153,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | CMake | [x] tree-sitter | project, library, executable, function, macro, package, subdirectory | links | Detects CMake projects, add_library/add_executable targets, function/macro definitions, find_package, add_subdirectory. Target link dependencies. Optional: `pip install tree-sitter-cmake` |
 | Make | [x] tree-sitter | variable, target, pattern_rule, special_target, function, include | depends_on | Detects Makefiles: variables, targets, pattern rules, .PHONY, define blocks, include directives. Prerequisite dependencies. Optional: `pip install tree-sitter-make` |
 | VHDL | [x] tree-sitter | entity, architecture, package, component | implements | Detects VHDL hardware designs: entities, architectures, packages, component declarations. Architecture-entity relationships. Optional: `pip install tree-sitter-vhdl` |
+| GraphQL | [x] tree-sitter | type, input, interface, enum, scalar, union, directive, fragment, query, mutation, subscription | — | Detects GraphQL schema definitions: object types, input types, interfaces, enums, scalars, unions, directives, fragments, operations. API schema analysis. Optional: `pip install tree-sitter-graphql` |
 
 ## Supply Chain Classification (§8.6)
 
