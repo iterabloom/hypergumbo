@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -272,6 +272,12 @@ def get_default_catalog() -> Catalog:
                 description="GraphQL schema analysis via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[graphql]",
+            ),
+            Pass(
+                id="nix-v1",
+                description="Nix expression analysis via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[nix]",
             ),
             Pass(
                 id="websocket-linker-v1",

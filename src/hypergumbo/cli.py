@@ -71,6 +71,7 @@ from .analyze.cmake import analyze_cmake_files
 from .analyze.make import analyze_make_files
 from .analyze.vhdl import analyze_vhdl_files
 from .analyze.graphql import analyze_graphql_files
+from .analyze.nix import analyze_nix_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1117,6 +1118,19 @@ def run_behavior_map(
             analysis_runs.append(graphql_result.run.to_dict())
             all_symbols.extend(graphql_result.symbols)
             all_edges.extend(graphql_result.edges)
+
+    # Run Nix analysis (optional, requires tree-sitter-nix)
+    nix_result = analyze_nix_files(repo_root)
+    if nix_result.run is not None:
+        if nix_result.skipped:  # pragma: no cover - nix installed
+            limits.skipped_passes.append({
+                "pass": nix_result.run.pass_id,
+                "reason": nix_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(nix_result.run.to_dict())
+            all_symbols.extend(nix_result.symbols)
+            all_edges.extend(nix_result.edges)
 
     # Run cross-language linkers
 
