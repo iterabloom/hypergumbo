@@ -67,6 +67,7 @@ from .analyze.sql import analyze_sql_files
 from .analyze.dockerfile import analyze_dockerfiles
 from .analyze.cuda import analyze_cuda_files
 from .analyze.verilog import analyze_verilog_files
+from .analyze.cmake import analyze_cmake_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1061,6 +1062,19 @@ def run_behavior_map(
             analysis_runs.append(verilog_result.run.to_dict())
             all_symbols.extend(verilog_result.symbols)
             all_edges.extend(verilog_result.edges)
+
+    # Run CMake analysis (optional, requires tree-sitter-cmake)
+    cmake_result = analyze_cmake_files(repo_root)
+    if cmake_result.run is not None:
+        if cmake_result.skipped:  # pragma: no cover - cmake installed
+            limits.skipped_passes.append({
+                "pass": cmake_result.run.pass_id,
+                "reason": cmake_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(cmake_result.run.to_dict())
+            all_symbols.extend(cmake_result.symbols)
+            all_edges.extend(cmake_result.edges)
 
     # Run cross-language linkers
 
