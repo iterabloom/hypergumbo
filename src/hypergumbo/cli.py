@@ -424,6 +424,75 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+# HTTP methods that indicate API routes
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+
+def cmd_routes(args: argparse.Namespace) -> int:
+    """Display API routes/endpoints from the behavior map."""
+    repo_root = Path(args.path).resolve()
+
+    # Determine input file
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
+    else:
+        # Look for default results file
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+
+    # Find route handlers - symbols with HTTP method markers in stable_id
+    routes: list[dict] = []
+    for node in nodes:
+        stable_id = node.get("stable_id", "")
+        if stable_id and stable_id.lower() in HTTP_METHODS:
+            # Apply language filter
+            if args.language and node.get("language") != args.language:
+                continue
+            routes.append(node)
+
+    if not routes:
+        print("No API routes found in the behavior map.")
+        return 0
+
+    # Group routes by path
+    routes_by_path: dict[str, list[dict]] = {}
+    for route in routes:
+        path = route.get("path", "unknown")
+        if path not in routes_by_path:
+            routes_by_path[path] = []
+        routes_by_path[path].append(route)
+
+    # Output routes grouped by file
+    total_routes = len(routes)
+    print(f"Found {total_routes} API route(s):\n")
+
+    for file_path in sorted(routes_by_path.keys()):
+        file_routes = routes_by_path[file_path]
+        print(f"{file_path}:")
+        for route in file_routes:
+            name = route.get("name", "")
+            method = route.get("stable_id", "").upper()
+            span = route.get("span", {})
+            line = span.get("start_line", 0)
+            print(f"  [{method}] {name} (line {line})")
+        print()
+
+    return 0
+
+
 def cmd_catalog(args: argparse.Namespace) -> int:
     """Display available passes and packs."""
     catalog = get_default_catalog()
@@ -690,6 +759,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of results to show (default: 20)",
     )
     p_search.set_defaults(func=cmd_search)
+
+    # hypergumbo routes
+    p_routes = sub.add_parser("routes", help="Display API routes/endpoints")
+    p_routes.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_routes.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_routes.add_argument(
+        "--language",
+        default=None,
+        help="Filter by language (e.g., python, javascript)",
+    )
+    p_routes.set_defaults(func=cmd_routes)
 
     # hypergumbo catalog
     p_catalog = sub.add_parser("catalog", help="[stub] Show available passes/packs")
@@ -1410,7 +1498,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    subcommands = {"init", "run", "slice", "search", "catalog", "export-capsule", "sketch"}
+    subcommands = {"init", "run", "slice", "search", "routes", "catalog", "export-capsule", "sketch"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
