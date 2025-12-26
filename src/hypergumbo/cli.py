@@ -93,6 +93,7 @@ from .linkers.swift_objc import link_swift_objc
 from .linkers.websocket import link_websocket
 from .linkers.message_queue import link_message_queues
 from .linkers.database_query import link_database_queries
+from .linkers.event_sourcing import link_events
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -1566,6 +1567,13 @@ def run_behavior_map(
         analysis_runs.append(db_query_result.run.to_dict())
         all_symbols.extend(db_query_result.symbols)
         all_edges.extend(db_query_result.edges)
+
+    # Event sourcing linker: detect event publishers and subscribers
+    event_result = link_events(repo_root)
+    if event_result.run is not None:
+        analysis_runs.append(event_result.run.to_dict())
+        all_symbols.extend(event_result.symbols)
+        all_edges.extend(event_result.edges)
 
     # Dependency linker: connect import statements to manifest declarations
     # Get TOML dependency symbols for linking
