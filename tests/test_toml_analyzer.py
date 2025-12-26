@@ -107,6 +107,13 @@ dev = ["pytest", "black"]
     projects = [s for s in result.symbols if s.kind == "project"]
     assert len(projects) >= 1
 
+    # Should also detect dependencies
+    deps = [s for s in result.symbols if s.kind == "dependency"]
+    assert len(deps) >= 2
+    dep_names = [d.name for d in deps]
+    assert "requests" in dep_names
+    assert "click" in dep_names
+
 
 def test_analyze_table_array(tmp_path):
     """Test detection of array of tables (e.g., [[bin]])."""
