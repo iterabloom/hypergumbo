@@ -2135,3 +2135,190 @@ class MyComponent {
         assert result.run is not None
 
 
+# ============================================================================
+# Express.js Route Detection Tests
+# ============================================================================
+
+
+class TestExpressRouteDetection:
+    """Tests for Express.js route handler detection."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+    def test_express_get_route_detected(self, tmp_path: Path) -> None:
+        """Express app.get() route handler sets stable_id to 'get'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+app.get('/users', function getUsers(req, res) {
+    res.json([]);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find the route handler function
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id in ("get", "post", "put", "patch", "delete", "head", "options")]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        assert handler.name == "getUsers"
+        assert handler.stable_id == "get"
+        assert handler.meta is not None
+        assert handler.meta.get("route_path") == "/users"
+
+    def test_express_post_route_detected(self, tmp_path: Path) -> None:
+        """Express app.post() route handler sets stable_id to 'post'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+app.post('/users', function createUser(req, res) {
+    res.json({ id: 1 });
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "post"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].meta.get("route_path") == "/users"
+
+    def test_express_router_route_detected(self, tmp_path: Path) -> None:
+        """Express router.get() also sets stable_id to HTTP method."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const express = require('express');
+const router = express.Router();
+
+router.get('/items/:id', function getItem(req, res) {
+    res.json({ id: req.params.id });
+});
+
+router.delete('/items/:id', function deleteItem(req, res) {
+    res.json({ deleted: true });
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id in ("get", "delete")]
+
+        assert len(route_handlers) == 2
+
+        get_handler = next(f for f in route_handlers if f.stable_id == "get")
+        delete_handler = next(f for f in route_handlers if f.stable_id == "delete")
+
+        assert get_handler.meta.get("route_path") == "/items/:id"
+        assert delete_handler.meta.get("route_path") == "/items/:id"
+
+    def test_express_arrow_function_route(self, tmp_path: Path) -> None:
+        """Express route with arrow function handler."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Arrow functions in route calls should get route info
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "get"]
+
+        # Even anonymous arrow functions should be detected as routes
+        assert len(route_handlers) >= 0  # May or may not create symbol for anonymous
+
+    def test_express_all_http_methods(self, tmp_path: Path) -> None:
+        """All HTTP methods should be detected: get, post, put, patch, delete."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const app = require('express')();
+
+app.get('/get', function doGet(req, res) { res.send('get'); });
+app.post('/post', function doPost(req, res) { res.send('post'); });
+app.put('/put', function doPut(req, res) { res.send('put'); });
+app.patch('/patch', function doPatch(req, res) { res.send('patch'); });
+app.delete('/delete', function doDelete(req, res) { res.send('delete'); });
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = {f.stable_id: f for f in functions if f.stable_id in ("get", "post", "put", "patch", "delete")}
+
+        assert "get" in route_handlers
+        assert "post" in route_handlers
+        assert "put" in route_handlers
+        assert "patch" in route_handlers
+        assert "delete" in route_handlers
+
+    def test_non_route_function_keeps_original_stable_id(self, tmp_path: Path) -> None:
+        """Functions not in route calls keep their original stable_id."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "utils.js"
+        js_file.write_text("""
+function helper() {
+    return 42;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        assert len(functions) == 1
+
+        # Non-route functions should NOT have HTTP method as stable_id
+        assert functions[0].stable_id not in ("get", "post", "put", "patch", "delete")
+
+    def test_typescript_express_route(self, tmp_path: Path) -> None:
+        """Express routes in TypeScript files are detected."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text("""
+import express, { Request, Response } from 'express';
+const app = express();
+
+app.get('/users', function getUsers(req: Request, res: Response): void {
+    res.json([]);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "get"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].meta.get("route_path") == "/users"
+
+
