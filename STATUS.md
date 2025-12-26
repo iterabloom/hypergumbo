@@ -148,6 +148,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | YAML/Ansible | [x] tree-sitter | playbook, task, handler, variable | imports | Detects Ansible playbooks, tasks, handlers, variables from YAML files. Extracts `include_tasks`, `import_tasks`, `include_role`, `import_role` references. Two-pass cross-file resolution. Optional: `pip install tree-sitter-yaml` |
 | SQL | [x] tree-sitter | table, view, function, trigger, index, procedure | references | Detects CREATE TABLE, VIEW, FUNCTION, TRIGGER, INDEX statements. Foreign key REFERENCES edges. Two-pass cross-file resolution. Optional: `pip install tree-sitter-sql` |
 | Dockerfile | [x] tree-sitter | stage, exposed_port, env_var, build_arg | depends_on, base_image | Detects FROM stages, EXPOSE ports, ENV variables, ARG build args. Multi-stage build dependencies via COPY --from edges. Optional: `pip install tree-sitter-dockerfile` |
+| CUDA | [x] tree-sitter | kernel, device_function, host_device_function, function | calls, kernel_launch | Detects `__global__` kernels, `__device__` functions, `__host__ __device__` dual functions. Kernel launch edges for `<<<grid, block>>>` syntax. Optional: `pip install tree-sitter-cuda` |
 
 ## Supply Chain Classification (§8.6)
 
