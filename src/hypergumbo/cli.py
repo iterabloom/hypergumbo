@@ -61,6 +61,7 @@ from .analyze.groovy import analyze_groovy
 from .analyze.julia import analyze_julia
 from .analyze.bash import analyze_bash
 from .analyze.objc import analyze_objc
+from .analyze.hcl import analyze_hcl
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -975,6 +976,19 @@ def run_behavior_map(
             analysis_runs.append(objc_result.run.to_dict())
             all_symbols.extend(objc_result.symbols)
             all_edges.extend(objc_result.edges)
+
+    # Run HCL/Terraform analysis (optional, requires tree-sitter-hcl)
+    hcl_result = analyze_hcl(repo_root)
+    if hcl_result.run is not None:
+        if hcl_result.skipped:  # pragma: no cover - hcl installed
+            limits.skipped_passes.append({
+                "pass": hcl_result.run.pass_id,
+                "reason": hcl_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(hcl_result.run.to_dict())
+            all_symbols.extend(hcl_result.symbols)
+            all_edges.extend(hcl_result.edges)
 
     # Run cross-language linkers
 
