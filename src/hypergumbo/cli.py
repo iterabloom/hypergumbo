@@ -68,6 +68,7 @@ from .analyze.dockerfile import analyze_dockerfiles
 from .analyze.cuda import analyze_cuda_files
 from .analyze.verilog import analyze_verilog_files
 from .analyze.cmake import analyze_cmake_files
+from .analyze.make import analyze_make_files
 from .catalog import get_default_catalog, is_available
 from .linkers.grpc import link_grpc
 from .linkers.ipc import link_ipc
@@ -1075,6 +1076,19 @@ def run_behavior_map(
             analysis_runs.append(cmake_result.run.to_dict())
             all_symbols.extend(cmake_result.symbols)
             all_edges.extend(cmake_result.edges)
+
+    # Run Make analysis (optional, requires tree-sitter-make)
+    make_result = analyze_make_files(repo_root)
+    if make_result.run is not None:
+        if make_result.skipped:  # pragma: no cover - make installed
+            limits.skipped_passes.append({
+                "pass": make_result.run.pass_id,
+                "reason": make_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(make_result.run.to_dict())
+            all_symbols.extend(make_result.symbols)
+            all_edges.extend(make_result.edges)
 
     # Run cross-language linkers
 
