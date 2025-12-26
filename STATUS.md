@@ -99,7 +99,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo slice --entry X` | [x] | Produce reduced slice |
 | `hypergumbo catalog` | [x] | List passes/packs |
 | `hypergumbo export-capsule` | [x] | Export shareable capsule |
-| `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Django/DRF, Express.js, Koa, Fastify, NestJS, Rails, Axum, Actix-web, Rocket). Shows HTTP methods, route paths, and handler functions |
+| `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Django/DRF, Express.js, Koa, Fastify, NestJS, Rails, Axum, Actix-web, Rocket, Gin, Echo, Fiber). Shows HTTP methods, route paths, and handler functions |
 | `hypergumbo search <query>` | [x] | Search symbols by name pattern |
 
 ## Output Schema Compliance
@@ -130,7 +130,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Vue | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` and `<script setup>` blocks from `.vue` SFCs, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
 | Elixir | [x] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[elixir]` |
 | Rust | [x] tree-sitter | function, struct, enum, trait, method, route | calls, imports | Detects `fn`, `struct`, `enum`, `trait`, `impl` blocks, `use` statements. **Route detection:** Axum `.route("/path", get(handler))` with method chaining, Actix-web/Rocket `#[get("/path")]` attribute macros (handles multi-param attributes). Route symbols have `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[rust]` |
-| Go | [x] tree-sitter | function, method, struct, interface, type | calls, imports | Detects `func`, methods with receivers, `type X struct/interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[go]` |
+| Go | [x] tree-sitter | function, method, struct, interface, type, route | calls, imports | Detects `func`, methods with receivers, `type X struct/interface`, `import` statements. **Route detection:** Gin/Echo (`r.GET`, `e.POST`), Fiber (`app.Get`, `app.Post`) with lowercase methods. Route symbols have `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[go]` |
 | Ruby | [x] tree-sitter | method, class, module, route | calls, imports | Detects `def`, `class`, `module`, `require/require_relative`. **Route detection:** Rails DSL (`get '/path'`, `post '/path'`, `resources :name`) creates route symbols with `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ruby]` |
 | Kotlin | [x] tree-sitter | function, class, object, interface, method | calls, imports | Detects `fun`, `class`, `object`, `interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[kotlin]` |
 | Swift | [x] tree-sitter | function, class, struct, protocol, enum, method | calls, imports | Detects `func`, `class`, `struct`, `protocol`, `enum`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[swift]` |
