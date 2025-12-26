@@ -903,3 +903,119 @@ public class Controller {
         assert method.meta is not None
         assert method.meta.get("route_path") == "/test"
         assert method.meta.get("http_method") == "GET"
+
+
+class TestJaxRsRouteDetection:
+    """Tests for JAX-RS route detection with @GET, @POST, @Path, etc."""
+
+    def test_jaxrs_get_with_path(self, tmp_path: Path) -> None:
+        """Detects JAX-RS @GET with @Path annotation."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "UserResource.java"
+        java_file.write_text("""
+import javax.ws.rs.*;
+
+@Path("/users")
+public class UserResource {
+    @GET
+    public List<User> getUsers() {
+        return userService.findAll();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("http_method") == "GET"
+        assert method.stable_id == "GET"
+
+    def test_jaxrs_post_with_path(self, tmp_path: Path) -> None:
+        """Detects JAX-RS @POST annotation."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "UserResource.java"
+        java_file.write_text("""
+@Path("/users")
+public class UserResource {
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    public User createUser(User user) {
+        return userService.save(user);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "createUser" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("http_method") == "POST"
+        assert method.stable_id == "POST"
+
+    def test_jaxrs_method_level_path(self, tmp_path: Path) -> None:
+        """Detects JAX-RS @Path on method level."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "UserResource.java"
+        java_file.write_text("""
+@Path("/users")
+public class UserResource {
+    @GET
+    @Path("/{id}")
+    public User getById(@PathParam("id") Long id) {
+        return userService.findById(id);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getById" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "/{id}"
+        assert method.meta.get("http_method") == "GET"
+
+    def test_jaxrs_all_http_methods(self, tmp_path: Path) -> None:
+        """Detects all JAX-RS HTTP method annotations."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "ResourceController.java"
+        java_file.write_text("""
+@Path("/items")
+public class ResourceController {
+    @GET
+    public List<Item> getAll() { return null; }
+
+    @POST
+    public Item create() { return null; }
+
+    @PUT
+    public Item update() { return null; }
+
+    @DELETE
+    public void delete() {}
+
+    @PATCH
+    public Item patch() { return null; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
+
+        assert len(methods) == 5
+        http_methods = {m.stable_id for m in methods}
+        assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}

@@ -121,6 +121,9 @@ SPRING_MAPPING_ANNOTATIONS = {
     "PatchMapping": "PATCH",
 }
 
+# JAX-RS HTTP method annotations (marker annotations without arguments)
+JAXRS_HTTP_ANNOTATIONS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
 
 def _detect_spring_boot_route(
     node: "tree_sitter.Node", source: bytes
@@ -249,6 +252,65 @@ def _parse_request_mapping(
                     http_method = method_text.upper()
 
     return http_method, route_path
+
+
+def _detect_jaxrs_route(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[str | None, str | None]:
+    """Detect JAX-RS route annotations on a method.
+
+    Returns (http_method, route_path) if JAX-RS route annotations are found.
+
+    Supported patterns:
+    - @GET, @POST, @PUT, @DELETE, @PATCH (marker annotations)
+    - @Path("/{id}") for route path
+
+    Args:
+        node: The method_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        A tuple of (http_method, route_path), or (None, None) if not a route.
+    """
+    http_method = None
+    route_path = None
+
+    # Look for modifiers child which contains annotations
+    for child in node.children:
+        if child.type == "modifiers":
+            # Iterate through annotations in modifiers
+            for annotation in child.children:
+                if annotation.type == "marker_annotation":
+                    # Marker annotation: @GET, @POST, etc. (no arguments)
+                    for ann_child in annotation.children:
+                        if ann_child.type == "identifier":
+                            name = _node_text(ann_child, source)
+                            if name in JAXRS_HTTP_ANNOTATIONS:
+                                http_method = name.upper()
+                                break
+
+                elif annotation.type == "annotation":
+                    # Regular annotation: @Path("/route")
+                    annotation_name = None
+                    annotation_args = None
+
+                    for ann_child in annotation.children:
+                        if ann_child.type == "identifier":
+                            annotation_name = _node_text(ann_child, source)
+                        elif ann_child.type == "annotation_argument_list":
+                            annotation_args = ann_child
+
+                    if annotation_name == "Path" and annotation_args:
+                        # Extract path from @Path("/route")
+                        for arg in annotation_args.children:
+                            if arg.type == "string_literal":
+                                route_path = _node_text(arg, source).strip('"')
+                                break
+
+    # Only return if we found an HTTP method annotation
+    if http_method:
+        return http_method, route_path
+    return None, None
 
 
 def _get_java_parser() -> Optional["tree_sitter.Parser"]:
@@ -391,6 +453,10 @@ def _extract_symbols(
 
                 # Check for Spring Boot route annotations
                 http_method, route_path = _detect_spring_boot_route(node, source)
+
+                # If not Spring Boot, check for JAX-RS annotations
+                if not http_method:
+                    http_method, route_path = _detect_jaxrs_route(node, source)
 
                 # Build meta dict
                 meta: dict[str, str | bool] | None = None
