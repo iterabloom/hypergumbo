@@ -857,3 +857,234 @@ fn get_value() -> i32 {
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
+
+
+class TestActixWebRouteDetection:
+    """Tests for Actix-web route handler detection."""
+
+    def test_detects_get_attribute(self, tmp_path: Path) -> None:
+        """Detects #[get("/path")] attribute pattern."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+use actix_web::{get, App, HttpServer};
+
+#[get("/")]
+async fn index() -> &'static str {
+    "Hello, World!"
+}
+
+#[get("/users")]
+async fn list_users() -> &'static str {
+    "[]"
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "index" in route_names
+        assert "list_users" in route_names
+
+    def test_detects_post_attribute(self, tmp_path: Path) -> None:
+        """Detects #[post("/path")] attribute pattern."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "api.rs"
+        rs_file.write_text("""
+use actix_web::{post, web, HttpResponse};
+
+#[post("/users")]
+async fn create_user(body: web::Json<User>) -> HttpResponse {
+    HttpResponse::Created().finish()
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "create_user"
+        assert routes[0].meta["http_method"] == "POST"
+        assert routes[0].meta["route_path"] == "/users"
+
+    def test_detects_multiple_http_methods(self, tmp_path: Path) -> None:
+        """Detects various HTTP method attributes."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "crud.rs"
+        rs_file.write_text("""
+use actix_web::{get, post, put, delete};
+
+#[get("/items")]
+async fn list_items() {}
+
+#[post("/items")]
+async fn create_item() {}
+
+#[put("/items/{id}")]
+async fn update_item() {}
+
+#[delete("/items/{id}")]
+async fn delete_item() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        assert "list_items" in route_names
+        assert "create_item" in route_names
+        assert "update_item" in route_names
+        assert "delete_item" in route_names
+
+        # Check HTTP methods
+        http_methods = {s.meta["http_method"] for s in routes if s.meta}
+        assert "GET" in http_methods
+        assert "POST" in http_methods
+        assert "PUT" in http_methods
+        assert "DELETE" in http_methods
+
+    def test_detects_qualified_attribute(self, tmp_path: Path) -> None:
+        """Detects #[actix_web::get("/path")] qualified pattern."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "qualified.rs"
+        rs_file.write_text("""
+#[actix_web::get("/api/health")]
+async fn health_check() -> &'static str {
+    "OK"
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "health_check"
+        assert routes[0].meta["route_path"] == "/api/health"
+
+    def test_actix_route_has_stable_id(self, tmp_path: Path) -> None:
+        """Actix-web route symbols have stable_id set to HTTP method."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "stable.rs"
+        rs_file.write_text("""
+use actix_web::post;
+
+#[post("/submit")]
+async fn submit_form() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].stable_id == "post"
+
+    def test_extract_actix_routes_directly(self, tmp_path: Path) -> None:
+        """Tests _extract_actix_routes function directly."""
+        from hypergumbo.analyze.rust import (
+            _extract_actix_routes,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo.ir import AnalysisRun
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        rs_file = tmp_path / "test.rs"
+        rs_file.write_text("""
+#[get("/test")]
+async fn test_handler() {}
+""")
+
+        source = rs_file.read_bytes()
+        tree = parser.parse(source)
+
+        routes = _extract_actix_routes(tree.root_node, source, rs_file, run)
+
+        assert len(routes) == 1
+        assert routes[0].name == "test_handler"
+        assert routes[0].kind == "route"
+        assert routes[0].stable_id == "get"
+
+    def test_actix_with_path_params(self, tmp_path: Path) -> None:
+        """Actix-web routes with path parameters are detected."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "params.rs"
+        rs_file.write_text("""
+use actix_web::get;
+
+#[get("/users/{user_id}/posts/{post_id}")]
+async fn get_user_post() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].meta["route_path"] == "/users/{user_id}/posts/{post_id}"
+
+    def test_mixed_axum_and_actix(self, tmp_path: Path) -> None:
+        """Both Axum and Actix-web routes are detected in same file."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "mixed.rs"
+        rs_file.write_text("""
+use actix_web::get;
+use axum::routing::post;
+
+// Actix-web style
+#[get("/actix")]
+async fn actix_handler() {}
+
+// Axum style
+fn app() -> Router {
+    Router::new().route("/axum", post(axum_handler))
+}
+
+async fn axum_handler() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = [s.name for s in routes]
+
+        # Both should be detected
+        assert "actix_handler" in route_names
+        assert "axum_handler" in route_names

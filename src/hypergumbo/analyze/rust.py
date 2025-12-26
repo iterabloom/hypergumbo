@@ -9,6 +9,7 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - Function call relationships
 - Import relationships (use statements)
 - Axum route handlers (.route("/path", get(handler)))
+- Actix-web route handlers (#[get("/path")], #[post("/path")])
 
 If tree-sitter with Rust support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -19,9 +20,10 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls, use statements, and Axum routes
-4. Axum route detection:
-   - Find `.route("/path", get(handler))` patterns
+   - Pass 2: Detect calls, use statements, and routes
+4. Route detection:
+   - Axum: Find `.route("/path", get(handler))` patterns
+   - Actix-web: Find `#[get("/path")]` attribute macros on functions
    - Create route symbols with stable_id = HTTP method
 
 Why This Design
@@ -30,7 +32,7 @@ Why This Design
 - Uses tree-sitter-rust package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as Elixir/Java/PHP/C analyzers for consistency
-- Axum route detection enables `hypergumbo routes` command for Rust
+- Route detection enables `hypergumbo routes` command for Rust
 """
 from __future__ import annotations
 
@@ -53,6 +55,10 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # Axum HTTP method functions that define route handlers
 # Used in patterns like .route("/path", get(handler))
 AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+
+# Actix-web attribute macros that define route handlers
+# Used in patterns like #[get("/path")] async fn handler() {}
+ACTIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
 
 def find_rust_files(repo_root: Path) -> Iterator[Path]:
@@ -415,6 +421,84 @@ def _extract_axum_routes(
     return routes
 
 
+def _extract_actix_routes(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+) -> list[Symbol]:
+    """Extract Actix-web route handler symbols from attribute macros.
+
+    Detects patterns like:
+    - #[get("/path")]
+    - #[post("/users")]
+    - #[actix_web::get("/path")]
+
+    Creates symbols with stable_id = HTTP method for route discovery.
+    """
+    routes: list[Symbol] = []
+
+    # Iterate through top-level items looking for attribute + function pairs
+    for i, child in enumerate(node.children):
+        if child.type == "attribute_item":
+            attr_text = _node_text(child, source)
+
+            # Check for HTTP method attributes
+            for method in ACTIX_HTTP_METHODS:
+                # Match patterns like #[get("/path")] or #[actix_web::get("/path")]
+                if f"[{method}(" in attr_text or f"::{method}(" in attr_text:
+                    # Extract the path from the attribute
+                    path_start = attr_text.find('"')
+                    path_end = attr_text.rfind('"')
+                    if path_start != -1 and path_end > path_start:
+                        route_path = attr_text[path_start + 1:path_end]
+
+                        # Look for the next function_item sibling
+                        for j in range(i + 1, len(node.children)):
+                            sibling = node.children[j]
+                            if sibling.type == "function_item":
+                                name_node = _find_child_by_field(sibling, "name")
+                                if name_node:
+                                    handler_name = _node_text(name_node, source)
+                                    start_line = sibling.start_point[0] + 1
+                                    end_line = sibling.end_point[0] + 1
+
+                                    route_sym = Symbol(
+                                        id=_make_symbol_id(
+                                            str(file_path), start_line, end_line,
+                                            f"{method.upper()} {route_path}", "route"
+                                        ),
+                                        stable_id=method,
+                                        name=handler_name,
+                                        kind="route",
+                                        language="rust",
+                                        path=str(file_path),
+                                        span=Span(
+                                            start_line=start_line,
+                                            end_line=end_line,
+                                            start_col=sibling.start_point[1],
+                                            end_col=sibling.end_point[1],
+                                        ),
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        meta={"route_path": route_path, "http_method": method.upper()},
+                                    )
+                                    routes.append(route_sym)
+                                break
+                            # Skip other attributes and comments
+                            elif sibling.type not in (  # pragma: no cover
+                                "attribute_item", "line_comment"
+                            ):
+                                break  # pragma: no cover
+                    break
+
+        # Recurse into child nodes (for impl blocks, mod blocks, etc.)
+        child_routes = _extract_actix_routes(child, source, file_path, run)
+        routes.extend(child_routes)
+
+    return routes
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -603,12 +687,16 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
         )
         all_edges.extend(edges)
 
-        # Extract Axum route handlers
+        # Extract route handlers (Axum and Actix-web)
         try:
             source = rs_file.read_bytes()
             tree = parser.parse(source)
-            routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
-            all_symbols.extend(routes)
+            # Axum: .route("/path", get(handler))
+            axum_routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
+            all_symbols.extend(axum_routes)
+            # Actix-web: #[get("/path")] async fn handler() {}
+            actix_routes = _extract_actix_routes(tree.root_node, source, rs_file, run)
+            all_symbols.extend(actix_routes)
         except (OSError, IOError):
             pass  # Skip files that can't be read
 
