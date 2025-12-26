@@ -226,6 +226,12 @@ def get_default_catalog() -> Catalog:
                 requires="hypergumbo[ocaml]",
             ),
             Pass(
+                id="sql-v1",
+                description="SQL schema analysis via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[sql]",
+            ),
+            Pass(
                 id="websocket-linker-v1",
                 description="WebSocket communication patterns",
                 availability="core",
