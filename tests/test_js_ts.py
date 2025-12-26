@@ -2455,3 +2455,211 @@ export class ResourceController {
         assert "delete" in stable_ids
 
 
+# ============================================================================
+# Koa Router Route Detection Tests
+# ============================================================================
+
+
+class TestKoaRouteDetection:
+    """Tests for Koa Router route detection.
+
+    Koa Router uses the same pattern as Express: router.get('/path', handler).
+    The existing route detection should work for Koa out of the box.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+    def test_koa_router_get_route(self, tmp_path: Path) -> None:
+        """Koa Router router.get() route handler sets stable_id to 'get'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const Router = require('@koa/router');
+const router = new Router();
+
+router.get('/users', function listUsers(ctx) {
+    ctx.body = [];
+});
+
+module.exports = router;
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "get"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        assert handler.name == "listUsers"
+        assert handler.meta is not None
+        assert handler.meta.get("route_path") == "/users"
+
+    def test_koa_router_post_route(self, tmp_path: Path) -> None:
+        """Koa Router router.post() route handler sets stable_id to 'post'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const Router = require('@koa/router');
+const router = new Router();
+
+router.post('/users', function createUser(ctx) {
+    ctx.body = { id: 1 };
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "post"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].meta.get("route_path") == "/users"
+
+    def test_koa_router_arrow_function(self, tmp_path: Path) -> None:
+        """Koa Router with arrow function handler also detects routes."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const Router = require('@koa/router');
+const router = new Router();
+
+router.delete('/users/:id', async (ctx) => {
+    ctx.body = { deleted: true };
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "delete"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].meta.get("route_path") == "/users/:id"
+
+
+# ============================================================================
+# Fastify Route Detection Tests
+# ============================================================================
+
+
+class TestFastifyRouteDetection:
+    """Tests for Fastify route detection.
+
+    Fastify uses the same pattern as Express: fastify.get('/path', handler).
+    The existing route detection should work for Fastify out of the box.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+    def test_fastify_get_route(self, tmp_path: Path) -> None:
+        """Fastify fastify.get() route handler sets stable_id to 'get'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "server.js"
+        js_file.write_text("""
+const fastify = require('fastify')();
+
+fastify.get('/users', function getUsers(request, reply) {
+    reply.send([]);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "get"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        assert handler.name == "getUsers"
+        assert handler.meta is not None
+        assert handler.meta.get("route_path") == "/users"
+
+    def test_fastify_post_route(self, tmp_path: Path) -> None:
+        """Fastify fastify.post() route handler sets stable_id to 'post'."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "server.js"
+        js_file.write_text("""
+const fastify = require('fastify')();
+
+fastify.post('/users', function createUser(request, reply) {
+    reply.send({ id: 1 });
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "post"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].meta.get("route_path") == "/users"
+
+    def test_fastify_arrow_function(self, tmp_path: Path) -> None:
+        """Fastify with arrow function handler also detects routes."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "server.js"
+        js_file.write_text("""
+const fastify = require('fastify')();
+
+fastify.put('/users/:id', async (request, reply) => {
+    reply.send({ updated: true });
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        route_handlers = [f for f in functions if f.stable_id == "put"]
+
+        assert len(route_handlers) == 1
+        assert route_handlers[0].meta.get("route_path") == "/users/:id"
+
+    def test_fastify_all_http_methods(self, tmp_path: Path) -> None:
+        """Fastify supports all HTTP methods."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "server.js"
+        js_file.write_text("""
+const fastify = require('fastify')();
+
+fastify.get('/a', function handleGet(r, p) {});
+fastify.post('/b', function handlePost(r, p) {});
+fastify.put('/c', function handlePut(r, p) {});
+fastify.patch('/d', function handlePatch(r, p) {});
+fastify.delete('/e', function handleDelete(r, p) {});
+fastify.head('/f', function handleHead(r, p) {});
+fastify.options('/g', function handleOptions(r, p) {});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        functions = [s for s in result.symbols if s.kind == "function"]
+        stable_ids = {f.stable_id for f in functions}
+
+        assert "get" in stable_ids
+        assert "post" in stable_ids
+        assert "put" in stable_ids
+        assert "patch" in stable_ids
+        assert "delete" in stable_ids
+        assert "head" in stable_ids
+        assert "options" in stable_ids
+
