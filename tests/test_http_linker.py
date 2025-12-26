@@ -196,6 +196,85 @@ class TestScanJavaScriptFile:
         calls = _scan_javascript_file(Path("test.js"), code)
         assert len(calls) == 0
 
+    def test_openapi_request_get(self):
+        """Detects OpenAPI-generated __request() calls with GET method."""
+        code = dedent('''
+            return __request(OpenAPI, {
+                method: 'GET',
+                url: '/api/v1/items/'
+            });
+        ''')
+        calls = _scan_javascript_file(Path("sdk.gen.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/v1/items/"
+
+    def test_openapi_request_post(self):
+        """Detects OpenAPI-generated __request() calls with POST method."""
+        code = dedent('''
+            return __request(OpenAPI, {
+                method: 'POST',
+                url: '/api/v1/users/',
+                body: data.requestBody
+            });
+        ''')
+        calls = _scan_javascript_file(Path("sdk.gen.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/v1/users/"
+
+    def test_openapi_request_with_path_params(self):
+        """Detects OpenAPI requests with path parameters."""
+        code = dedent('''
+            return __request(OpenAPI, {
+                method: 'PUT',
+                url: '/api/v1/items/{id}',
+                path: { id: data.id }
+            });
+        ''')
+        calls = _scan_javascript_file(Path("sdk.gen.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/v1/items/{id}"
+
+    def test_openapi_request_multiple(self):
+        """Detects multiple OpenAPI request calls."""
+        code = dedent('''
+            export class ItemsService {
+                public static readItems(): CancelablePromise<ItemsResponse> {
+                    return __request(OpenAPI, {
+                        method: 'GET',
+                        url: '/api/v1/items/'
+                    });
+                }
+
+                public static createItem(): CancelablePromise<ItemResponse> {
+                    return __request(OpenAPI, {
+                        method: 'POST',
+                        url: '/api/v1/items/'
+                    });
+                }
+            }
+        ''')
+        calls = _scan_javascript_file(Path("sdk.gen.ts"), code)
+        assert len(calls) == 2
+        assert calls[0].method == "GET"
+        assert calls[1].method == "POST"
+
+    def test_openapi_request_url_before_method(self):
+        """Detects OpenAPI request with url before method."""
+        code = dedent('''
+            return __request(OpenAPI, {
+                url: '/api/v1/users/',
+                method: 'DELETE',
+                errors: { 422: 'Validation Error' }
+            });
+        ''')
+        calls = _scan_javascript_file(Path("sdk.gen.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/v1/users/"
+
 
 class TestLinkHttp:
     """Tests for the main HTTP linking function."""

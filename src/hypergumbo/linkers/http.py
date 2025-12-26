@@ -1,7 +1,7 @@
 """HTTP client-server linker for detecting cross-language API calls.
 
-This linker detects HTTP client calls (fetch, axios, requests) and links
-them to server route handlers detected by language analyzers.
+This linker detects HTTP client calls (fetch, axios, requests, OpenAPI clients)
+and links them to server route handlers detected by language analyzers.
 
 Detected Client Patterns
 ------------------------
@@ -10,6 +10,7 @@ JavaScript/TypeScript:
 - fetch("/api/users", { method: "POST" }) - with options
 - axios.get("/api/users") - Axios library
 - axios.post("/api/users", data) - Axios with data
+- __request(OpenAPI, { method: 'GET', url: '/api/users' }) - OpenAPI generated clients
 
 Python:
 - requests.get("/api/users") - requests library
@@ -105,6 +106,23 @@ JS_AXIOS_PATTERN = re.compile(
     r"""axios\.(get|post|put|patch|delete|head|options)
         \s*\(\s*["']([^"']+)["']""",
     re.VERBOSE | re.IGNORECASE,
+)
+
+# OpenAPI-generated client pattern (__request from @hey-api/openapi-ts, etc.)
+# Matches: __request(OpenAPI, { method: 'GET', url: '/api/v1/items/' })
+JS_OPENAPI_REQUEST_PATTERN = re.compile(
+    r"""__request\s*\(\s*\w+\s*,\s*\{[^}]*
+        method\s*:\s*["'](\w+)["'][^}]*
+        url\s*:\s*["']([^"']+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# Alternative OpenAPI pattern where url comes before method
+JS_OPENAPI_REQUEST_ALT_PATTERN = re.compile(
+    r"""__request\s*\(\s*\w+\s*,\s*\{[^}]*
+        url\s*:\s*["']([^"']+)["'][^}]*
+        method\s*:\s*["'](\w+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -254,6 +272,42 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
     for match in JS_AXIOS_PATTERN.finditer(content):
         method = match.group(1).upper()
         url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+            )
+        )
+
+    # Check for OpenAPI-generated __request() calls
+    openapi_matches = set()
+    for match in JS_OPENAPI_REQUEST_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+            )
+        )
+        openapi_matches.add(match.start())
+
+    # Check alternative pattern (url before method)
+    for match in JS_OPENAPI_REQUEST_ALT_PATTERN.finditer(content):
+        if match.start() in openapi_matches:  # pragma: no cover
+            continue  # Already captured
+        url = match.group(1)
+        method = match.group(2).upper()
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
