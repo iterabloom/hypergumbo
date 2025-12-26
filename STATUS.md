@@ -99,6 +99,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo slice --entry X` | [x] | Produce reduced slice |
 | `hypergumbo catalog` | [x] | List passes/packs |
 | `hypergumbo export-capsule` | [x] | Export shareable capsule |
+| `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Express.js). Shows HTTP methods, route paths, and handler functions |
+| `hypergumbo search <query>` | [x] | Search symbols by name pattern |
 
 ## Output Schema Compliance
 
@@ -117,10 +119,10 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Language | Parser | Symbols | Edges | Notes |
 |----------|--------|---------|-------|-------|
-| Python | [x] AST | function, class, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`) |
+| Python | [x] AST | function, class, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`). **Route detection:** FastAPI (`@app.get`, `@router.post`) and Flask (`@app.route`, `@app.get`) decorators set `stable_id` to HTTP method for `routes` command discovery. |
 | HTML | [x] regex | file | script_src | Script tag detection |
-| JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. Optional: `pip install hypergumbo[javascript]` |
-| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. Optional: `pip install hypergumbo[javascript]` |
+| JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js (`app.get`, `router.post`) handlers set `stable_id` to HTTP method. Optional: `pip install hypergumbo[javascript]` |
+| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js (`app.get`, `router.post`) handlers set `stable_id` to HTTP method. Optional: `pip install hypergumbo[javascript]` |
 | Svelte | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` blocks, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
 | PHP | [x] tree-sitter | function, class, method | calls, instantiates | Two-pass cross-file resolution. Detects `$this->method()`, `$obj->method()`, `ClassName::method()`, `new ClassName()`. Optional: `pip install hypergumbo[php]`. Excludes `vendor/` by default |
 | C | [x] tree-sitter | function, struct, enum, typedef | calls | Two-pass cross-file resolution. Detects function calls, JNI export patterns (`Java_ClassName_methodName`). Optional: `pip install hypergumbo[c]` |
