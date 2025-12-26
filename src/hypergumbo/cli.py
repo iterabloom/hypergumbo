@@ -458,11 +458,16 @@ def cmd_routes(args: argparse.Namespace) -> int:
     routes: list[dict] = []
     for node in nodes:
         stable_id = node.get("stable_id", "")
-        if stable_id and stable_id.lower() in HTTP_METHODS:
-            # Apply language filter
-            if args.language and node.get("language") != args.language:
-                continue
-            routes.append(node)
+        if stable_id:
+            # Check if stable_id is an HTTP method or comma-separated list of methods
+            # e.g., "get", "post", or "get,post" for DRF @api_view(['GET', 'POST'])
+            stable_id_lower = stable_id.lower()
+            methods = stable_id_lower.split(",")
+            if all(m.strip() in HTTP_METHODS for m in methods):
+                # Apply language filter
+                if args.language and node.get("language") != args.language:
+                    continue
+                routes.append(node)
 
     if not routes:
         print("No API routes found in the behavior map.")

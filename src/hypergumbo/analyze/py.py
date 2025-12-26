@@ -81,22 +81,36 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "rou
 def _detect_route_decorator(
     node: ast.FunctionDef | ast.ClassDef,
 ) -> tuple[str | None, str | None]:
-    """Detect if a function has a route decorator (FastAPI, Flask).
+    """Detect if a function has a route decorator (FastAPI, Flask, DRF).
 
     Returns (http_method, route_path) if a route decorator is found, else (None, None).
 
     Supported patterns:
     - @app.get("/path"), @router.post("/path")  # FastAPI/Flask 2.0+
     - @app.route("/path")  # Flask
+    - @api_view(['GET', 'POST'])  # Django REST Framework
 
-    The decorator must be of form @<var>.<method>("/path") where method is an HTTP verb.
+    The decorator must be of form @<var>.<method>("/path") where method is an HTTP verb,
+    or @api_view(['METHOD', ...]) for DRF.
     """
     if not isinstance(node, ast.FunctionDef):
         return None, None
 
     for dec in node.decorator_list:
-        # Route decorators are calls: @app.get("/path")
+        # Route decorators are calls: @app.get("/path") or @api_view(['GET'])
         if not isinstance(dec, ast.Call):
+            continue
+
+        # Check for DRF @api_view(['GET', 'POST']) pattern
+        if isinstance(dec.func, ast.Name) and dec.func.id == "api_view":
+            # Extract HTTP methods from first argument (should be a list)
+            if dec.args and isinstance(dec.args[0], ast.List):
+                methods = []
+                for elt in dec.args[0].elts:
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                        methods.append(elt.value.lower())
+                if methods:
+                    return ",".join(methods), None
             continue
 
         # The function being called should be an attribute: app.get
@@ -425,6 +439,13 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                         end_col=method_end_col,
                     )
                     method_name = f"{class_name}.{item.name}"
+
+                    # For Django/DRF class-based views, methods named get/post/etc.
+                    # should have stable_id set to the HTTP method
+                    stable_id = _compute_stable_id(item)
+                    if item.name.lower() in HTTP_METHODS:
+                        stable_id = item.name.lower()
+
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
@@ -432,7 +453,7 @@ def _extract_file_analysis(py_file: Path, repo_root: Path | None = None) -> File
                         language="python",
                         path=str(py_file),
                         span=method_span,
-                        stable_id=_compute_stable_id(item),
+                        stable_id=stable_id,
                         shape_id=_compute_shape_id(item),
                     )
                     symbols.append(method_symbol)
