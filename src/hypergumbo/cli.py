@@ -74,6 +74,7 @@ from .analyze.graphql import analyze_graphql_files
 from .analyze.nix import analyze_nix_files
 from .analyze.glsl import analyze_glsl_files
 from .analyze.wgsl import analyze_wgsl_files
+from .analyze.xml_config import analyze_xml_files
 from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
@@ -1381,6 +1382,19 @@ def run_behavior_map(
             analysis_runs.append(wgsl_result.run.to_dict())
             all_symbols.extend(wgsl_result.symbols)
             all_edges.extend(wgsl_result.edges)
+
+    # Run XML analysis (optional, requires tree-sitter-xml)
+    xml_result = analyze_xml_files(repo_root)
+    if xml_result.run is not None:
+        if xml_result.skipped:  # pragma: no cover - xml installed
+            limits.skipped_passes.append({
+                "pass": xml_result.run.pass_id,
+                "reason": xml_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(xml_result.run.to_dict())
+            all_symbols.extend(xml_result.symbols)
+            all_edges.extend(xml_result.edges)
 
     # Run Fortran analysis (optional, requires tree-sitter-fortran)
     fortran_result = analyze_fortran_files(repo_root)
