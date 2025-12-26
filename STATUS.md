@@ -157,6 +157,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Nix | [x] tree-sitter | function, binding, input, derivation | imports | Detects Nix expressions: named functions, let bindings, flake inputs, derivation calls. Import edges for `import` expressions. Optional: `pip install tree-sitter-nix` |
 | GLSL | [x] tree-sitter | function, struct, uniform, input, output | calls | Detects OpenGL shaders: functions, structs, uniform/in/out variables. Function call edges. Supports .vert, .frag, .glsl, .geom, .tesc, .tese, .comp files. Optional: `pip install tree-sitter-glsl` |
 | Fortran | [x] tree-sitter | module, program, function, subroutine, type | calls, imports | Detects Fortran code: modules, programs, functions, subroutines, derived types. Use statement imports, subroutine call edges. For scientific computing and HPC. Optional: `pip install tree-sitter-fortran` |
+| TOML | [x] tree-sitter | table, package, dependency, binary, test, example, benchmark, library, workspace, project | — | Detects TOML configuration files: Cargo.toml (dependencies, bins, tests, examples, benches, libs, workspaces), pyproject.toml (project metadata). For Rust and Python project analysis. Optional: `pip install tree-sitter-toml` |
 
 ## Supply Chain Classification (§8.6)
 
