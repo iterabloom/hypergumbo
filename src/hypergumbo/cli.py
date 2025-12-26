@@ -92,6 +92,7 @@ from .linkers.phoenix_ipc import link_phoenix_ipc
 from .linkers.swift_objc import link_swift_objc
 from .linkers.websocket import link_websocket
 from .linkers.message_queue import link_message_queues
+from .linkers.database_query import link_database_queries
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -1553,6 +1554,18 @@ def run_behavior_map(
         analysis_runs.append(resolver_result.run.to_dict())
         all_symbols.extend(resolver_result.symbols)
         all_edges.extend(resolver_result.edges)
+
+    # Database query linker: connect SQL queries in code to table definitions
+    # Get SQL table symbols for linking
+    table_symbols = [
+        s for s in all_symbols
+        if s.language == "sql" and s.kind == "table"
+    ]
+    db_query_result = link_database_queries(repo_root, table_symbols)
+    if db_query_result.run is not None:
+        analysis_runs.append(db_query_result.run.to_dict())
+        all_symbols.extend(db_query_result.symbols)
+        all_edges.extend(db_query_result.edges)
 
     # Dependency linker: connect import statements to manifest declarations
     # Get TOML dependency symbols for linking
