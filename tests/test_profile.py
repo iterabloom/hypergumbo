@@ -336,3 +336,240 @@ def test_detects_mlflow_framework(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "mlflow" in data["profile"]["frameworks"]
+
+
+# Rust framework detection tests
+
+
+def test_detects_rust_axum_framework(tmp_path: Path) -> None:
+    """Should detect Axum web framework from Cargo.toml."""
+    (tmp_path / "main.rs").write_text("fn main() {}\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "myapp"
+version = "0.1.0"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "axum" in data["profile"]["frameworks"]
+    assert "tokio" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_solana_framework(tmp_path: Path) -> None:
+    """Should detect Solana SDK from Cargo.toml."""
+    (tmp_path / "lib.rs").write_text("pub fn process() {}\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "solana-program"
+version = "0.1.0"
+
+[dependencies]
+solana-sdk = "1.17"
+anchor-lang = "0.29"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "solana" in data["profile"]["frameworks"]
+    assert "anchor" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_sp1_zkvm(tmp_path: Path) -> None:
+    """Should detect SP1 zkVM from Cargo.toml."""
+    (tmp_path / "main.rs").write_text("fn main() {}\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "my-zkprogram"
+version = "0.1.0"
+
+[dependencies]
+sp1-sdk = "1.0"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "sp1" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_arkworks(tmp_path: Path) -> None:
+    """Should detect Arkworks ZKP library from Cargo.toml."""
+    (tmp_path / "lib.rs").write_text("use ark_ff::Field;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "zk-circuit"
+version = "0.1.0"
+
+[dependencies]
+ark-ff = "0.4"
+ark-ec = "0.4"
+ark-groth16 = "0.4"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "arkworks" in data["profile"]["frameworks"]
+    assert "groth16" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_plonky2(tmp_path: Path) -> None:
+    """Should detect Plonky2 proving system from Cargo.toml."""
+    (tmp_path / "circuit.rs").write_text("use plonky2::field::types::Field;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "my-circuit"
+version = "0.1.0"
+
+[dependencies]
+plonky2 = "0.2"
+plonky2_field = "0.2"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "plonky2" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_halo2(tmp_path: Path) -> None:
+    """Should detect Halo2 proving system from Cargo.toml."""
+    (tmp_path / "lib.rs").write_text("use halo2_proofs::dev::MockProver;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "halo2-circuit"
+version = "0.1.0"
+
+[dependencies]
+halo2_proofs = "0.3"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "halo2" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_substrate(tmp_path: Path) -> None:
+    """Should detect Substrate blockchain framework from Cargo.toml."""
+    (tmp_path / "lib.rs").write_text("use frame_support::pallet;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "my-pallet"
+version = "0.1.0"
+
+[dependencies]
+frame-support = "4.0"
+sp-core = "21.0"
+sp-runtime = "24.0"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "substrate" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_ethers(tmp_path: Path) -> None:
+    """Should detect ethers-rs Ethereum library from Cargo.toml."""
+    (tmp_path / "main.rs").write_text("use ethers::prelude::*;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "eth-client"
+version = "0.1.0"
+
+[dependencies]
+ethers = "2.0"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "ethers" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_risc0(tmp_path: Path) -> None:
+    """Should detect RISC Zero zkVM from Cargo.toml."""
+    (tmp_path / "main.rs").write_text("use risc0_zkvm::*;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "risc0-guest"
+version = "0.1.0"
+
+[dependencies]
+risc0-zkvm = "0.20"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "risc0" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_zcash(tmp_path: Path) -> None:
+    """Should detect Zcash libraries from Cargo.toml."""
+    (tmp_path / "lib.rs").write_text("use zcash_primitives::*;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "privacy-wallet"
+version = "0.1.0"
+
+[dependencies]
+zcash_primitives = "0.13"
+orchard = "0.6"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "zcash" in data["profile"]["frameworks"]
+
+
+def test_detects_rust_libp2p(tmp_path: Path) -> None:
+    """Should detect libp2p networking from Cargo.toml."""
+    (tmp_path / "main.rs").write_text("use libp2p::*;\n")
+    (tmp_path / "Cargo.toml").write_text('''
+[package]
+name = "p2p-node"
+version = "0.1.0"
+
+[dependencies]
+libp2p = "0.53"
+''')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "libp2p" in data["profile"]["frameworks"]
+
+
+def test_handles_unreadable_cargo_toml(tmp_path: Path) -> None:
+    """Should gracefully handle unreadable Cargo.toml."""
+    (tmp_path / "main.rs").write_text("fn main() {}\n")
+    # Create a directory named Cargo.toml (reading it will fail)
+    (tmp_path / "Cargo.toml").mkdir()
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    # Should still work, just not detect any Rust frameworks
+    assert "rust" in data["profile"]["languages"]
