@@ -66,6 +66,7 @@ from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
 from .linkers.phoenix_ipc import link_phoenix_ipc
+from .linkers.swift_objc import link_swift_objc
 from .linkers.websocket import link_websocket
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
@@ -1019,6 +1020,13 @@ def run_behavior_map(
         analysis_runs.append(phoenix_result.run.to_dict())
         all_symbols.extend(phoenix_result.symbols)
         all_edges.extend(phoenix_result.edges)
+
+    # Swift/Objective-C linker: detect @objc, NSObject, bridging headers
+    swift_objc_result = link_swift_objc(repo_root)
+    if swift_objc_result.run is not None:
+        analysis_runs.append(swift_objc_result.run.to_dict())
+        all_symbols.extend(swift_objc_result.symbols)
+        all_edges.extend(swift_objc_result.edges)
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
