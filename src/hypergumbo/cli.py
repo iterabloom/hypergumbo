@@ -57,6 +57,7 @@ from .analyze.solidity import analyze_solidity
 from .analyze.csharp import analyze_csharp
 from .analyze.cpp import analyze_cpp
 from .analyze.zig import analyze_zig
+from .analyze.groovy import analyze_groovy
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -919,6 +920,19 @@ def run_behavior_map(
             analysis_runs.append(zig_result.run.to_dict())
             all_symbols.extend(zig_result.symbols)
             all_edges.extend(zig_result.edges)
+
+    # Run Groovy analysis (optional, requires tree-sitter-groovy)
+    groovy_result = analyze_groovy(repo_root)
+    if groovy_result.run is not None:
+        if groovy_result.skipped:  # pragma: no cover - groovy installed
+            limits.skipped_passes.append({
+                "pass": groovy_result.run.pass_id,
+                "reason": groovy_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(groovy_result.run.to_dict())
+            all_symbols.extend(groovy_result.symbols)
+            all_edges.extend(groovy_result.edges)
 
     # Run cross-language linkers
 
