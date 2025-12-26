@@ -143,6 +143,7 @@ Initialization may use language detection; **analysis execution requires no netw
 * Core includes Python/HTML analyzers.
 * Optional: tree-sitter runtime for JS/TS/Svelte, PHP, C, and Java.
 * Optional: installable **language packs** for future languages (e.g., `pip install hypergumbo-pack-go`, `hypergumbo-pack-rust`). Language packs are data-only packages containing queries + metadata with minimal code.
+* **Spec B consideration**: Some tree-sitter grammars exist on GitHub but lack PyPI packages (e.g., Lean, LaTeX, COBOL). Contributing these to PyPI or building a "parser backend" abstraction layer could enable support for formal proof languages, academic documentation, and legacy enterprise systems.
 * Fallback: if extras/packs aren't installed, those languages are skipped with explicit limits.
 * **Fallback**: If extras unavailable, analysis uses only core languages (Python/HTML); other files logged in `limits.skipped_languages[]`
 ### De-risking strategy

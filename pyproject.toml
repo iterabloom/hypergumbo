@@ -42,6 +42,7 @@ dependencies = [
   "tree-sitter-groovy>=0.1",
   "tree-sitter-julia>=0.23",
   "tree-sitter-bash>=0.21",
+  "tree-sitter-objc>=3.0",
 ]
 
 [project.optional-dependencies]
