@@ -98,6 +98,70 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+# ASP.NET Core HTTP method attributes
+ASPNET_HTTP_ATTRIBUTES = {
+    "HttpGet": "GET",
+    "HttpPost": "POST",
+    "HttpPut": "PUT",
+    "HttpDelete": "DELETE",
+    "HttpPatch": "PATCH",
+    "HttpHead": "HEAD",
+    "HttpOptions": "OPTIONS",
+}
+
+
+def _detect_aspnet_route(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[str | None, str | None]:
+    """Detect ASP.NET Core route attributes on a method.
+
+    Returns (http_method, route_path) if ASP.NET Core route attributes are found.
+
+    Supported patterns:
+    - [HttpGet], [HttpPost], [HttpPut], [HttpDelete], [HttpPatch]
+    - [HttpGet("{id}")] with route template
+
+    Args:
+        node: The method_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        A tuple of (http_method, route_path), or (None, None) if not a route.
+    """
+    http_method = None
+    route_path = None
+
+    # In C# tree-sitter, attributes come before the method in an attribute_list
+    # We need to look at siblings preceding the method or check parent's children
+    # Actually, in tree-sitter-c-sharp, method_declaration contains attribute_list as child
+    for child in node.children:
+        if child.type == "attribute_list":
+            # attribute_list contains one or more attributes
+            for attr in child.children:
+                if attr.type == "attribute":
+                    # Get the attribute name
+                    attr_name_node = _find_child_by_type(attr, "identifier")
+                    if attr_name_node:
+                        attr_name = _node_text(attr_name_node, source)
+                        if attr_name in ASPNET_HTTP_ATTRIBUTES:
+                            http_method = ASPNET_HTTP_ATTRIBUTES[attr_name]
+
+                            # Check for route template in attribute_argument_list
+                            arg_list = _find_child_by_type(attr, "attribute_argument_list")
+                            if arg_list:
+                                for arg in arg_list.children:
+                                    if arg.type == "attribute_argument":
+                                        # Look for string literal
+                                        for arg_child in arg.children:
+                                            if arg_child.type == "string_literal":
+                                                route_path = _node_text(arg_child, source).strip('"')
+                                                break
+
+    if http_method:
+        return http_method, route_path
+    return None, None
+
+
 def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tree_sitter.Node"]:
     """Find all children of given type."""
     return [child for child in node.children if child.type == type_name]
@@ -305,6 +369,21 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Check for ASP.NET Core route attributes
+                http_method, route_path = _detect_aspnet_route(node, source)
+
+                # Build meta dict
+                meta: dict[str, str] | None = None
+                stable_id: str | None = None
+
+                if http_method or route_path:
+                    meta = {}
+                    if route_path:
+                        meta["route_path"] = route_path
+                    if http_method:
+                        meta["http_method"] = http_method
+                        stable_id = http_method
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -319,6 +398,8 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
+                    stable_id=stable_id,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
