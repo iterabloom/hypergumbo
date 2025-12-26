@@ -59,6 +59,7 @@ from .analyze.cpp import analyze_cpp
 from .analyze.zig import analyze_zig
 from .analyze.groovy import analyze_groovy
 from .analyze.julia import analyze_julia
+from .analyze.bash import analyze_bash
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -947,6 +948,19 @@ def run_behavior_map(
             analysis_runs.append(julia_result.run.to_dict())
             all_symbols.extend(julia_result.symbols)
             all_edges.extend(julia_result.edges)
+
+    # Run Bash/shell analysis (optional, requires tree-sitter-bash)
+    bash_result = analyze_bash(repo_root)
+    if bash_result.run is not None:
+        if bash_result.skipped:  # pragma: no cover - bash installed
+            limits.skipped_passes.append({
+                "pass": bash_result.run.pass_id,
+                "reason": bash_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(bash_result.run.to_dict())
+            all_symbols.extend(bash_result.symbols)
+            all_edges.extend(bash_result.edges)
 
     # Run cross-language linkers
 
