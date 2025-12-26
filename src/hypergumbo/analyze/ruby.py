@@ -164,7 +164,9 @@ def _detect_rails_route(
                                 value_node = content
                     if key_node and value_node:
                         controller_action = _node_text(value_node, source)
-            return method_name, route_path, controller_action
+            # Only return if we found a valid route path (string argument)
+            if route_path:
+                return method_name, route_path, controller_action
 
     # Check if it's a resources/resource call
     if method_name in ("resources", "resource"):
