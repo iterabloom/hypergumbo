@@ -713,3 +713,193 @@ public abstract class Shape {
         assert result.run is not None
         names = [s.name for s in result.symbols]
         assert "Shape" in names
+
+
+class TestSpringBootRouteDetection:
+    """Tests for Spring Boot route detection with @GetMapping, @PostMapping, etc."""
+
+    def test_get_mapping_detection(self, tmp_path: Path) -> None:
+        """Detects @GetMapping annotation on controller method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "UserController.java"
+        java_file.write_text("""
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class UserController {
+    @GetMapping("/users")
+    public List<User> getUsers() {
+        return userService.findAll();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Find the getUsers method
+        methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        # Should have route_path and http_method in meta
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "/users"
+        assert method.meta.get("http_method") == "GET"
+        assert method.stable_id == "GET"
+
+    def test_post_mapping_detection(self, tmp_path: Path) -> None:
+        """Detects @PostMapping annotation on controller method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "UserController.java"
+        java_file.write_text("""
+@RestController
+public class UserController {
+    @PostMapping("/users")
+    public User createUser(@RequestBody User user) {
+        return userService.save(user);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "createUser" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "/users"
+        assert method.meta.get("http_method") == "POST"
+        assert method.stable_id == "POST"
+
+    def test_all_http_method_mappings(self, tmp_path: Path) -> None:
+        """Detects all Spring Boot HTTP method annotations."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "ResourceController.java"
+        java_file.write_text("""
+@RestController
+public class ResourceController {
+    @GetMapping("/items")
+    public List<Item> getAll() { return null; }
+
+    @PostMapping("/items")
+    public Item create() { return null; }
+
+    @PutMapping("/items/{id}")
+    public Item update() { return null; }
+
+    @DeleteMapping("/items/{id}")
+    public void delete() {}
+
+    @PatchMapping("/items/{id}")
+    public Item patch() { return null; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
+
+        assert len(methods) == 5
+        http_methods = {m.stable_id for m in methods}
+        assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+    def test_request_mapping_with_method(self, tmp_path: Path) -> None:
+        """Detects @RequestMapping with method attribute."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "LegacyController.java"
+        java_file.write_text("""
+@RestController
+public class LegacyController {
+    @RequestMapping(value = "/legacy", method = RequestMethod.GET)
+    public String getLegacy() { return "legacy"; }
+
+    @RequestMapping(value = "/legacy", method = RequestMethod.POST)
+    public String postLegacy() { return "created"; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_methods = [m for m in methods if m.meta and m.meta.get("route_path")]
+
+        assert len(route_methods) == 2
+        assert any(m.meta.get("http_method") == "GET" for m in route_methods)
+        assert any(m.meta.get("http_method") == "POST" for m in route_methods)
+
+    def test_mapping_with_path_variable(self, tmp_path: Path) -> None:
+        """Detects routes with path variables like {id}."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "ItemController.java"
+        java_file.write_text("""
+@RestController
+public class ItemController {
+    @GetMapping("/items/{id}")
+    public Item getById(@PathVariable Long id) {
+        return itemService.findById(id);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getById" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "/items/{id}"
+        assert method.meta.get("http_method") == "GET"
+
+    def test_get_mapping_with_value_attribute(self, tmp_path: Path) -> None:
+        """Detects @GetMapping with explicit value attribute."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Controller.java"
+        java_file.write_text("""
+@RestController
+public class Controller {
+    @GetMapping(value = "/explicit")
+    public String getExplicit() { return "explicit"; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getExplicit" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "/explicit"
+        assert method.meta.get("http_method") == "GET"
+
+    def test_request_mapping_without_qualified_method(self, tmp_path: Path) -> None:
+        """Detects @RequestMapping with unqualified method (edge case)."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Controller.java"
+        # This is an unusual but valid form
+        java_file.write_text("""
+@RestController
+public class Controller {
+    @RequestMapping(value = "/test", method = GET)
+    public String test() { return "test"; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "test" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.meta is not None
+        assert method.meta.get("route_path") == "/test"
+        assert method.meta.get("http_method") == "GET"

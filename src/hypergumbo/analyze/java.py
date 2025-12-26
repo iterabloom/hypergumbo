@@ -112,6 +112,145 @@ def _has_native_modifier(node: "tree_sitter.Node", source: bytes) -> bool:
     return False
 
 
+# Spring Boot route annotation mappings
+SPRING_MAPPING_ANNOTATIONS = {
+    "GetMapping": "GET",
+    "PostMapping": "POST",
+    "PutMapping": "PUT",
+    "DeleteMapping": "DELETE",
+    "PatchMapping": "PATCH",
+}
+
+
+def _detect_spring_boot_route(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[str | None, str | None]:
+    """Detect Spring Boot route annotations on a method.
+
+    Returns (http_method, route_path) if a Spring Boot route annotation is found.
+
+    Supported patterns:
+    - @GetMapping("/path") -> ("GET", "/path")
+    - @PostMapping("/path") -> ("POST", "/path")
+    - @PutMapping, @DeleteMapping, @PatchMapping
+    - @RequestMapping(value = "/path", method = RequestMethod.GET)
+
+    Args:
+        node: The method_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        A tuple of (http_method, route_path), or (None, None) if not a route.
+    """
+    # Look for modifiers child which contains annotations
+    for child in node.children:
+        if child.type == "modifiers":
+            # Iterate through annotations in modifiers
+            for annotation in child.children:
+                if annotation.type in ("annotation", "marker_annotation"):
+                    # Get the annotation name
+                    annotation_name = None
+                    annotation_args = None
+
+                    for ann_child in annotation.children:
+                        if ann_child.type == "identifier":
+                            annotation_name = _node_text(ann_child, source)
+                        elif ann_child.type == "annotation_argument_list":
+                            annotation_args = ann_child
+
+                    if not annotation_name:  # pragma: no cover
+                        continue
+
+                    # Check for @GetMapping, @PostMapping, etc.
+                    if annotation_name in SPRING_MAPPING_ANNOTATIONS:
+                        http_method = SPRING_MAPPING_ANNOTATIONS[annotation_name]
+                        route_path = _extract_spring_route_path(annotation_args, source)
+                        return http_method, route_path
+
+                    # Check for @RequestMapping with method attribute
+                    if annotation_name == "RequestMapping":
+                        return _parse_request_mapping(annotation_args, source)
+
+    return None, None
+
+
+def _extract_spring_route_path(
+    args_node: Optional["tree_sitter.Node"], source: bytes
+) -> str | None:
+    """Extract route path from annotation arguments.
+
+    Handles:
+    - @GetMapping("/path")
+    - @GetMapping(value = "/path")
+    - @GetMapping(path = "/path")
+    """
+    if args_node is None:  # pragma: no cover
+        return None
+
+    for child in args_node.children:
+        # Simple string argument: @GetMapping("/path")
+        if child.type == "string_literal":
+            return _node_text(child, source).strip('"')
+
+        # Named argument: @GetMapping(value = "/path")
+        if child.type == "element_value_pair":
+            key = None
+            value = None
+            for pair_child in child.children:
+                if pair_child.type == "identifier":
+                    key = _node_text(pair_child, source)
+                elif pair_child.type == "string_literal":
+                    value = _node_text(pair_child, source).strip('"')
+            if key in ("value", "path") and value:
+                return value
+
+    return None  # pragma: no cover
+
+
+def _parse_request_mapping(
+    args_node: Optional["tree_sitter.Node"], source: bytes
+) -> tuple[str | None, str | None]:
+    """Parse @RequestMapping annotation with method attribute.
+
+    Handles:
+    - @RequestMapping(value = "/path", method = RequestMethod.GET)
+    - @RequestMapping(path = "/path", method = RequestMethod.POST)
+    """
+    if args_node is None:  # pragma: no cover
+        return None, None
+
+    route_path = None
+    http_method = None
+
+    for child in args_node.children:
+        if child.type == "element_value_pair":
+            key = None
+            value_node = None
+            # The first identifier is the key, everything else (except '=') is the value
+            found_key = False
+            for pair_child in child.children:
+                if pair_child.type == "identifier" and not found_key:
+                    key = _node_text(pair_child, source)
+                    found_key = True
+                elif pair_child.type not in ("=", ):
+                    value_node = pair_child
+
+            if key in ("value", "path") and value_node:
+                if value_node.type == "string_literal":
+                    route_path = _node_text(value_node, source).strip('"')
+
+            if key == "method" and value_node:
+                # Handle RequestMethod.GET, field_access, or just identifier (GET)
+                method_text = _node_text(value_node, source)
+                # Extract the method name (e.g., "GET" from "RequestMethod.GET")
+                if "." in method_text:
+                    http_method = method_text.split(".")[-1].upper()
+                else:
+                    http_method = method_text.upper()
+
+    return http_method, route_path
+
+
 def _get_java_parser() -> Optional["tree_sitter.Parser"]:
     """Get tree-sitter parser for Java."""
     try:
@@ -249,7 +388,26 @@ def _extract_symbols(
                 )
                 # Check for native modifier
                 is_native = _has_native_modifier(node, source)
-                meta = {"is_native": True} if is_native else None
+
+                # Check for Spring Boot route annotations
+                http_method, route_path = _detect_spring_boot_route(node, source)
+
+                # Build meta dict
+                meta: dict[str, str | bool] | None = None
+                stable_id: str | None = None
+
+                if is_native:
+                    meta = {"is_native": True}
+
+                if http_method or route_path:
+                    if meta is None:
+                        meta = {}
+                    if route_path:
+                        meta["route_path"] = route_path
+                    if http_method:
+                        meta["http_method"] = http_method
+                        stable_id = http_method
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -260,6 +418,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    stable_id=stable_id,
                 )
                 symbols.append(symbol)
 
