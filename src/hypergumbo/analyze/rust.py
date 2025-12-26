@@ -447,9 +447,14 @@ def _extract_actix_routes(
             for method in ACTIX_HTTP_METHODS:
                 # Match patterns like #[get("/path")] or #[actix_web::get("/path")]
                 if f"[{method}(" in attr_text or f"::{method}(" in attr_text:
-                    # Extract the path from the attribute
+                    # Extract the path from the first quoted string in the attribute
+                    # Handles: #[get("/path")] and #[post("/path", data = "<form>")]
                     path_start = attr_text.find('"')
-                    path_end = attr_text.rfind('"')
+                    if path_start != -1:
+                        # Find the closing quote of the first string (not the last quote)
+                        path_end = attr_text.find('"', path_start + 1)
+                    else:
+                        path_end = -1  # pragma: no cover
                     if path_start != -1 and path_end > path_start:
                         route_path = attr_text[path_start + 1:path_end]
 

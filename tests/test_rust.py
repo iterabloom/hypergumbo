@@ -1088,3 +1088,41 @@ async fn axum_handler() {}
         # Both should be detected
         assert "actix_handler" in route_names
         assert "axum_handler" in route_names
+
+    def test_rocket_style_multi_param_attribute(self, tmp_path: Path) -> None:
+        """Rocket-style attributes with extra params extract path correctly."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "rocket.rs"
+        rs_file.write_text("""
+use rocket::{get, post};
+
+#[post("/submit", data = "<form>")]
+async fn submit_form() {}
+
+#[get("/data", format = "json")]
+async fn get_json() {}
+
+#[get("/ranked", rank = 2)]
+async fn ranked_handler() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+
+        # Check that paths are extracted correctly (not including extra params)
+        paths = {s.meta["route_path"] for s in routes if s.meta}
+        assert "/submit" in paths
+        assert "/data" in paths
+        assert "/ranked" in paths
+
+        # Ensure no malformed paths like "/submit", data = "<form>"
+        for route in routes:
+            if route.meta:
+                assert "data =" not in route.meta["route_path"]
+                assert "format =" not in route.meta["route_path"]
+                assert "rank =" not in route.meta["route_path"]
