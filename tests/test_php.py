@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 class TestFindPhpFiles:
     """Tests for PHP file discovery."""
@@ -671,3 +673,99 @@ class MyClass {
         assert result.run is not None
         assert result.skipped is True
         assert "tree-sitter-php" in result.skip_reason
+
+
+class TestLaravelRouteDetection:
+    """Tests for Laravel route detection with Route::get, Route::post, etc."""
+
+    def test_route_get(self, tmp_path: Path) -> None:
+        """Detects Route::get() call."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "web.php"
+        php_file.write_text("""<?php
+use Illuminate\\Support\\Facades\\Route;
+
+Route::get('/users', [UserController::class, 'index']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        route = routes[0]
+
+        assert route.meta is not None
+        assert route.meta.get("route_path") == "/users"
+        assert route.meta.get("http_method") == "GET"
+        assert route.stable_id == "GET"
+
+    def test_route_post(self, tmp_path: Path) -> None:
+        """Detects Route::post() call."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "api.php"
+        php_file.write_text("""<?php
+Route::post('/users', [UserController::class, 'store']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        route = routes[0]
+
+        assert route.meta is not None
+        assert route.meta.get("route_path") == "/users"
+        assert route.meta.get("http_method") == "POST"
+        assert route.stable_id == "POST"
+
+    def test_all_http_methods(self, tmp_path: Path) -> None:
+        """Detects all Laravel HTTP method routes."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "routes.php"
+        php_file.write_text("""<?php
+Route::get('/items', [ItemController::class, 'index']);
+Route::post('/items', [ItemController::class, 'store']);
+Route::put('/items/{id}', [ItemController::class, 'update']);
+Route::delete('/items/{id}', [ItemController::class, 'destroy']);
+Route::patch('/items/{id}', [ItemController::class, 'patch']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 5
+
+        http_methods = {r.stable_id for r in routes}
+        assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+    def test_route_with_closure(self, tmp_path: Path) -> None:
+        """Detects Route with inline closure handler."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "web.php"
+        php_file.write_text("""<?php
+Route::get('/hello', function () {
+    return 'Hello World';
+});
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        if result.skipped:
+            pytest.skip(result.skip_reason)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta.get("route_path") == "/hello"
