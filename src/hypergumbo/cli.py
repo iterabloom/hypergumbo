@@ -62,6 +62,7 @@ from .analyze.julia import analyze_julia
 from .analyze.bash import analyze_bash
 from .analyze.objc import analyze_objc
 from .analyze.hcl import analyze_hcl
+from .analyze.yaml_ansible import analyze_ansible
 from .catalog import get_default_catalog, is_available
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
@@ -990,6 +991,19 @@ def run_behavior_map(
             analysis_runs.append(hcl_result.run.to_dict())
             all_symbols.extend(hcl_result.symbols)
             all_edges.extend(hcl_result.edges)
+
+    # Run YAML/Ansible analysis (optional, requires tree-sitter-yaml)
+    ansible_result = analyze_ansible(repo_root)
+    if ansible_result.run is not None:
+        if ansible_result.skipped:  # pragma: no cover - yaml installed
+            limits.skipped_passes.append({
+                "pass": ansible_result.run.pass_id,
+                "reason": ansible_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(ansible_result.run.to_dict())
+            all_symbols.extend(ansible_result.symbols)
+            all_edges.extend(ansible_result.edges)
 
     # Run cross-language linkers
 
