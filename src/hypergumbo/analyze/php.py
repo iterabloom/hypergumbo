@@ -4,6 +4,7 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Function declarations (symbols)
 - Class declarations (symbols)
 - Method declarations (symbols)
+- Laravel route definitions (Route::get, Route::post, etc.)
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Static method call relationships (edges)
@@ -45,6 +46,17 @@ if TYPE_CHECKING:
 
 PASS_ID = "php-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
+
+# Laravel HTTP route methods
+LARAVEL_HTTP_METHODS = {
+    "get": "GET",
+    "post": "POST",
+    "put": "PUT",
+    "delete": "DELETE",
+    "patch": "PATCH",
+    "head": "HEAD",
+    "options": "OPTIONS",
+}
 
 
 def find_php_files(repo_root: Path) -> Iterator[Path]:
@@ -90,6 +102,57 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None
 
 
+def _detect_laravel_route(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[str | None, str | None]:
+    """Detect Laravel Route::get(), Route::post(), etc. static calls.
+
+    Returns (http_method, route_path) if this is a Laravel route, else (None, None).
+    """
+    if node.type != "scoped_call_expression":
+        return None, None  # pragma: no cover
+
+    scope_node = node.child_by_field_name("scope")
+    name_node = node.child_by_field_name("name")
+
+    if not scope_node or not name_node:
+        return None, None  # pragma: no cover
+
+    # Check if this is Route::method()
+    scope_text = _node_text(scope_node, source)
+    if scope_text != "Route":
+        return None, None
+
+    method_name = _node_text(name_node, source)
+    if method_name not in LARAVEL_HTTP_METHODS:
+        return None, None  # pragma: no cover
+
+    http_method = LARAVEL_HTTP_METHODS[method_name]
+    route_path = None
+
+    # Extract route path from first argument
+    args_node = node.child_by_field_name("arguments")
+    if args_node:
+        for child in args_node.children:
+            if child.type == "argument":
+                # First argument is the route path
+                for arg_child in child.children:
+                    if arg_child.type == "string":
+                        # Extract content from string node
+                        for str_child in arg_child.children:
+                            if str_child.type == "string_content":
+                                route_path = _node_text(str_child, source)
+                                break
+                        if route_path is None:  # pragma: no cover
+                            # Fallback: try to get the whole string and strip quotes
+                            raw = _node_text(arg_child, source)
+                            route_path = raw.strip("'\"")
+                        break
+                break
+
+    return http_method, route_path
+
+
 def _get_php_parser() -> Optional["tree_sitter.Parser"]:
     """Get tree-sitter parser for PHP."""
     try:
@@ -126,6 +189,34 @@ def _extract_symbols(
 
     def visit(node: "tree_sitter.Node") -> None:
         nonlocal current_class
+
+        # Laravel route detection: Route::get(), Route::post(), etc.
+        if node.type == "scoped_call_expression":
+            http_method, route_path = _detect_laravel_route(node, source)
+            if http_method:
+                span = Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                route_name = f"Route::{http_method.lower()}({route_path or '...'})"
+                meta: dict[str, str] = {"http_method": http_method}
+                if route_path:
+                    meta["route_path"] = route_path
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, route_name, "route"),
+                    name=route_name,
+                    kind="route",
+                    language="php",
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=http_method,
+                    meta=meta,
+                )
+                symbols.append(symbol)
 
         # Function declarations
         if node.type == "function_definition":
