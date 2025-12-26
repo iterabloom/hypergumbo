@@ -73,6 +73,7 @@ from .analyze.vhdl import analyze_vhdl_files
 from .analyze.graphql import analyze_graphql_files
 from .analyze.nix import analyze_nix_files
 from .analyze.glsl import analyze_glsl_files
+from .analyze.wgsl import analyze_wgsl_files
 from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
@@ -1367,6 +1368,19 @@ def run_behavior_map(
             analysis_runs.append(glsl_result.run.to_dict())
             all_symbols.extend(glsl_result.symbols)
             all_edges.extend(glsl_result.edges)
+
+    # Run WGSL analysis (optional, requires tree-sitter-wgsl)
+    wgsl_result = analyze_wgsl_files(repo_root)
+    if wgsl_result.run is not None:
+        if wgsl_result.skipped:  # pragma: no cover - wgsl installed
+            limits.skipped_passes.append({
+                "pass": wgsl_result.run.pass_id,
+                "reason": wgsl_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(wgsl_result.run.to_dict())
+            all_symbols.extend(wgsl_result.symbols)
+            all_edges.extend(wgsl_result.edges)
 
     # Run Fortran analysis (optional, requires tree-sitter-fortran)
     fortran_result = analyze_fortran_files(repo_root)
