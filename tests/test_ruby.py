@@ -488,3 +488,100 @@ class TestRubyHelperFunctions:
         # Try to find a child type that doesn't exist
         result = _find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
+
+
+# ============================================================================
+# Rails Route Detection Tests
+# ============================================================================
+
+
+class TestRailsRouteDetection:
+    """Tests for Rails route DSL detection."""
+
+    def test_rails_get_route(self, tmp_path: Path) -> None:
+        """Rails get route should be detected with stable_id='get'."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        routes_file = tmp_path / "routes.rb"
+        routes_file.write_text("""
+Rails.application.routes.draw do
+  get '/users', to: 'users#index'
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-ruby not available")
+
+        # Find route symbols
+        routes = [s for s in result.symbols if s.stable_id == "get"]
+        assert len(routes) == 1
+        assert routes[0].meta is not None
+        assert routes[0].meta.get("route_path") == "/users"
+
+    def test_rails_post_route(self, tmp_path: Path) -> None:
+        """Rails post route should be detected."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        routes_file = tmp_path / "routes.rb"
+        routes_file.write_text("""
+Rails.application.routes.draw do
+  post '/users', to: 'users#create'
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-ruby not available")
+
+        routes = [s for s in result.symbols if s.stable_id == "post"]
+        assert len(routes) == 1
+
+    def test_rails_all_http_methods(self, tmp_path: Path) -> None:
+        """Rails should detect all HTTP method routes."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        routes_file = tmp_path / "routes.rb"
+        routes_file.write_text("""
+Rails.application.routes.draw do
+  get '/get', to: 'test#get'
+  post '/post', to: 'test#post'
+  put '/put', to: 'test#put'
+  patch '/patch', to: 'test#patch'
+  delete '/delete', to: 'test#delete'
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-ruby not available")
+
+        stable_ids = {s.stable_id for s in result.symbols if s.stable_id}
+        assert "get" in stable_ids
+        assert "post" in stable_ids
+        assert "put" in stable_ids
+        assert "patch" in stable_ids
+        assert "delete" in stable_ids
+
+    def test_rails_resources_route(self, tmp_path: Path) -> None:
+        """Rails resources macro should be detected."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        routes_file = tmp_path / "routes.rb"
+        routes_file.write_text("""
+Rails.application.routes.draw do
+  resources :users
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-ruby not available")
+
+        # resources creates a route entry
+        resources = [s for s in result.symbols if s.kind == "route" and "users" in s.name]
+        assert len(resources) >= 1

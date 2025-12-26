@@ -44,6 +44,9 @@ if TYPE_CHECKING:
 PASS_ID = "ruby-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
+# HTTP methods for Rails route detection
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
 
 def find_ruby_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Ruby files in the repository."""
@@ -96,6 +99,83 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+def _detect_rails_route(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[str | None, str | None, str | None]:
+    """Detect Rails route DSL calls.
+
+    Returns (http_method, route_path, controller_action) if a route is found.
+
+    Supported patterns:
+    - get '/path', to: 'controller#action'
+    - post '/path', to: 'controller#action'
+    - resources :name
+
+    The call must be of form <http_method> <path> for HTTP routes,
+    or 'resources' <symbol> for resource routes.
+    """
+    if node.type != "call":  # pragma: no cover
+        return None, None, None
+
+    # Get the method name from identifier child
+    method_node = None
+    for child in node.children:
+        if child.type == "identifier":
+            method_node = child
+            break
+
+    if method_node is None:  # pragma: no cover
+        return None, None, None
+
+    method_name = _node_text(method_node, source).lower()
+
+    # Check if it's an HTTP method route
+    if method_name in HTTP_METHODS:
+        # Extract route path from first argument (should be a string)
+        args_node = _find_child_by_field(node, "arguments")
+        if args_node:
+            route_path = None
+            controller_action = None
+            for arg in args_node.children:
+                if arg.type == "string":
+                    content_node = _find_child_by_type(arg, "string_content")
+                    if content_node:
+                        route_path = _node_text(content_node, source)
+                        break
+                # Also check for string without string_content
+                elif arg.type == "string_content":  # pragma: no cover
+                    route_path = _node_text(arg, source)
+                    break
+            # Try to extract controller#action from 'to:' option
+            for arg in args_node.children:
+                if arg.type == "pair":
+                    key_node = None
+                    value_node = None
+                    for pair_child in arg.children:
+                        if pair_child.type == "hash_key_symbol" or pair_child.type == "simple_symbol":
+                            key_text = _node_text(pair_child, source).strip(":")
+                            if key_text == "to":
+                                key_node = pair_child
+                        elif pair_child.type == "string":
+                            content = _find_child_by_type(pair_child, "string_content")
+                            if content:
+                                value_node = content
+                    if key_node and value_node:
+                        controller_action = _node_text(value_node, source)
+            return method_name, route_path, controller_action
+
+    # Check if it's a resources/resource call
+    if method_name in ("resources", "resource"):
+        args_node = _find_child_by_field(node, "arguments")
+        if args_node:
+            for arg in args_node.children:
+                # Resources typically use symbols: resources :users
+                if arg.type == "simple_symbol":
+                    resource_name = _node_text(arg, source).strip(":")
+                    return "resources", resource_name, None
+    return None, None, None
 
 
 @dataclass
@@ -227,6 +307,45 @@ def _extract_symbols_from_file(
                     visit(child)
                 current_module = old_module
                 return  # Already processed children
+
+        # Rails route detection
+        elif node.type == "call":
+            http_method, route_path, controller_action = _detect_rails_route(node, source)
+            if http_method:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                # Build route name
+                if http_method == "resources":
+                    route_name = f"resources:{route_path}"
+                else:
+                    route_name = f"{http_method.upper()} {route_path or '/'}"
+
+                # Build meta
+                meta: dict[str, str] = {}
+                if route_path:
+                    meta["route_path"] = route_path
+                if controller_action:
+                    meta["controller_action"] = controller_action
+
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), start_line, end_line, route_name, "route"),
+                    name=route_name,
+                    kind="route",
+                    language="ruby",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=http_method,
+                    meta=meta if meta else None,
+                )
+                analysis.symbols.append(symbol)
 
         # Recurse into children
         for child in node.children:
