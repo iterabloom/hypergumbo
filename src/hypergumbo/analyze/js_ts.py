@@ -53,19 +53,25 @@ PASS_ID = "javascript-ts-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
 
-def find_js_ts_files(repo_root: Path) -> Iterator[Path]:
+def find_js_ts_files(
+    repo_root: Path, max_files: int | None = None
+) -> Iterator[Path]:
     """Yield all JS/TS files in the repository, excluding common non-source dirs."""
-    yield from find_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx"])
+    yield from find_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx"], max_files=max_files)
 
 
-def find_svelte_files(repo_root: Path) -> Iterator[Path]:
+def find_svelte_files(
+    repo_root: Path, max_files: int | None = None
+) -> Iterator[Path]:
     """Yield all Svelte files in the repository."""
-    yield from find_files(repo_root, ["*.svelte"])
+    yield from find_files(repo_root, ["*.svelte"], max_files=max_files)
 
 
-def find_vue_files(repo_root: Path) -> Iterator[Path]:
+def find_vue_files(
+    repo_root: Path, max_files: int | None = None
+) -> Iterator[Path]:
     """Yield all Vue SFC files in the repository."""
-    yield from find_files(repo_root, ["*.vue"])
+    yield from find_files(repo_root, ["*.vue"], max_files=max_files)
 
 
 # Regex to extract <script> blocks from Svelte files
@@ -946,7 +952,9 @@ def _analyze_vue_file(
     return all_symbols, all_edges, True
 
 
-def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
+def analyze_javascript(
+    repo_root: Path, max_files: int | None = None
+) -> JsAnalysisResult:
     """Analyze all JavaScript/TypeScript/Svelte/Vue files in a repository.
 
     Uses a two-pass approach:
@@ -955,6 +963,10 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
 
     Returns a JsAnalysisResult with symbols, edges, and provenance.
     If tree-sitter is not available, returns empty result with skip info.
+
+    Args:
+        repo_root: Root directory of the repository
+        max_files: Optional limit on number of files to analyze
     """
     start_time = time.time()
 
@@ -979,7 +991,7 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
     files_skipped = 0
 
     # Analyze JS/TS files
-    for file_path in find_js_ts_files(repo_root):
+    for file_path in find_js_ts_files(repo_root, max_files=max_files):
         parser = _get_parser_for_file(file_path)
         if parser is None:
             files_skipped += 1
@@ -997,7 +1009,7 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
             files_skipped += 1
 
     # Analyze Svelte files
-    for file_path in find_svelte_files(repo_root):
+    for file_path in find_svelte_files(repo_root, max_files=max_files):
         try:
             source_text = file_path.read_text(encoding="utf-8", errors="replace")
             script_blocks = extract_svelte_scripts(source_text)
@@ -1027,7 +1039,7 @@ def analyze_javascript(repo_root: Path) -> JsAnalysisResult:
             files_skipped += 1
 
     # Analyze Vue SFC files
-    for file_path in find_vue_files(repo_root):
+    for file_path in find_vue_files(repo_root, max_files=max_files):
         try:
             source_text = file_path.read_text(encoding="utf-8", errors="replace")
             script_blocks = extract_vue_scripts(source_text)

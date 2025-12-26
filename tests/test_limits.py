@@ -92,6 +92,14 @@ class TestLimits:
 
         assert d["analysis_depth"] == "syntax_only"
 
+    def test_max_files_per_analyzer(self) -> None:
+        """Tracks max_files_per_analyzer in output."""
+        limits = Limits()
+        limits.max_files_per_analyzer = 100
+        d = limits.to_dict()
+
+        assert d["max_files_per_analyzer"] == 100
+
 
 class TestFailedFile:
     """Tests for FailedFile dataclass."""

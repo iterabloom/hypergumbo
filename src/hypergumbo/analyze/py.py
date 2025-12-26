@@ -52,9 +52,11 @@ from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
 
-def find_python_files(repo_root: Path) -> Iterator[Path]:
+def find_python_files(
+    repo_root: Path, max_files: int | None = None
+) -> Iterator[Path]:
     """Yield all Python files in the repository, excluding common non-source dirs."""
-    yield from find_files(repo_root, ["*.py"])
+    yield from find_files(repo_root, ["*.py"], max_files=max_files)
 
 
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
@@ -512,12 +514,18 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     return AnalysisResult(symbols=file_analysis.symbols, edges=edges)
 
 
-def analyze_python(repo_root: Path) -> AnalysisResult:
+def analyze_python(
+    repo_root: Path, max_files: int | None = None
+) -> AnalysisResult:
     """
     Analyze all Python files in a repository.
 
     Returns an AnalysisResult with all detected symbols, edges, and provenance.
     Supports cross-file call detection via import resolution.
+
+    Args:
+        repo_root: Root directory of the repository
+        max_files: Optional limit on number of files to analyze
     """
     import time
 
@@ -529,7 +537,7 @@ def analyze_python(repo_root: Path) -> AnalysisResult:
     # First pass: collect all symbols and imports from all files
     file_analyses: dict[Path, FileAnalysis] = {}
     files_skipped = 0
-    for py_file in find_python_files(repo_root):
+    for py_file in find_python_files(repo_root, max_files=max_files):
         analysis = _extract_file_analysis(py_file, repo_root)
         if analysis is not None:
             file_analyses[py_file] = analysis

@@ -56,6 +56,7 @@ def find_files(
     repo_root: Path,
     patterns: list[str],
     excludes: list[str] | None = None,
+    max_files: int | None = None,
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
 
@@ -63,11 +64,16 @@ def find_files(
         repo_root: The repository root to search from
         patterns: List of glob patterns to match (e.g., ["*.py", "*.pyi"])
         excludes: List of exclude patterns (default: DEFAULT_EXCLUDES)
+        max_files: Maximum number of files to return (None = unlimited)
 
     Yields:
         Paths to files matching the patterns that are not excluded.
     """
+    count = 0
     for pattern in patterns:
         for path in repo_root.rglob(pattern):
+            if max_files is not None and count >= max_files:
+                return
             if not is_excluded(path, repo_root, excludes):
                 yield path
+                count += 1
