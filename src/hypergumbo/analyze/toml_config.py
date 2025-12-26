@@ -44,6 +44,12 @@ def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     return f"toml:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
 
 
+def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
+    """Generate a unique edge ID."""
+    key = f"toml:{edge_type}:{src}:{dst}"
+    return f"edge:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+
+
 PASS_ID = "toml-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
@@ -139,13 +145,14 @@ def _find_pair_value(table_node, key: str) -> str | None:
 def _process_toml_node(
     node,
     symbols: list[Symbol],
+    edges: list[Edge],
     rel_path: str,
     content: str,
     is_cargo: bool,
     is_pyproject: bool,
     parent_table: str | None = None,
 ) -> None:
-    """Process a TOML AST node and extract symbols.
+    """Process a TOML AST node and extract symbols and edges.
 
     This is a module-level function to avoid closure issues with loop variables.
     """
@@ -216,7 +223,7 @@ def _process_toml_node(
         # Recurse into table children
         for child in node.children:
             _process_toml_node(
-                child, symbols, rel_path, content, is_cargo, is_pyproject, table_name
+                child, symbols, edges, rel_path, content, is_cargo, is_pyproject, table_name
             )
 
     elif node.type == "table_array_element":
@@ -225,32 +232,42 @@ def _process_toml_node(
         # Determine kind based on table array name
         kind = "table_array"
         name = table_name
+        target_path = None  # Source file path for build targets
 
         if table_name == "bin" and is_cargo:
             kind = "binary"
             bin_name = _find_pair_value(node, "name")
             if bin_name:
                 name = bin_name
+            target_path = _find_pair_value(node, "path")
         elif table_name == "test" and is_cargo:
             kind = "test"
             test_name = _find_pair_value(node, "name")
             if test_name:
                 name = test_name
+            target_path = _find_pair_value(node, "path")
         elif table_name == "example" and is_cargo:
             kind = "example"
             ex_name = _find_pair_value(node, "name")
             if ex_name:
                 name = ex_name
+            target_path = _find_pair_value(node, "path")
         elif table_name == "bench" and is_cargo:
             kind = "benchmark"
             bench_name = _find_pair_value(node, "name")
             if bench_name:
                 name = bench_name
+            target_path = _find_pair_value(node, "path")
 
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
         node_bytes = content[node.start_byte : node.end_byte].encode()
+
+        # Build meta with path if present
+        meta = None
+        if target_path:
+            meta = {"path": target_path}
 
         symbols.append(
             Symbol(
@@ -270,20 +287,36 @@ def _process_toml_node(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                meta=meta,
             )
         )
+
+        # Create edge from build target to source file
+        if target_path:
+            edge_id = _make_edge_id(symbol_id, target_path, "defines_target")
+            edges.append(
+                Edge(
+                    id=edge_id,
+                    src=symbol_id,
+                    dst=target_path,
+                    edge_type="defines_target",
+                    line=start_line,
+                    confidence=1.0,
+                    origin=PASS_ID,
+                )
+            )
 
         # Recurse
         for child in node.children:
             _process_toml_node(
-                child, symbols, rel_path, content, is_cargo, is_pyproject, table_name
+                child, symbols, edges, rel_path, content, is_cargo, is_pyproject, table_name
             )
 
     else:
         # Recurse for other node types
         for child in node.children:
             _process_toml_node(
-                child, symbols, rel_path, content, is_cargo, is_pyproject, parent_table
+                child, symbols, edges, rel_path, content, is_cargo, is_pyproject, parent_table
             )
 
 
@@ -333,7 +366,7 @@ def analyze_toml_files(root: Path) -> TomlAnalysisResult:
 
             # Process the tree using module-level function
             _process_toml_node(
-                tree.root_node, symbols, rel_path, content, is_cargo, is_pyproject
+                tree.root_node, symbols, edges, rel_path, content, is_cargo, is_pyproject
             )
 
         except (OSError, IOError):  # pragma: no cover
