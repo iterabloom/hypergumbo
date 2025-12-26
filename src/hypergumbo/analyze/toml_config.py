@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
 
@@ -71,9 +72,8 @@ class TomlAnalysisResult:
 
 
 def find_toml_files(root: Path) -> Iterator[Path]:
-    """Find all TOML files in a directory tree."""
-    for pattern in ["*.toml", "Cargo.toml", "pyproject.toml"]:
-        yield from root.rglob(pattern)
+    """Find all TOML files in a directory tree, excluding vendor dirs."""
+    yield from find_files(root, ["*.toml"])
 
 
 def _get_key_text(node) -> str:

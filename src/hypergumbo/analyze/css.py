@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
 
@@ -76,8 +77,8 @@ class CSSAnalysisResult:
 
 
 def find_css_files(root: Path) -> Iterator[Path]:
-    """Find all CSS files in a directory tree."""
-    yield from root.rglob("*.css")
+    """Find all CSS files in a directory tree, excluding vendor dirs."""
+    yield from find_files(root, ["*.css"])
 
 
 def _get_node_text(node, source: bytes) -> str:
