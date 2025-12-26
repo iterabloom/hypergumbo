@@ -164,6 +164,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | WGSL | [x] tree-sitter | function, struct, uniform, storage | calls | Detects WebGPU shaders: entry points (@vertex, @fragment, @compute), structs, uniform/storage bindings with @group/@binding metadata. For WebGPU graphics and compute analysis. Optional: `pip install tree-sitter-language-pack` |
 | XML | [x] tree-sitter | module, dependency, activity, service, permission | depends_on | Maven pom.xml: projects, dependencies with groupId/artifactId/version. Android Manifest: activities, services, receivers, providers, permissions, intent-filters. For Java/Android analysis. Optional: `pip install tree-sitter-language-pack` |
 | JSON | [x] tree-sitter | package, dependency, devDependency, script, tsconfig, reference, composer_package | depends_on, references | package.json: npm dependencies, scripts. tsconfig.json: TypeScript project references. composer.json: PHP Composer dependencies. For Node.js/PHP analysis. Optional: `pip install tree-sitter-language-pack` |
+| R | [x] tree-sitter | function, import, source | calls | Detects R code: function definitions, library/require imports, source() file references. Function call edges. For data science and statistical computing. Optional: `pip install tree-sitter-language-pack` |
 
 ## Supply Chain Classification (§8.6)
 
