@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix", "glsl", "fortran", "toml"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix", "glsl", "fortran", "toml", "css"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -296,6 +296,12 @@ def get_default_catalog() -> Catalog:
                 description="TOML configuration file analysis via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[toml]",
+            ),
+            Pass(
+                id="css-v1",
+                description="CSS stylesheet analysis via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[css]",
             ),
             Pass(
                 id="websocket-linker-v1",
