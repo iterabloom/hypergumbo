@@ -54,6 +54,7 @@ dev = [
   "ruff>=0.8",
   "bandit>=1.8",
   "pip-audit>=2.7",
+  "jsonschema>=4.18",  # For schema validation tests (4.18+ uses referencing)
 ]
 llm-assist = [
   "openai>=1.0",
