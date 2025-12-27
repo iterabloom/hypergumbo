@@ -76,6 +76,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "julia": ["*.jl"],
     "objc": ["*.m", "*.mm"],
     "hcl": ["*.tf", "*.hcl"],
+    "dart": ["*.dart"],
 }
 
 # Framework detection patterns
@@ -86,6 +87,15 @@ PYTHON_FRAMEWORKS = {
     "flask": ["flask", "Flask"],
     "django": ["django", "Django"],
     "aiohttp": ["aiohttp"],
+    "starlette": ["starlette"],
+    "quart": ["quart"],
+    "sanic": ["sanic"],
+    "litestar": ["litestar"],
+    "falcon": ["falcon"],
+    "bottle": ["bottle"],
+    "cherrypy": ["cherrypy", "CherryPy"],
+    "pyramid": ["pyramid"],
+    "tornado": ["tornado"],
     # Testing
     "pytest": ["pytest"],
     # Data/ORM
@@ -98,6 +108,7 @@ PYTHON_FRAMEWORKS = {
     "tensorflow": ["tensorflow"],
     "keras": ["keras"],
     "jax": ["jax", "flax"],
+    "paddlepaddle": ["paddlepaddle", "paddle"],
     # ML/AI - NLP/Transformers
     "transformers": ["transformers", "huggingface"],
     "spacy": ["spacy"],
@@ -112,25 +123,67 @@ PYTHON_FRAMEWORKS = {
     "scikit-learn": ["scikit-learn", "sklearn"],
     "xgboost": ["xgboost"],
     "lightgbm": ["lightgbm"],
+    "catboost": ["catboost"],
     # ML/AI - GPU/CUDA
     "cuda": ["cupy", "pycuda", "numba"],
     # ML/AI - MLOps
     "mlflow": ["mlflow"],
     "wandb": ["wandb"],
+    "optuna": ["optuna"],
+    # ML/AI - Distributed/Serving
+    "ray": ["ray"],
+    "vllm": ["vllm"],
+    "deepspeed": ["deepspeed"],
     # LLM APIs
     "openai": ["openai"],
     "anthropic": ["anthropic"],
 }
 
 JS_FRAMEWORKS = {
+    # Frontend frameworks
     "react": ["react"],
     "vue": ["vue"],
     "angular": ["@angular/core"],
-    "express": ["express"],
+    "svelte": ["svelte"],
+    "solid": ["solid-js"],
+    "qwik": ["@builder.io/qwik"],
+    "preact": ["preact"],
+    "lit": ["lit"],
+    "alpine": ["alpinejs"],
+    "htmx": ["htmx.org"],
+    "ember": ["ember-source", "ember-cli"],
+    # Meta-frameworks
     "next": ["next"],
     "nuxt": ["nuxt"],
-    "svelte": ["svelte"],
+    "remix": ["@remix-run/react", "@remix-run/node"],
+    "astro": ["astro"],
+    "gatsby": ["gatsby"],
+    "sveltekit": ["@sveltejs/kit"],
+    # Backend frameworks
+    "express": ["express"],
     "nestjs": ["@nestjs/core"],
+    "fastify": ["fastify"],
+    "koa": ["koa"],
+    "hapi": ["@hapi/hapi"],
+    "adonis": ["@adonisjs/core"],
+    "sails": ["sails"],
+    "hono": ["hono"],
+    "elysia": ["elysia"],
+    # Mobile
+    "react-native": ["react-native"],
+    "expo": ["expo"],
+    "ionic": ["@ionic/core", "@ionic/react", "@ionic/vue"],
+    "capacitor": ["@capacitor/core"],
+    "nativescript": ["nativescript", "@nativescript/core"],
+    # Desktop
+    "electron": ["electron"],
+    "tauri": ["@tauri-apps/api"],
+    # Blockchain/Web3
+    "hardhat": ["hardhat"],
+    "web3": ["web3"],
+    "ethers": ["ethers"],
+    "wagmi": ["wagmi"],
+    "viem": ["viem"],
 }
 
 # Rust crate detection patterns (from Cargo.toml)
@@ -140,6 +193,10 @@ RUST_FRAMEWORKS = {
     "axum": ["axum"],
     "rocket": ["rocket"],
     "warp": ["warp"],
+    "tide": ["tide"],
+    "gotham": ["gotham"],
+    "poem": ["poem"],
+    "salvo": ["salvo"],
     # Async runtimes
     "tokio": ["tokio"],
     "async-std": ["async-std"],
@@ -147,6 +204,8 @@ RUST_FRAMEWORKS = {
     "serde": ["serde"],
     # CLI
     "clap": ["clap"],
+    # Desktop
+    "tauri": ["tauri"],
     # Blockchain - Ethereum/EVM
     "ethers": ["ethers", "ethers-rs"],
     "alloy": ["alloy"],
@@ -185,6 +244,64 @@ RUST_FRAMEWORKS = {
     "curve25519": ["curve25519-dalek"],
     "ed25519": ["ed25519-dalek"],
     "secp256k1": ["secp256k1", "k256"],
+}
+
+# Go module detection patterns (from go.mod)
+GO_FRAMEWORKS = {
+    # Web frameworks
+    "gin": ["github.com/gin-gonic/gin"],
+    "echo": ["github.com/labstack/echo"],
+    "fiber": ["github.com/gofiber/fiber"],
+    "chi": ["github.com/go-chi/chi"],
+    "gorilla": ["github.com/gorilla/mux"],
+    "buffalo": ["github.com/gobuffalo/buffalo"],
+    "revel": ["github.com/revel/revel"],
+    "beego": ["github.com/beego/beego"],
+    "iris": ["github.com/kataras/iris"],
+}
+
+# PHP composer.json detection patterns
+PHP_FRAMEWORKS = {
+    "laravel": ["laravel/framework"],
+    "symfony": ["symfony/framework-bundle", "symfony/symfony"],
+    "codeigniter": ["codeigniter4/framework"],
+    "cakephp": ["cakephp/cakephp"],
+    "yii": ["yiisoft/yii2"],
+    "phalcon": ["phalcon/devtools"],
+    "slim": ["slim/slim"],
+}
+
+# Java/Kotlin (pom.xml, build.gradle) detection patterns
+JAVA_FRAMEWORKS = {
+    "spring-boot": ["spring-boot", "org.springframework.boot"],
+    "micronaut": ["micronaut", "io.micronaut"],
+    "quarkus": ["quarkus", "io.quarkus"],
+    "dropwizard": ["dropwizard", "io.dropwizard"],
+    "vert.x": ["vertx", "io.vertx"],
+    "javalin": ["javalin", "io.javalin"],
+    "helidon": ["helidon", "io.helidon"],
+    "spark": ["spark-java", "com.sparkjava"],
+    # Kotlin-specific
+    "ktor": ["ktor", "io.ktor"],
+    # Android
+    "jetpack-compose": ["compose", "androidx.compose"],
+}
+
+# Swift Package.swift detection patterns
+SWIFT_FRAMEWORKS = {
+    "vapor": ["vapor"],
+    "kitura": ["kitura"],
+    "perfect": ["perfectlySoft"],
+    "swiftui": ["swiftui"],  # Detected via imports, not SPM
+}
+
+# Scala (build.sbt) detection patterns
+SCALA_FRAMEWORKS = {
+    "play": ["com.typesafe.play", "playframework"],
+    "akka-http": ["akka-http", "com.typesafe.akka"],
+    "http4s": ["http4s", "org.http4s"],
+    "zio-http": ["zio-http", "dev.zio"],
+    "finatra": ["finatra", "com.twitter"],
 }
 
 
@@ -314,12 +431,170 @@ def _detect_rust_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_go_frameworks(repo_root: Path) -> list[str]:
+    """Detect Go frameworks from go.mod."""
+    detected = []
+
+    go_mod = repo_root / "go.mod"
+    if go_mod.exists():
+        try:
+            content = go_mod.read_text(errors="ignore").lower()
+
+            for framework, patterns in GO_FRAMEWORKS.items():
+                for pattern in patterns:
+                    if pattern.lower() in content:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
+    return detected
+
+
+def _detect_php_frameworks(repo_root: Path) -> list[str]:
+    """Detect PHP frameworks from composer.json."""
+    detected = []
+
+    composer_json = repo_root / "composer.json"
+    if composer_json.exists():
+        try:
+            content = composer_json.read_text(errors="ignore")
+            data = json.loads(content)
+            deps = set()
+            deps.update(data.get("require", {}).keys())
+            deps.update(data.get("require-dev", {}).keys())
+
+            for framework, patterns in PHP_FRAMEWORKS.items():
+                for pattern in patterns:
+                    if pattern in deps:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError, json.JSONDecodeError):  # pragma: no cover
+            pass
+
+    return detected
+
+
+def _detect_java_frameworks(repo_root: Path) -> list[str]:
+    """Detect Java/Kotlin frameworks from pom.xml or build.gradle."""
+    detected = []
+
+    # Check pom.xml (Maven)
+    pom_xml = repo_root / "pom.xml"
+    if pom_xml.exists():
+        try:
+            content = pom_xml.read_text(errors="ignore").lower()
+            for framework, patterns in JAVA_FRAMEWORKS.items():
+                for pattern in patterns:
+                    if pattern.lower() in content:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
+    # Check build.gradle (Gradle)
+    for gradle_file in ["build.gradle", "build.gradle.kts"]:
+        gradle_path = repo_root / gradle_file
+        if gradle_path.exists():
+            try:
+                content = gradle_path.read_text(errors="ignore").lower()
+                for framework, patterns in JAVA_FRAMEWORKS.items():
+                    if framework not in detected:
+                        for pattern in patterns:
+                            if pattern.lower() in content:
+                                detected.append(framework)
+                                break
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    return detected
+
+
+def _detect_swift_frameworks(repo_root: Path) -> list[str]:
+    """Detect Swift frameworks from Package.swift."""
+    detected = []
+
+    package_swift = repo_root / "Package.swift"
+    if package_swift.exists():
+        try:
+            content = package_swift.read_text(errors="ignore").lower()
+            for framework, patterns in SWIFT_FRAMEWORKS.items():
+                for pattern in patterns:
+                    if pattern.lower() in content:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
+    return detected
+
+
+def _detect_scala_frameworks(repo_root: Path) -> list[str]:
+    """Detect Scala frameworks from build.sbt."""
+    detected = []
+
+    build_sbt = repo_root / "build.sbt"
+    if build_sbt.exists():
+        try:
+            content = build_sbt.read_text(errors="ignore").lower()
+            for framework, patterns in SCALA_FRAMEWORKS.items():
+                for pattern in patterns:
+                    if pattern.lower() in content:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
+    return detected
+
+
+def _detect_dart_frameworks(repo_root: Path) -> list[str]:
+    """Detect Dart/Flutter frameworks from pubspec.yaml."""
+    detected = []
+
+    pubspec = repo_root / "pubspec.yaml"
+    if pubspec.exists():
+        try:
+            content = pubspec.read_text(errors="ignore").lower()
+            # Check for Flutter SDK
+            if "flutter:" in content and "sdk: flutter" in content:
+                detected.append("flutter")
+
+            # Check for common Flutter packages
+            flutter_packages = {
+                "flutter_bloc": ["flutter_bloc", "bloc"],
+                "riverpod": ["flutter_riverpod", "riverpod"],
+                "provider": ["provider"],
+                "getx": ["get:"],
+                "mobx": ["flutter_mobx", "mobx"],
+                "dio": ["dio:"],
+                "freezed": ["freezed"],
+                "go_router": ["go_router"],
+                "flame": ["flame:"],
+            }
+            for framework, patterns in flutter_packages.items():
+                for pattern in patterns:
+                    if pattern in content:
+                        detected.append(framework)
+                        break
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
+    return detected
+
+
 def _detect_frameworks(repo_root: Path) -> list[str]:
     """Detect all frameworks in the repository."""
     frameworks = []
     frameworks.extend(_detect_python_frameworks(repo_root))
     frameworks.extend(_detect_js_frameworks(repo_root))
     frameworks.extend(_detect_rust_frameworks(repo_root))
+    frameworks.extend(_detect_go_frameworks(repo_root))
+    frameworks.extend(_detect_php_frameworks(repo_root))
+    frameworks.extend(_detect_java_frameworks(repo_root))
+    frameworks.extend(_detect_swift_frameworks(repo_root))
+    frameworks.extend(_detect_scala_frameworks(repo_root))
+    frameworks.extend(_detect_dart_frameworks(repo_root))
     return frameworks
 
 
