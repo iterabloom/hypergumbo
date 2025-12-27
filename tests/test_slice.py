@@ -10,6 +10,8 @@ from hypergumbo.slice import (
     SliceQuery,
     find_entry_nodes,
     AmbiguousEntryError,
+    rank_slice_nodes,
+    SliceResult,
 )
 
 
@@ -857,3 +859,57 @@ class TestReverseSlice:
         result_reverse = slice_graph(nodes, edges, query_reverse)
 
         assert result_forward.feature_id != result_reverse.feature_id
+
+
+class TestRankSliceNodes:
+    """Tests for rank_slice_nodes function."""
+
+    def test_empty_slice_returns_sorted_ids(self) -> None:
+        """Empty slice returns sorted node IDs."""
+        # Create a slice result with node IDs but no matching Symbol objects
+        result = SliceResult(
+            entry_nodes=[],
+            node_ids={"node_c", "node_a", "node_b"},
+            edge_ids=set(),
+            query=SliceQuery(entrypoint="foo"),
+        )
+
+        # Pass empty nodes list so slice_nodes will be empty
+        ranked = rank_slice_nodes(result, [], [])
+
+        # Should return sorted node IDs as fallback
+        assert ranked == ["node_a", "node_b", "node_c"]
+
+    def test_first_party_priority_false(self) -> None:
+        """Raw centrality used when first_party_priority=False."""
+        # Create symbols with different tiers
+        first_party = make_symbol("my_func", path="src/main.py")
+        first_party.supply_chain_tier = 1
+        external = make_symbol("lodash", path="node_modules/lodash.js")
+        external.supply_chain_tier = 3
+        caller = make_symbol("caller", path="src/other.py")
+        caller.supply_chain_tier = 1
+
+        # Edge from caller to external
+        edge = Edge.create(caller.id, external.id, "calls", 10, confidence=0.9)
+
+        # Create a slice result with these nodes
+        result = SliceResult(
+            entry_nodes=[caller.id],
+            node_ids={caller.id, external.id, first_party.id},
+            edge_ids={edge.id},
+            query=SliceQuery(entrypoint="caller"),
+        )
+
+        ranked = rank_slice_nodes(
+            result,
+            [first_party, external, caller],
+            [edge],
+            first_party_priority=False
+        )
+
+        # Without tier weighting, external should rank high (has incoming edge)
+        # and first_party should rank lower (no incoming edges)
+        external_rank = ranked.index(external.id)
+        first_party_rank = ranked.index(first_party.id)
+        assert external_rank < first_party_rank  # external ranks higher

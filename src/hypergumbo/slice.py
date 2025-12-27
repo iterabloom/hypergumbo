@@ -57,6 +57,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
+from .ranking import compute_centrality, apply_tier_weights
 
 
 class AmbiguousEntryError(Exception):
@@ -397,3 +398,56 @@ def slice_graph(
         query=query,
         limits_hit=limits_hit,
     )
+
+
+def rank_slice_nodes(
+    result: SliceResult,
+    nodes: List[Symbol],
+    edges: List[Edge],
+    first_party_priority: bool = True,
+) -> List[str]:
+    """Rank nodes in a slice by importance.
+
+    Uses centrality and tier weighting to order the slice nodes from
+    most to least important. This enables more informative output for
+    LLMs and users.
+
+    Args:
+        result: The slice result containing node_ids to rank.
+        nodes: All nodes in the graph (for looking up symbols).
+        edges: All edges in the graph (for computing centrality).
+        first_party_priority: If True, boost first-party code ranking.
+
+    Returns:
+        List of node IDs ordered by importance (highest first).
+    """
+    # Filter to only nodes in the slice
+    node_by_id = {n.id: n for n in nodes}
+    slice_nodes = [node_by_id[nid] for nid in result.node_ids if nid in node_by_id]
+
+    if not slice_nodes:
+        return sorted(result.node_ids)
+
+    # Filter edges to only those within the slice
+    slice_node_ids = result.node_ids
+    slice_edges = [
+        e for e in edges
+        if e.src in slice_node_ids and e.dst in slice_node_ids
+    ]
+
+    # Compute centrality on the subgraph
+    centrality = compute_centrality(slice_nodes, slice_edges)
+
+    # Apply tier weighting if enabled
+    if first_party_priority:
+        weighted = apply_tier_weights(centrality, slice_nodes)
+    else:
+        weighted = centrality
+
+    # Sort by weighted centrality (highest first), then by name for stability
+    sorted_nodes = sorted(
+        slice_nodes,
+        key=lambda s: (-weighted.get(s.id, 0), s.name)
+    )
+
+    return [n.id for n in sorted_nodes]

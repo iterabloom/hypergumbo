@@ -10,10 +10,9 @@ from hypergumbo.sketch import (
     _format_all_files,
     _run_analysis,
     _format_entrypoints,
-    _compute_centrality,
     _format_symbols,
-    _is_test_path,
 )
+from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import Entrypoint, EntrypointKind
@@ -457,7 +456,7 @@ class TestComputeCentrality:
             Edge.create(src="a", dst="b", edge_type="calls", line=1, confidence=1.0),
         ]
 
-        centrality = _compute_centrality(symbols, edges)
+        centrality = compute_centrality(symbols, edges)
 
         assert centrality["b"] > centrality["a"]
 
@@ -468,7 +467,7 @@ class TestComputeCentrality:
                    path="/app.py", span=Span(1, 1, 1, 10)),
         ]
 
-        centrality = _compute_centrality(symbols, [])
+        centrality = compute_centrality(symbols, [])
 
         assert centrality["a"] == 0
 
