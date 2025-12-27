@@ -76,6 +76,35 @@ git commit -s -m "feat: description"
 - **Fixing Build:** If `main` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
+## CI Debugging Protocol
+When CI fails but tests pass locally, use `./scripts/ci-debug`:
+
+```bash
+# List recent CI runs (shows status, commit SHA)
+./scripts/ci-debug runs
+
+# Check status of current commit
+./scripts/ci-debug status
+
+# Analyze tree-sitter dependencies (finds missing packages)
+./scripts/ci-debug analyze-deps
+```
+
+**Common root causes**:
+- **Missing dependencies**: Analyzer uses a package not listed in `pyproject.toml`
+- **Version mismatch**: CI has different package versions than local
+- **Platform differences**: Some packages don't have wheels for CI's platform
+
+**Dependency verification**:
+- Use `./scripts/ci-debug analyze-deps` to compare imports vs pyproject.toml
+- Use `pip index versions tree-sitter-<lang>` to verify package exists on PyPI
+
+**The escape hatch policy** (see ADR 0002):
+- Tests assume dependencies work; they do NOT skip when dependencies fail
+- If a dependency breaks upstream, pin to a known-good version in `pyproject.toml`
+- Document the pin with a comment
+- Never hide failures with pytest.skip() patterns
+
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
 - **Stack:** Python 3.9+, standard library preferred where possible.

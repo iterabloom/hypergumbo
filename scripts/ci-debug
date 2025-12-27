@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# ------------------------------------------------------------------
+# CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs
+#
+# Works with any Forgejo/Gitea/Codeberg instance. Detects the API
+# base URL from git remote origin automatically.
+#
+# Required environment variable:
+#   FORGEJO_TOKEN - API token for authentication
+#
+# Configuration via .env file or environment:
+#   FORGEJO_API_BASE - Override auto-detected API URL (optional)
+# ------------------------------------------------------------------
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  set -o allexport
+  source "$REPO_ROOT/.env"
+  set +o allexport
+fi
+
+TOKEN="${FORGEJO_TOKEN:-}"
+if [[ -z "$TOKEN" ]]; then
+  echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+  exit 1
+fi
+
+REMOTE_URL="$(git remote get-url origin)"
+REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
+
+# Auto-detect forge host from remote URL
+if [[ -n "${FORGEJO_API_BASE:-}" ]]; then
+  API_BASE="$FORGEJO_API_BASE/repos/$REPO_SLUG"
+elif [[ "$REMOTE_URL" == *"codeberg.org"* ]]; then
+  API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+elif [[ "$REMOTE_URL" == *"gitea"* ]] || [[ "$REMOTE_URL" == *"forgejo"* ]]; then
+  # Extract host from URL (supports both https:// and git@ formats)
+  HOST=$(echo "$REMOTE_URL" | sed -E 's|.*[@/]([^:/]+)[:/].*|\1|')
+  API_BASE="https://$HOST/api/v1/repos/$REPO_SLUG"
+else
+  # Default to Codeberg for this project
+  API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+fi
+
+usage() {
+  echo "Usage: $0 [command]"
+  echo ""
+  echo "Commands:"
+  echo "  runs           List recent workflow runs (default)"
+  echo "  status [sha]   Get status for a specific commit (default: HEAD)"
+  echo "  analyze-deps   Check tree-sitter packages vs pyproject.toml"
+  echo ""
+  echo "Examples:"
+  echo "  $0 runs           # Show last 10 runs"
+  echo "  $0 status         # Show status for current commit"
+  echo "  $0 analyze-deps   # Find missing tree-sitter dependencies"
+}
+
+cmd_runs() {
+  echo "Recent CI runs for $REPO_SLUG:"
+  echo "---"
+  curl -sS --max-time 30 -H "Authorization: token $TOKEN" \
+    "$API_BASE/actions/runs?limit=300" | \
+    python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+runs = data.get('workflow_runs', [])
+for r in runs[-15:]:
+    sha = r.get('commit_sha', '')[:8]
+    status = r.get('status')
+    ref = r.get('prettyref', 'N/A')
+    id = r.get('id')
+    marker = '✅' if status == 'success' else '❌' if status == 'failure' else '⏳'
+    print(f'{marker} {id}: {status:10} {ref:15} @ {sha}')
+"
+}
+
+cmd_status() {
+  local sha="${1:-$(git rev-parse HEAD)}"
+  local short_sha="${sha:0:8}"
+  echo "CI status for commit $short_sha:"
+  curl -sS --max-time 15 -H "Authorization: token $TOKEN" \
+    "$API_BASE/commits/$sha/status" | \
+    python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+state = data.get('state', 'unknown')
+statuses = data.get('statuses', [])
+print(f'Overall: {state}')
+if statuses:
+    print('Jobs:')
+    for s in statuses:
+        ctx = s.get('context', 'unknown')
+        st = s.get('state', s.get('status', 'unknown'))
+        marker = '✅' if st == 'success' else '❌' if st in ['failure', 'error'] else '⏳'
+        print(f'  {marker} {ctx}: {st}')
+"
+}
+
+cmd_analyze_deps() {
+  echo "Analyzing tree-sitter dependencies..."
+  echo ""
+  echo "Packages imported by analyzers:"
+  grep -h "import tree_sitter_" "$REPO_ROOT/src/hypergumbo/analyze/"*.py 2>/dev/null | \
+    grep -v language_pack | \
+    sed 's/.*import //' | \
+    sed 's/ .*//' | \
+    sort -u | while read pkg; do
+      # Convert module name to package name (tree_sitter_c_sharp -> tree-sitter-c-sharp)
+      pkg_name=$(echo "$pkg" | sed 's/_/-/g')
+      # Check if in pyproject.toml (exact match with >= or > version constraint)
+      if grep -qE "\"$pkg_name>=" "$REPO_ROOT/pyproject.toml" 2>/dev/null; then
+        echo "  ✅ $pkg_name (in pyproject.toml)"
+      else
+        echo "  ❌ $pkg_name (MISSING from pyproject.toml)"
+      fi
+    done
+  echo ""
+  echo "Language-pack users (covered by tree-sitter-language-pack):"
+  grep -l "tree_sitter_language_pack" "$REPO_ROOT/src/hypergumbo/analyze/"*.py 2>/dev/null | \
+    xargs -I{} basename {} .py | \
+    while read name; do
+      echo "  ✅ $name (uses language-pack)"
+    done
+}
+
+case "${1:-runs}" in
+  runs)
+    cmd_runs
+    ;;
+  status)
+    cmd_status "${2:-}"
+    ;;
+  analyze-deps)
+    cmd_analyze_deps
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $1"
+    usage
+    exit 1
+    ;;
+esac
