@@ -265,6 +265,56 @@ def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """Find route path from a .route('/path') call in a chained expression.
+
+    Traverses up the call chain looking for router.route('/path') patterns.
+    Used for Express chained routes like: router.route('/').post(handler)
+
+    Args:
+        node: A member_expression node (the callee of an HTTP method call)
+        source: Source bytes for text extraction
+
+    Returns:
+        The route path if found, else None
+    """
+    # Walk up the member_expression chain looking for .route('/path')
+    current = node
+    while current is not None:
+        # Look for call_expression that might be .route('/path')
+        if current.type == "call_expression":
+            # Check if this is a .route() call
+            for child in current.children:
+                if child.type == "member_expression":
+                    for subchild in child.children:
+                        if subchild.type == "property_identifier":
+                            if _node_text(subchild, source).lower() == "route":
+                                # Found .route() - extract path from arguments
+                                for args_child in current.children:
+                                    if args_child.type == "arguments":
+                                        for arg in args_child.children:
+                                            if arg.type == "string":
+                                                return _node_text(arg, source).strip("'\"")
+        # Move to parent or nested call in member_expression
+        if current.type == "member_expression":
+            for child in current.children:
+                if child.type == "call_expression":
+                    current = child
+                    break
+            else:
+                current = None  # pragma: no cover
+        elif current.type == "call_expression":
+            for child in current.children:
+                if child.type == "member_expression":
+                    current = child
+                    break
+            else:
+                current = None  # pragma: no cover
+        else:
+            current = None  # pragma: no cover
+    return None  # pragma: no cover
+
+
 def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
     """Detect if a call_expression is an Express-style route registration.
 
@@ -274,6 +324,8 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     - app.get('/path', handler)
     - router.post('/path', handler)
     - app.delete('/path', handler)
+    - router.route('/path').get(handler)  (chained syntax)
+    - router.route('/path').post(handler).get(handler)  (multiple chained)
 
     The call must be of form <expr>.<http_method>('/path', ...) where http_method is
     get, post, put, patch, delete, head, or options.
@@ -310,6 +362,10 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
             # Remove quotes
             route_path = _node_text(child, source).strip("'\"")
             break
+
+    # If no path in arguments, check for chained .route('/path') syntax
+    if route_path is None:
+        route_path = _find_route_path_in_chain(callee_node, source)
 
     # Return uppercase HTTP method for consistency with other analyzers
     return method_name.upper() if method_name else None, route_path
