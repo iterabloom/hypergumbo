@@ -579,10 +579,11 @@ class TestFormatSymbols:
 
         result = _format_symbols(symbols, [], repo_root, max_symbols=5)
 
-        assert "... and 15 more symbols" in result
+        # New format: "… and X more symbols across Y other files"
+        assert "… and 15 more symbols" in result
 
     def test_max_symbols_breaks_across_files(self) -> None:
-        """Max symbols limit causes early break at file level."""
+        """Max symbols limit causes balanced selection across files."""
         repo_root = Path("/fake/repo")
         # Create symbols across multiple files
         symbols = []
@@ -599,10 +600,15 @@ class TestFormatSymbols:
                     )
                 )
 
-        # Max symbols less than total, should break mid-way
+        # Max symbols less than total - with two-phase selection,
+        # coverage phase picks 5 (one per file), then fills remaining 10
         result = _format_symbols(symbols, [], repo_root, max_symbols=15)
 
-        assert "... and 35 more symbols" in result
+        # Should show remaining count with new format
+        assert "… and 35 more symbols" in result
+        # Should show symbols from multiple files (coverage-first policy)
+        assert "file_0.py" in result
+        assert "file_1.py" in result
 
     def test_empty_symbols_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty symbols."""
@@ -693,6 +699,30 @@ class TestFormatSymbols:
         assert first_party_pos < external_pos, (
             f"Expected first-party (line {first_party_pos}) before external (line {external_pos})"
         )
+
+    def test_first_party_priority_disabled(self) -> None:
+        """Respects first_party_priority=False to use raw centrality."""
+        repo_root = Path("/fake/repo")
+        # Create symbols with different tiers
+        symbols = [
+            Symbol(id="tier1", name="first_party_fn", kind="function", language="python",
+                   path="/fake/repo/src/core.py", span=Span(1, 1, 1, 10),
+                   supply_chain_tier=1),
+            Symbol(id="tier3", name="external_fn", kind="function", language="python",
+                   path="/fake/repo/vendor/lib.py", span=Span(1, 1, 1, 10),
+                   supply_chain_tier=3),
+        ]
+        # Create edges making the tier-3 symbol more central
+        edges = [
+            type("Edge", (), {"src": "x", "dst": "tier3"})(),
+            type("Edge", (), {"src": "y", "dst": "tier3"})(),
+        ]
+
+        result = _format_symbols(symbols, edges, repo_root, first_party_priority=False)
+
+        # With first_party_priority=False, raw centrality is used (no tier boost)
+        assert "external_fn" in result
+        assert "first_party_fn" in result
 
     def test_tier_4_derived_excluded(self) -> None:
         """Tier 4 (derived/bundled) symbols are excluded from Key Symbols."""
