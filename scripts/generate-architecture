@@ -21,11 +21,21 @@ import ast
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import tokenize
 from collections import defaultdict
 from pathlib import Path
+
+# Try to import a TOML parser for reading pyproject.toml
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    try:
+        import tomli as tomllib  # Fallback for Python 3.9-3.10
+    except ImportError:
+        tomllib = None  # type: ignore[assignment]
 
 REPO_ROOT = Path(__file__).parent.parent
 
@@ -47,12 +57,32 @@ def get_git_commit_sha() -> str | None:
 
 
 def get_hypergumbo_version() -> str:
-    """Get the hypergumbo package version."""
-    try:
-        from hypergumbo import __version__
-        return __version__
-    except ImportError:
+    """Get the hypergumbo package version from pyproject.toml.
+
+    Reads directly from pyproject.toml rather than importing the package,
+    ensuring we get the repo version rather than a potentially different
+    installed version.
+    """
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    if not pyproject_path.exists():
         return "unknown"
+
+    try:
+        content = pyproject_path.read_text(encoding="utf-8")
+
+        # Try TOML parser first (more reliable)
+        if tomllib is not None:
+            data = tomllib.loads(content)
+            return data.get("project", {}).get("version", "unknown")
+
+        # Fallback: simple regex for version = "x.y.z" line
+        # This is reliable enough for the simple pyproject.toml format
+        match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    return "unknown"
 
 
 def run_command(args: list[str], description: str) -> subprocess.CompletedProcess:
@@ -166,9 +196,11 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         module_name = ".".join(module_path.parts)
         docstring = extract_module_docstring(py_file)
 
-        if "analyze" in parts:
+        # Use parts[0] check to avoid false positives from files containing
+        # "analyze" or "linkers" elsewhere in their path
+        if parts and parts[0] == "analyze":
             categories["Analyzers"].append((module_name, docstring))
-        elif "linkers" in parts:
+        elif parts and parts[0] == "linkers":
             categories["Linkers"].append((module_name, docstring))
         elif module_path.name in {"cli", "export", "schema", "plan", "sketch", "__main__"}:
             categories["CLI & I/O"].append((module_name, docstring))
@@ -405,6 +437,19 @@ def main() -> int:
         if "hypergumbo self-analysis" not in content:
             print("ERROR: docs/ARCHITECTURE.md is missing expected content")
             return 1
+
+        # Check for commit SHA drift (warn-only, not a hard failure)
+        # This helps detect when docs may be stale relative to code changes
+        current_sha = get_git_commit_sha()
+        if current_sha:
+            sha_match = re.search(r"commit:\s*(\w+)", content)
+            if sha_match:
+                doc_sha = sha_match.group(1)
+                if doc_sha != current_sha:
+                    print(f"WARNING: docs generated at commit {doc_sha}, current HEAD is {current_sha}")
+                    print("Consider regenerating: ./scripts/generate-architecture")
+            else:
+                print("WARNING: could not extract commit SHA from ARCHITECTURE.md")
 
         print("OK: docs/ARCHITECTURE.md exists and appears valid")
         return 0

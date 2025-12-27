@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: a834b0baf954
+  commit: f19b6eb83f82
   hypergumbo: 0.5.0
   python: 3.12.3
 -->
