@@ -81,6 +81,7 @@ from .analyze.fortran import analyze_fortran_files
 from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
 from .analyze.cobol import analyze_cobol
+from .analyze.latex import analyze_latex
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -1503,6 +1504,13 @@ def run_behavior_map(
             analysis_runs.append(cobol_result.run.to_dict())
         all_symbols.extend(cobol_result.symbols)
         all_edges.extend(cobol_result.edges)
+
+    latex_result = analyze_latex(repo_root)
+    if not latex_result.skipped:
+        if latex_result.run is not None:
+            analysis_runs.append(latex_result.run.to_dict())
+        all_symbols.extend(latex_result.symbols)
+        all_edges.extend(latex_result.edges)
 
     # Run cross-language linkers
 

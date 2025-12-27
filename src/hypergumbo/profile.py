@@ -78,6 +78,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "hcl": ["*.tf", "*.hcl"],
     "dart": ["*.dart"],
     "cobol": ["*.cob", "*.cbl", "*.cobol", "*.cpy"],
+    "latex": ["*.tex", "*.sty", "*.cls"],
 }
 
 # Framework detection patterns
