@@ -6,7 +6,7 @@
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **71** Python modules (43 analyzers, 13 linkers)
+- **72** Python modules (43 analyzers, 13 linkers)
 - **954** symbols (functions, classes, methods)
 - **2488** edges (calls, imports, instantiates)
 
@@ -16,7 +16,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 75 files · ~28,402 LOC
+Python (100%) · 75 files · ~28,428 LOC
 
 ## Structure
 
@@ -325,7 +325,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.objc`**: Objective-C analyzer using tree-sitter.
 - **`analyze.ocaml`**: OCaml analysis pass using tree-sitter-ocaml.
 - **`analyze.php`**: PHP analysis pass using tree-sitter-php.
-- **`analyze`**: Python AST analysis pass.
+- **`analyze.py`**: Python AST analysis pass.
 - **`analyze.r_lang`**: R language analysis pass using tree-sitter.
 - **`analyze.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`analyze.rust`**: Rust analysis pass using tree-sitter-rust.
@@ -359,6 +359,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 ### CLI & I/O
 
+- **`__main__`**: (no docstring)
 - **`cli`**: Command-line interface for hypergumbo.
 - **`export`**: Export capsule functionality for sharing analyzer configurations.
 - **`plan`**: Capsule plan generation and validation.
