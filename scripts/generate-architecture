@@ -115,7 +115,8 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
     }
 
     for py_file in sorted(src_root.rglob("*.py")):
-        if py_file.name.startswith("_") and py_file.name != "__init__.py":
+        # Skip private modules except __init__.py and __main__.py
+        if py_file.name.startswith("_") and py_file.name not in {"__init__.py", "__main__.py"}:
             continue
 
         rel_path = py_file.relative_to(src_root)
@@ -123,14 +124,17 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         if parts[-1] == "__init__.py":
             continue  # Skip __init__ files in listing
 
-        module_name = ".".join(parts).replace(".py", "")
+        # Use with_suffix to properly remove only the .py extension
+        # (avoids bug where analyze/py.py became "analyze" via .replace(".py", ""))
+        module_path = rel_path.with_suffix("")
+        module_name = ".".join(module_path.parts)
         docstring = extract_module_docstring(py_file)
 
         if "analyze" in parts:
             categories["Analyzers"].append((module_name, docstring))
         elif "linkers" in parts:
             categories["Linkers"].append((module_name, docstring))
-        elif any(x in module_name for x in ["cli", "export", "schema", "plan", "sketch"]):
+        elif module_path.name in {"cli", "export", "schema", "plan", "sketch", "__main__"}:
             categories["CLI & I/O"].append((module_name, docstring))
         else:
             categories["Core"].append((module_name, docstring))
@@ -262,9 +266,12 @@ def generate_architecture_md() -> str:
         lines.append("")
 
         for name, docstring in mods:
-            # Extract first line of docstring
+            # Extract first non-empty line of docstring
             if docstring:
-                first_line = docstring.split("\n")[0].strip()
+                first_line = next(
+                    (ln.strip() for ln in docstring.splitlines() if ln.strip()),
+                    "(no docstring)"
+                )
                 if len(first_line) > 70:
                     first_line = first_line[:67] + "..."
             else:
