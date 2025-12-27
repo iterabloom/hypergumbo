@@ -1060,6 +1060,83 @@ class TestMockedTreeSitter:
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
 
+    def test_extract_arrow_function_in_wrapper(self) -> None:
+        """Tests extraction of arrow functions wrapped in call expressions.
+
+        Pattern: const handler = catchAsync(async (req, res) => { ... })
+        This is common in Express.js error handling middleware.
+        """
+        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
+        from hypergumbo.ir import AnalysisRun
+
+        source = b"function helper() {} const handler = catchAsync(async (req, res) => { helper(); });"
+        run = AnalysisRun.create(pass_id="test", version="1.0")
+
+        # Helper function
+        helper_id = self._create_mock_node("identifier", start_byte=9, end_byte=15)
+        helper_func = self._create_mock_node(
+            "function_declaration",
+            start_point=(0, 0),
+            end_point=(0, 20),
+            children=[helper_id],
+        )
+
+        # Call to helper inside arrow function body
+        call_id = self._create_mock_node("identifier", start_byte=70, end_byte=76)
+        call_args = self._create_mock_node("arguments", children=[])
+        call_node = self._create_mock_node(
+            "call_expression",
+            start_point=(0, 70),
+            end_point=(0, 78),
+            children=[call_id, call_args],
+        )
+
+        # Arrow function wrapped in catchAsync call
+        arrow_node = self._create_mock_node(
+            "arrow_function",
+            start_point=(0, 48),
+            end_point=(0, 80),
+            children=[call_node],
+        )
+        wrapper_args = self._create_mock_node("arguments", children=[arrow_node])
+        wrapper_id = self._create_mock_node("identifier", start_byte=37, end_byte=47)
+        wrapper_call = self._create_mock_node(
+            "call_expression",
+            start_point=(0, 37),
+            end_point=(0, 81),
+            children=[wrapper_id, wrapper_args],
+        )
+
+        # Variable declarator: handler = catchAsync(...)
+        handler_id = self._create_mock_node("identifier", start_byte=27, end_byte=34)
+        declarator = self._create_mock_node(
+            "variable_declarator",
+            children=[handler_id, wrapper_call],
+        )
+        lexical = self._create_mock_node(
+            "lexical_declaration",
+            children=[declarator],
+        )
+
+        root = self._create_mock_node("program", children=[helper_func, lexical])
+        tree = MagicMock()
+        tree.root_node = root
+
+        symbols, edges = _extract_symbols_and_edges(
+            tree, source, Path("app.js"), "javascript", run
+        )
+
+        # Should have helper function and handler arrow function
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 2
+        names = {s.name for s in func_symbols}
+        assert "helper" in names
+        assert "handler" in names  # Arrow function in wrapper should be extracted
+
+        # Should have call edge for the helper call (from nested call_expression)
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+
     def test_extract_es6_import(self) -> None:
         """Tests extraction of ES6 import statements."""
         from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
