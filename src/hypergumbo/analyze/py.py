@@ -847,6 +847,24 @@ def analyze_python(
         for symbol in analysis.symbols:
             global_symbols[(module_name, symbol.name)] = symbol
 
+    # Process re-exports from __init__.py files
+    # When __init__.py does "from .submodule import helper", add an alias
+    # so that "from package import helper" resolves to the real symbol
+    for py_file, analysis in file_analyses.items():
+        if py_file.name != "__init__.py":
+            continue
+
+        module_name = _module_name_from_path(py_file, repo_root)
+        # Package name is module name without .__init__ suffix
+        package_name = module_name.rsplit(".__init__", 1)[0]
+
+        for local_name, (resolved_module, original_name) in analysis.imports.items():
+            # Check if this import points to a known symbol
+            source_symbol = global_symbols.get((resolved_module, original_name))
+            if source_symbol:
+                # Add alias: (package, local_name) -> source_symbol
+                global_symbols[(package_name, local_name)] = source_symbol
+
     # Second pass: extract edges with cross-file resolution
     all_symbols = []
     all_edges = []
