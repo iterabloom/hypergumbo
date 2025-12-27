@@ -1105,6 +1105,138 @@ def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
     assert "reverse slice" in out
 
 
+def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
+    """Test slice --inline embeds full node/edge objects instead of just IDs."""
+    # Create behavior map with nodes and edges
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:caller->callee",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "type": "calls",
+                "confidence": 0.85,
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+                "meta": {},
+            },
+        ],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "caller"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.reverse = False
+    args.list_entries = False
+    args.max_tier = None
+    args.inline = True  # Enable inline mode
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # With --inline, should have full nodes and edges arrays
+    assert "nodes" in data["feature"]
+    assert "edges" in data["feature"]
+
+    # Nodes should be full objects, not just IDs
+    assert len(data["feature"]["nodes"]) == 2
+    node_names = {n["name"] for n in data["feature"]["nodes"]}
+    assert "caller" in node_names
+    assert "callee" in node_names
+
+    # Edges should be full objects
+    assert len(data["feature"]["edges"]) == 1
+    assert data["feature"]["edges"][0]["type"] == "calls"
+
+    # Should still have node_ids/edge_ids for reference
+    assert "node_ids" in data["feature"]
+    assert "edge_ids" in data["feature"]
+
+
+def test_cmd_slice_without_inline_has_ids_only(tmp_path: Path) -> None:
+    """Test slice without --inline only has IDs, not full objects."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.reverse = False
+    args.list_entries = False
+    args.max_tier = None
+    args.inline = False  # Disable inline mode (default)
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # Without --inline, should NOT have full nodes/edges arrays
+    assert "nodes" not in data["feature"]
+    assert "edges" not in data["feature"]
+
+    # Should have IDs
+    assert "node_ids" in data["feature"]
+    assert "edge_ids" in data["feature"]
+
+
 def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     """Test slice command handles ambiguous entry with helpful error message."""
     # Create behavior map with same symbol name in different files/languages
