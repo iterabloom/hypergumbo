@@ -144,6 +144,24 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 *Philosophy: Tests are specifications. The JSON Schema is a formal spec that both implementation and tests verify.*
 
+## CI & Automation
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **CI Jobs** | | `.github/workflows/ci.yml` |
+| Ruff linting | [x] | `lint` job - pycodestyle, pyflakes, security rules |
+| Bandit security | [x] | `lint` job - security-focused static analysis |
+| pip-audit | [x] | `audit` job - dependency vulnerability scanning |
+| pytest | [x] | `pytest` job - full test suite |
+| verify-generated | [x] | Checks schema and architecture docs are fresh |
+| **Pre-commit Hooks** | | `.githooks/pre-commit` |
+| Ruff check | [x] | Fast linting before commit |
+| Bandit check | [x] | Security check before commit |
+| Schema freshness | [x] | `./scripts/generate-schema --check` |
+| **Auto-generation Scripts** | | |
+| generate-schema | [x] | Generates `docs/schema.json` from dataclasses |
+| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis |
+
 ## Analysis Passes
 
 | Language | Parser | Symbols | Edges | Notes |
