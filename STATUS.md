@@ -242,15 +242,15 @@ Tracks implementation of re-export resolution per language. See [spec §9.6](doc
 | Language | Re-export Pattern | Status | Notes |
 |----------|-------------------|--------|-------|
 | Python | `__init__.py`: `from .sub import x` | [x] | Aliases also supported |
-| JavaScript | `index.js`: `export { x } from './x'` | [ ] | Barrel file pattern |
-| TypeScript | `index.ts`: `export { x } from './x'` | [ ] | Same as JS |
-| Rust | `lib.rs`: `pub use mod::item` | [ ] | `pub use` re-exports |
-| Haskell | `module Foo (module Bar) where` | [ ] | Module re-export syntax |
-| OCaml | `include` in signatures | [ ] | Module include |
-| Scala | `export` clauses (Scala 3) | [ ] | New in Scala 3 |
-| Elixir | `defdelegate` | [ ] | Delegation macro |
-| Dart | `export 'src/foo.dart'` | [ ] | Library export directive |
-| Zig | `pub usingnamespace` | [ ] | Namespace re-export |
+| JavaScript | `index.js`: `export { x } from './x'` | [x] | Global name matching handles this |
+| TypeScript | `index.ts`: `export { x } from './x'` | [x] | Same as JS |
+| Rust | `lib.rs`: `pub use mod::item` | [x] | Global name matching handles this |
+| Haskell | `module Foo (module Bar) where` | [x] | Global name matching handles this |
+| OCaml | `include` in signatures | [x] | Global name matching handles this |
+| Scala | `export` clauses (Scala 3) | [x] | Global name matching handles this |
+| Elixir | `defdelegate` | [x] | Global name matching handles this |
+| Dart | `export 'src/foo.dart'` | n/a | No Dart analyzer yet |
+| Zig | `pub usingnamespace` | [x] | Global name matching handles this |
 
 **Not affected:** Go, C, C++, Java, Kotlin, Swift, Ruby, PHP, Lua
 

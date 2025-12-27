@@ -2663,3 +2663,82 @@ fastify.options('/g', function handleOptions(r, p) {});
         assert "HEAD" in stable_ids
         assert "OPTIONS" in stable_ids
 
+
+class TestReexportResolution:
+    """Tests for barrel file (index.js) re-export resolution."""
+
+    def test_reexport_call_edges_resolved(self, tmp_path: Path) -> None:
+        """Calls to re-exported symbols should create proper call edges.
+
+        When a barrel file (index.js) re-exports symbols from submodules:
+            // utils/helper.js
+            export function helper() { return 42; }
+
+            // utils/index.js
+            export { helper } from './helper';
+
+        And another file imports from the barrel:
+            // main.js
+            import { helper } from './utils';
+            function caller() { helper(); }
+
+        The call edge from caller -> helper should be created, pointing to
+        the real symbol in helper.js, not a placeholder.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create barrel structure
+        utils = tmp_path / "utils"
+        utils.mkdir()
+
+        # Create the actual implementation
+        helper_file = utils / "helper.js"
+        helper_file.write_text("export function helper() { return 42; }\n")
+
+        # Create barrel file (index.js) that re-exports
+        index_file = utils / "index.js"
+        index_file.write_text("export { helper } from './helper';\n")
+
+        # Create main.js that imports from barrel and calls helper
+        main_file = tmp_path / "main.js"
+        main_file.write_text(
+            "import { helper } from './utils';\n"
+            "\n"
+            "export function caller() {\n"
+            "    helper();\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        # Should have both functions
+        functions = [s for s in result.symbols if s.kind == "function"]
+        func_names = {f.name for f in functions}
+        assert "helper" in func_names, "helper function should be detected"
+        assert "caller" in func_names, "caller function should be detected"
+
+        # Find the actual helper symbol (in helper.js, not a placeholder)
+        helper_syms = [f for f in functions if f.name == "helper"]
+        assert len(helper_syms) == 1
+        helper_sym = helper_syms[0]
+        assert "helper.js" in helper_sym.path, \
+            f"helper should be from helper.js, got {helper_sym.path}"
+
+        # Find call edges from caller
+        caller_syms = [f for f in functions if f.name == "caller"]
+        assert len(caller_syms) == 1
+        caller_id = caller_syms[0].id
+
+        call_edges = [e for e in result.edges
+                      if e.edge_type == "calls" and e.src == caller_id]
+
+        # There should be a call edge to helper
+        assert len(call_edges) >= 1, \
+            f"Expected call edge from caller to helper, got: {call_edges}"
+
+        # The call edge should point to the real helper
+        helper_id = helper_sym.id
+        call_dsts = {e.dst for e in call_edges}
+        assert helper_id in call_dsts, \
+            f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+
