@@ -1,5 +1,4 @@
 """Tests for Objective-C analyzer."""
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -114,8 +113,6 @@ class TestObjCClassExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -136,8 +133,6 @@ class TestObjCClassExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -162,8 +157,6 @@ class TestObjCProtocolExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         protocols = [s for s in result.symbols if s.kind == "protocol"]
         protocol_names = [s.name for s in protocols]
@@ -187,8 +180,6 @@ class TestObjCMethodExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -207,8 +198,6 @@ class TestObjCMethodExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -232,8 +221,6 @@ class TestObjCPropertyExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         properties = [s for s in result.symbols if s.kind == "property"]
         prop_names = [s.name for s in properties]
@@ -258,8 +245,6 @@ class TestObjCImportEdges:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         imported = [e.dst for e in import_edges]
@@ -281,8 +266,6 @@ class TestObjCImportEdges:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         imported = [e.dst for e in import_edges]
@@ -314,8 +297,6 @@ class TestObjCCallEdges:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -351,8 +332,6 @@ class TestObjCCallEdges:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -372,8 +351,6 @@ class TestObjCSymbolProperties:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         test_class = next((s for s in result.symbols if s.name == "TestClass"), None)
         assert test_class is not None
@@ -396,8 +373,6 @@ class TestObjCEdgeProperties:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         for edge in import_edges:
@@ -417,8 +392,6 @@ class TestObjCEmptyFile:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         assert result.run is not None
 
@@ -433,8 +406,6 @@ class TestObjCEmptyFile:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         assert result.run is not None
 
@@ -473,8 +444,6 @@ class TestObjCCategoryExtraction:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         # Categories should be extracted as classes with special naming
         classes = [s for s in result.symbols if s.kind == "class"]
@@ -502,8 +471,6 @@ class TestObjCInstantiationEdges:
 
         result = analyze_objc(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-objc not available")
 
         # Should detect instantiation patterns
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]

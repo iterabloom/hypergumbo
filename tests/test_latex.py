@@ -3,19 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.analyze.latex import (
-    analyze_latex,
-    is_latex_tree_sitter_available,
-)
-
-
-LATEX_AVAILABLE = is_latex_tree_sitter_available()
+from hypergumbo.analyze.latex import analyze_latex
 
 
 class TestAnalyzeLaTeX:
     """Tests for analyze_latex function."""
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_sections(self, tmp_path: Path) -> None:
         """Should detect LaTeX sections."""
         (tmp_path / "paper.tex").write_text(r"""
@@ -43,7 +36,6 @@ Methodology.
         assert "Background" in names
         assert "Methods" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_chapters(self, tmp_path: Path) -> None:
         """Should detect LaTeX chapters in books."""
         (tmp_path / "book.tex").write_text(r"""
@@ -66,7 +58,6 @@ More content.
         assert "First Chapter" in names
         assert "Second Chapter" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_labels(self, tmp_path: Path) -> None:
         """Should detect LaTeX labels."""
         (tmp_path / "doc.tex").write_text(r"""
@@ -93,7 +84,6 @@ E = mc^2
         assert "sec:intro" in names
         assert "eq:main" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_custom_commands(self, tmp_path: Path) -> None:
         """Should detect custom command definitions."""
         (tmp_path / "macros.tex").write_text(r"""
@@ -114,7 +104,6 @@ Hello, \myname!
         assert r"\myname" in names
         assert r"\foo" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_custom_environments(self, tmp_path: Path) -> None:
         """Should detect custom environment definitions."""
         (tmp_path / "envs.tex").write_text(r"""
@@ -137,7 +126,6 @@ Content
         assert "myblock" in names
         assert "myquote" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_ref_edges(self, tmp_path: Path) -> None:
         """Should detect reference edges."""
         (tmp_path / "refs.tex").write_text(r"""
@@ -159,7 +147,6 @@ Also see Equation~\eqref{eq:main}.
         targets = [e.dst for e in ref_edges]
         assert "sec:intro" in targets
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_citation_edges(self, tmp_path: Path) -> None:
         """Should detect citation edges."""
         (tmp_path / "citations.tex").write_text(r"""
@@ -178,7 +165,6 @@ Multiple citations~\cite{jones2019,brown2021}.
         targets = [e.dst for e in cite_edges]
         assert "smith2020" in targets
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_include_edges(self, tmp_path: Path) -> None:
         """Should detect include edges."""
         (tmp_path / "main.tex").write_text(r"""
@@ -197,7 +183,6 @@ Multiple citations~\cite{jones2019,brown2021}.
         targets = [e.dst for e in include_edges]
         assert "chapter1" in targets or "chapter2" in targets
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_detects_package_imports(self, tmp_path: Path) -> None:
         """Should detect package imports."""
         (tmp_path / "imports.tex").write_text(r"""
@@ -219,7 +204,6 @@ Content
         assert "graphicx" in packages
         assert "hyperref" in packages
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_handles_sty_files(self, tmp_path: Path) -> None:
         """Should analyze .sty package files."""
         (tmp_path / "mypackage.sty").write_text(r"""
@@ -237,7 +221,6 @@ Content
         assert r"\mymacro" in names
         assert "myenv" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_handles_cls_files(self, tmp_path: Path) -> None:
         """Should analyze .cls class files."""
         (tmp_path / "myclass.cls").write_text(r"""
@@ -254,7 +237,6 @@ Content
         names = [c.name for c in commands]
         assert r"\classmacro" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_handles_multiple_files(self, tmp_path: Path) -> None:
         """Should analyze multiple LaTeX files."""
         (tmp_path / "main.tex").write_text(r"""
@@ -275,7 +257,6 @@ Content
         assert "Main" in names
         assert "Appendix A" in names
 
-    @pytest.mark.skipif(not LATEX_AVAILABLE, reason="LaTeX tree-sitter not available")
     def test_empty_repo_returns_empty_result(self, tmp_path: Path) -> None:
         """Should return empty result for repo with no LaTeX files."""
         (tmp_path / "readme.txt").write_text("Not LaTeX")

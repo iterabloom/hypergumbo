@@ -3,19 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.analyze.cobol import (
-    analyze_cobol,
-    is_cobol_tree_sitter_available,
-)
-
-
-COBOL_AVAILABLE = is_cobol_tree_sitter_available()
+from hypergumbo.analyze.cobol import analyze_cobol
 
 
 class TestAnalyzeCOBOL:
     """Tests for analyze_cobol function."""
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_detects_program(self, tmp_path: Path) -> None:
         """Should detect COBOL programs."""
         (tmp_path / "hello.cob").write_text("""
@@ -33,7 +26,6 @@ class TestAnalyzeCOBOL:
         assert len(programs) == 1
         assert programs[0].name == "HELLO-WORLD"
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_detects_paragraphs(self, tmp_path: Path) -> None:
         """Should detect COBOL paragraphs."""
         (tmp_path / "calc.cbl").write_text("""
@@ -56,7 +48,6 @@ class TestAnalyzeCOBOL:
         assert "INIT-PARA" in names
         assert "CALC-PARA" in names
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_detects_data_items(self, tmp_path: Path) -> None:
         """Should detect COBOL data items."""
         (tmp_path / "data.cob").write_text("""
@@ -80,7 +71,6 @@ class TestAnalyzeCOBOL:
         ws_name = next(d for d in data_items if d.name == "WS-NAME")
         assert ws_name.meta.get("level") == "01"
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_detects_sections(self, tmp_path: Path) -> None:
         """Should detect COBOL sections."""
         (tmp_path / "sections.cob").write_text("""
@@ -102,7 +92,6 @@ class TestAnalyzeCOBOL:
         assert "MAIN-SECTION" in names
         assert "INIT-SECTION" in names
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_detects_perform_edges(self, tmp_path: Path) -> None:
         """Should detect PERFORM calls between paragraphs."""
         (tmp_path / "perform.cob").write_text("""
@@ -127,7 +116,6 @@ class TestAnalyzeCOBOL:
         assert "INIT-PARA" in targets
         assert "CALC-PARA" in targets
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_detects_call_edges(self, tmp_path: Path) -> None:
         """Should detect CALL statements to external programs."""
         (tmp_path / "caller.cob").write_text("""
@@ -148,7 +136,6 @@ class TestAnalyzeCOBOL:
         assert "SUB-PROG" in targets
         assert "UTIL-PROG" in targets
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_handles_cpy_copybooks(self, tmp_path: Path) -> None:
         """Should analyze COBOL copybook files when they have full program structure."""
         # Note: Standalone copybook fragments without IDENTIFICATION DIVISION
@@ -171,7 +158,6 @@ class TestAnalyzeCOBOL:
         names = [d.name for d in data_items]
         assert "CUSTOMER-RECORD" in names or "CUST-ID" in names
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_handles_multiple_files(self, tmp_path: Path) -> None:
         """Should analyze multiple COBOL files."""
         (tmp_path / "main.cob").write_text("""
@@ -194,7 +180,6 @@ class TestAnalyzeCOBOL:
         assert "MAIN-PROG" in names
         assert "UTIL-PROG" in names
 
-    @pytest.mark.skipif(not COBOL_AVAILABLE, reason="COBOL tree-sitter not available")
     def test_empty_repo_returns_empty_result(self, tmp_path: Path) -> None:
         """Should return empty result for repo with no COBOL files."""
         (tmp_path / "readme.txt").write_text("Not COBOL")

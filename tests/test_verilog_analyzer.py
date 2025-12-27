@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - Always blocks
 """
 
-import pytest
-
 from hypergumbo.analyze.verilog import (
     PASS_ID,
     PASS_VERSION,
     VerilogAnalysisResult,
     analyze_verilog_files,
     find_verilog_files,
-    is_verilog_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-verilog is not available
-pytestmark = pytest.mark.skipif(
-    not is_verilog_tree_sitter_available(),
-    reason="tree-sitter-verilog not installed",
 )
 
 

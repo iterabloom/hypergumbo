@@ -92,7 +92,6 @@ class TestAnsiblePlaybookExtraction:
     def test_extracts_playbook_with_name(self, tmp_path: Path) -> None:
         """Extracts named playbooks."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "deploy.yml"
         playbook.write_text('''
@@ -108,8 +107,6 @@ class TestAnsiblePlaybookExtraction:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         playbooks = [s for s in result.symbols if s.kind == "playbook"]
         assert len(playbooks) >= 1
@@ -121,7 +118,6 @@ class TestAnsibleTaskExtraction:
     def test_extracts_tasks_with_names(self, tmp_path: Path) -> None:
         """Extracts named tasks."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -139,8 +135,6 @@ class TestAnsibleTaskExtraction:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         tasks = [s for s in result.symbols if s.kind == "task"]
         task_names = [s.name for s in tasks]
@@ -153,7 +147,6 @@ class TestAnsibleHandlerExtraction:
     def test_extracts_handlers(self, tmp_path: Path) -> None:
         """Extracts handler definitions."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -174,8 +167,6 @@ class TestAnsibleHandlerExtraction:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         handlers = [s for s in result.symbols if s.kind == "handler"]
         assert len(handlers) >= 1
@@ -187,7 +178,6 @@ class TestAnsibleIncludeEdges:
     def test_extracts_include_tasks(self, tmp_path: Path) -> None:
         """Extracts include_tasks references."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -199,8 +189,6 @@ class TestAnsibleIncludeEdges:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
@@ -212,7 +200,6 @@ class TestAnsibleVariableExtraction:
     def test_extracts_vars_section(self, tmp_path: Path) -> None:
         """Extracts variables from vars section."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -226,8 +213,6 @@ class TestAnsibleVariableExtraction:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         variables = [s for s in result.symbols if s.kind == "variable"]
         var_names = [s.name for s in variables]
@@ -240,7 +225,6 @@ class TestAnsibleSymbolProperties:
     def test_symbol_has_correct_properties(self, tmp_path: Path) -> None:
         """Symbols have correct language and origin."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "test.yml"
         playbook.write_text('''
@@ -253,8 +237,6 @@ class TestAnsibleSymbolProperties:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         for symbol in result.symbols:
             assert symbol.language == "ansible"
@@ -267,7 +249,6 @@ class TestAnsibleEdgeProperties:
     def test_edges_have_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "test.yml"
         playbook.write_text('''
@@ -278,8 +259,6 @@ class TestAnsibleEdgeProperties:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         for edge in result.edges:
             assert edge.confidence > 0
@@ -292,22 +271,18 @@ class TestAnsibleEmptyFile:
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty YAML files gracefully."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "empty.yml"
         playbook.write_text("")
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         assert result.run is not None
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
         from hypergumbo.analyze.yaml_ansible import analyze_ansible
-        import pytest
 
         playbook = tmp_path / "comments.yml"
         playbook.write_text("""# This is a comment
@@ -316,8 +291,6 @@ class TestAnsibleEmptyFile:
 
         result = analyze_ansible(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-yaml not available")
 
         assert result.run is not None
 

@@ -1,5 +1,4 @@
 """Tests for Groovy analyzer."""
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -112,8 +111,6 @@ class Config {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -145,8 +142,6 @@ class Utils {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -174,8 +169,6 @@ def calculate(a, b) {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         functions = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in functions]
@@ -204,8 +197,6 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) == 2
@@ -243,8 +234,6 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should find run() calling helper()
@@ -279,8 +268,6 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should find run() calling doWork() (cross-file via global symbols)
@@ -320,8 +307,6 @@ def customTask() {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -348,8 +333,6 @@ interface Calculator {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         interfaces = [s for s in result.symbols if s.kind == "interface"]
         interface_names = [s.name for s in interfaces]
@@ -380,8 +363,6 @@ trait Flyable {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         # tree-sitter-groovy v0.1.2 parses 'trait X' as a function call
         # not a trait declaration. This test documents this limitation.
@@ -411,8 +392,6 @@ enum Status {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         enums = [s for s in result.symbols if s.kind == "enum"]
         enum_names = [s.name for s in enums]
@@ -437,8 +416,6 @@ class TestGroovySymbolProperties:
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         test_class = next((s for s in result.symbols if s.name == "Test"), None)
         assert test_class is not None
@@ -459,8 +436,6 @@ class Example {
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         assert any(s.name == "Example.run" for s in methods)
@@ -482,8 +457,6 @@ class Test {}
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         for edge in import_edges:
@@ -503,8 +476,6 @@ class TestGroovyEmptyFile:
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         # Should not crash, may have 0 or minimal symbols
         assert result.run is not None
@@ -522,8 +493,6 @@ class TestGroovyEmptyFile:
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         assert result.run is not None
 
@@ -558,8 +527,6 @@ class TestGroovyParserFailure:
 
         result = analyze_groovy(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-groovy not available")
 
         # Should still process the valid file
         assert result.run is not None

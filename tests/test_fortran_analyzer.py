@@ -9,22 +9,12 @@ Tests verify that the analyzer correctly extracts:
 - Use statements (imports)
 """
 
-import pytest
-
 from hypergumbo.analyze.fortran import (
     PASS_ID,
     PASS_VERSION,
     FortranAnalysisResult,
     analyze_fortran_files,
     find_fortran_files,
-    is_fortran_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-fortran is not available
-pytestmark = pytest.mark.skipif(
-    not is_fortran_tree_sitter_available(),
-    reason="tree-sitter-fortran not installed",
 )
 
 

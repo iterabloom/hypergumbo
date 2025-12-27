@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - Multi-stage build dependencies (COPY --from)
 """
 
-import pytest
-
 from hypergumbo.analyze.dockerfile import (
     PASS_ID,
     PASS_VERSION,
     DockerfileAnalysisResult,
     analyze_dockerfiles,
     find_dockerfiles,
-    is_dockerfile_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-dockerfile is not available
-pytestmark = pytest.mark.skipif(
-    not is_dockerfile_tree_sitter_available(),
-    reason="tree-sitter-dockerfile not installed",
 )
 
 

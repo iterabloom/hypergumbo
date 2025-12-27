@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - CUDA API calls
 """
 
-import pytest
-
 from hypergumbo.analyze.cuda import (
     PASS_ID,
     PASS_VERSION,
     CudaAnalysisResult,
     analyze_cuda_files,
     find_cuda_files,
-    is_cuda_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-cuda is not available
-pytestmark = pytest.mark.skipif(
-    not is_cuda_tree_sitter_available(),
-    reason="tree-sitter-cuda not installed",
 )
 
 

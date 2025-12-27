@@ -89,8 +89,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -126,8 +124,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -160,8 +156,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         modules = [s for s in result.symbols if s.kind == "module"]
         module_names = [s.name for s in modules]
@@ -189,8 +183,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have edge from caller to helper
@@ -216,8 +208,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edges for require statements
@@ -253,8 +243,6 @@ class TestRubyEdgeCases:
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         assert result.run is not None
 
@@ -280,8 +268,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         # Verify both files analyzed
         assert result.run.files_analyzed >= 2
@@ -313,8 +299,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -401,8 +385,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -430,8 +412,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -456,8 +436,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -511,8 +489,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         # Find route symbols
         routes = [s for s in result.symbols if s.stable_id == "get"]
@@ -533,8 +509,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         routes = [s for s in result.symbols if s.stable_id == "post"]
         assert len(routes) == 1
@@ -556,8 +530,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         stable_ids = {s.stable_id for s in result.symbols if s.stable_id}
         assert "get" in stable_ids
@@ -579,8 +551,6 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-ruby not available")
 
         # resources creates a route entry
         resources = [s for s in result.symbols if s.kind == "route" and "users" in s.name]

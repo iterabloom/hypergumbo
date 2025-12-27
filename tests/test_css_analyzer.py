@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - @font-face declarations
 """
 
-import pytest
-
 from hypergumbo.analyze.css import (
     PASS_ID,
     PASS_VERSION,
     CSSAnalysisResult,
     analyze_css_files,
     find_css_files,
-    is_css_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-css is not available
-pytestmark = pytest.mark.skipif(
-    not is_css_tree_sitter_available(),
-    reason="tree-sitter-css not installed",
 )
 
 

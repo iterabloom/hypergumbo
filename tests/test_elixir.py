@@ -91,8 +91,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -118,8 +116,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         names = [s.name for s in result.symbols]
         assert "MyApp.Accounts" in names
@@ -141,8 +137,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -162,8 +156,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -193,8 +185,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have edge from caller to helper
@@ -221,8 +211,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edge for use Phoenix.Controller
@@ -245,8 +233,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
@@ -275,8 +261,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         macros = [s for s in result.symbols if s.kind == "macro"]
         assert len(macros) >= 1
@@ -313,8 +297,6 @@ class TestElixirEdgeCases:
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         assert result.run is not None
         assert result.run.files_skipped >= 1
@@ -328,8 +310,6 @@ class TestElixirEdgeCases:
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         # Just verify it doesn't crash
         assert result.run is not None
@@ -358,8 +338,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         # Should have cross-file call edge
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
@@ -379,8 +357,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -455,8 +431,6 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-elixir not available")
 
         # Should not crash, may or may not extract anything
         assert result.run is not None

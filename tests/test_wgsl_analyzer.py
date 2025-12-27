@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - Binding attributes (@group/@binding)
 """
 
-import pytest
-
 from hypergumbo.analyze.wgsl import (
     PASS_ID,
     PASS_VERSION,
     WGSLAnalysisResult,
     analyze_wgsl_files,
     find_wgsl_files,
-    is_wgsl_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-wgsl is not available
-pytestmark = pytest.mark.skipif(
-    not is_wgsl_tree_sitter_available(),
-    reason="tree-sitter-wgsl not installed",
 )
 
 

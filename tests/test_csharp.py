@@ -130,8 +130,6 @@ class TestCSharpSymbolExtraction:
         """Should extract class declarations."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         class_symbols = [s for s in result.symbols if s.kind == "class"]
         class_names = {s.name for s in class_symbols}
@@ -143,8 +141,6 @@ class TestCSharpSymbolExtraction:
         """Should extract interface declarations."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         interface_symbols = [s for s in result.symbols if s.kind == "interface"]
         interface_names = {s.name for s in interface_symbols}
@@ -154,8 +150,6 @@ class TestCSharpSymbolExtraction:
         """Should extract struct declarations."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         struct_symbols = [s for s in result.symbols if s.kind == "struct"]
         struct_names = {s.name for s in struct_symbols}
@@ -165,8 +159,6 @@ class TestCSharpSymbolExtraction:
         """Should extract enum declarations."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         enum_symbols = [s for s in result.symbols if s.kind == "enum"]
         enum_names = {s.name for s in enum_symbols}
@@ -176,8 +168,6 @@ class TestCSharpSymbolExtraction:
         """Should extract method declarations."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         method_symbols = [s for s in result.symbols if s.kind == "method"]
         method_names = {s.name for s in method_symbols}
@@ -191,8 +181,6 @@ class TestCSharpSymbolExtraction:
         """All symbols should have language='csharp'."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.language == "csharp"
@@ -201,8 +189,6 @@ class TestCSharpSymbolExtraction:
         """All symbols should have valid span information."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.span is not None
@@ -217,8 +203,6 @@ class TestCSharpEdgeExtraction:
         """Should extract using directive edges."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2  # At least System and System.Linq
@@ -227,8 +211,6 @@ class TestCSharpEdgeExtraction:
         """Should extract method call edges."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have calls from Multiply to Helper.Process
@@ -239,8 +221,6 @@ class TestCSharpEdgeExtraction:
         """Should extract object creation edges."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # Main creates new Calculator()
@@ -250,8 +230,6 @@ class TestCSharpEdgeExtraction:
         """All edges should have confidence values."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for edge in result.edges:
             assert 0.0 <= edge.confidence <= 1.0
@@ -264,8 +242,6 @@ class TestCSharpCrossFileResolution:
         """Should resolve calls across files."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Find the Multiply method calling Helper.Process
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
@@ -284,8 +260,6 @@ class TestCSharpAnalysisRun:
         """Should create an AnalysisRun with metadata."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         assert result.run is not None
         assert result.run.pass_id == PASS_ID
@@ -296,8 +270,6 @@ class TestCSharpAnalysisRun:
         """Symbols should reference the analysis run."""
         result = analyze_csharp(csharp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.origin == PASS_ID
@@ -361,8 +333,6 @@ class TestCSharpSpecialCases:
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         constructors = [s for s in result.symbols if s.kind == "constructor"]
         assert len(constructors) >= 1
@@ -380,8 +350,6 @@ class TestCSharpSpecialCases:
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         properties = [s for s in result.symbols if s.kind == "property"]
         assert len(properties) >= 2
@@ -398,8 +366,6 @@ class TestCSharpSpecialCases:
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         classes = [s for s in result.symbols if s.kind == "class"]
         assert "Utils" in {s.name for s in classes}
@@ -419,8 +385,6 @@ class TestCSharpSpecialCases:
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         classes = [s for s in result.symbols if s.kind == "class"]
         assert len(classes) >= 1
@@ -442,8 +406,6 @@ public class AsyncClass
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = {s.name for s in methods}
@@ -455,8 +417,6 @@ public class AsyncClass
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Should not crash, just have no symbols from that file
         assert result.run is not None
@@ -465,8 +425,6 @@ public class AsyncClass
         """Should handle IO errors gracefully."""
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Empty repo should not crash
         assert result.symbols == []
@@ -493,8 +451,6 @@ public class AsyncClass
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Add should call Log
@@ -524,8 +480,6 @@ public class Factory
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # Factory.Create should instantiate Product
@@ -554,8 +508,6 @@ public class Factory
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # DoWork should call Process
@@ -589,8 +541,6 @@ public class UsersController : ControllerBase
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         methods = [s for s in result.symbols if s.kind == "method" and "GetUsers" in s.name]
         assert len(methods) == 1
@@ -617,8 +567,6 @@ public class UsersController : ControllerBase
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         methods = [s for s in result.symbols if s.kind == "method" and "CreateUser" in s.name]
         assert len(methods) == 1
@@ -645,8 +593,6 @@ public class UsersController : ControllerBase
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         methods = [s for s in result.symbols if s.kind == "method" and "GetById" in s.name]
         assert len(methods) == 1
@@ -682,8 +628,6 @@ public class ItemsController : ControllerBase
 
         result = analyze_csharp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
 

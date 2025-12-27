@@ -7,22 +7,12 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
-import pytest
-
 from hypergumbo.analyze.r_lang import (
     PASS_ID,
     PASS_VERSION,
     RAnalysisResult,
     analyze_r_files,
     find_r_files,
-    is_r_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-r is not available
-pytestmark = pytest.mark.skipif(
-    not is_r_tree_sitter_available(),
-    reason="tree-sitter-r not installed",
 )
 
 

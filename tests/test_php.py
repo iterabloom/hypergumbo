@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 
 class TestFindPhpFiles:
@@ -691,8 +690,6 @@ Route::get('/users', [UserController::class, 'index']);
 
         result = analyze_php(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 1
@@ -714,8 +711,6 @@ Route::post('/users', [UserController::class, 'store']);
 
         result = analyze_php(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 1
@@ -741,8 +736,6 @@ Route::patch('/items/{id}', [ItemController::class, 'patch']);
 
         result = analyze_php(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 5
@@ -763,8 +756,6 @@ Route::get('/hello', function () {
 
         result = analyze_php(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 1

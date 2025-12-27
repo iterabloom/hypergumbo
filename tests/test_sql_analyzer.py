@@ -9,22 +9,12 @@ Tests verify that the analyzer correctly extracts:
 - Foreign key references (as edges)
 """
 
-import pytest
-
 from hypergumbo.analyze.sql import (
     PASS_ID,
     PASS_VERSION,
     SQLAnalysisResult,
     analyze_sql_files,
     find_sql_files,
-    is_sql_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-sql is not available
-pytestmark = pytest.mark.skipif(
-    not is_sql_tree_sitter_available(),
-    reason="tree-sitter-sql not installed",
 )
 
 

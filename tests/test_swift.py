@@ -89,8 +89,6 @@ func helper(x: Int) -> Int {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -129,8 +127,6 @@ class Point {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -160,8 +156,6 @@ struct Config {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = [s.name for s in structs]
@@ -189,8 +183,6 @@ protocol Clickable {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         protocols = [s for s in result.symbols if s.kind == "protocol"]
         protocol_names = [s.name for s in protocols]
@@ -221,8 +213,6 @@ enum Direction: String {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         enums = [s for s in result.symbols if s.kind == "enum"]
         enum_names = [s.name for s in enums]
@@ -250,8 +240,6 @@ func helper() {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -276,8 +264,6 @@ func main() {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
@@ -311,8 +297,6 @@ class TestSwiftEdgeCases:
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         assert result.run is not None
 
@@ -334,8 +318,6 @@ func run() {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         assert result.run.files_analyzed >= 2
 
@@ -364,8 +346,6 @@ class User {
 
         result = analyze_swift(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-swift not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]

@@ -7,22 +7,12 @@ Tests verify that the analyzer correctly extracts:
 - Import statements
 """
 
-import pytest
-
 from hypergumbo.analyze.nix import (
     PASS_ID,
     PASS_VERSION,
     NixAnalysisResult,
     analyze_nix_files,
     find_nix_files,
-    is_nix_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-nix is not available
-pytestmark = pytest.mark.skipif(
-    not is_nix_tree_sitter_available(),
-    reason="tree-sitter-nix not installed",
 )
 
 
