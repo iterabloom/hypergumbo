@@ -32,6 +32,12 @@ from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol
 from .entrypoints import detect_entrypoints, Entrypoint
+from .ranking import (
+    compute_centrality,
+    apply_tier_weights,
+    compute_file_scores,
+    _is_test_path,
+)
 
 
 # Approximate characters per token (conservative estimate for English text)
@@ -567,116 +573,6 @@ def _format_entrypoints(
     return "\n".join(lines)
 
 
-def _is_test_path(path: str) -> bool:
-    """Check if a path looks like a test file.
-
-    Matches common test patterns across Python, JavaScript, and TypeScript.
-    Only matches actual test files, not directories that happen to contain 'test'.
-    """
-    import os
-    filename = os.path.basename(path)
-
-    # Directory patterns (actual test directories, not temp dirs)
-    if "/test/" in path or "/tests/" in path or "/__tests__/" in path:
-        return True
-    # Handle paths that start with test/ (no leading slash)
-    if path.startswith("test/") or path.startswith("tests/"):
-        return True
-
-    # File name patterns: test_*.py, test_*.js, etc.
-    if filename.startswith("test_"):
-        return True
-
-    # Suffix patterns (.test.ts, .spec.js, _test.py, etc.)
-    for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
-        if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
-            return True
-        if filename.endswith(f"_test{ext}"):
-            return True
-    return False
-
-
-# Tier weights for supply chain ranking (first-party prioritized)
-# Tier 4 (derived) gets 0 weight since those files shouldn't be analyzed
-_TIER_WEIGHTS = {1: 2.0, 2: 1.5, 3: 1.0, 4: 0.0}
-
-
-def _compute_centrality(
-    symbols: list[Symbol],
-    edges: list,
-) -> dict[str, float]:
-    """Compute symbol importance using in-degree centrality.
-
-    Symbols called by many others are considered more important.
-    This uses in-degree as a simple proxy for "authority" in the codebase.
-    """
-    symbol_ids = {s.id for s in symbols}
-    in_degree: dict[str, int] = dict.fromkeys(symbol_ids, 0)
-
-    for edge in edges:
-        # Edge uses 'dst' for target in IR
-        target = getattr(edge, 'dst', None)
-        if target and target in in_degree:
-            in_degree[target] += 1
-
-    # Normalize to 0-1 range
-    max_degree = max(in_degree.values()) if in_degree else 1
-    if max_degree == 0:
-        max_degree = 1
-
-    return {sid: count / max_degree for sid, count in in_degree.items()}
-
-
-def _apply_tier_weights(
-    centrality: dict[str, float],
-    symbols: list[Symbol],
-) -> dict[str, float]:
-    """Apply tier-based weighting to centrality scores.
-
-    First-party symbols (tier 1) get a 2x boost, internal deps (tier 2) get 1.5x,
-    external deps (tier 3) get 1x, and derived (tier 4) gets 0x.
-
-    This ensures first-party code ranks higher than bundled dependencies
-    even when dependencies have higher raw centrality.
-    """
-    symbol_tiers = {s.id: s.supply_chain_tier for s in symbols}
-    weighted = {}
-    for sid, score in centrality.items():
-        tier = symbol_tiers.get(sid, 1)
-        weight = _TIER_WEIGHTS.get(tier, 1.0)
-        weighted[sid] = score * weight
-    return weighted
-
-
-def _compute_file_scores(
-    by_file: dict[str, list[Symbol]],
-    centrality: dict[str, float],
-    top_k: int = 3,
-) -> dict[str, float]:
-    """Compute file importance scores using sum of top-K symbol scores.
-
-    This provides a more robust file ranking than single-max centrality,
-    as it rewards files with multiple important symbols ("density").
-
-    Args:
-        by_file: Symbols grouped by file path.
-        centrality: Centrality scores for each symbol ID.
-        top_k: Number of top symbols to sum for file score.
-
-    Returns:
-        Dictionary mapping file paths to importance scores.
-    """
-    file_scores: dict[str, float] = {}
-    for file_path, symbols in by_file.items():
-        # Get top-K centrality scores for this file
-        scores = sorted(
-            [centrality.get(s.id, 0) for s in symbols],
-            reverse=True
-        )[:top_k]
-        file_scores[file_path] = sum(scores)
-    return file_scores
-
-
 def _select_symbols_two_phase(
     by_file: dict[str, list[Symbol]],
     centrality: dict[str, float],
@@ -845,11 +741,11 @@ def _format_symbols(
         return ""
 
     # Compute centrality scores using only production edges
-    raw_centrality = _compute_centrality(key_symbols, production_edges)
+    raw_centrality = compute_centrality(key_symbols, production_edges)
 
     # Apply tier-based weighting (first-party symbols boosted) if enabled
     if first_party_priority:
-        centrality = _apply_tier_weights(raw_centrality, key_symbols)
+        centrality = apply_tier_weights(raw_centrality, key_symbols)
     else:
         centrality = raw_centrality
 
@@ -865,7 +761,7 @@ def _format_symbols(
         by_file.setdefault(rel_path, []).append(s)
 
     # Compute file scores using sum-of-top-K (B3: density metric)
-    file_scores = _compute_file_scores(by_file, centrality, top_k=3)
+    file_scores = compute_file_scores(by_file, centrality, top_k=3)
 
     # Normalize entrypoint file paths
     normalized_ep_files: set[str] = set()

@@ -106,8 +106,9 @@ from .profile import detect_profile
 from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
 from .sketch import generate_sketch
-from .slice import SliceQuery, slice_graph, AmbiguousEntryError
+from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
+from .ranking import rank_symbols
 
 
 def cmd_sketch(args: argparse.Namespace) -> int:
@@ -354,8 +355,12 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Build output
+    # Rank slice nodes by importance (centrality + tier weighting)
+    ranked_node_ids = rank_slice_nodes(result, nodes, edges, first_party_priority=True)
+
+    # Build output with ranked node ordering
     feature_dict = result.to_dict()
+    feature_dict["node_ids"] = ranked_node_ids  # Replace with ranked order
 
     # If --inline, include full node/edge objects for self-contained output
     if getattr(args, "inline", False):
@@ -363,10 +368,17 @@ def cmd_slice(args: argparse.Namespace) -> int:
         node_ids_set = set(result.node_ids)
         edge_ids_set = set(result.edge_ids)
 
-        feature_dict["nodes"] = [
+        # Build lookup for ordering inline nodes by rank
+        node_rank = {nid: i for i, nid in enumerate(ranked_node_ids)}
+
+        # Get inline nodes and sort by rank
+        inline_nodes = [
             n for n in behavior_map.get("nodes", [])
             if n.get("id") in node_ids_set
         ]
+        inline_nodes.sort(key=lambda n: node_rank.get(n.get("id", ""), 999999))
+        feature_dict["nodes"] = inline_nodes
+
         feature_dict["edges"] = [
             e for e in behavior_map.get("edges", [])
             if e.get("id") in edge_ids_set
@@ -1676,8 +1688,12 @@ def run_behavior_map(
         all_edges = filtered_edges
         limits.max_tier_applied = max_tier
 
-    # Convert to dicts for output
-    all_nodes = [s.to_dict() for s in all_symbols]
+    # Rank symbols by importance (centrality + tier weighting) for output ordering
+    ranked = rank_symbols(all_symbols, all_edges, first_party_priority=True)
+    ranked_symbols = [r.symbol for r in ranked]
+
+    # Convert to dicts for output (in ranked order)
+    all_nodes = [s.to_dict() for s in ranked_symbols]
     all_edge_dicts = [e.to_dict() for e in all_edges]
 
     behavior_map["analysis_runs"] = analysis_runs
