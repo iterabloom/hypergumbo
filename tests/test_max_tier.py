@@ -209,6 +209,39 @@ module.exports = { chunk };
         assert internal.get("symbols", 0) == 0
         assert external.get("symbols", 0) == 0
 
+    def test_file_level_import_edges_preserved(
+        self, mixed_tier_repo: Path, tmp_path: Path
+    ):
+        """File-level import edges (with :file: in src) should pass tier filter.
+
+        When filtering by tier, import edges with file-level sources should
+        be preserved even if the file node itself isn't in the filtered set.
+        These edges have sources like "python:path/file.py:1-1:file:file".
+        """
+        # Add an import statement to generate a file-level import edge
+        src_main = mixed_tier_repo / "src" / "main.py"
+        src_main.write_text("""
+import os
+
+def main():
+    '''Main entry point.'''
+    os.getcwd()
+""")
+
+        out_path = tmp_path / "results.json"
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=1)
+
+        data = json.loads(out_path.read_text())
+        edges = data["edges"]
+
+        # Should have import edges preserved (src contains :file:)
+        import_edges = [e for e in edges if e["type"] == "imports"]
+        # Import edges should pass through even with tier filtering
+        # The source has pattern like "python:...file:file"
+        assert any(":file" in e["src"] for e in import_edges), (
+            "Import edges with file-level sources should be preserved"
+        )
+
 
 class TestMaxTierLimitsReporting:
     """Test that tier filtering is reported in limits."""
