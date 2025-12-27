@@ -4,6 +4,11 @@ All notable changes to hypergumbo are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+> **Version Note:** This changelog tracks the **tool version** (package releases).
+> The **schema version** (output format) is tracked separately in `schema.py` as
+> `SCHEMA_VERSION`. Currently: tool v0.5.0, schema v0.1.0. The schema version only
+> changes when the JSON output format has breaking changes.
+
 ## [Unreleased]
 
 ### Added
@@ -11,9 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Deterministic sketch output (sorted SOURCE_DIRS iteration)
 - Conservative token estimation using ceiling division
 
-## [0.1.0] - 2025-12-26
+## [0.5.0] - 2025-12-26
 
-Initial release with comprehensive static analysis capabilities.
+Initial public release with comprehensive static analysis capabilities.
 
 ### Core Features
 - **Sketch generation**: Token-budgeted Markdown overview of any codebase
@@ -126,7 +131,7 @@ Initial release with comprehensive static analysis capabilities.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 0.1.0 | 2025-12-26 | Initial release: 32 analyzers, 12 linkers, sketch generation |
+| 0.5.0 | 2025-12-26 | Initial release: 32 analyzers, 12 linkers, sketch generation |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo-experimental/compare/v0.1.0...HEAD
-[0.1.0]: https://codeberg.org/iterabloom/hypergumbo-experimental/releases/tag/v0.1.0
+[Unreleased]: https://codeberg.org/iterabloom/hypergumbo-experimental/compare/v0.5.0...HEAD
+[0.5.0]: https://codeberg.org/iterabloom/hypergumbo-experimental/releases/tag/v0.5.0
