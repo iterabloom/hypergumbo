@@ -162,3 +162,6 @@ All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
 
 See [STATUS.md](STATUS.md) for implementation progress.
+
+![Hypergumbo logo](docs/hypergumbo%20FINAL%20halfres.jpg)
+
