@@ -167,7 +167,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Language | Parser | Symbols | Edges | Notes |
 |----------|--------|---------|-------|-------|
-| Python | [x] AST | function, class, method, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`). **Route detection:** FastAPI (`@app.get`, `@router.post`), Flask (`@app.route`, `@app.get`), Django REST Framework (`@api_view(['GET', 'POST'])`), Django CBV methods (get/post/put/patch/delete), and Django URL patterns (`path()`, `re_path()`, `url()`) set `stable_id` to HTTP method for `routes` command discovery. **Router prefix detection:** `APIRouter(prefix='/api/v1')` and `Blueprint(url_prefix='/api')` prefixes are combined with route paths. |
+| Python | [x] AST | function, class, method, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`). **src/ layout detection:** Automatically detects PEP 517/518 `src/` layout projects and adjusts module name derivation (e.g., `src/flask/app.py` → `flask.app` instead of `src.flask.app`) for correct cross-file import resolution. **Route detection:** FastAPI (`@app.get`, `@router.post`), Flask (`@app.route`, `@app.get`), Django REST Framework (`@api_view(['GET', 'POST'])`), Django CBV methods (get/post/put/patch/delete), and Django URL patterns (`path()`, `re_path()`, `url()`) set `stable_id` to HTTP method for `routes` command discovery. **Router prefix detection:** `APIRouter(prefix='/api/v1')` and `Blueprint(url_prefix='/api')` prefixes are combined with route paths. |
 | HTML | [x] regex | file | script_src | Script tag detection |
 | JavaScript | [x] tree-sitter | function, class, method, getter, setter | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) handlers set `stable_id` to HTTP method. Optional: `pip install hypergumbo[javascript]` |
 | TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) and NestJS decorators (`@Get()`, `@Post()`) set `stable_id` to HTTP method. Optional: `pip install hypergumbo[javascript]` |
@@ -275,4 +275,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-26*
+*Last updated: 2025-12-27*
