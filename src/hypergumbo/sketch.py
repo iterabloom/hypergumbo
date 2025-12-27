@@ -42,18 +42,19 @@ def estimate_tokens(text: str) -> int:
     """Estimate token count using character-based heuristic.
 
     Uses ~4 characters per token, which is a reasonable approximation
-    for English text with OpenAI's tokenizers. This is intentionally
-    conservative to avoid exceeding budgets.
+    for English text with OpenAI's tokenizers. Uses ceiling division
+    to be conservative and avoid exceeding budgets.
 
     Args:
         text: The text to estimate tokens for.
 
     Returns:
-        Estimated token count.
+        Estimated token count (conservative/ceiling estimate).
     """
     if not text:
         return 0
-    return max(1, len(text) // CHARS_PER_TOKEN)
+    # Use ceiling division for conservative estimate
+    return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
 
 
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
@@ -242,8 +243,8 @@ def _collect_source_files(repo_root: Path, profile: RepoProfile) -> list[Path]:
         # Fallback to common patterns
         patterns = ["*.py", "*.js", "*.ts", "*.go", "*.rs", "*.java"]
 
-    # First, collect files from source directories
-    for source_dir in SOURCE_DIRS:
+    # First, collect files from source directories (sorted for determinism)
+    for source_dir in sorted(SOURCE_DIRS):
         src_path = repo_root / source_dir
         if src_path.is_dir():
             for f in find_files(src_path, patterns):
@@ -647,18 +648,165 @@ def _apply_tier_weights(
     return weighted
 
 
+def _compute_file_scores(
+    by_file: dict[str, list[Symbol]],
+    centrality: dict[str, float],
+    top_k: int = 3,
+) -> dict[str, float]:
+    """Compute file importance scores using sum of top-K symbol scores.
+
+    This provides a more robust file ranking than single-max centrality,
+    as it rewards files with multiple important symbols ("density").
+
+    Args:
+        by_file: Symbols grouped by file path.
+        centrality: Centrality scores for each symbol ID.
+        top_k: Number of top symbols to sum for file score.
+
+    Returns:
+        Dictionary mapping file paths to importance scores.
+    """
+    file_scores: dict[str, float] = {}
+    for file_path, symbols in by_file.items():
+        # Get top-K centrality scores for this file
+        scores = sorted(
+            [centrality.get(s.id, 0) for s in symbols],
+            reverse=True
+        )[:top_k]
+        file_scores[file_path] = sum(scores)
+    return file_scores
+
+
+def _select_symbols_two_phase(
+    by_file: dict[str, list[Symbol]],
+    centrality: dict[str, float],
+    file_scores: dict[str, float],
+    max_symbols: int,
+    entrypoint_files: set[str],
+    max_files: int = 20,
+    coverage_fraction: float = 0.33,
+    diminishing_alpha: float = 0.7,
+) -> list[tuple[str, Symbol]]:
+    """Select symbols using two-phase policy for breadth + depth.
+
+    Phase 1 (coverage-first): Pick the best symbol from each eligible file
+    in rounds, ensuring representation across subsystems.
+
+    Phase 2 (diminishing-returns greedy): Fill remaining slots using marginal
+    utility that penalizes repeated picks from the same file.
+
+    Args:
+        by_file: Symbols grouped by file path, sorted by centrality within each file.
+        centrality: Centrality scores for each symbol ID.
+        file_scores: File importance scores (sum of top-K).
+        max_symbols: Total symbol budget.
+        entrypoint_files: Set of file paths containing entrypoints (always included).
+        max_files: Maximum number of files to consider.
+        coverage_fraction: Fraction of budget for phase 1 (coverage).
+        diminishing_alpha: Penalty factor for repeated file picks in phase 2.
+
+    Returns:
+        List of (file_path, symbol) tuples in selection order.
+    """
+    import heapq
+
+    # Gate eligible files: top N by file_score, plus entrypoint files
+    sorted_files = sorted(file_scores.keys(), key=lambda f: -file_scores.get(f, 0))
+    eligible_files = set(sorted_files[:max_files]) | entrypoint_files
+
+    # Filter by_file to eligible files only
+    eligible_by_file = {f: syms for f, syms in by_file.items() if f in eligible_files}
+
+    if not eligible_by_file:  # pragma: no cover
+        return []
+
+    # Track per-file state: next symbol index and pick count
+    file_state: dict[str, dict] = {
+        f: {"next_idx": 0, "picks": 0, "symbols": syms}
+        for f, syms in eligible_by_file.items()
+    }
+
+    selected: list[tuple[str, Symbol]] = []
+
+    # Phase 1: Coverage-first - pick best symbol from each file in rounds
+    coverage_budget = int(max_symbols * coverage_fraction)
+    coverage_budget = min(coverage_budget, len(eligible_by_file))  # Cap at file count
+
+    # Order files by file_score for round-robin
+    phase1_files = sorted(eligible_by_file.keys(), key=lambda f: -file_scores.get(f, 0))
+
+    for file_path in phase1_files:
+        if len(selected) >= coverage_budget:
+            break
+        state = file_state[file_path]
+        if state["next_idx"] < len(state["symbols"]):
+            sym = state["symbols"][state["next_idx"]]
+            selected.append((file_path, sym))
+            state["next_idx"] += 1
+            state["picks"] += 1
+
+    # Phase 2: Diminishing-returns greedy fill
+    remaining_budget = max_symbols - len(selected)
+
+    if remaining_budget > 0:
+        # Build priority queue with marginal utility
+        # marginal = score / (1 + alpha * picks_from_file)
+        pq: list[tuple[float, str, int]] = []  # (-marginal, file_path, sym_idx)
+
+        for file_path, state in file_state.items():
+            idx = state["next_idx"]
+            if idx < len(state["symbols"]):
+                sym = state["symbols"][idx]
+                score = centrality.get(sym.id, 0)
+                picks = state["picks"]
+                marginal = score / (1 + diminishing_alpha * picks)
+                heapq.heappush(pq, (-marginal, file_path, idx))
+
+        while len(selected) < max_symbols and pq:
+            neg_marginal, file_path, sym_idx = heapq.heappop(pq)
+            state = file_state[file_path]
+
+            # Check if this entry is stale (index already advanced)
+            if sym_idx != state["next_idx"]:  # pragma: no cover
+                continue
+
+            sym = state["symbols"][sym_idx]
+            selected.append((file_path, sym))
+            state["next_idx"] += 1
+            state["picks"] += 1
+
+            # Push next symbol from this file if available
+            next_idx = state["next_idx"]
+            if next_idx < len(state["symbols"]):
+                next_sym = state["symbols"][next_idx]
+                score = centrality.get(next_sym.id, 0)
+                picks = state["picks"]
+                marginal = score / (1 + diminishing_alpha * picks)
+                heapq.heappush(pq, (-marginal, file_path, next_idx))
+
+    return selected
+
+
 def _format_symbols(
     symbols: list[Symbol],
     edges: list,
     repo_root: Path,
     max_symbols: int = 100,
     first_party_priority: bool = True,
+    entrypoint_files: set[str] | None = None,
+    max_symbols_per_file: int = 5,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
-    Uses graph centrality to prioritize the most-called symbols first.
-    Test files are excluded from both symbols and edge sources to avoid
-    inflating centrality of production code called by tests.
+    Uses a two-phase selection policy for balanced coverage:
+    1. Coverage-first: Pick best symbol from each top file
+    2. Diminishing-returns: Fill remaining slots with marginal utility
+
+    File ordering uses sum-of-top-K centrality scores (density metric)
+    rather than single-max, for more stable and intuitive ranking.
+
+    Per-file rendering is capped to avoid visual monopoly, with a
+    summary line for additional selected symbols.
 
     Args:
         symbols: List of symbols from analysis.
@@ -666,10 +814,14 @@ def _format_symbols(
         repo_root: Repository root path.
         max_symbols: Maximum symbols to include.
         first_party_priority: If True (default), boost first-party symbols.
-            If False, use raw centrality scores without tier weighting.
+        entrypoint_files: Set of file paths containing entrypoints (preserved).
+        max_symbols_per_file: Max symbols to render per file (compression).
     """
     if not symbols:
         return ""
+
+    if entrypoint_files is None:
+        entrypoint_files = set()
 
     # Filter to functions and classes, exclude test files and derived artifacts
     key_symbols = [
@@ -684,7 +836,6 @@ def _format_symbols(
     symbol_path_by_id = {s.id: s.path for s in symbols}
 
     # Filter edges: exclude edges originating from test files
-    # This prevents test code from inflating centrality of production code
     production_edges = [
         e for e in edges
         if not _is_test_path(symbol_path_by_id.get(getattr(e, 'src', ''), ''))
@@ -702,53 +853,95 @@ def _format_symbols(
     else:
         centrality = raw_centrality
 
-    # Sort by weighted centrality (most called first), then by name
+    # Sort by weighted centrality (most called first), then by name for stability
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
 
     # Group by file, preserving centrality order within files
     by_file: dict[str, list[Symbol]] = {}
-    file_max_centrality: dict[str, float] = {}
     for s in key_symbols:
         rel_path = s.path
         if rel_path.startswith(str(repo_root)):
             rel_path = rel_path[len(str(repo_root)) + 1:]
         by_file.setdefault(rel_path, []).append(s)
-        # Track max centrality per file for file ordering
-        score = centrality.get(s.id, 0)
-        if rel_path not in file_max_centrality or score > file_max_centrality[rel_path]:
-            file_max_centrality[rel_path] = score
 
-    # Sort files by their max centrality (most important files first)
-    sorted_files = sorted(by_file.keys(), key=lambda f: -file_max_centrality.get(f, 0))
+    # Compute file scores using sum-of-top-K (B3: density metric)
+    file_scores = _compute_file_scores(by_file, centrality, top_k=3)
+
+    # Normalize entrypoint file paths
+    normalized_ep_files: set[str] = set()
+    repo_root_str = str(repo_root)
+    for ep_path in entrypoint_files:
+        if ep_path.startswith(repo_root_str):
+            normalized_ep_files.add(ep_path[len(repo_root_str) + 1:])
+        else:  # pragma: no cover
+            normalized_ep_files.add(ep_path)
+
+    # Two-phase selection (B1)
+    selected = _select_symbols_two_phase(
+        by_file=by_file,
+        centrality=centrality,
+        file_scores=file_scores,
+        max_symbols=max_symbols,
+        entrypoint_files=normalized_ep_files,
+    )
+
+    if not selected:  # pragma: no cover
+        return ""
+
+    # Group selected symbols by file for rendering
+    selected_by_file: dict[str, list[Symbol]] = {}
+    for file_path, sym in selected:
+        selected_by_file.setdefault(file_path, []).append(sym)
+
+    # Order files by file_score (B3), then alphabetically for tie-breaking
+    sorted_files = sorted(
+        selected_by_file.keys(),
+        key=lambda f: (-file_scores.get(f, 0), f)
+    )
+
+    # Find max centrality for star threshold
+    max_centrality = max(centrality.values()) if centrality else 1.0
+    star_threshold = max_centrality * 0.5
 
     lines = ["## Key Symbols", ""]
+    lines.append("*★ = centrality ≥ 50% of max*")
+    lines.append("")
 
-    count = 0
+    total_rendered = 0
     for file_path in sorted_files:
-        if count >= max_symbols:
-            break
-
-        file_symbols = by_file[file_path]
+        file_symbols = selected_by_file[file_path]
 
         lines.append(f"### `{file_path}`")
 
-        for sym in file_symbols:
-            if count >= max_symbols:
-                break
+        # Render up to max_symbols_per_file (B2: compression)
+        rendered_count = 0
+        for sym in file_symbols[:max_symbols_per_file]:
             kind_label = sym.kind
             score = centrality.get(sym.id, 0)
-            # Add importance indicator for highly-called symbols
-            if score >= 0.5:
+            if score >= star_threshold:
                 lines.append(f"- `{sym.name}` ({kind_label}) ★")
             else:
                 lines.append(f"- `{sym.name}` ({kind_label})")
-            count += 1
+            rendered_count += 1
+            total_rendered += 1
+
+        # Summary line for remaining symbols in this file (B2)
+        remaining_in_file = len(file_symbols) - rendered_count
+        if remaining_in_file > 0:
+            # Show stats for compressed symbols
+            remaining_scores = [centrality.get(s.id, 0) for s in file_symbols[max_symbols_per_file:]]
+            if remaining_scores:
+                top_score = max(remaining_scores)
+                lines.append(f"  *… +{remaining_in_file} more (top score: {top_score:.2f})*")
 
         lines.append("")  # Blank line between files
 
-    remaining = len(key_symbols) - count
-    if remaining > 0:
-        lines.append(f"*... and {remaining} more symbols*")
+    # Global summary of unselected symbols
+    total_selected = len(selected)
+    total_candidates = len(key_symbols)
+    unselected = total_candidates - total_selected
+    if unselected > 0:
+        lines.append(f"*… and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files*")
 
     return "\n".join(lines)
 
@@ -855,9 +1048,22 @@ def generate_sketch(
         symbols, edges = _run_analysis(repo_root, profile, exclude_tests=exclude_tests)
 
     # Section 5: Entry points (if we have analysis results and budget)
+    # Track entrypoint files for B4: preserve in Key Symbols
+    entrypoint_files: set[str] = set()
+    entrypoints: list[Entrypoint] = []
+
     if remaining_tokens > 50 and symbols:
         entrypoints = detect_entrypoints(symbols, edges)
         if entrypoints:
+            # Build symbol lookup for extracting file paths
+            symbol_by_id = {s.id: s for s in symbols}
+
+            # Extract file paths from entrypoints (B4)
+            for ep in entrypoints:
+                sym = symbol_by_id.get(ep.symbol_id)
+                if sym:
+                    entrypoint_files.add(sym.path)
+
             # Entry points are high value, give them space
             budget_for_eps = remaining_tokens // 3
             max_eps = max(5, budget_for_eps // tokens_per_item)
@@ -885,6 +1091,7 @@ def generate_sketch(
             repo_root,
             max_symbols=max_symbols,
             first_party_priority=first_party_priority,
+            entrypoint_files=entrypoint_files,  # B4: preserve entrypoint files
         )
         if symbols_section:
             sections.append(symbols_section)
