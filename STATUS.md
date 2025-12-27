@@ -235,6 +235,25 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Capsule plan `supply_chain` config | [x] | `SupplyChainConfig` class with custom patterns for tiers |
 | `limits.supply_chain` logging | [x] | `SupplyChainLimits` tracks classification_failures and ambiguous_paths |
 
+## Re-export Resolution (§9.6)
+
+Tracks implementation of re-export resolution per language. See [spec §9.6](docs/hypergumbo-spec.md#96-known-analysis-limitations) for details.
+
+| Language | Re-export Pattern | Status | Notes |
+|----------|-------------------|--------|-------|
+| Python | `__init__.py`: `from .sub import x` | [x] | Aliases also supported |
+| JavaScript | `index.js`: `export { x } from './x'` | [ ] | Barrel file pattern |
+| TypeScript | `index.ts`: `export { x } from './x'` | [ ] | Same as JS |
+| Rust | `lib.rs`: `pub use mod::item` | [ ] | `pub use` re-exports |
+| Haskell | `module Foo (module Bar) where` | [ ] | Module re-export syntax |
+| OCaml | `include` in signatures | [ ] | Module include |
+| Scala | `export` clauses (Scala 3) | [ ] | New in Scala 3 |
+| Elixir | `defdelegate` | [ ] | Delegation macro |
+| Dart | `export 'src/foo.dart'` | [ ] | Library export directive |
+| Zig | `pub usingnamespace` | [ ] | Namespace re-export |
+
+**Not affected:** Go, C, C++, Java, Kotlin, Swift, Ruby, PHP, Lua
+
 ## Cross-Language Linkers
 
 Linkers run automatically as part of `hypergumbo run` after all language analyzers complete.
