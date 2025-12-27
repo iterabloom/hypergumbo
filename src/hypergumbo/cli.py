@@ -352,10 +352,27 @@ def cmd_slice(args: argparse.Namespace) -> int:
         return 1
 
     # Build output
+    feature_dict = result.to_dict()
+
+    # If --inline, include full node/edge objects for self-contained output
+    if getattr(args, "inline", False):
+        # Filter nodes and edges from behavior map to include only those in slice
+        node_ids_set = set(result.node_ids)
+        edge_ids_set = set(result.edge_ids)
+
+        feature_dict["nodes"] = [
+            n for n in behavior_map.get("nodes", [])
+            if n.get("id") in node_ids_set
+        ]
+        feature_dict["edges"] = [
+            e for e in behavior_map.get("edges", [])
+            if e.get("id") in edge_ids_set
+        ]
+
     output = {
         "schema_version": behavior_map.get("schema_version", "0.1.0"),
         "view": "slice",
-        "feature": result.to_dict(),
+        "feature": feature_dict,
     }
 
     # Write output
@@ -749,6 +766,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="max_tier",
         help="Stop at supply chain tier boundary (1=first-party only, "
              "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
+    )
+    p_slice.add_argument(
+        "--inline",
+        action="store_true",
+        help="Include full node/edge objects in output (not just IDs). "
+             "Makes slice.json self-contained without needing the behavior map.",
     )
     p_slice.set_defaults(func=cmd_slice)
 
