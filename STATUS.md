@@ -121,6 +121,29 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `metrics` | [x] | `metrics.py` - counts, avg confidence, per-language |
 | `limits` | [x] | `limits.py` - failed files, skipped langs, known gaps |
 
+## Schema Validation Tests ("Spec Driven Development")
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Formal JSON Schema | [x] | `docs/schema.json` - JSON Schema Draft 2020-12 |
+| Auto-generated schema | [x] | `./scripts/generate-schema` - generates from Python dataclasses |
+| Schema CI check | [x] | `./scripts/generate-schema --check` - verifies schema is up-to-date |
+| **Validation Tests** | | |
+| Empty behavior map validates | [x] | `test_empty_behavior_map_validates` |
+| Real analysis output validates | [x] | `test_real_analysis_output_validates` |
+| Symbol with all fields validates | [x] | `test_symbol_with_all_fields_validates` |
+| Edge with all fields validates | [x] | `test_edge_with_all_fields_validates` |
+| AnalysisRun validates | [x] | `test_analysis_run_validates` |
+| Invalid edge type fails | [x] | `test_invalid_edge_type_fails_validation` |
+| Invalid symbol kind fails | [x] | `test_invalid_symbol_kind_fails_validation` |
+| **Schema Sync Tests** | | |
+| Schema matches generated | [x] | `test_schema_matches_generated` - runs `generate-schema --check` |
+| Schema version matches code | [x] | `test_schema_version_matches_code` - verifies `SCHEMA_VERSION` |
+| All edge types in schema | [x] | `test_all_edge_types_in_schema` - checks enum completeness |
+| All symbol kinds in schema | [x] | `test_all_symbol_kinds_in_schema` - checks enum completeness |
+
+*Philosophy: Tests are specifications. The JSON Schema is a formal spec that both implementation and tests verify.*
+
 ## Analysis Passes
 
 | Language | Parser | Symbols | Edges | Notes |
