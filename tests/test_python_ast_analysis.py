@@ -1064,3 +1064,151 @@ def test_flask_blueprint_url_prefix(tmp_path: Path) -> None:
     # Route paths should include Blueprint prefix
     assert func_by_name["get_users"].get("meta", {}).get("route_path") == "/api/v1/users"
     assert func_by_name["create_item"].get("meta", {}).get("route_path") == "/api/v1/items"
+
+
+def test_reexport_call_edges_resolved(tmp_path: Path) -> None:
+    """Calls to re-exported symbols should create proper call edges.
+
+    When a package __init__.py re-exports symbols from submodules:
+        # mypackage/__init__.py
+        from .submodule import helper
+
+    And another file imports from the package:
+        # main.py
+        from mypackage import helper
+        def caller():
+            helper()
+
+    The call edge from caller -> helper should be created, pointing to the
+    real symbol in submodule.py, not a placeholder.
+    """
+    # Create package structure
+    pkg = tmp_path / "mypackage"
+    pkg.mkdir()
+
+    # Create the actual implementation in submodule
+    submodule = pkg / "submodule.py"
+    submodule.write_text(
+        "def helper():\n"
+        "    '''The actual helper function.'''\n"
+        "    return 42\n"
+    )
+
+    # Create __init__.py that re-exports helper
+    init_file = pkg / "__init__.py"
+    init_file.write_text(
+        "from .submodule import helper\n"
+    )
+
+    # Create main.py that imports from package and calls helper
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from mypackage import helper\n"
+        "\n"
+        "def caller():\n"
+        "    '''Calls the re-exported helper.'''\n"
+        "    helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Should have both functions
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    func_names = {f["name"] for f in functions}
+    assert "helper" in func_names, "helper function should be detected"
+    assert "caller" in func_names, "caller function should be detected"
+
+    # Find the actual helper symbol (in submodule.py, not a placeholder)
+    helper_nodes = [n for n in functions if n["name"] == "helper"]
+    assert len(helper_nodes) == 1
+    helper_node = helper_nodes[0]
+    assert "submodule.py" in helper_node["path"], \
+        f"helper should be from submodule.py, got {helper_node['path']}"
+
+    # Find call edges from caller
+    caller_nodes = [n for n in functions if n["name"] == "caller"]
+    assert len(caller_nodes) == 1
+    caller_id = caller_nodes[0]["id"]
+
+    call_edges = [e for e in data["edges"]
+                  if e["type"] == "calls" and e["src"] == caller_id]
+
+    # There should be a call edge to helper
+    assert len(call_edges) >= 1, \
+        f"Expected call edge from caller to helper, got: {call_edges}"
+
+    # The call edge should point to the real helper, not a placeholder
+    helper_id = helper_node["id"]
+    call_dsts = {e["dst"] for e in call_edges}
+    assert helper_id in call_dsts, \
+        f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+
+
+def test_reexport_with_alias_resolved(tmp_path: Path) -> None:
+    """Re-exports with aliases should create proper call edges.
+
+    When __init__.py re-exports with an alias:
+        from .submodule import helper as public_helper
+
+    And consumer imports the aliased name:
+        from mypackage import public_helper
+        public_helper()
+
+    The call edge should point to the real helper function.
+    """
+    # Create package structure
+    pkg = tmp_path / "mypackage"
+    pkg.mkdir()
+
+    # Create the actual implementation
+    submodule = pkg / "submodule.py"
+    submodule.write_text(
+        "def helper():\n"
+        "    '''Internal helper.'''\n"
+        "    return 42\n"
+    )
+
+    # Create __init__.py that re-exports with an alias
+    init_file = pkg / "__init__.py"
+    init_file.write_text(
+        "from .submodule import helper as public_helper\n"
+    )
+
+    # Create main.py that imports the aliased name
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from mypackage import public_helper\n"
+        "\n"
+        "def caller():\n"
+        "    '''Calls the aliased function.'''\n"
+        "    public_helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Find the actual helper symbol (in submodule.py)
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    helper_nodes = [n for n in functions if n["name"] == "helper"]
+    assert len(helper_nodes) == 1
+    helper_node = helper_nodes[0]
+
+    # Find call edges from caller
+    caller_nodes = [n for n in functions if n["name"] == "caller"]
+    assert len(caller_nodes) == 1
+    caller_id = caller_nodes[0]["id"]
+
+    call_edges = [e for e in data["edges"]
+                  if e["type"] == "calls" and e["src"] == caller_id]
+
+    # The call edge should point to the real helper
+    assert len(call_edges) >= 1
+    helper_id = helper_node["id"]
+    call_dsts = {e["dst"] for e in call_edges}
+    assert helper_id in call_dsts, \
+        f"Call to public_helper should resolve to helper, got {call_dsts}"
