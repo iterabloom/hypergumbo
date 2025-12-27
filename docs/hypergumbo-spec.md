@@ -1672,6 +1672,40 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * `limits.partial_results_reason` documents what went wrong
 * Agents can decide whether partial results are sufficient
 
+## 9.6) Known Analysis Limitations
+
+This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers.
+
+### Re-export Resolution
+
+Many languages support re-exporting symbols from submodules through a package's public interface. When a consumer imports from the package (not the submodule), the analyzer must trace through the re-export chain to find the real symbol.
+
+**Status by language:**
+
+| Language | Re-export Pattern | Status |
+|----------|-------------------|--------|
+| Python | `__init__.py`: `from .submodule import helper` | ✅ Resolved |
+| JavaScript/TypeScript | `index.js`: `export { foo } from './foo'` | ❌ Not yet |
+| Rust | `lib.rs`: `pub use crate::module::item` | ❌ Not yet |
+| Haskell | `module Foo (module Bar) where` | ❌ Not yet |
+| OCaml | `include` in module signatures | ❌ Not yet |
+| Scala | Scala 3 `export` clauses | ❌ Not yet |
+| Elixir | `defdelegate` | ❌ Not yet |
+| Dart | `export 'src/foo.dart'` | ❌ Not yet |
+| Zig | `pub usingnamespace` | ❌ Not yet |
+
+**Not affected:**
+- **Go**: All files in a package share a namespace (no re-export concept)
+- **C/C++**: Headers declare symbols; different model
+- **Java**: Direct class imports; no re-export pattern
+
+**Impact when unresolved:**
+- Call edges may point to placeholder IDs instead of real symbols
+- Import edges resolve correctly (they point to the package, which is valid)
+- Slicing still works but may miss connections through re-exported symbols
+
+**Workaround:** Use fully-qualified imports (e.g., `from mypackage.submodule import helper` instead of `from mypackage import helper`) when precise edge resolution is critical.
+
 ## 10) Milestones (MVP + buffer)
 **Total timeline: 9 weeks** (2-week de-risking + 5 weeks core + 2 weeks buffer)
 
