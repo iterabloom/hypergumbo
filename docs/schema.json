@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeberg.org/iterabloom/hypergumbo-experimental/docs/schema.json",
+  "title": "Hypergumbo Behavior Map",
+  "description": "Output schema for hypergumbo analysis. Auto-generated from Python dataclasses.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version (semver)",
+      "const": "0.1.0"
+    },
+    "confidence_model": {
+      "type": "string",
+      "description": "Identifier for confidence scoring algorithm"
+    },
+    "stable_id_scheme": {
+      "type": "string",
+      "description": "Identifier for stable_id generation algorithm"
+    },
+    "shape_id_scheme": {
+      "type": "string",
+      "description": "Identifier for shape_id generation algorithm"
+    },
+    "repo_fingerprint_scheme": {
+      "type": "string",
+      "description": "Identifier for repo fingerprinting algorithm"
+    },
+    "view": {
+      "type": "string",
+      "const": "behavior_map",
+      "description": "Output view type"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when analysis was generated"
+    },
+    "analysis_incomplete": {
+      "type": "boolean",
+      "description": "True if analysis was truncated or limited"
+    },
+    "analysis_runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AnalysisRun"
+      },
+      "description": "Provenance tracking for each analysis pass"
+    },
+    "profile": {
+      "type": "object",
+      "description": "Repository profile (languages, frameworks, etc.)",
+      "properties": {
+        "languages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "integer"
+              },
+              "lines": {
+                "type": "integer"
+              },
+              "percentage": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "frameworks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "total_files": {
+          "type": "integer"
+        },
+        "total_lines": {
+          "type": "integer"
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Symbol"
+      },
+      "description": "Code symbols (functions, classes, etc.)"
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Edge"
+      },
+      "description": "Relationships between symbols"
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Extracted feature slices"
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Aggregate analysis metrics"
+    },
+    "limits": {
+      "type": "object",
+      "description": "Known gaps and limitations"
+    },
+    "supply_chain_summary": {
+      "type": "object",
+      "description": "Summary of supply chain classification",
+      "properties": {
+        "by_tier": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "integer"
+              },
+              "symbols": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "view",
+    "generated_at",
+    "nodes",
+    "edges"
+  ],
+  "$defs": {
+    "Span": {
+      "type": "object",
+      "description": "Source code location",
+      "properties": {
+        "start_line": {
+          "type": "integer",
+          "description": "Starting line number (1-indexed)"
+        },
+        "end_line": {
+          "type": "integer",
+          "description": "Ending line number (1-indexed)"
+        },
+        "start_col": {
+          "type": "integer",
+          "description": "Starting column (0-indexed)"
+        },
+        "end_col": {
+          "type": "integer",
+          "description": "Ending column (0-indexed)"
+        }
+      },
+      "required": [
+        "start_line",
+        "end_line",
+        "start_col",
+        "end_col"
+      ]
+    },
+    "Symbol": {
+      "type": "object",
+      "description": "A code symbol (function, class, method, etc.)",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier within analysis"
+        },
+        "name": {
+          "type": "string",
+          "description": "Symbol name"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Symbol type",
+          "enum": [
+            "function",
+            "class",
+            "method",
+            "constructor",
+            "property",
+            "interface",
+            "type",
+            "enum",
+            "struct",
+            "trait",
+            "module",
+            "route",
+            "getter",
+            "setter",
+            "macro",
+            "data",
+            "instance",
+            "contract",
+            "event",
+            "modifier",
+            "library",
+            "table",
+            "view",
+            "trigger",
+            "index",
+            "procedure",
+            "resource",
+            "variable",
+            "output",
+            "provider",
+            "kernel",
+            "device_function",
+            "host_device_function",
+            "entity",
+            "architecture",
+            "package",
+            "component",
+            "uniform",
+            "input",
+            "storage",
+            "keyframes",
+            "media",
+            "font_face",
+            "playbook",
+            "task",
+            "handler",
+            "event_publisher",
+            "event_subscriber",
+            "ipc_send",
+            "ipc_receive",
+            "websocket_endpoint",
+            "grpc_service",
+            "grpc_servicer",
+            "grpc_stub",
+            "grpc_client",
+            "grpc_server",
+            "http_client",
+            "graphql_client",
+            "graphql_resolver",
+            "mq_publisher",
+            "mq_subscriber",
+            "db_query"
+          ]
+        },
+        "language": {
+          "type": "string",
+          "description": "Programming language"
+        },
+        "path": {
+          "type": "string",
+          "description": "File path"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        },
+        "origin": {
+          "type": "string",
+          "description": "Analysis pass that created this symbol"
+        },
+        "origin_run_id": {
+          "type": "string",
+          "description": "Unique execution ID"
+        },
+        "origin_run_signature": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Run signature for cache keying"
+        },
+        "stable_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Semantic identity hash (survives renames)"
+        },
+        "shape_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Structural implementation fingerprint"
+        },
+        "canonical_name": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Fully qualified name"
+        },
+        "fingerprint": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Content hash of source"
+        },
+        "quality": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Quality assessment"
+        },
+        "meta": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Language-specific metadata"
+        },
+        "supply_chain": {
+          "type": "object",
+          "description": "Supply chain classification",
+          "properties": {
+            "tier": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "description": "1=first_party, 2=internal_dep, 3=external_dep, 4=derived"
+            },
+            "tier_name": {
+              "type": "string",
+              "enum": [
+                "first_party",
+                "internal_dep",
+                "external_dep",
+                "derived"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "description": "Why this tier was assigned"
+            }
+          },
+          "required": [
+            "tier",
+            "tier_name",
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "language",
+        "path",
+        "span"
+      ]
+    },
+    "Edge": {
+      "type": "object",
+      "description": "A relationship between two symbols",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique edge identifier"
+        },
+        "edge_key": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Canonical key for deduplication"
+        },
+        "src": {
+          "type": "string",
+          "description": "Source symbol ID"
+        },
+        "dst": {
+          "type": "string",
+          "description": "Destination symbol ID"
+        },
+        "type": {
+          "type": "string",
+          "description": "Relationship type",
+          "enum": [
+            "calls",
+            "imports",
+            "instantiates",
+            "extends",
+            "implements",
+            "references",
+            "depends_on",
+            "links",
+            "sources",
+            "script_src",
+            "base_image",
+            "kernel_launch",
+            "native_bridge",
+            "message_send",
+            "message_receive",
+            "websocket_message",
+            "websocket_connection",
+            "grpc_calls",
+            "http_calls",
+            "graphql_calls",
+            "message_queue",
+            "query_references",
+            "event_publishes",
+            "resolver_implements",
+            "resolver_for_type"
+          ]
+        },
+        "line": {
+          "type": "integer",
+          "description": "Line number where relationship occurs"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Confidence score"
+        },
+        "origin": {
+          "type": "string",
+          "description": "Analysis pass that created this edge"
+        },
+        "origin_run_id": {
+          "type": "string",
+          "description": "Unique execution ID"
+        },
+        "origin_run_signature": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Run signature for cache keying"
+        },
+        "quality": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Quality assessment"
+        },
+        "meta": {
+          "type": "object",
+          "description": "Edge metadata including evidence",
+          "properties": {
+            "evidence_type": {
+              "type": "string"
+            },
+            "evidence_lang": {
+              "type": "string"
+            },
+            "evidence_spans": {
+              "type": "array"
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "src",
+        "dst",
+        "type",
+        "line",
+        "confidence"
+      ]
+    },
+    "AnalysisRun": {
+      "type": "object",
+      "description": "Provenance tracking for an analysis pass",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "description": "Unique run identifier (uuid)"
+        },
+        "run_signature": {
+          "type": "string",
+          "description": "Deterministic config hash"
+        },
+        "repo_fingerprint": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Git state hash for cache invalidation"
+        },
+        "pass": {
+          "type": "string",
+          "description": "Analysis pass identifier"
+        },
+        "version": {
+          "type": "string",
+          "description": "Hypergumbo version"
+        },
+        "toolchain": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          }
+        },
+        "config_fingerprint": {
+          "type": "string"
+        },
+        "files_analyzed": {
+          "type": "integer"
+        },
+        "files_skipped": {
+          "type": "integer"
+        },
+        "skipped_passes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "duration_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "execution_id",
+        "pass",
+        "version"
+      ]
+    }
+  }
+}

@@ -597,6 +597,22 @@ Single file: `hypergumbo.results.json`
   "limits": {}
 }
 ```
+
+### JSON Schema (Auto-Generated)
+
+A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `src/hypergumbo/ir.py` to ensure it stays in sync with the implementation.
+
+**Regenerate with:** `./scripts/generate-schema`
+
+**Verify in CI with:** `./scripts/generate-schema --check`
+
+The schema follows JSON Schema Draft 2020-12 and can be used for:
+- Validating hypergumbo output files
+- IDE autocompletion for consumers
+- Documentation in a standard format
+
+**DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
+
 **Scheme identifiers (new, v0.1.0):**
 - `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
 - `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
