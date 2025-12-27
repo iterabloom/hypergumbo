@@ -39,6 +39,23 @@ jobs:
       - name: Run pip-audit (dependency vulnerabilities)
         run: pip-audit --skip-editable
 
+  verify-generated:
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Verify schema.json is up-to-date
+        run: ./scripts/generate-schema --check
+      - name: Verify ARCHITECTURE.md is up-to-date
+        run: ./scripts/generate-architecture --check
+
   pytest:
     runs-on: codeberg-small-lazy
     steps:

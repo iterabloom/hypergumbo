@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Pre-commit hook: Run linting and security checks before committing
+# Pre-commit hook: Run linting, security, and freshness checks before committing
 #
 # This hook runs:
 # - Ruff: Python linting (pycodestyle, pyflakes, security rules)
 # - Bandit: Security-focused static analysis
+# - Schema check: Verify docs/schema.json is up-to-date with dataclasses
 #
 # To bypass this hook (not recommended): git commit --no-verify
 
@@ -51,6 +52,18 @@ else
     echo ""
     echo -e "${RED}Bandit found security issues:${NC}"
     bandit -r src/ -c pyproject.toml
+    exit 1
+fi
+
+# Check schema freshness (fast check - just JSON comparison)
+echo -n "  Schema (freshness)... "
+if ./scripts/generate-schema --check >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC}"
+else
+    echo -e "${RED}✗${NC}"
+    echo ""
+    echo -e "${RED}Schema is out of date. Run:${NC}"
+    echo "  ./scripts/generate-schema"
     exit 1
 fi
 
