@@ -10,8 +10,8 @@ Usage:
 
 The generated documentation includes:
 - Sketch overview (from hypergumbo sketch)
-- Module dependency graph (from hypergumbo run)
-- Key symbols and their relationships
+- Most-connected symbols (from hypergumbo run)
+- Module reference with docstrings
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import subprocess
 import sys
 from collections import defaultdict
@@ -27,13 +28,48 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 
 
-def run_hypergumbo_sketch() -> str:
-    """Run hypergumbo sketch on itself."""
+def run_command(args: list[str], description: str) -> subprocess.CompletedProcess:
+    """Run a command with proper error handling.
+
+    Args:
+        args: Command and arguments to run
+        description: Human-readable description for error messages
+
+    Returns:
+        CompletedProcess on success
+
+    Raises:
+        SystemExit: If command fails
+    """
+    # Set PYTHONPATH to include src/ for module imports
+    env = os.environ.copy()
+    src_path = str(REPO_ROOT / "src")
+    env["PYTHONPATH"] = src_path + os.pathsep + env.get("PYTHONPATH", "")
+
     result = subprocess.run(
-        ["python", "-m", "hypergumbo", "sketch", str(REPO_ROOT / "src"), "-t", "1500", "-x"],
+        args,
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
+        env=env,
+    )
+
+    if result.returncode != 0:
+        print(f"ERROR: {description} failed with exit code {result.returncode}",
+              file=sys.stderr)
+        if result.stderr:
+            print(f"stderr: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    return result
+
+
+def run_hypergumbo_sketch() -> str:
+    """Run hypergumbo sketch on itself."""
+    result = run_command(
+        [sys.executable, "-m", "hypergumbo", "sketch", str(REPO_ROOT / "src"),
+         "-t", "1500", "-x"],
+        "hypergumbo sketch",
     )
     return result.stdout
 
@@ -41,14 +77,16 @@ def run_hypergumbo_sketch() -> str:
 def run_hypergumbo_analysis() -> dict:
     """Run hypergumbo full analysis on itself."""
     output_file = REPO_ROOT / ".hypergumbo" / "self-analysis.json"
-    output_file.parent.mkdir(exist_ok=True)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(
-        ["python", "-m", "hypergumbo", "run", str(REPO_ROOT / "src"),
+    # Delete stale analysis file to avoid reusing old data on failure
+    if output_file.exists():
+        output_file.unlink()
+
+    run_command(
+        [sys.executable, "-m", "hypergumbo", "run", str(REPO_ROOT / "src"),
          "--out", str(output_file), "--first-party-only"],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
+        "hypergumbo run",
     )
 
     if output_file.exists():
@@ -64,24 +102,6 @@ def extract_module_docstring(file_path: Path) -> str | None:
         return ast.get_docstring(tree)
     except Exception:
         return None
-
-
-def build_module_graph(analysis: dict) -> dict[str, set[str]]:
-    """Build a graph of module dependencies from import edges."""
-    imports: dict[str, set[str]] = defaultdict(set)
-
-    for edge in analysis.get("edges", []):
-        if edge.get("edge_type") == "imports":
-            src_path = edge.get("src", "").split("::")[0]
-            dst_path = edge.get("dst", "").split("::")[0]
-            if src_path and dst_path and src_path != dst_path:
-                # Extract module names
-                src_mod = Path(src_path).stem
-                dst_mod = Path(dst_path).stem
-                if src_mod and dst_mod:
-                    imports[src_mod].add(dst_mod)
-
-    return imports
 
 
 def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
@@ -130,8 +150,8 @@ def get_top_symbols(analysis: dict, limit: int = 20) -> list[dict]:
     # Get symbol details
     symbols_by_id = {s["id"]: s for s in analysis.get("nodes", [])}
 
-    # Sort by in-degree
-    sorted_symbols = sorted(in_degree.items(), key=lambda x: -x[1])[:limit]
+    # Sort by in-degree with deterministic tie-breaking (by symbol ID)
+    sorted_symbols = sorted(in_degree.items(), key=lambda x: (-x[1], x[0]))[:limit]
 
     result = []
     for sym_id, count in sorted_symbols:
@@ -219,7 +239,7 @@ def generate_architecture_md() -> str:
         lines.extend([
             "## Most-Connected Symbols",
             "",
-            "These symbols have the highest in-degree (most called/imported):",
+            "These symbols have the highest in-degree (most referenced by other symbols):",
             "",
             "| Symbol | Kind | In-Degree | Location |",
             "|--------|------|-----------|----------|",
@@ -265,18 +285,18 @@ def generate_architecture_md() -> str:
         "- `path`: File path",
         "- `span`: Location in source (start/end line/column)",
         "- `stable_id`: Cross-run stable identifier",
-        "- `supply_chain_tier`: Dependency classification (1-4)",
+        "- `supply_chain`: Object with `tier` (1-4), `tier_name`, and `reason`",
         "",
         "### Edge (`ir.py`)",
         "Represents a relationship between symbols:",
         "- `src`, `dst`: Source and destination symbol IDs",
-        "- `edge_type`: Relationship type (calls, imports, instantiates, etc.)",
+        "- `type`: Relationship type (calls, imports, instantiates, etc.)",
         "- `confidence`: 0.0-1.0 confidence score",
-        "- `evidence_type`: How the edge was detected",
+        "- `meta.evidence_type`: How the edge was detected",
         "",
         "### AnalysisRun (`ir.py`)",
         "Provenance tracking for reproducibility:",
-        "- `pass_id`: Which analyzer produced this data",
+        "- `pass`: Which analyzer produced this data",
         "- `execution_id`: Unique run identifier",
         "- `duration_ms`: Analysis time",
         "- `files_analyzed`: Count of processed files",
@@ -317,14 +337,18 @@ def main() -> int:
             print("ERROR: docs/ARCHITECTURE.md does not exist")
             print("Run: ./scripts/generate-architecture")
             return 1
-        # In check mode, we can't really verify without regenerating
-        # So we just verify the file exists and has the auto-generated marker
-        content = output_path.read_text(encoding="utf-8")
-        if "Auto-generated" not in content:
-            print("ERROR: docs/ARCHITECTURE.md doesn't appear to be auto-generated")
+
+        # Generate fresh content and compare
+        print("Regenerating to verify freshness...", file=sys.stderr)
+        generated = generate_architecture_md()
+        existing = output_path.read_text(encoding="utf-8")
+
+        if existing != generated:
+            print("ERROR: docs/ARCHITECTURE.md is out of date")
+            print("Run: ./scripts/generate-architecture")
             return 1
-        print("OK: docs/ARCHITECTURE.md exists and appears auto-generated")
-        print("Note: Full verification requires regeneration (run without --check)")
+
+        print("OK: docs/ARCHITECTURE.md is up-to-date")
         return 0
 
     generated = generate_architecture_md()
