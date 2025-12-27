@@ -77,9 +77,30 @@ def test_default_excludes_contains_expected_patterns() -> None:
         "build",
         ".git",
         "__pycache__",
+        ".hypergumbo",  # Hypergumbo output directory
+        "hypergumbo.results.json",  # Hypergumbo behavior map
     ]
     for pattern in expected:
         assert pattern in DEFAULT_EXCLUDES
+
+
+def test_is_excluded_hypergumbo_artifacts(tmp_path: Path) -> None:
+    """Should exclude hypergumbo output artifacts by default.
+
+    The .hypergumbo directory and hypergumbo.results.json file are generated
+    by hypergumbo run and should not pollute sketch or analysis input.
+    """
+    # .hypergumbo directory
+    capsule_file = tmp_path / ".hypergumbo" / "capsule.json"
+    assert is_excluded(capsule_file, tmp_path) is True
+
+    # hypergumbo.results.json at repo root
+    results_file = tmp_path / "hypergumbo.results.json"
+    assert is_excluded(results_file, tmp_path) is True
+
+    # hypergumbo.results.json in subdirectory (less common but should still match)
+    nested_results = tmp_path / "subdir" / "hypergumbo.results.json"
+    assert is_excluded(nested_results, tmp_path) is True
 
 
 def test_find_files_respects_max_files(tmp_path: Path) -> None:
