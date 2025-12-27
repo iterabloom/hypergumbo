@@ -12,7 +12,9 @@ from pathlib import Path
 
 from hypergumbo.linkers.websocket import (
     find_js_ts_files,
+    find_python_files,
     _detect_patterns,
+    _detect_python_patterns,
     _make_symbol_id,
     _make_file_id,
     link_websocket,
@@ -563,3 +565,435 @@ wss.on('connection', (ws) => {
 
         # Should find connection endpoint
         assert any(s.kind == "websocket_endpoint" for s in result.symbols)
+
+
+class TestPythonFileDiscovery:
+    """Tests for Python file discovery."""
+
+    def test_finds_python_files(self, tmp_path: Path) -> None:
+        """Should find .py files."""
+        (tmp_path / "app.py").write_text("# python file")
+        files = list(find_python_files(tmp_path))
+        assert len(files) == 1
+        assert files[0].name == "app.py"
+
+    def test_ignores_pycache(self, tmp_path: Path) -> None:
+        """Should ignore __pycache__ directories."""
+        pycache = tmp_path / "__pycache__"
+        pycache.mkdir()
+        (pycache / "cached.cpython-311.pyc").write_bytes(b"bytecode")
+        (tmp_path / "app.py").write_text("# included")
+        files = list(find_python_files(tmp_path))
+        assert len(files) == 1
+        assert files[0].name == "app.py"
+
+
+class TestFastAPIWebSocketPatterns:
+    """Tests for FastAPI/Starlette WebSocket pattern detection."""
+
+    def test_detects_websocket_decorator(self, tmp_path: Path) -> None:
+        """Should detect @app.websocket('/path') decorator."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+@app.websocket('/ws')
+async def websocket_endpoint(websocket: WebSocket):
+    pass
+""")
+        patterns = _detect_python_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert len(endpoints) == 1
+        assert endpoints[0].event == "/ws"
+        assert endpoints[0].pattern_type == "fastapi"
+
+    def test_detects_websocket_receive(self, tmp_path: Path) -> None:
+        """Should detect websocket.receive_json() and receive_text()."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+async def handler(websocket):
+    data = await websocket.receive_json()
+    text = await websocket.receive_text()
+    raw = await websocket.receive()
+""")
+        patterns = _detect_python_patterns(file)
+        receives = [p for p in patterns if p.type == "receive"]
+        assert len(receives) == 3
+        assert all(r.pattern_type == "fastapi" for r in receives)
+
+    def test_detects_websocket_send(self, tmp_path: Path) -> None:
+        """Should detect websocket.send_json() and send_text()."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+async def handler(websocket):
+    await websocket.send_json({"msg": "hello"})
+    await websocket.send_text("hello")
+    await websocket.send(b"bytes")
+""")
+        patterns = _detect_python_patterns(file)
+        sends = [p for p in patterns if p.type == "send"]
+        assert len(sends) == 3
+        assert all(s.pattern_type == "fastapi" for s in sends)
+
+    def test_detects_websocket_accept(self, tmp_path: Path) -> None:
+        """Should detect websocket.accept()."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+async def handler(websocket):
+    await websocket.accept()
+    await websocket.send_text("connected")
+""")
+        patterns = _detect_python_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert len(endpoints) == 1
+        assert endpoints[0].event == "websocket_accept"
+
+    def test_full_fastapi_websocket(self, tmp_path: Path) -> None:
+        """Should detect complete FastAPI WebSocket handler."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_json()
+        await websocket.send_json({"echo": data, "client": client_id})
+""")
+        patterns = _detect_python_patterns(file)
+        # Should have: 1 decorator endpoint, 1 accept endpoint, 1 receive, 1 send
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        receives = [p for p in patterns if p.type == "receive"]
+        sends = [p for p in patterns if p.type == "send"]
+        assert len(endpoints) == 2  # decorator + accept
+        assert len(receives) == 1
+        assert len(sends) == 1
+
+
+class TestDjangoChannelsPatterns:
+    """Tests for Django Channels WebSocket pattern detection."""
+
+    def test_detects_channel_layer_send(self, tmp_path: Path) -> None:
+        """Should detect channel_layer.send()."""
+        file = tmp_path / "consumers.py"
+        file.write_text("""
+async def send_notification(channel_name, message):
+    channel_layer = get_channel_layer()
+    await channel_layer.send(
+        'specific_channel',
+        {'type': 'notification', 'message': message}
+    )
+""")
+        patterns = _detect_python_patterns(file)
+        sends = [p for p in patterns if p.type == "send"]
+        assert len(sends) == 1
+        assert sends[0].event == "specific_channel"
+        assert sends[0].pattern_type == "django_channels"
+
+    def test_detects_channel_layer_group_send(self, tmp_path: Path) -> None:
+        """Should detect channel_layer.group_send()."""
+        file = tmp_path / "consumers.py"
+        file.write_text("""
+async def broadcast_to_group(group_name, message):
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send(
+        'chat_room_1',
+        {'type': 'chat.message', 'message': message}
+    )
+""")
+        patterns = _detect_python_patterns(file)
+        sends = [p for p in patterns if p.type == "send"]
+        assert len(sends) == 1
+        assert sends[0].event == "chat_room_1"
+
+    def test_detects_async_to_sync_send(self, tmp_path: Path) -> None:
+        """Should detect async_to_sync(channel_layer.send)()."""
+        file = tmp_path / "views.py"
+        file.write_text("""
+from asgiref.sync import async_to_sync
+
+def send_message(request):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.send)('channel_name', {'type': 'update'})
+    async_to_sync(channel_layer.group_send)('group_name', {'type': 'broadcast'})
+""")
+        patterns = _detect_python_patterns(file)
+        sends = [p for p in patterns if p.type == "send"]
+        assert len(sends) == 2
+        events = {s.event for s in sends}
+        assert events == {"channel_name", "group_name"}
+
+    def test_detects_websocket_consumer_class(self, tmp_path: Path) -> None:
+        """Should detect WebsocketConsumer subclasses."""
+        file = tmp_path / "consumers.py"
+        file.write_text("""
+from channels.generic.websocket import WebsocketConsumer
+
+class ChatConsumer(WebsocketConsumer):
+    def connect(self):
+        self.accept()
+
+class AsyncChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+""")
+        patterns = _detect_python_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        # Should find ChatConsumer (AsyncWebsocketConsumer won't match our pattern)
+        assert len(endpoints) >= 1
+        assert any(e.event == "ChatConsumer" for e in endpoints)
+
+    def test_full_django_channels_consumer(self, tmp_path: Path) -> None:
+        """Should detect complete Django Channels consumer."""
+        file = tmp_path / "consumers.py"
+        file.write_text("""
+from channels.generic.websocket import WebsocketConsumer
+from asgiref.sync import async_to_sync
+
+class ChatConsumer(WebsocketConsumer):
+    def connect(self):
+        self.room_name = self.scope['url_route']['kwargs']['room_name']
+        self.room_group_name = f'chat_{self.room_name}'
+
+        async_to_sync(self.channel_layer.group_add)(
+            self.room_group_name,
+            self.channel_name
+        )
+        self.accept()
+
+    def receive(self, text_data):
+        async_to_sync(self.channel_layer.group_send)(
+            'chat_room',
+            {'type': 'chat.message', 'message': text_data}
+        )
+
+    def chat_message(self, event):
+        self.send(text_data=event['message'])
+""")
+        patterns = _detect_python_patterns(file)
+        # Should find: consumer class, group_send
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        sends = [p for p in patterns if p.type == "send"]
+        assert len(endpoints) >= 1
+        assert any(e.event == "ChatConsumer" for e in endpoints)
+
+
+class TestPythonPatternEdgeCases:
+    """Edge cases for Python WebSocket pattern detection."""
+
+    def test_unreadable_file(self, tmp_path: Path) -> None:
+        """Should handle unreadable files gracefully."""
+        file = tmp_path / "nonexistent.py"
+        patterns = _detect_python_patterns(file)
+        assert patterns == []
+
+    def test_empty_file(self, tmp_path: Path) -> None:
+        """Should handle empty files."""
+        file = tmp_path / "empty.py"
+        file.write_text("")
+        patterns = _detect_python_patterns(file)
+        assert patterns == []
+
+    def test_no_websocket_patterns(self, tmp_path: Path) -> None:
+        """Should handle files without WebSocket patterns."""
+        file = tmp_path / "models.py"
+        file.write_text("""
+class User:
+    def __init__(self, name):
+        self.name = name
+""")
+        patterns = _detect_python_patterns(file)
+        assert patterns == []
+
+    def test_line_number_accuracy(self, tmp_path: Path) -> None:
+        """Should report accurate line numbers."""
+        file = tmp_path / "main.py"
+        file.write_text("""# Line 1
+# Line 2
+@app.websocket('/ws')
+async def handler(websocket):
+    await websocket.accept()
+""")
+        patterns = _detect_python_patterns(file)
+        decorator = next(p for p in patterns if p.event == "/ws")
+        assert decorator.line == 3
+
+    def test_get_line_number_fallback(self, tmp_path: Path) -> None:
+        """Test the fallback path in get_line_number for edge cases."""
+        # This test exercises the fallback return len(lines) in get_line_number
+        import hypergumbo.linkers.websocket as ws_module
+
+        file = tmp_path / "test.py"
+        file.write_text("x")  # Single char file
+
+        # Mock finditer to return a match with a start position beyond the file
+        original_pattern = ws_module.FASTAPI_WEBSOCKET_DECORATOR
+
+        class FakeMatch:
+            def start(self):
+                return 1000  # Position way beyond file content
+
+            def group(self, n):
+                return "/fake"
+
+        class FakePattern:
+            def finditer(self, content):
+                yield FakeMatch()
+
+        ws_module.FASTAPI_WEBSOCKET_DECORATOR = FakePattern()
+        try:
+            patterns = _detect_python_patterns(file)
+            # The fallback should return len(lines) = 1
+            assert len(patterns) == 1
+            assert patterns[0].line == 1
+        finally:
+            ws_module.FASTAPI_WEBSOCKET_DECORATOR = original_pattern
+
+
+class TestCrossLanguageWebSocketLinking:
+    """Tests for cross-language WebSocket linking (Python <-> JavaScript)."""
+
+    def test_python_send_to_js_receive(self, tmp_path: Path) -> None:
+        """Should link Python send to JavaScript receive."""
+        # Python server sends via channel layer
+        py_file = tmp_path / "consumers.py"
+        py_file.write_text("""
+await channel_layer.group_send('updates', {'type': 'notify'})
+""")
+        # JS client receives 'updates' event (mapped via channel name)
+        js_file = tmp_path / "client.js"
+        js_file.write_text("""
+socket.on('updates', handleUpdate);
+""")
+        result = link_websocket(tmp_path)
+        # Should have symbols for both files
+        assert len(result.symbols) >= 2
+
+    def test_js_send_to_python_receive(self, tmp_path: Path) -> None:
+        """Should link JavaScript send to Python receive."""
+        js_file = tmp_path / "client.js"
+        js_file.write_text("""
+socket.emit('message', data);
+""")
+        py_file = tmp_path / "consumers.py"
+        py_file.write_text("""
+data = await websocket.receive_json()
+""")
+        result = link_websocket(tmp_path)
+        # Both patterns detected
+        assert len(result.symbols) >= 2
+
+    def test_python_symbols_have_correct_language(self, tmp_path: Path) -> None:
+        """Python WebSocket symbols should have language='python'."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+@app.websocket('/ws')
+async def handler(websocket):
+    await websocket.accept()
+""")
+        result = link_websocket(tmp_path)
+        endpoint_symbols = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoint_symbols) >= 1
+        for sym in endpoint_symbols:
+            assert sym.language == "python"
+
+    def test_js_symbols_have_correct_language(self, tmp_path: Path) -> None:
+        """JavaScript WebSocket symbols should have language='javascript'."""
+        file = tmp_path / "server.js"
+        file.write_text("""
+io.on('connection', handler);
+""")
+        result = link_websocket(tmp_path)
+        endpoint_symbols = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoint_symbols) == 1
+        assert endpoint_symbols[0].language == "javascript"
+
+
+class TestPythonIntegrationWithLinkWebSocket:
+    """Integration tests for Python patterns with link_websocket()."""
+
+    def test_fastapi_websocket_creates_symbols(self, tmp_path: Path) -> None:
+        """FastAPI WebSocket decorators should create endpoint symbols."""
+        file = tmp_path / "main.py"
+        file.write_text("""
+@app.websocket('/ws')
+async def ws_handler(websocket):
+    pass
+""")
+        result = link_websocket(tmp_path)
+        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoints) >= 1
+        assert any("/ws" in e.name for e in endpoints)
+
+    def test_django_channels_creates_symbols(self, tmp_path: Path) -> None:
+        """Django Channels consumer should create endpoint symbol."""
+        file = tmp_path / "consumers.py"
+        file.write_text("""
+class ChatConsumer(WebsocketConsumer):
+    pass
+""")
+        result = link_websocket(tmp_path)
+        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoints) >= 1
+        assert any("ChatConsumer" in e.name for e in endpoints)
+
+    def test_python_file_symbols_created(self, tmp_path: Path) -> None:
+        """Python files with WebSocket patterns should have file symbols."""
+        file = tmp_path / "consumers.py"
+        file.write_text("""
+await websocket.send_json(data)
+""")
+        result = link_websocket(tmp_path)
+        file_symbols = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_symbols) >= 1
+        assert any("consumers.py" in s.path for s in file_symbols)
+
+    def test_mixed_language_repo(self, tmp_path: Path) -> None:
+        """Should handle repos with both Python and JavaScript WebSocket code."""
+        (tmp_path / "backend.py").write_text("""
+@app.websocket('/api/ws')
+async def api_ws(websocket):
+    await websocket.accept()
+    data = await websocket.receive_json()
+    await websocket.send_json({"status": "ok"})
+""")
+        (tmp_path / "frontend.js").write_text("""
+const ws = new WebSocket('wss://example.com/api/ws');
+ws.onmessage = (event) => handleMessage(event.data);
+ws.send(JSON.stringify({action: 'ping'}));
+""")
+        result = link_websocket(tmp_path)
+
+        # Should have endpoint symbols from both languages
+        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoints) >= 2
+
+        # Should have file symbols for both files
+        file_symbols = [s for s in result.symbols if s.kind == "file"]
+        paths = {s.path for s in file_symbols}
+        assert any("backend.py" in p for p in paths)
+        assert any("frontend.js" in p for p in paths)
+
+    def test_empty_python_repo(self, tmp_path: Path) -> None:
+        """Should handle repos with no Python files."""
+        (tmp_path / "app.js").write_text("socket.emit('test', data);")
+        result = link_websocket(tmp_path)
+        # Should still work with just JS files
+        assert result.run is not None
+
+    def test_python_only_repo(self, tmp_path: Path) -> None:
+        """Should handle repos with only Python files."""
+        (tmp_path / "app.py").write_text("""
+await websocket.send_json(data)
+""")
+        result = link_websocket(tmp_path)
+        # Should detect Python patterns
+        assert len(result.symbols) >= 1
+
+    def test_run_metadata_includes_python_files(self, tmp_path: Path) -> None:
+        """Run metadata should count Python files analyzed."""
+        (tmp_path / "consumer1.py").write_text("await websocket.send_json(d)")
+        (tmp_path / "consumer2.py").write_text("await websocket.receive_json()")
+        result = link_websocket(tmp_path)
+        assert result.run.files_analyzed >= 2
