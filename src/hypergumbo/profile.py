@@ -284,7 +284,7 @@ JAVA_FRAMEWORKS = {
     # Kotlin-specific
     "ktor": ["ktor", "io.ktor"],
     # Android
-    "jetpack-compose": ["compose", "androidx.compose"],
+    "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
 }
 
 # Swift Package.swift detection patterns
