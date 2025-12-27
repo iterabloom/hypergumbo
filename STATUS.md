@@ -160,7 +160,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Schema freshness | [x] | `./scripts/generate-schema --check` |
 | **Auto-generation Scripts** | | |
 | generate-schema | [x] | Generates `docs/schema.json` from dataclasses |
-| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis |
+| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis. Fixes: proper `.py` suffix removal (avoids `py.py`→`analyze` bug), includes `__main__.py`, first non-empty docstring line, exact basename matching for categorization. |
 
 ## Analysis Passes
 
