@@ -1105,6 +1105,65 @@ def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
     assert "reverse slice" in out
 
 
+def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
+    """Test slice command handles ambiguous entry with helpful error message."""
+    # Create behavior map with same symbol name in different files/languages
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/app.py:1-5:ping:function",
+                "name": "ping",
+                "kind": "function",
+                "language": "python",
+                "path": "src/app.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "typescript:web/client.ts:1-5:ping:function",
+                "name": "ping",
+                "kind": "function",
+                "language": "typescript",
+                "path": "web/client.ts",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "typescript-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "ping"  # Ambiguous - matches both
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.reverse = False
+    args.list_entries = False
+    args.max_tier = None
+
+    result = cmd_slice(args)
+
+    # Should fail with error
+    assert result == 1
+
+    # Error message should include helpful info
+    _, err = capsys.readouterr()
+    assert "Ambiguous entry" in err
+    assert "ping" in err
+    assert "src/app.py" in err
+    assert "web/client.ts" in err
+    assert "Use a full node ID" in err
+
+
 def test_cmd_catalog_show_all(capsys) -> None:
     """Catalog with --show-all shows all passes including extras."""
     args = FakeArgs()

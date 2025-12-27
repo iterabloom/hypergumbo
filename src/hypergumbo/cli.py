@@ -103,7 +103,7 @@ from .profile import detect_profile
 from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
 from .sketch import generate_sketch
-from .slice import SliceQuery, slice_graph
+from .slice import SliceQuery, slice_graph, AmbiguousEntryError
 from .supply_chain import classify_file, detect_package_roots
 
 
@@ -345,7 +345,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
     )
 
     # Perform slice
-    result = slice_graph(nodes, edges, query)
+    try:
+        result = slice_graph(nodes, edges, query)
+    except AmbiguousEntryError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     # Build output
     output = {
