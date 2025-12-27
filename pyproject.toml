@@ -34,7 +34,7 @@ dependencies = [
   "tree-sitter-lua>=0.0.14",
   "tree-sitter-haskell>=0.21",
   "tree-sitter-ocaml>=0.21",
-  "tree-sitter-language-pack>=0.13",  # Elixir
+  "tree-sitter-language-pack>=0.13",  # Elixir, COBOL, Dart, LaTeX, R
   "tree-sitter-solidity>=0.0.1",
   "tree-sitter-c-sharp>=0.21",
   "tree-sitter-cpp>=0.22",
@@ -44,6 +44,25 @@ dependencies = [
   "tree-sitter-bash>=0.21",
   "tree-sitter-objc>=3.0",
   "tree-sitter-hcl>=1.2",
+  # Additional analyzers
+  "tree-sitter-cmake>=0.7",
+  "tree-sitter-css>=0.21",
+  "tree-sitter-cuda>=0.20",
+  "tree-sitter-dockerfile>=0.2",
+  "tree-sitter-fortran>=0.1",
+  "tree-sitter-glsl>=0.1",
+  "tree-sitter-graphql>=0.1",
+  "tree-sitter-html>=0.20",
+  "tree-sitter-json>=0.21",
+  "tree-sitter-make>=1.1",
+  "tree-sitter-nix>=0.1",
+  "tree-sitter-sql>=0.3",
+  "tree-sitter-toml>=0.6",
+  "tree-sitter-verilog>=1.0",
+  "tree-sitter-vhdl>=1.2",
+  "tree-sitter-wgsl>=0.0.1",
+  "tree-sitter-xml>=0.6",
+  "tree-sitter-yaml>=0.6",
 ]
 
 [project.optional-dependencies]
