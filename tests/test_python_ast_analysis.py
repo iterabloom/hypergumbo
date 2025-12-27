@@ -1212,3 +1212,139 @@ def test_reexport_with_alias_resolved(tmp_path: Path) -> None:
     call_dsts = {e["dst"] for e in call_edges}
     assert helper_id in call_dsts, \
         f"Call to public_helper should resolve to helper, got {call_dsts}"
+
+
+def test_src_layout_reexport_resolution(tmp_path: Path) -> None:
+    """Re-exports work correctly with src/ layout projects.
+
+    Many Python projects use the src/ layout (PEP 517/518):
+        src/mypackage/__init__.py
+        src/mypackage/helper.py
+
+    When main.py does:
+        from mypackage import helper
+        helper()
+
+    The call should resolve to src/mypackage/helper.py, even though
+    the file path includes 'src/' but the import path doesn't.
+    """
+    # Create src/ layout structure
+    src = tmp_path / "src"
+    src.mkdir()
+    pkg = src / "mypackage"
+    pkg.mkdir()
+
+    # Create the actual implementation
+    helper_file = pkg / "helper.py"
+    helper_file.write_text(
+        "def helper():\n"
+        "    '''The helper function.'''\n"
+        "    return 42\n"
+    )
+
+    # Create __init__.py that re-exports
+    init_file = pkg / "__init__.py"
+    init_file.write_text(
+        "from .helper import helper\n"
+    )
+
+    # Create main.py at project root that imports from package
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from mypackage import helper\n"
+        "\n"
+        "def caller():\n"
+        "    '''Calls the re-exported helper.'''\n"
+        "    helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Should have both functions
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    func_names = {f["name"] for f in functions}
+    assert "helper" in func_names, "helper function should be detected"
+    assert "caller" in func_names, "caller function should be detected"
+
+    # Find the actual helper symbol (in src/mypackage/helper.py)
+    helper_nodes = [n for n in functions if n["name"] == "helper"]
+    assert len(helper_nodes) == 1
+    helper_node = helper_nodes[0]
+    assert "helper.py" in helper_node["path"], \
+        f"helper should be from helper.py, got {helper_node['path']}"
+
+    # Find call edges from caller
+    caller_nodes = [n for n in functions if n["name"] == "caller"]
+    assert len(caller_nodes) == 1
+    caller_id = caller_nodes[0]["id"]
+
+    call_edges = [e for e in data["edges"]
+                  if e["type"] == "calls" and e["src"] == caller_id]
+
+    # There should be a call edge to helper
+    assert len(call_edges) >= 1, \
+        f"Expected call edge from caller to helper, got: {call_edges}"
+
+    # The call edge should point to the real helper, not a placeholder
+    helper_id = helper_node["id"]
+    call_dsts = {e["dst"] for e in call_edges}
+    assert helper_id in call_dsts, \
+        f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+
+
+def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
+    """When src/ has __init__.py, it's a package, not src/ layout.
+
+    If src/ itself has __init__.py, it should be treated as a normal
+    package named 'src', not as a source root. Module names should
+    include 'src.' prefix.
+    """
+    # Create src as a package (not src/ layout)
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "__init__.py").write_text("# src is a package\n")
+    (src / "helper.py").write_text(
+        "def helper():\n"
+        "    return 42\n"
+    )
+
+    # Create main.py that imports from src package
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from src.helper import helper\n"
+        "\n"
+        "def caller():\n"
+        "    helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Should have both functions
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    func_names = {f["name"] for f in functions}
+    assert "helper" in func_names
+    assert "caller" in func_names
+
+    # Find the helper and caller
+    helper_nodes = [n for n in functions if n["name"] == "helper"]
+    caller_nodes = [n for n in functions if n["name"] == "caller"]
+    assert len(helper_nodes) == 1
+    assert len(caller_nodes) == 1
+
+    helper_id = helper_nodes[0]["id"]
+    caller_id = caller_nodes[0]["id"]
+
+    # Find call edge from caller to helper
+    call_edges = [e for e in data["edges"]
+                  if e["type"] == "calls" and e["src"] == caller_id]
+
+    # Should resolve correctly - imports use "src.helper"
+    call_dsts = {e["dst"] for e in call_edges}
+    assert helper_id in call_dsts, \
+        f"Call edge should resolve to helper {helper_id}, got {call_dsts}"
