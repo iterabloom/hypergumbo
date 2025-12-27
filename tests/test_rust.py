@@ -1126,3 +1126,88 @@ async fn ranked_handler() {}
                 assert "data =" not in route.meta["route_path"]
                 assert "format =" not in route.meta["route_path"]
                 assert "rank =" not in route.meta["route_path"]
+
+
+class TestReexportResolution:
+    """Tests for pub use re-export resolution."""
+
+    def test_reexport_call_edges_resolved(self, tmp_path: Path) -> None:
+        """Calls to re-exported symbols should create proper call edges.
+
+        When lib.rs re-exports symbols from submodules:
+            // src/utils/helper.rs
+            pub fn helper() -> i32 { 42 }
+
+            // src/lib.rs
+            pub mod utils;
+            pub use utils::helper::helper;
+
+        And another module calls the re-exported function:
+            // src/main.rs
+            fn caller() { helper(); }
+
+        The call edge from caller -> helper should be created.
+        """
+        from hypergumbo.analyze.rust import analyze_rust
+
+        # Create project structure
+        src = tmp_path / "src"
+        src.mkdir()
+
+        # Create utils module with helper function
+        utils = src / "utils"
+        utils.mkdir()
+        helper_file = utils / "helper.rs"
+        helper_file.write_text("pub fn helper() -> i32 { 42 }\n")
+
+        utils_mod = utils / "mod.rs"
+        utils_mod.write_text("pub mod helper;\n")
+
+        # Create lib.rs that re-exports
+        lib_file = src / "lib.rs"
+        lib_file.write_text(
+            "pub mod utils;\n"
+            "pub use utils::helper::helper;\n"
+        )
+
+        # Create main.rs that calls helper
+        main_file = src / "main.rs"
+        main_file.write_text(
+            "fn caller() {\n"
+            "    helper();\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        if result.skipped:
+            pytest.skip("tree-sitter-rust not available")
+
+        # Should have both functions
+        functions = [s for s in result.symbols if s.kind == "function"]
+        func_names = {f.name for f in functions}
+        assert "helper" in func_names, f"helper function should be detected, got {func_names}"
+        assert "caller" in func_names, f"caller function should be detected, got {func_names}"
+
+        # Find the actual helper symbol
+        helper_syms = [f for f in functions if f.name == "helper"]
+        assert len(helper_syms) >= 1
+        helper_sym = helper_syms[0]
+
+        # Find call edges from caller
+        caller_syms = [f for f in functions if f.name == "caller"]
+        assert len(caller_syms) == 1
+        caller_id = caller_syms[0].id
+
+        call_edges = [e for e in result.edges
+                      if e.edge_type == "calls" and e.src == caller_id]
+
+        # There should be a call edge to helper
+        assert len(call_edges) >= 1, \
+            f"Expected call edge from caller to helper, got: {call_edges}"
+
+        # The call edge should point to the real helper
+        helper_id = helper_sym.id
+        call_dsts = {e.dst for e in call_edges}
+        assert helper_id in call_dsts, \
+            f"Call edge should point to real helper {helper_id}, got {call_dsts}"
