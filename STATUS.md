@@ -160,7 +160,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Schema freshness | [x] | `./scripts/generate-schema --check` |
 | **Auto-generation Scripts** | | |
 | generate-schema | [x] | Generates `docs/schema.json` from dataclasses |
-| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis. Fixes: proper `.py` suffix removal (avoids `py.py`→`analyze` bug), includes `__main__.py`, first non-empty docstring line, exact basename matching for categorization. |
+| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis. Features: generation metadata (commit SHA, versions) for drift detection, `tokenize.open()` for encoding safety, proper `.py` suffix removal, includes `__main__.py`, first non-empty docstring line, exact basename matching, manual maintenance note on Key Abstractions. |
+| **Edge Filtering Fix** | [x] | Import edges now properly included in `--first-party-only` and `--max-tier` output. Detects file-level edge sources by `:file:` pattern. |
 
 ## Analysis Passes
 
