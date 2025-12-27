@@ -53,10 +53,6 @@ class TestSolidityTreeSitterAvailable:
         assert isinstance(result, bool)
 
 
-@pytest.mark.skipif(
-    not is_solidity_tree_sitter_available(),
-    reason="tree-sitter-solidity not installed",
-)
 class TestSolidityAnalysis:
     """Tests for Solidity analysis with tree-sitter."""
 
@@ -310,10 +306,6 @@ class TestSolidityAnalysisWithoutTreeSitter:
         assert result is False
 
 
-@pytest.mark.skipif(
-    not is_solidity_tree_sitter_available(),
-    reason="tree-sitter-solidity not installed",
-)
 class TestSolidityEdgeCases:
     """Tests for edge cases and error handling."""
 

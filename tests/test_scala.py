@@ -89,8 +89,6 @@ def helper(x: Int): Int = {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -120,8 +118,6 @@ class Point(x: Int, y: Int)
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -151,8 +147,6 @@ object Config {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         objects = [s for s in result.symbols if s.kind == "object"]
         object_names = [s.name for s in objects]
@@ -180,8 +174,6 @@ trait Clickable {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         traits = [s for s in result.symbols if s.kind == "trait"]
         trait_names = [s.name for s in traits]
@@ -209,8 +201,6 @@ def helper(): Unit = {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -237,8 +227,6 @@ object Main {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
@@ -272,8 +260,6 @@ class TestScalaEdgeCases:
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         assert result.run is not None
 
@@ -295,8 +281,6 @@ def run(): Unit = {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         assert result.run.files_analyzed >= 2
 
@@ -323,8 +307,6 @@ class User(val name: String) {
 
         result = analyze_scala(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-scala not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]

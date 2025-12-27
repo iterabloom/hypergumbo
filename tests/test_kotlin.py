@@ -89,8 +89,6 @@ fun helper(x: Int): Int {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -120,8 +118,6 @@ data class Point(val x: Int, val y: Int)
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -151,8 +147,6 @@ object Config {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         objects = [s for s in result.symbols if s.kind == "object"]
         object_names = [s.name for s in objects]
@@ -180,8 +174,6 @@ interface Clickable {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         interfaces = [s for s in result.symbols if s.kind == "interface"]
         interface_names = [s.name for s in interfaces]
@@ -209,8 +201,6 @@ fun helper() {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -235,8 +225,6 @@ fun main() {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
@@ -270,8 +258,6 @@ class TestKotlinEdgeCases:
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         assert result.run is not None
 
@@ -293,8 +279,6 @@ fun run() {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         assert result.run.files_analyzed >= 2
 
@@ -321,8 +305,6 @@ class User(val name: String) {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -407,8 +389,6 @@ fun caller() {
 
         result = analyze_kotlin(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-kotlin not available")
 
         # Should detect call, even if it goes through navigation
         assert result.run is not None

@@ -6,22 +6,12 @@ Tests verify that the analyzer correctly extracts:
 - composer.json: PHP dependencies
 """
 
-import pytest
-
 from hypergumbo.analyze.json_config import (
     PASS_ID,
     PASS_VERSION,
     JSONAnalysisResult,
     analyze_json_files,
     find_json_files,
-    is_json_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-json is not available
-pytestmark = pytest.mark.skipif(
-    not is_json_tree_sitter_available(),
-    reason="tree-sitter-json not installed",
 )
 
 

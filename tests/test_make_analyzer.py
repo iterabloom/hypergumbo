@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - Define blocks (functions/macros)
 """
 
-import pytest
-
 from hypergumbo.analyze.make import (
     PASS_ID,
     PASS_VERSION,
     MakeAnalysisResult,
     analyze_make_files,
     find_make_files,
-    is_make_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-make is not available
-pytestmark = pytest.mark.skipif(
-    not is_make_tree_sitter_available(),
-    reason="tree-sitter-make not installed",
 )
 
 

@@ -7,22 +7,12 @@ Tests verify that the analyzer correctly extracts:
 - Directive definitions
 """
 
-import pytest
-
 from hypergumbo.analyze.graphql import (
     PASS_ID,
     PASS_VERSION,
     GraphQLAnalysisResult,
     analyze_graphql_files,
     find_graphql_files,
-    is_graphql_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-graphql is not available
-pytestmark = pytest.mark.skipif(
-    not is_graphql_tree_sitter_available(),
-    reason="tree-sitter-graphql not installed",
 )
 
 

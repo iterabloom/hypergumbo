@@ -7,22 +7,12 @@ Tests verify that the analyzer correctly extracts:
 - Array of tables (e.g., [[bin]])
 """
 
-import pytest
-
 from hypergumbo.analyze.toml_config import (
     PASS_ID,
     PASS_VERSION,
     TomlAnalysisResult,
     analyze_toml_files,
     find_toml_files,
-    is_toml_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-toml is not available
-pytestmark = pytest.mark.skipif(
-    not is_toml_tree_sitter_available(),
-    reason="tree-sitter-toml not installed",
 )
 
 

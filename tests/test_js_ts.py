@@ -2027,8 +2027,6 @@ function vueHelper() {}
 
         result = analyze_javascript(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter not available")
 
         func_names = [s.name for s in result.symbols if s.kind == "function"]
         assert "main" in func_names
@@ -2086,8 +2084,6 @@ class TestVueEdgeCases:
 
         result = analyze_javascript(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter not available")
 
         # Files should be counted as analyzed, not skipped
         assert result.run is not None
@@ -2115,8 +2111,6 @@ class TestVueEdgeCases:
         with patch.object(Path, "read_text", mock_read_text):
             result = analyze_javascript(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter not available")
 
         # Vue file should be skipped
         assert result.run is not None

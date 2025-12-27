@@ -7,22 +7,12 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
-import pytest
-
 from hypergumbo.analyze.glsl import (
     PASS_ID,
     PASS_VERSION,
     GLSLAnalysisResult,
     analyze_glsl_files,
     find_glsl_files,
-    is_glsl_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-glsl is not available
-pytestmark = pytest.mark.skipif(
-    not is_glsl_tree_sitter_available(),
-    reason="tree-sitter-glsl not installed",
 )
 
 

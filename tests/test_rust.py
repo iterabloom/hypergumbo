@@ -89,8 +89,6 @@ fn helper(x: i32) -> i32 {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -114,8 +112,6 @@ fn private_helper() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -144,8 +140,6 @@ struct InternalData {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = [s.name for s in structs]
@@ -177,8 +171,6 @@ enum Color {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         enums = [s for s in result.symbols if s.kind == "enum"]
         enum_names = [s.name for s in enums]
@@ -212,8 +204,6 @@ impl User {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -245,8 +235,6 @@ trait Internal {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         traits = [s for s in result.symbols if s.kind == "trait"]
         trait_names = [s.name for s in traits]
@@ -274,8 +262,6 @@ fn helper() {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have edge from caller to helper
@@ -301,8 +287,6 @@ fn main() {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edges for use statements
@@ -338,8 +322,6 @@ class TestRustEdgeCases:
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         assert result.run is not None
         assert result.run.files_skipped >= 1
@@ -366,8 +348,6 @@ fn run() {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         # Verify both files analyzed
         assert result.run.files_analyzed >= 2
@@ -397,8 +377,6 @@ fn bar() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         # Should not crash, edges may or may not be detected
         assert result.run is not None
@@ -539,8 +517,6 @@ fn main() {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         # Should detect call to Foo::new
         assert result.run is not None
@@ -633,8 +609,6 @@ async fn list_users() -> &'static str {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -664,8 +638,6 @@ async fn delete_item() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -699,8 +671,6 @@ async fn create_item() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -731,8 +701,6 @@ async fn api_handler() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -758,8 +726,6 @@ async fn get_user() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -852,8 +818,6 @@ fn get_value() -> i32 {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
@@ -883,8 +847,6 @@ async fn list_users() -> &'static str {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -908,8 +870,6 @@ async fn create_user(body: web::Json<User>) -> HttpResponse {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -940,8 +900,6 @@ async fn delete_item() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -972,8 +930,6 @@ async fn health_check() -> &'static str {
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -994,8 +950,6 @@ async fn submit_form() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -1049,8 +1003,6 @@ async fn get_user_post() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -1079,8 +1031,6 @@ async fn axum_handler() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -1109,8 +1059,6 @@ async fn ranked_handler() {}
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
 
@@ -1180,8 +1128,6 @@ class TestReexportResolution:
 
         result = analyze_rust(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-rust not available")
 
         # Should have both functions
         functions = [s for s in result.symbols if s.kind == "function"]

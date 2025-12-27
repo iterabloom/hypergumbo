@@ -8,22 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - Architecture-entity relationships
 """
 
-import pytest
-
 from hypergumbo.analyze.vhdl import (
     PASS_ID,
     PASS_VERSION,
     VHDLAnalysisResult,
     analyze_vhdl_files,
     find_vhdl_files,
-    is_vhdl_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-vhdl is not available
-pytestmark = pytest.mark.skipif(
-    not is_vhdl_tree_sitter_available(),
-    reason="tree-sitter-vhdl not installed",
 )
 
 

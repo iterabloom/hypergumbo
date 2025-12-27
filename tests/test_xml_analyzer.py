@@ -5,22 +5,12 @@ Tests verify that the analyzer correctly extracts:
 - Android Manifest: activities, services, permissions, intent-filters
 """
 
-import pytest
-
 from hypergumbo.analyze.xml_config import (
     PASS_ID,
     PASS_VERSION,
     XMLAnalysisResult,
     analyze_xml_files,
     find_xml_files,
-    is_xml_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-xml is not available
-pytestmark = pytest.mark.skipif(
-    not is_xml_tree_sitter_available(),
-    reason="tree-sitter-xml not installed",
 )
 
 

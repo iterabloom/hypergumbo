@@ -90,8 +90,6 @@ func helper(x int) int {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         assert result.run is not None
         assert result.run.files_analyzed == 1
@@ -116,8 +114,6 @@ func privateHelper() {}
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -147,8 +143,6 @@ type internalData struct {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = [s.name for s in structs]
@@ -177,8 +171,6 @@ type Writer interface {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         interfaces = [s for s in result.symbols if s.kind == "interface"]
         interface_names = [s.name for s in interfaces]
@@ -211,8 +203,6 @@ func (u *User) SetName(name string) {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
@@ -242,8 +232,6 @@ func helper() {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have edge from caller to helper
@@ -272,8 +260,6 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edges for import statements
@@ -309,8 +295,6 @@ class TestGoEdgeCases:
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         # Even package-only file should have no symbols
         assert result.run is not None
@@ -337,8 +321,6 @@ func run() {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         # Verify both files analyzed
         assert result.run.files_analyzed >= 2
@@ -366,8 +348,6 @@ func caller() {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         # Should not crash
         assert result.run is not None
@@ -388,8 +368,6 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         # Should detect fmt.Println call
         assert result.run is not None
@@ -411,8 +389,6 @@ type Handler func(int) error
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         types = [s for s in result.symbols if s.kind == "type"]
         type_names = [s.name for s in types]
@@ -527,8 +503,6 @@ func createUser(c *gin.Context) {}
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -560,8 +534,6 @@ func deleteUser(c echo.Context) error { return nil }
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -598,8 +570,6 @@ func postData(c *fiber.Ctx) error { return nil }
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         route_names = [s.name for s in routes]
@@ -624,8 +594,6 @@ func handler() {}
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -648,8 +616,6 @@ func getUser() {}
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1
@@ -712,8 +678,6 @@ func PostProcess(s string) {}
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
@@ -733,8 +697,6 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-go not available")
 
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) >= 1

@@ -10,22 +10,12 @@ Tests verify that the analyzer correctly extracts:
 - Subdirectory includes
 """
 
-import pytest
-
 from hypergumbo.analyze.cmake import (
     PASS_ID,
     PASS_VERSION,
     CMakeAnalysisResult,
     analyze_cmake_files,
     find_cmake_files,
-    is_cmake_tree_sitter_available,
-)
-
-
-# Skip all tests if tree-sitter-cmake is not available
-pytestmark = pytest.mark.skipif(
-    not is_cmake_tree_sitter_available(),
-    reason="tree-sitter-cmake not installed",
 )
 
 

@@ -1,5 +1,4 @@
 """Tests for Julia analyzer."""
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -105,8 +104,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         assert result.run is not None
         modules = [s for s in result.symbols if s.kind == "module"]
@@ -134,8 +131,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -154,8 +149,6 @@ square(x) = x * x
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -184,8 +177,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = [s.name for s in structs]
@@ -208,8 +199,6 @@ abstract type Animal end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         abstracts = [s for s in result.symbols if s.kind == "abstract"]
         abstract_names = [s.name for s in abstracts]
@@ -237,8 +226,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         macros = [s for s in result.symbols if s.kind == "macro"]
         macro_names = [s.name for s in macros]
@@ -262,8 +249,6 @@ using Statistics
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
@@ -292,8 +277,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -318,8 +301,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -344,8 +325,6 @@ end
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         test_func = next((s for s in result.symbols if s.name == "test"), None)
         assert test_func is not None
@@ -368,8 +347,6 @@ import Base.show
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         for edge in import_edges:
@@ -389,8 +366,6 @@ class TestJuliaEmptyFile:
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         assert result.run is not None
 
@@ -407,8 +382,6 @@ class TestJuliaEmptyFile:
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         assert result.run is not None
 
@@ -446,8 +419,6 @@ const VERSION = "1.0.0"
 
         result = analyze_julia(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-julia not available")
 
         consts = [s for s in result.symbols if s.kind == "const"]
         const_names = [s.name for s in consts]

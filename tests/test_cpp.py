@@ -147,8 +147,6 @@ class TestCppSymbolExtraction:
         """Should extract class declarations."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         class_symbols = [s for s in result.symbols if s.kind == "class"]
         class_names = {s.name for s in class_symbols}
@@ -159,8 +157,6 @@ class TestCppSymbolExtraction:
         """Should extract struct declarations."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         struct_symbols = [s for s in result.symbols if s.kind == "struct"]
         struct_names = {s.name for s in struct_symbols}
@@ -170,8 +166,6 @@ class TestCppSymbolExtraction:
         """Should extract enum declarations."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         enum_symbols = [s for s in result.symbols if s.kind == "enum"]
         enum_names = {s.name for s in enum_symbols}
@@ -181,8 +175,6 @@ class TestCppSymbolExtraction:
         """Should extract function definitions."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         func_symbols = [s for s in result.symbols if s.kind == "function"]
         func_names = {s.name for s in func_symbols}
@@ -192,8 +184,6 @@ class TestCppSymbolExtraction:
         """Should extract class method implementations."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         method_symbols = [s for s in result.symbols if s.kind == "method"]
         method_names = {s.name for s in method_symbols}
@@ -205,8 +195,6 @@ class TestCppSymbolExtraction:
         """All symbols should have language='cpp'."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.language == "cpp"
@@ -215,8 +203,6 @@ class TestCppSymbolExtraction:
         """All symbols should have valid span information."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.span is not None
@@ -231,8 +217,6 @@ class TestCppEdgeExtraction:
         """Should extract #include directive edges."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         include_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(include_edges) >= 3  # At least Calculator.hpp, Helper.hpp, iostream
@@ -241,8 +225,6 @@ class TestCppEdgeExtraction:
         """Should extract function call edges."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have calls to Add, Multiply, Process
@@ -252,8 +234,6 @@ class TestCppEdgeExtraction:
         """Should extract new expression edges."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # main creates new Calculator()
@@ -263,8 +243,6 @@ class TestCppEdgeExtraction:
         """All edges should have confidence values."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for edge in result.edges:
             assert 0.0 <= edge.confidence <= 1.0
@@ -277,8 +255,6 @@ class TestCppAnalysisRun:
         """Should create an AnalysisRun with metadata."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         assert result.run is not None
         assert result.run.pass_id == PASS_ID
@@ -289,8 +265,6 @@ class TestCppAnalysisRun:
         """Symbols should reference the analysis run."""
         result = analyze_cpp(cpp_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.origin == PASS_ID
@@ -352,8 +326,6 @@ public:
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         classes = [s for s in result.symbols if s.kind == "class"]
         assert len(classes) >= 1
@@ -373,8 +345,6 @@ void process() {}
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Should find the process function
         funcs = [s for s in result.symbols if s.kind == "function"]
@@ -386,8 +356,6 @@ void process() {}
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Should not crash
         assert result.run is not None
@@ -396,8 +364,6 @@ void process() {}
         """Should handle IO errors gracefully."""
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Empty repo should not crash
         assert result.symbols == []
@@ -420,8 +386,6 @@ void test() {
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # test should call bar
@@ -443,8 +407,6 @@ int main() {
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # main should call compute
@@ -463,8 +425,6 @@ void caller() {
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # caller should call helper
@@ -483,8 +443,6 @@ void create() {
 
         result = analyze_cpp(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # create should instantiate Widget

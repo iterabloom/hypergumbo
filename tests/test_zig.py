@@ -148,8 +148,6 @@ class TestZigSymbolExtraction:
         """Should extract function declarations."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         func_symbols = [s for s in result.symbols if s.kind == "function"]
         func_names = {s.name for s in func_symbols}
@@ -162,8 +160,6 @@ class TestZigSymbolExtraction:
         """Should extract struct declarations."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         struct_symbols = [s for s in result.symbols if s.kind == "struct"]
         struct_names = {s.name for s in struct_symbols}
@@ -174,8 +170,6 @@ class TestZigSymbolExtraction:
         """Should extract enum declarations."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         enum_symbols = [s for s in result.symbols if s.kind == "enum"]
         enum_names = {s.name for s in enum_symbols}
@@ -185,8 +179,6 @@ class TestZigSymbolExtraction:
         """Should extract union declarations."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         union_symbols = [s for s in result.symbols if s.kind == "union"]
         union_names = {s.name for s in union_symbols}
@@ -196,8 +188,6 @@ class TestZigSymbolExtraction:
         """Should extract error set declarations."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         error_symbols = [s for s in result.symbols if s.kind == "error_set"]
         error_names = {s.name for s in error_symbols}
@@ -207,8 +197,6 @@ class TestZigSymbolExtraction:
         """Should extract struct methods (functions with self parameter)."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         method_symbols = [s for s in result.symbols if s.kind == "method"]
         method_names = {s.name for s in method_symbols}
@@ -222,8 +210,6 @@ class TestZigSymbolExtraction:
         """All symbols should have language='zig'."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.language == "zig"
@@ -232,8 +218,6 @@ class TestZigSymbolExtraction:
         """All symbols should have valid span information."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.span is not None
@@ -248,8 +232,6 @@ class TestZigEdgeExtraction:
         """Should extract @import edges."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have imports for std and math.zig
@@ -259,8 +241,6 @@ class TestZigEdgeExtraction:
         """Should extract function call edges."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have calls to calculate, helperFunction, add, etc.
@@ -270,8 +250,6 @@ class TestZigEdgeExtraction:
         """All edges should have confidence values."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for edge in result.edges:
             assert 0.0 <= edge.confidence <= 1.0
@@ -284,8 +262,6 @@ class TestZigAnalysisRun:
         """Should create an AnalysisRun with metadata."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         assert result.run is not None
         assert result.run.pass_id == PASS_ID
@@ -296,8 +272,6 @@ class TestZigAnalysisRun:
         """Symbols should reference the analysis run."""
         result = analyze_zig(zig_repo)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         for symbol in result.symbols:
             assert symbol.origin == PASS_ID
@@ -350,8 +324,6 @@ class TestZigSpecialCases:
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Should not crash
         assert result.run is not None
@@ -360,8 +332,6 @@ class TestZigSpecialCases:
         """Should handle IO errors gracefully."""
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         # Empty repo should not crash
         assert result.symbols == []
@@ -385,8 +355,6 @@ test "another test" {
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         test_symbols = [s for s in result.symbols if s.kind == "test"]
         assert len(test_symbols) >= 2
@@ -407,8 +375,6 @@ pub fn regularFunc() void {
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = {s.name for s in funcs}
@@ -434,8 +400,6 @@ pub fn regularFunc() void {
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         structs = [s for s in result.symbols if s.kind == "struct"]
         # Should find both Outer and Inner
@@ -454,8 +418,6 @@ pub fn wrapper() void {
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = {s.name for s in funcs}
@@ -486,8 +448,6 @@ pub fn useCounter() void {
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # useCounter should call increment and getCount
@@ -508,8 +468,6 @@ fn caller() i32 {
 
         result = analyze_zig(tmp_path)
 
-        if result.skipped:
-            pytest.skip(result.skip_reason)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # caller should call helper

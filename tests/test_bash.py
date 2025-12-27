@@ -1,5 +1,4 @@
 """Tests for Bash/shell script analyzer."""
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -121,8 +120,6 @@ function helper() {
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -147,8 +144,6 @@ do_work() {
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -172,8 +167,6 @@ export PATH="/usr/bin:$PATH"
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         exports = [s for s in result.symbols if s.kind == "export"]
         export_names = [s.name for s in exports]
@@ -197,8 +190,6 @@ source lib/common.sh
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "sources"]
         assert len(import_edges) >= 2
@@ -220,8 +211,6 @@ source lib/common.sh
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "sources"]
         assert len(import_edges) >= 2
@@ -248,8 +237,6 @@ function main() {
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -278,8 +265,6 @@ function run() {
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -304,8 +289,6 @@ class TestBashSymbolProperties:
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         test_func = next((s for s in result.symbols if s.name == "test"), None)
         assert test_func is not None
@@ -329,8 +312,6 @@ source utils.sh
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         source_edges = [e for e in result.edges if e.edge_type == "sources"]
         for edge in source_edges:
@@ -350,8 +331,6 @@ class TestBashEmptyFile:
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         assert result.run is not None
 
@@ -367,8 +346,6 @@ class TestBashEmptyFile:
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         assert result.run is not None
 
@@ -407,8 +384,6 @@ alias gs='git status'
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         aliases = [s for s in result.symbols if s.kind == "alias"]
         alias_names = [s.name for s in aliases]
@@ -437,8 +412,6 @@ alias myalias=value
 
         result = analyze_bash(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-bash not available")
 
         aliases = [s for s in result.symbols if s.kind == "alias"]
         assert any(s.name == "myalias" for s in aliases)

@@ -1,5 +1,4 @@
 """Tests for HCL/Terraform analyzer."""
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -134,8 +133,6 @@ resource "aws_s3_bucket" "data" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         resources = [s for s in result.symbols if s.kind == "resource"]
         resource_names = [s.name for s in resources]
@@ -163,8 +160,6 @@ data "aws_vpc" "default" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         data_sources = [s for s in result.symbols if s.kind == "data"]
         names = [s.name for s in data_sources]
@@ -194,8 +189,6 @@ variable "instance_count" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         variables = [s for s in result.symbols if s.kind == "variable"]
         names = [s.name for s in variables]
@@ -223,8 +216,6 @@ output "bucket_arn" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         outputs = [s for s in result.symbols if s.kind == "output"]
         names = [s.name for s in outputs]
@@ -254,8 +245,6 @@ module "eks" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         modules = [s for s in result.symbols if s.kind == "module"]
         names = [s.name for s in modules]
@@ -283,8 +272,6 @@ provider "google" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         providers = [s for s in result.symbols if s.kind == "provider"]
         names = [s.name for s in providers]
@@ -309,8 +296,6 @@ locals {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         locals_block = [s for s in result.symbols if s.kind == "local"]
         names = [s.name for s in locals_block]
@@ -338,8 +323,6 @@ resource "aws_instance" "web" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         # Should have edge from aws_instance.web to var.instance_type
@@ -362,8 +345,6 @@ resource "aws_subnet" "public" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         # Should have edge from aws_subnet.public to aws_vpc.main
@@ -386,8 +367,6 @@ module "vpc" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edge for local module source
@@ -409,8 +388,6 @@ class TestHCLSymbolProperties:
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         resource = next((s for s in result.symbols if "aws_instance.web" in s.name), None)
         assert resource is not None
@@ -438,8 +415,6 @@ resource "null_resource" "y" {
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         for edge in result.edges:
             assert edge.confidence > 0
@@ -458,8 +433,6 @@ class TestHCLEmptyFile:
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         assert result.run is not None
 
@@ -474,8 +447,6 @@ class TestHCLEmptyFile:
 
         result = analyze_hcl(tmp_path)
 
-        if result.skipped:
-            pytest.skip("tree-sitter-hcl not available")
 
         assert result.run is not None
 
