@@ -17,6 +17,9 @@ DEFAULT_EXCLUDES = [
     ".mypy_cache",
     ".tox",
     "*.egg-info",
+    # Hypergumbo output artifacts - exclude to prevent sketch/analysis pollution
+    ".hypergumbo",
+    "hypergumbo.results.json",
 ]
 
 
