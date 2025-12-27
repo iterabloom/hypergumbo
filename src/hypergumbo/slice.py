@@ -59,6 +59,35 @@ from typing import Dict, List, Set
 from .ir import Symbol, Edge
 
 
+class AmbiguousEntryError(Exception):
+    """Raised when entry spec matches multiple symbols in different files.
+
+    This error helps users disambiguate by showing the matching candidates
+    with their file paths and node IDs.
+
+    Attributes:
+        entry_spec: The entry specification that was ambiguous.
+        candidates: List of Symbol objects that matched.
+    """
+
+    def __init__(self, entry_spec: str, candidates: List[Symbol]) -> None:
+        self.entry_spec = entry_spec
+        self.candidates = candidates
+
+        # Build helpful error message
+        lines = [
+            f"Ambiguous entry '{entry_spec}' matches {len(candidates)} symbols "
+            f"in different files:",
+        ]
+        for sym in candidates:
+            lines.append(f"  [{sym.language}] {sym.path}:{sym.span.start_line}")
+            lines.append(f"    ID: {sym.id}")
+        lines.append("")
+        lines.append("Use a full node ID to disambiguate, or filter with --language.")
+
+        super().__init__("\n".join(lines))
+
+
 @dataclass
 class SliceQuery:
     """Configuration for a graph slice operation.
@@ -248,6 +277,17 @@ def slice_graph(
             query=query,
             limits_hit=[],
         )
+
+    # Check for ambiguous entry: multiple matches in different files
+    # This is only an issue for name-based matches, not exact ID matches
+    if len(entry_nodes) > 1:
+        # Check if the entry was an exact ID match (not ambiguous)
+        is_exact_id = any(n.id == query.entrypoint for n in entry_nodes)
+        if not is_exact_id:
+            # Check if matches are in different files
+            unique_files = {n.path for n in entry_nodes}
+            if len(unique_files) > 1:
+                raise AmbiguousEntryError(query.entrypoint, entry_nodes)
 
     # Track results
     visited_nodes: Set[str] = set()

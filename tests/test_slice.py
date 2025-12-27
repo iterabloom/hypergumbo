@@ -2,11 +2,14 @@
 from typing import List
 
 
+import pytest
+
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.slice import (
     slice_graph,
     SliceQuery,
     find_entry_nodes,
+    AmbiguousEntryError,
 )
 
 
@@ -16,18 +19,19 @@ def make_symbol(
     kind: str = "function",
     start_line: int = 1,
     end_line: int = 5,
+    language: str = "python",
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
-    sym_id = f"python:{path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = f"{language}:{path}:{start_line}-{end_line}:{name}:{kind}"
     return Symbol(
         id=sym_id,
         name=name,
         kind=kind,
-        language="python",
+        language=language,
         path=path,
         span=span,
-        origin="python-ast-v1",
+        origin=f"{language}-ast-v1",
         origin_run_id="uuid:test",
     )
 
@@ -119,6 +123,76 @@ class TestFindEntryNodes:
         matches = find_entry_nodes(nodes, "nonexistent")
 
         assert matches == []
+
+
+class TestAmbiguousEntryDetection:
+    """Tests for detecting and reporting ambiguous entry points."""
+
+    def test_raises_error_when_same_name_in_different_files(self) -> None:
+        """Should raise AmbiguousEntryError when name matches symbols in different files."""
+        py_ping = make_symbol("ping", path="src/app.py", language="python")
+        ts_ping = make_symbol("ping", path="web/client.ts", language="typescript")
+        nodes = [py_ping, ts_ping]
+        edges: List[Edge] = []
+
+        query = SliceQuery(entrypoint="ping", max_hops=3, max_files=20)
+
+        with pytest.raises(AmbiguousEntryError) as exc_info:
+            slice_graph(nodes, edges, query)
+
+        # Error message should include helpful information
+        error = exc_info.value
+        assert "ping" in str(error)
+        assert len(error.candidates) == 2
+        assert py_ping.id in [c.id for c in error.candidates]
+        assert ts_ping.id in [c.id for c in error.candidates]
+
+    def test_no_error_when_exact_id_used(self) -> None:
+        """Should not raise error when entry is specified by exact node ID."""
+        py_ping = make_symbol("ping", path="src/app.py", language="python")
+        ts_ping = make_symbol("ping", path="web/client.ts", language="typescript")
+        nodes = [py_ping, ts_ping]
+        edges: List[Edge] = []
+
+        # Use exact ID - should work without ambiguity
+        query = SliceQuery(entrypoint=py_ping.id, max_hops=3, max_files=20)
+        result = slice_graph(nodes, edges, query)
+
+        assert py_ping.id in result.node_ids
+        assert ts_ping.id not in result.node_ids
+
+    def test_no_error_when_same_name_same_file(self) -> None:
+        """Multiple matches in same file are OK (e.g., overloads or nested)."""
+        func1 = make_symbol("handler", path="src/app.py", start_line=1, end_line=5)
+        func2 = make_symbol("handler", path="src/app.py", start_line=10, end_line=15)
+        nodes = [func1, func2]
+        edges: List[Edge] = []
+
+        query = SliceQuery(entrypoint="handler", max_hops=3, max_files=20)
+        # Should not raise - same file is fine
+        result = slice_graph(nodes, edges, query)
+
+        # Both should be in the result
+        assert func1.id in result.node_ids
+        assert func2.id in result.node_ids
+
+    def test_error_message_includes_file_paths(self) -> None:
+        """Error message should help user disambiguate by showing paths."""
+        py_ping = make_symbol("ping", path="src/app.py", language="python")
+        ts_ping = make_symbol("ping", path="web/client.ts", language="typescript")
+        go_ping = make_symbol("ping", path="cmd/server.go", language="go")
+        nodes = [py_ping, ts_ping, go_ping]
+        edges: List[Edge] = []
+
+        query = SliceQuery(entrypoint="ping", max_hops=3, max_files=20)
+
+        with pytest.raises(AmbiguousEntryError) as exc_info:
+            slice_graph(nodes, edges, query)
+
+        error_msg = str(exc_info.value)
+        assert "src/app.py" in error_msg
+        assert "web/client.ts" in error_msg
+        assert "cmd/server.go" in error_msg
 
 
 class TestSliceGraph:
