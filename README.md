@@ -42,7 +42,7 @@ hypergumbo . -t 2000  # include symbols and entry points
 pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
 ```
 
-All language analyzers (Python, JavaScript, TypeScript, PHP, C, Java, Elixir, Rust, Go, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml) are included by default.
+All 32 language analyzers are included by default (Python, JavaScript, TypeScript, PHP, C, C++, Java, Elixir, Rust, Go, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Solidity, C#, Zig, Groovy, Julia, Bash, Objective-C, Terraform/HCL, YAML/Ansible, SQL, Dockerfile, CUDA, GraphQL, Nix, R, and more).
 
 For LLM-assisted plan generation:
 ```bash
@@ -59,6 +59,8 @@ hypergumbo . -x              # exclude test files (faster on large codebases)
 hypergumbo run [path]        # full analysis → hypergumbo.results.json
 hypergumbo slice --entry X   # extract subgraph from entry point
 hypergumbo slice --entry X --reverse  # find all callers of X
+hypergumbo routes [path]     # list HTTP routes (FastAPI, Flask, Express, etc.)
+hypergumbo search <query>    # search symbols by name pattern
 hypergumbo init [path]       # initialize .hypergumbo/ capsule
 hypergumbo init --assistant llm  # use LLM to generate analysis plan
 hypergumbo catalog           # list available analysis passes
@@ -92,39 +94,51 @@ Falls back to template-based generation if LLM is unavailable or fails.
 > equivalent results. This feature will become practical as the catalog expands with
 > framework-specific packs and configuration options.
 
-### Supported Languages
+### Supported Languages (32 Analyzers)
 
-| Language | Parser | Symbols | Edges |
-|----------|--------|---------|-------|
-| Python | AST | function, class, method | calls, imports, instantiates |
-| JavaScript | tree-sitter | function, class, method | calls, imports, instantiates |
-| TypeScript | tree-sitter | function, class, method, interface, type, enum | calls, imports, instantiates |
-| Vue | tree-sitter | function, class, method | calls, imports, instantiates |
-| Svelte | tree-sitter | function, class, method | calls, imports, instantiates |
-| PHP | tree-sitter | function, class, method | calls, instantiates |
-| C | tree-sitter | function, struct, enum, typedef | calls |
-| Java | tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates |
-| Elixir | tree-sitter | module, function, macro | calls, imports |
-| Rust | tree-sitter | function, struct, enum, trait, method | calls, imports |
-| Go | tree-sitter | function, method, struct, interface, type | calls, imports |
-| Ruby | tree-sitter | method, class, module | calls, imports |
-| Kotlin | tree-sitter | function, class, object, interface, method | calls, imports |
-| Swift | tree-sitter | function, class, struct, protocol, enum, method | calls, imports |
-| Scala | tree-sitter | function, class, object, trait, method | calls, imports |
-| Lua | tree-sitter | function, method | calls, imports |
-| Haskell | tree-sitter | function, data, class, instance | calls, imports |
-| OCaml | tree-sitter | function, type, module | calls, imports |
-| HTML | regex | file | script_src |
+**Application Languages:**
+Python, JavaScript, TypeScript, Java, C#, Go, Rust, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Lua, Haskell, OCaml, Julia, R
 
-### Cross-Language Linkers
+**Systems Languages:**
+C, C++, Zig, Objective-C, CUDA, Fortran
+
+**Smart Contracts:**
+Solidity
+
+**Hardware Description:**
+Verilog, VHDL, GLSL, WGSL
+
+**Infrastructure/Config:**
+Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible
+
+**Data/Schema:**
+SQL, GraphQL, JSON, TOML, XML, CSS
+
+**Frontend Frameworks:**
+Vue, Svelte (extract `<script>` blocks with adjusted line numbers)
+
+All analyzers detect symbols (functions, classes, methods, etc.) and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for detailed per-language capabilities.
+
+### Cross-Language Linkers (12 Linkers)
 
 Linkers run automatically during `hypergumbo run` to connect symbols across language boundaries:
 
-| Linker | Edge Type | Description |
-|--------|-----------|-------------|
-| JNI | native_bridge | Links Java `native` methods to C JNI implementations (`Java_Package_Class_Method`) |
-| IPC | message_send, message_receive | Detects Electron IPC (`ipcRenderer`/`ipcMain`), Web Workers, `postMessage` patterns |
-| WebSocket | websocket_message, websocket_connection | Detects Socket.io, native WebSocket, and ws package patterns. Event matching links senders to receivers. |
+| Linker | Description |
+|--------|-------------|
+| JNI | Java `native` methods ↔ C JNI implementations |
+| IPC | Electron IPC, Web Workers, `postMessage` patterns |
+| WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
+| Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
+| Swift/ObjC | `@objc` annotations, `#selector()`, bridging headers |
+| gRPC | Protobuf services, stubs, and servicer implementations |
+| HTTP | `fetch()`, `axios`, `requests` → route handlers (URL pattern matching) |
+| GraphQL | `gql` queries/mutations → schema definitions |
+| GraphQL Resolver | Resolver implementations → schema type definitions |
+| Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
+| Database Query | SQL in app code → table definitions in schema files |
+| Event Sourcing | EventEmitter, Django signals, Spring events |
+
+See [STATUS.md](STATUS.md) for detailed edge types and framework support.
 
 ## Development
 

@@ -73,7 +73,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Token-budgeted Markdown sketch | [x] | `sketch.py` - ~4 chars/token heuristic |
+| Token-budgeted Markdown sketch | [x] | `sketch.py` - ~4 chars/token heuristic with ceiling division for conservative estimates |
 | Default CLI mode | [x] | `hypergumbo [path]` runs sketch |
 | Token limit flag | [x] | `-t N` / `--tokens N` |
 | Language breakdown | [x] | Sorted by LOC percentage |
@@ -85,6 +85,12 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Key symbols section | [x] | Functions/classes from static analysis |
 | Graph centrality ranking | [x] | In-degree centrality orders symbols by importance |
 | Test file filtering | [x] | Excludes test files from centrality calculation |
+| **Symbol Selection** | | |
+| Two-phase selection policy | [x] | Coverage-first phase (33% budget) ensures broad file coverage, then diminishing-returns greedy fill maximizes marginal utility |
+| Sum-of-top-K file scoring | [x] | Files ranked by sum of top-3 symbol scores (density metric) rather than single-max centrality |
+| Per-file render compression | [x] | Max 5 symbols per file with "… +N more (top score: X.XX)" overflow summary |
+| Entrypoint file preservation | [x] | Entry points and their containing files prioritized in Key Symbols section |
+| Deterministic output | [x] | Sorted iteration over SOURCE_DIRS ensures reproducible output across runs |
 
 ## CLI Commands
 
