@@ -2463,6 +2463,45 @@ router.get('/users', handleUsers);
         assert routes[0].stable_id == "GET"
         assert routes[0].meta.get("handler_ref") == "handleUsers"
 
+    def test_express_chained_route_syntax(self, tmp_path: Path) -> None:
+        """Express chained route syntax: router.route('/path').get(handler)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const express = require('express');
+const userController = require('./controllers/user');
+const router = express.Router();
+
+router
+  .route('/')
+  .post(userController.createUser)
+  .get(userController.getUsers);
+
+router
+  .route('/:userId')
+  .get(userController.getUser)
+  .patch(userController.updateUser)
+  .delete(userController.deleteUser);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(routes) == 5
+
+        # Verify routes have correct paths from chained .route() call
+        root_routes = [r for r in routes if r.meta.get("route_path") == "/"]
+        assert len(root_routes) == 2
+        root_methods = {r.stable_id for r in root_routes}
+        assert root_methods == {"POST", "GET"}
+
+        param_routes = [r for r in routes if r.meta.get("route_path") == "/:userId"]
+        assert len(param_routes) == 3
+        param_methods = {r.stable_id for r in param_routes}
+        assert param_methods == {"GET", "PATCH", "DELETE"}
+
 
 # ============================================================================
 # NestJS Route Detection Tests
