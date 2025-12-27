@@ -276,6 +276,13 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | Database Query | [x] | query_references | db_query | Links SQL queries in application code to table definitions in SQL schema files. Detects Python (`cursor.execute()`, `db.execute()`, `session.execute(text())`), JavaScript (`db.query()`, `pool.query()`, `knex()`), and Java (`statement.executeQuery()`, `@Query()`) patterns. Extracts table names from SELECT/INSERT/UPDATE/DELETE/JOIN clauses. Cross-language linking enables full-stack database understanding. |
 | Event Sourcing | [x] | event_publishes | event_publisher, event_subscriber | Links event publishers to subscribers across languages. Detects JavaScript EventEmitter (`emitter.emit()`, `emitter.on()`), DOM events (`addEventListener()`, `dispatchEvent()`), Django signals (`signal.send()`, `@receiver()`), Python event buses (`EventBus.publish()`, `EventBus.subscribe()`), and Spring events (`applicationEventPublisher.publishEvent()`, `@EventListener`). Topic/event name matching enables cross-language event tracing. |
 
+## Test Infrastructure
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Test escape hatch removal | [x] | ADR 0002: Tests no longer skip when dependencies unavailable. All tree-sitter packages listed in `pyproject.toml`. |
+| CI debugging tools | [x] | `./scripts/ci-debug` for Forgejo Actions troubleshooting. Commands: `runs`, `status`, `analyze-deps`. |
+
 ---
 
 *Last updated: 2025-12-27*
