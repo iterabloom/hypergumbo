@@ -260,12 +260,12 @@ Source Files
 
 ## Most-Connected Symbols
 
-These symbols have the highest in-degree (most called/imported):
+These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Span` | class | 192 | ir.py |
 | `Symbol` | class | 192 | ir.py |
+| `Span` | class | 192 | ir.py |
 | `find_files` | function | 54 | discovery.py |
 | `Pass` | class | 30 | catalog.py |
 | `Entrypoint` | class | 28 | entrypoints.py |
@@ -273,12 +273,12 @@ These symbols have the highest in-degree (most called/imported):
 | `Edge` | class | 21 | ir.py |
 | `_find_child_by_type` | function | 20 | julia.py |
 | `_node_text` | function | 19 | rust.py |
-| `_node_text` | function | 17 | java.py |
 | `_find_child_by_type` | function | 17 | cpp.py |
+| `_node_text` | function | 17 | java.py |
 | `_node_text` | function | 17 | js_ts.py |
 | `MessageQueuePattern` | class | 17 | message_queue.py |
 | `_find_child_by_type` | function | 16 | zig.py |
-| `_find_child_by_field` | function | 15 | rust.py |
+| `_node_text` | function | 15 | go.py |
 
 ## Module Reference
 
@@ -375,18 +375,18 @@ Represents a code entity (function, class, method, etc.) with:
 - `path`: File path
 - `span`: Location in source (start/end line/column)
 - `stable_id`: Cross-run stable identifier
-- `supply_chain_tier`: Dependency classification (1-4)
+- `supply_chain`: Object with `tier` (1-4), `tier_name`, and `reason`
 
 ### Edge (`ir.py`)
 Represents a relationship between symbols:
 - `src`, `dst`: Source and destination symbol IDs
-- `edge_type`: Relationship type (calls, imports, instantiates, etc.)
+- `type`: Relationship type (calls, imports, instantiates, etc.)
 - `confidence`: 0.0-1.0 confidence score
-- `evidence_type`: How the edge was detected
+- `meta.evidence_type`: How the edge was detected
 
 ### AnalysisRun (`ir.py`)
 Provenance tracking for reproducibility:
-- `pass_id`: Which analyzer produced this data
+- `pass`: Which analyzer produced this data
 - `execution_id`: Unique run identifier
 - `duration_ms`: Analysis time
 - `files_analyzed`: Count of processed files

@@ -146,18 +146,22 @@
       "properties": {
         "start_line": {
           "type": "integer",
+          "minimum": 1,
           "description": "Starting line number (1-indexed)"
         },
         "end_line": {
           "type": "integer",
+          "minimum": 1,
           "description": "Ending line number (1-indexed)"
         },
         "start_col": {
           "type": "integer",
+          "minimum": 0,
           "description": "Starting column (0-indexed)"
         },
         "end_col": {
           "type": "integer",
+          "minimum": 0,
           "description": "Ending column (0-indexed)"
         }
       },
@@ -448,6 +452,7 @@
         },
         "line": {
           "type": "integer",
+          "minimum": 1,
           "description": "Line number where relationship occurs"
         },
         "confidence": {
