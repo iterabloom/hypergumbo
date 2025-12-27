@@ -1598,13 +1598,22 @@ def run_behavior_map(
         ]
         filtered_symbol_ids = {s.id for s in filtered_symbols}
 
-        # Filter edges: both src and dst must be in filtered symbols or be file refs
-        filtered_edges = [
-            e
-            for e in all_edges
-            if e.src in filtered_symbol_ids
-            or e.src.endswith((".py", ".js", ".ts", ".tsx", ".jsx"))
-        ]
+        # Filter edges: src must be in filtered symbols OR be a file-level reference
+        # File-level import edges have src like "python:path/to/file.py:1-1:file:file"
+        # We check for ":file" suffix OR common file extensions in the src path
+        def _is_valid_edge_src(src: str) -> bool:
+            if src in filtered_symbol_ids:
+                return True
+            # File-level symbols end with ":file" or ":file:file"
+            if src.endswith(":file") or ":file:" in src:
+                return True
+            # Also check for file extensions in the path portion
+            for ext in (".py:", ".js:", ".ts:", ".tsx:", ".jsx:"):
+                if ext in src:
+                    return True
+            return False
+
+        filtered_edges = [e for e in all_edges if _is_valid_edge_src(e.src)]
 
         all_symbols = filtered_symbols
         all_edges = filtered_edges

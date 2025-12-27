@@ -20,12 +20,39 @@ import argparse
 import ast
 import json
 import os
+import platform
 import subprocess
 import sys
+import tokenize
 from collections import defaultdict
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
+
+
+def get_git_commit_sha() -> str | None:
+    """Get the current git commit SHA."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()[:12]  # Short SHA
+    except Exception:
+        pass
+    return None
+
+
+def get_hypergumbo_version() -> str:
+    """Get the hypergumbo package version."""
+    try:
+        from hypergumbo import __version__
+        return __version__
+    except ImportError:
+        return "unknown"
 
 
 def run_command(args: list[str], description: str) -> subprocess.CompletedProcess:
@@ -57,6 +84,7 @@ def run_command(args: list[str], description: str) -> subprocess.CompletedProces
     if result.returncode != 0:
         print(f"ERROR: {description} failed with exit code {result.returncode}",
               file=sys.stderr)
+        print(f"Command: {' '.join(args)}", file=sys.stderr)
         if result.stderr:
             print(f"stderr: {result.stderr}", file=sys.stderr)
         sys.exit(1)
@@ -89,15 +117,23 @@ def run_hypergumbo_analysis() -> dict:
         "hypergumbo run",
     )
 
-    if output_file.exists():
-        return json.loads(output_file.read_text(encoding="utf-8"))
-    return {}
+    if not output_file.exists():
+        print(f"ERROR: hypergumbo run succeeded but output file not created: {output_file}",
+              file=sys.stderr)
+        sys.exit(1)
+
+    return json.loads(output_file.read_text(encoding="utf-8"))
 
 
 def extract_module_docstring(file_path: Path) -> str | None:
-    """Extract the module docstring from a Python file."""
+    """Extract the module docstring from a Python file.
+
+    Uses tokenize.open() to respect PEP 263 encoding declarations,
+    ensuring correct handling of files with non-UTF8 encodings.
+    """
     try:
-        content = file_path.read_text(encoding="utf-8")
+        with tokenize.open(file_path) as f:
+            content = f.read()
         tree = ast.parse(content)
         return ast.get_docstring(tree)
     except Exception:
@@ -189,11 +225,23 @@ def generate_architecture_md() -> str:
     node_count = len(analysis.get("nodes", []))
     edge_count = len(analysis.get("edges", []))
 
+    # Get metadata for drift detection
+    commit_sha = get_git_commit_sha()
+    hypergumbo_version = get_hypergumbo_version()
+    python_version = platform.python_version()
+
     lines = [
         "# Architecture",
         "",
         "> **Auto-generated** by running hypergumbo on itself.",
         "> Run `./scripts/generate-architecture` to update.",
+        "",
+        "<!--",
+        "GENERATION METADATA (for drift detection):",
+        f"  commit: {commit_sha or 'unknown'}",
+        f"  hypergumbo: {hypergumbo_version}",
+        f"  python: {python_version}",
+        "-->",
         "",
         "## Self-Analysis Summary",
         "",
@@ -283,6 +331,8 @@ def generate_architecture_md() -> str:
 
     lines.extend([
         "## Key Abstractions",
+        "",
+        "> **Note:** This section is manually maintained. Update if IR classes change.",
         "",
         "### Symbol (`ir.py`)",
         "Represents a code entity (function, class, method, etc.) with:",

@@ -3,12 +3,19 @@
 > **Auto-generated** by running hypergumbo on itself.
 > Run `./scripts/generate-architecture` to update.
 
+<!--
+GENERATION METADATA (for drift detection):
+  commit: a834b0baf954
+  hypergumbo: 0.5.0
+  python: 3.12.3
+-->
+
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
 - **72** Python modules (43 analyzers, 13 linkers)
 - **954** symbols (functions, classes, methods)
-- **2488** edges (calls, imports, instantiates)
+- **3631** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -16,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 75 files · ~28,428 LOC
+Python (100%) · 75 files · ~28,436 LOC
 
 ## Structure
 
@@ -242,7 +249,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  954 Symbols + 2488 Edges
+│  analyzers  │────▶│     IR      │  954 Symbols + 3631 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -264,21 +271,14 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 192 | ir.py |
-| `Span` | class | 192 | ir.py |
-| `find_files` | function | 54 | discovery.py |
+| `Symbol` | class | 252 | ir.py |
+| `Span` | class | 247 | ir.py |
+| `find_files` | function | 104 | discovery.py |
+| `Edge` | class | 80 | ir.py |
+| `AnalysisRun` | class | 56 | ir.py |
 | `Pass` | class | 30 | catalog.py |
-| `Entrypoint` | class | 28 | entrypoints.py |
+| `Entrypoint` | class | 29 | entrypoints.py |
 | `_get_filename` | function | 24 | entrypoints.py |
-| `Edge` | class | 21 | ir.py |
-| `_find_child_by_type` | function | 20 | julia.py |
-| `_node_text` | function | 19 | rust.py |
-| `_find_child_by_type` | function | 17 | cpp.py |
-| `_node_text` | function | 17 | java.py |
-| `_node_text` | function | 17 | js_ts.py |
-| `MessageQueuePattern` | class | 17 | message_queue.py |
-| `_find_child_by_type` | function | 16 | zig.py |
-| `_node_text` | function | 15 | go.py |
 
 ## Module Reference
 
@@ -367,6 +367,8 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`sketch`**: Token-budgeted Markdown sketch generation.
 
 ## Key Abstractions
+
+> **Note:** This section is manually maintained. Update if IR classes change.
 
 ### Symbol (`ir.py`)
 Represents a code entity (function, class, method, etc.) with:
