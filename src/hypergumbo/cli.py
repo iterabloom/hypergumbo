@@ -51,6 +51,7 @@ from .analyze.kotlin import analyze_kotlin
 from .analyze.swift import analyze_swift
 from .analyze.scala import analyze_scala
 from .analyze.lua import analyze_lua
+from .analyze.dart import analyze_dart
 from .analyze.haskell import analyze_haskell
 from .analyze.ocaml import analyze_ocaml
 from .analyze.solidity import analyze_solidity
@@ -1120,6 +1121,19 @@ def run_behavior_map(
             analysis_runs.append(lua_result.run.to_dict())
             all_symbols.extend(lua_result.symbols)
             all_edges.extend(lua_result.edges)
+
+    # Run Dart/Flutter analysis (optional, requires tree-sitter-language-pack)
+    dart_result = analyze_dart(repo_root)
+    if dart_result.run is not None:
+        if dart_result.skipped:  # pragma: no cover - requires missing tree-sitter
+            limits.skipped_passes.append({
+                "pass": dart_result.run.pass_id,
+                "reason": dart_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(dart_result.run.to_dict())
+            all_symbols.extend(dart_result.symbols)
+            all_edges.extend(dart_result.edges)
 
     # Run Haskell analysis (optional, requires tree-sitter-haskell)
     haskell_result = analyze_haskell(repo_root)
