@@ -503,6 +503,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Arrow functions assigned to variables: const foo = () => {}
+        # Also handles wrapper patterns: const foo = wrapper(async () => {})
         if node.type == "lexical_declaration" or node.type == "variable_declaration":
             for child in node.children:
                 if child.type == "variable_declarator":
@@ -513,6 +514,17 @@ def _extract_symbols(
                             name_node = grandchild
                         elif grandchild.type == "arrow_function":
                             value_node = grandchild
+                        elif grandchild.type == "call_expression":
+                            # Check for arrow function inside wrapper call
+                            # Pattern: const handler = catchAsync(async (req, res) => {})
+                            for call_child in grandchild.children:
+                                if call_child.type == "arguments":
+                                    for arg in call_child.children:
+                                        if arg.type == "arrow_function":
+                                            value_node = arg
+                                            break
+                                    if value_node:
+                                        break
                     if name_node and value_node:
                         name = _node_text(name_node, source)
                         span = Span(
@@ -747,6 +759,7 @@ def _extract_edges(
                     return
 
         # Arrow functions assigned to variables
+        # Also handles wrapper patterns: const foo = wrapper(async () => {})
         if node.type == "lexical_declaration" or node.type == "variable_declaration":
             for child in node.children:
                 if child.type == "variable_declarator":
@@ -760,6 +773,16 @@ def _extract_edges(
                             value_node = grandchild
                         elif grandchild.type == "call_expression":
                             call_node = grandchild
+                            # Check for arrow function inside wrapper call
+                            # Pattern: const handler = catchAsync(async (req, res) => {})
+                            for call_child in grandchild.children:
+                                if call_child.type == "arguments":
+                                    for arg in call_child.children:
+                                        if arg.type == "arrow_function":
+                                            value_node = arg
+                                            break
+                                    if value_node:
+                                        break
                     if name_node and value_node:
                         name = _node_text(name_node, source)
                         if name in global_symbols:
