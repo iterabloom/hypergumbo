@@ -315,25 +315,51 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     return method_name.upper() if method_name else None, route_path
 
 
-def _find_route_handler_in_call(node: "tree_sitter.Node") -> "tree_sitter.Node | None":
+def _find_route_handler_in_call(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple["tree_sitter.Node | None", str | None, bool]:
     """Find the handler function in an Express-style route call.
 
-    Looks for function_expression or arrow_function as an argument to the call.
-    Returns the first handler function node found, or None.
+    Looks for function_expression, arrow_function, or external handler references
+    (member_expression or identifier) as the last argument.
+
+    Returns (handler_node, handler_name, is_external) where:
+    - handler_node: The AST node of the handler
+    - handler_name: Name of the handler (for external refs like 'userController.createUser')
+    - is_external: True if handler is an external reference, False if inline function
     """
     if node.type != "call_expression":  # pragma: no cover
-        return None
+        return None, None, False
 
     for child in node.children:
         if child.type == "arguments":
-            for arg in child.children:
-                # Named function expression: function name(req, res) {}
+            # Collect all non-comma arguments
+            args = [arg for arg in child.children if arg.type not in (",", "(", ")")]
+            if not args:  # pragma: no cover
+                return None, None, False
+
+            # Check for inline function handlers first (anywhere in args)
+            for arg in args:
                 if arg.type == "function_expression" or arg.type == "function":
-                    return arg
-                # Arrow function: (req, res) => {}
+                    return arg, None, False
                 if arg.type == "arrow_function":
-                    return arg
-    return None  # pragma: no cover
+                    return arg, None, False
+
+            # If no inline handler, the last argument might be an external handler
+            # Pattern: router.post('/path', middleware, userController.createUser)
+            last_arg = args[-1]
+
+            # External handler as member expression: userController.createUser
+            if last_arg.type == "member_expression":
+                handler_name = _node_text(last_arg, source)
+                return last_arg, handler_name, True
+
+            # External handler as identifier: createUser
+            if last_arg.type == "identifier":
+                handler_name = _node_text(last_arg, source)
+                return last_arg, handler_name, True
+
+    return None, None, False  # pragma: no cover
 
 
 def _detect_nestjs_decorator(
@@ -442,37 +468,63 @@ def _extract_symbols(
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
-                handler_node = _find_route_handler_in_call(node)
+                handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
                 if handler_node:
-                    # Extract function name if it's a named function expression
-                    name = None
-                    if handler_node.type == "function_expression" or handler_node.type == "function":
-                        name = _find_name_in_children(handler_node, source)
-                    # For anonymous functions, generate a name from route
-                    if not name:
-                        # Clean route path for name: /users/:id -> _users_id
-                        clean_path = route_path.replace("/", "_").replace(":", "").replace("{", "").replace("}", "") if route_path else ""
-                        name = f"_{http_method}{clean_path}_handler"
+                    if is_external:
+                        # External handler: router.post('/path', userController.createUser)
+                        # Create a route symbol pointing to the external handler
+                        span = Span(
+                            start_line=handler_node.start_point[0] + 1 + line_offset,
+                            end_line=handler_node.end_point[0] + 1 + line_offset,
+                            start_col=handler_node.start_point[1],
+                            end_col=handler_node.end_point[1],
+                        )
+                        # Use the handler name as the route name
+                        name = handler_name or f"_{http_method}_handler"
+                        symbol = Symbol(
+                            id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "route", lang),
+                            name=name,
+                            kind="route",
+                            language=lang,
+                            path=str(file_path),
+                            span=span,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            stable_id=http_method,
+                            meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name},
+                        )
+                        symbols.append(symbol)
+                    else:
+                        # Inline handler: router.get('/path', (req, res) => {})
+                        # Extract function name if it's a named function expression
+                        name = None
+                        if handler_node.type == "function_expression" or handler_node.type == "function":
+                            name = _find_name_in_children(handler_node, source)
+                        # For anonymous functions, generate a name from route
+                        if not name:
+                            # Clean route path for name: /users/:id -> _users_id
+                            clean_path = route_path.replace("/", "_").replace(":", "").replace("{", "").replace("}", "") if route_path else ""
+                            name = f"_{http_method}{clean_path}_handler"
 
-                    span = Span(
-                        start_line=handler_node.start_point[0] + 1 + line_offset,
-                        end_line=handler_node.end_point[0] + 1 + line_offset,
-                        start_col=handler_node.start_point[1],
-                        end_col=handler_node.end_point[1],
-                    )
-                    symbol = Symbol(
-                        id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
-                        name=name,
-                        kind="function",
-                        language=lang,
-                        path=str(file_path),
-                        span=span,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        stable_id=http_method,
-                        meta={"route_path": route_path, "http_method": http_method} if route_path else None,
-                    )
-                    symbols.append(symbol)
+                        span = Span(
+                            start_line=handler_node.start_point[0] + 1 + line_offset,
+                            end_line=handler_node.end_point[0] + 1 + line_offset,
+                            start_col=handler_node.start_point[1],
+                            end_col=handler_node.end_point[1],
+                        )
+                        symbol = Symbol(
+                            id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
+                            name=name,
+                            kind="function",
+                            language=lang,
+                            path=str(file_path),
+                            span=span,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            stable_id=http_method,
+                            meta={"route_path": route_path, "http_method": http_method} if route_path else None,
+                        )
+                        symbols.append(symbol)
                     # Don't recurse into this handler - we've already processed it
                     # But we need to continue visiting other children
                     for child in node.children:

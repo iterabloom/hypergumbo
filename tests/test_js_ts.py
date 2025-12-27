@@ -2398,6 +2398,71 @@ app.get('/users', function getUsers(req: Request, res: Response): void {
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
 
+    def test_express_external_handler_detected(self, tmp_path: Path) -> None:
+        """Express routes with external handler references are detected."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const express = require('express');
+const userController = require('./controllers/user');
+const router = express.Router();
+
+router.post('/register', userController.register);
+router.get('/users', userController.getUsers);
+router.delete('/users/:id', userController.deleteUser);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find route symbols (external handlers create route symbols, not function symbols)
+        routes = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(routes) == 3
+
+        # Verify routes have correct metadata
+        route_names = {r.name for r in routes}
+        assert "userController.register" in route_names
+        assert "userController.getUsers" in route_names
+        assert "userController.deleteUser" in route_names
+
+        # Verify HTTP methods
+        methods = {r.stable_id for r in routes}
+        assert methods == {"POST", "GET", "DELETE"}
+
+        # Verify route paths
+        for route in routes:
+            assert route.meta is not None
+            assert "handler_ref" in route.meta
+            if route.name == "userController.register":
+                assert route.meta.get("route_path") == "/register"
+            elif route.name == "userController.getUsers":
+                assert route.meta.get("route_path") == "/users"
+            elif route.name == "userController.deleteUser":
+                assert route.meta.get("route_path") == "/users/:id"
+
+    def test_express_external_identifier_handler(self, tmp_path: Path) -> None:
+        """Express routes with identifier (non-member) handlers are detected."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "routes.js"
+        js_file.write_text("""
+const express = require('express');
+const handleUsers = require('./handlers');
+const router = express.Router();
+
+router.get('/users', handleUsers);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(routes) == 1
+        assert routes[0].name == "handleUsers"
+        assert routes[0].stable_id == "GET"
+        assert routes[0].meta.get("handler_ref") == "handleUsers"
+
 
 # ============================================================================
 # NestJS Route Detection Tests
