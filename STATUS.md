@@ -55,7 +55,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 |---------|--------|-------|
 | Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal; includes file-level imports |
 | Reverse slice (find callers) | [x] | `--reverse` flag on `hypergumbo slice` finds what calls X |
-| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron, Django, Express.js, NestJS, Spring Boot, Rails, Phoenix, Go (Gin/Echo/Fiber), Laravel, Rust (Actix-web/Axum/Rocket/Warp), ASP.NET Core, Sinatra, Ktor, Vapor, Plug, Hapi, Fastify, Koa, Grape, Tornado, Aiohttp, Slim, Micronaut, GraphQL (Apollo Server, Yoga, Mercurius). Test files excluded via `_is_test_file()` helper. |
+| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron, Django, Express.js, NestJS, Spring Boot, Rails, Phoenix, Go (Gin/Echo/Fiber), Laravel, Rust (Actix-web/Axum/Rocket/Warp), ASP.NET Core, Sinatra, Ktor, Vapor, Plug, Hapi, Fastify, Koa, Grape, Tornado, Aiohttp, Slim, Micronaut, Flutter (runApp, widgets), GraphQL (Apollo Server, Yoga, Mercurius). Test files excluded via `_is_test_file()` helper. |
 | Feature generation with query specs | [x] | Stable feature IDs from query |
 | Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
 
@@ -78,7 +78,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Token limit flag | [x] | `-t N` / `--tokens N` |
 | Language breakdown | [x] | Sorted by LOC percentage |
 | Directory structure | [x] | Top-level dirs with type labels |
-| Framework detection | [x] | Via profile.py. **Python:** FastAPI, Flask, Django, PyTorch, TensorFlow, Keras, Transformers, LangChain, LlamaIndex, Haystack, scikit-learn, MLflow, OpenAI, Anthropic. **JavaScript:** React, Vue, Angular, Express, NestJS, Next.js, Nuxt, Svelte. **Rust:** Axum, Actix-web, Tokio, Solana/Anchor, Substrate, ethers-rs, Arkworks, Halo2, Plonky2/3, SP1, RISC Zero, Nova, Zcash, libp2p. |
+| Framework detection | [x] | Via profile.py. **Python:** FastAPI, Flask, Django, Starlette, Quart, Sanic, Litestar, Falcon, Bottle, CherryPy, Pyramid, Tornado, Aiohttp, PyTorch, TensorFlow, Keras, JAX, Transformers, spaCy, NLTK, LangChain, LangGraph, LlamaIndex, Haystack, scikit-learn, XGBoost, LightGBM, CatBoost, Optuna, MLflow, WandB, Ray, vLLM, DeepSpeed, PaddlePaddle, OpenAI, Anthropic. **JavaScript/TypeScript:** React, Vue, Angular, Svelte, Solid, Qwik, Preact, Lit, Alpine, htmx, Ember, Next.js, Nuxt, Remix, Astro, Gatsby, SvelteKit, Express, NestJS, Fastify, Koa, Hapi, Adonis, Sails, Hono, Elysia, React Native, Expo, Ionic, Capacitor, NativeScript, Electron, Tauri, Hardhat, Web3.js, ethers.js, Wagmi, Viem. **Rust:** Axum, Actix-web, Rocket, Warp, Tide, Gotham, Poem, Salvo, Tokio, async-std, Serde, Clap, Tauri, Solana/Anchor, Substrate, CosmWasm, ethers-rs, Alloy, Foundry, REVM, Arkworks, Bellman, Halo2, Plonky2/3, SP1, RISC Zero, Jolt, Nova, HyperNova, Zcash, libp2p, curve25519/ed25519, secp256k1. **Go:** Gin, Echo, Fiber, Chi, Gorilla, Buffalo, Revel, Beego, Iris. **PHP:** Laravel, Symfony, CodeIgniter, CakePHP, Yii, Phalcon, Slim. **Java/Kotlin:** Spring Boot, Micronaut, Quarkus, Dropwizard, Vert.x, Javalin, Helidon, Spark, Ktor, Jetpack Compose. **Swift:** Vapor, Kitura, Perfect, SwiftUI. **Scala:** Play, Akka HTTP, http4s, ZIO HTTP, Finatra. **Dart/Flutter:** Flutter SDK, flutter_bloc, Riverpod, Provider, GetX, MobX, Dio, Freezed, go_router, Flame. |
 | Section-boundary truncation | [x] | Preserves coherent sections when truncating |
 | Source file listings | [x] | Progressive expansion based on budget |
 | Entry points section | [x] | CLI, HTTP routes, Electron patterns |
@@ -213,6 +213,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | XML | [x] tree-sitter | module, dependency, activity, service, permission | depends_on | Maven pom.xml: projects, dependencies with groupId/artifactId/version. Android Manifest: activities, services, receivers, providers, permissions, intent-filters. For Java/Android analysis. Optional: `pip install tree-sitter-language-pack` |
 | JSON | [x] tree-sitter | package, dependency, devDependency, script, tsconfig, reference, composer_package | depends_on, references | package.json: npm dependencies, scripts. tsconfig.json: TypeScript project references. composer.json: PHP Composer dependencies. For Node.js/PHP analysis. Optional: `pip install tree-sitter-language-pack` |
 | R | [x] tree-sitter | function, import, source | calls | Detects R code: function definitions, library/require imports, source() file references. Function call edges. For data science and statistical computing. Optional: `pip install tree-sitter-language-pack` |
+| Dart | [x] tree-sitter | class, function, method, constructor, getter, setter, enum, mixin, extension | calls, imports | Detects Dart code: classes, functions, methods (including getters/setters), constructors, enums, mixins, extensions, import statements. For Flutter and Dart web/server development. Optional: `pip install tree-sitter-language-pack` |
 
 ## Supply Chain Classification (§8.6)
 
@@ -249,7 +250,7 @@ Tracks implementation of re-export resolution per language. See [spec §9.6](doc
 | OCaml | `include` in signatures | [x] | Global name matching handles this |
 | Scala | `export` clauses (Scala 3) | [x] | Global name matching handles this |
 | Elixir | `defdelegate` | [x] | Global name matching handles this |
-| Dart | `export 'src/foo.dart'` | n/a | No Dart analyzer yet |
+| Dart | `export 'src/foo.dart'` | [x] | Global name matching handles this |
 | Zig | `pub usingnamespace` | [x] | Global name matching handles this |
 
 **Not affected:** Go, C, C++, Java, Kotlin, Swift, Ruby, PHP, Lua
