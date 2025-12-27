@@ -573,3 +573,454 @@ def test_handles_unreadable_cargo_toml(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
     # Should still work, just not detect any Rust frameworks
     assert "rust" in data["profile"]["languages"]
+
+
+# Go framework detection tests
+
+
+def test_detects_go_gin_framework(tmp_path: Path) -> None:
+    """Should detect Gin web framework from go.mod."""
+    (tmp_path / "main.go").write_text("package main\n")
+    (tmp_path / "go.mod").write_text("""module myapp
+
+go 1.21
+
+require (
+    github.com/gin-gonic/gin v1.9.0
+)
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "gin" in data["profile"]["frameworks"]
+
+
+def test_detects_go_echo_framework(tmp_path: Path) -> None:
+    """Should detect Echo web framework from go.mod."""
+    (tmp_path / "main.go").write_text("package main\n")
+    (tmp_path / "go.mod").write_text("""module myapp
+
+go 1.21
+
+require (
+    github.com/labstack/echo v4.11.0
+)
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "echo" in data["profile"]["frameworks"]
+
+
+def test_detects_go_fiber_framework(tmp_path: Path) -> None:
+    """Should detect Fiber web framework from go.mod."""
+    (tmp_path / "main.go").write_text("package main\n")
+    (tmp_path / "go.mod").write_text("""module myapp
+
+go 1.21
+
+require (
+    github.com/gofiber/fiber v2.52.0
+)
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "fiber" in data["profile"]["frameworks"]
+
+
+# PHP framework detection tests
+
+
+def test_detects_php_laravel_framework(tmp_path: Path) -> None:
+    """Should detect Laravel framework from composer.json."""
+    (tmp_path / "index.php").write_text("<?php\n")
+    (tmp_path / "composer.json").write_text("""{
+    "require": {
+        "laravel/framework": "^10.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "laravel" in data["profile"]["frameworks"]
+
+
+def test_detects_php_symfony_framework(tmp_path: Path) -> None:
+    """Should detect Symfony framework from composer.json."""
+    (tmp_path / "index.php").write_text("<?php\n")
+    (tmp_path / "composer.json").write_text("""{
+    "require": {
+        "symfony/framework-bundle": "^6.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "symfony" in data["profile"]["frameworks"]
+
+
+def test_handles_invalid_composer_json(tmp_path: Path) -> None:
+    """Should gracefully handle malformed composer.json."""
+    (tmp_path / "index.php").write_text("<?php\n")
+    (tmp_path / "composer.json").write_text("{ invalid json }")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    # Should still detect PHP, just not frameworks
+    assert "php" in data["profile"]["languages"]
+    assert "laravel" not in data["profile"]["frameworks"]
+
+
+# Java/Kotlin framework detection tests
+
+
+def test_detects_java_spring_boot_maven(tmp_path: Path) -> None:
+    """Should detect Spring Boot from pom.xml."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0"?>
+<project>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+    </dependencies>
+</project>""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "spring-boot" in data["profile"]["frameworks"]
+
+
+def test_detects_java_spring_boot_gradle(tmp_path: Path) -> None:
+    """Should detect Spring Boot from build.gradle."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "build.gradle").write_text("""plugins {
+    id 'org.springframework.boot' version '3.0.0'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter'
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "spring-boot" in data["profile"]["frameworks"]
+
+
+def test_detects_kotlin_ktor_framework(tmp_path: Path) -> None:
+    """Should detect Ktor framework from build.gradle.kts."""
+    (tmp_path / "Main.kt").write_text("fun main() {}\n")
+    (tmp_path / "build.gradle.kts").write_text("""dependencies {
+    implementation("io.ktor:ktor-server-core:2.3.0")
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "ktor" in data["profile"]["frameworks"]
+
+
+def test_detects_jetpack_compose_framework(tmp_path: Path) -> None:
+    """Should detect Jetpack Compose from build.gradle."""
+    (tmp_path / "MainActivity.kt").write_text("import androidx.compose.ui\n")
+    (tmp_path / "build.gradle").write_text("""android {
+    buildFeatures {
+        compose true
+    }
+}
+
+dependencies {
+    implementation 'androidx.compose.ui:ui:1.5.0'
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "jetpack-compose" in data["profile"]["frameworks"]
+
+
+# Swift framework detection tests
+
+
+def test_detects_swift_vapor_framework(tmp_path: Path) -> None:
+    """Should detect Vapor framework from Package.swift."""
+    (tmp_path / "main.swift").write_text("import Vapor\n")
+    (tmp_path / "Package.swift").write_text("""// swift-tools-version:5.7
+import PackageDescription
+
+let package = Package(
+    name: "myapp",
+    dependencies: [
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.0.0")
+    ]
+)""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "vapor" in data["profile"]["frameworks"]
+
+
+# Scala framework detection tests
+
+
+def test_detects_scala_play_framework(tmp_path: Path) -> None:
+    """Should detect Play Framework from build.sbt."""
+    (tmp_path / "Main.scala").write_text("object Main extends App\n")
+    (tmp_path / "build.sbt").write_text("""name := "myapp"
+version := "1.0"
+
+libraryDependencies += "com.typesafe.play" %% "play" % "2.9.0"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "play" in data["profile"]["frameworks"]
+
+
+def test_detects_scala_http4s_framework(tmp_path: Path) -> None:
+    """Should detect http4s from build.sbt."""
+    (tmp_path / "Main.scala").write_text("object Main extends App\n")
+    (tmp_path / "build.sbt").write_text("""name := "myapp"
+version := "1.0"
+
+libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.0"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "http4s" in data["profile"]["frameworks"]
+
+
+# Dart/Flutter framework detection tests
+
+
+def test_detects_dart_language(tmp_path: Path) -> None:
+    """Should detect Dart files."""
+    (tmp_path / "main.dart").write_text("void main() {}\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "dart" in data["profile"]["languages"]
+
+
+def test_detects_flutter_framework(tmp_path: Path) -> None:
+    """Should detect Flutter SDK from pubspec.yaml."""
+    (tmp_path / "main.dart").write_text("import 'package:flutter/material.dart';\n")
+    (tmp_path / "pubspec.yaml").write_text("""name: myapp
+dependencies:
+  flutter:
+    sdk: flutter
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "flutter" in data["profile"]["frameworks"]
+
+
+def test_detects_flutter_bloc_framework(tmp_path: Path) -> None:
+    """Should detect Flutter Bloc state management from pubspec.yaml."""
+    (tmp_path / "main.dart").write_text("import 'package:flutter_bloc/flutter_bloc.dart';\n")
+    (tmp_path / "pubspec.yaml").write_text("""name: myapp
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_bloc: ^8.0.0
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "flutter" in data["profile"]["frameworks"]
+    assert "flutter_bloc" in data["profile"]["frameworks"]
+
+
+def test_handles_unreadable_pubspec(tmp_path: Path) -> None:
+    """Should gracefully handle unreadable pubspec.yaml."""
+    (tmp_path / "main.dart").write_text("void main() {}\n")
+    # Create a directory named pubspec.yaml (reading it will fail)
+    (tmp_path / "pubspec.yaml").mkdir()
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    # Should still detect Dart, just not Flutter frameworks
+    assert "dart" in data["profile"]["languages"]
+
+
+# Mobile framework detection tests (React Native, Expo, etc.)
+
+
+def test_detects_react_native_framework(tmp_path: Path) -> None:
+    """Should detect React Native from package.json."""
+    (tmp_path / "App.js").write_text("import { View } from 'react-native';\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "react": "^18.0.0",
+        "react-native": "^0.72.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "react-native" in data["profile"]["frameworks"]
+    assert "react" in data["profile"]["frameworks"]
+
+
+def test_detects_expo_framework(tmp_path: Path) -> None:
+    """Should detect Expo from package.json."""
+    (tmp_path / "App.js").write_text("import { StatusBar } from 'expo-status-bar';\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "expo": "^49.0.0",
+        "react-native": "^0.72.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "expo" in data["profile"]["frameworks"]
+
+
+# Meta-framework detection tests
+
+
+def test_detects_nextjs_framework(tmp_path: Path) -> None:
+    """Should detect Next.js from package.json."""
+    (tmp_path / "pages").mkdir()
+    (tmp_path / "pages/index.tsx").write_text("export default function Home() {}\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "next": "^14.0.0",
+        "react": "^18.0.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "next" in data["profile"]["frameworks"]
+
+
+def test_detects_astro_framework(tmp_path: Path) -> None:
+    """Should detect Astro from package.json."""
+    (tmp_path / "src" / "pages").mkdir(parents=True)
+    (tmp_path / "src/pages/index.astro").write_text("---\n---\n<html></html>\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "astro": "^4.0.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "astro" in data["profile"]["frameworks"]
+
+
+# Desktop framework detection tests
+
+
+def test_detects_electron_framework(tmp_path: Path) -> None:
+    """Should detect Electron from package.json."""
+    (tmp_path / "main.js").write_text("const { app } = require('electron');\n")
+    (tmp_path / "package.json").write_text("""{
+    "devDependencies": {
+        "electron": "^28.0.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "electron" in data["profile"]["frameworks"]
+
+
+def test_detects_tauri_js_framework(tmp_path: Path) -> None:
+    """Should detect Tauri from package.json."""
+    (tmp_path / "App.tsx").write_text("import { invoke } from '@tauri-apps/api';\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "@tauri-apps/api": "^1.5.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "tauri" in data["profile"]["frameworks"]
+
+
+# Blockchain/Web3 framework detection tests
+
+
+def test_detects_hardhat_framework(tmp_path: Path) -> None:
+    """Should detect Hardhat from package.json."""
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "package.json").write_text("""{
+    "devDependencies": {
+        "hardhat": "^2.19.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_detects_ethersjs_framework(tmp_path: Path) -> None:
+    """Should detect ethers.js from package.json."""
+    (tmp_path / "app.js").write_text("const { ethers } = require('ethers');\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "ethers": "^6.0.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "ethers" in data["profile"]["frameworks"]
