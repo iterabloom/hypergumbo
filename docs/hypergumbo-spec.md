@@ -1674,37 +1674,28 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ## 9.6) Known Analysis Limitations
 
-This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers.
+This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `STATUS.md` for per-language implementation status.
 
 ### Re-export Resolution
 
-Many languages support re-exporting symbols from submodules through a package's public interface. When a consumer imports from the package (not the submodule), the analyzer must trace through the re-export chain to find the real symbol.
+Many languages support re-exporting symbols from submodules through a package's public interface:
 
-**Status by language:**
+```python
+# mypackage/__init__.py
+from .submodule import helper  # Re-export
 
-| Language | Re-export Pattern | Status |
-|----------|-------------------|--------|
-| Python | `__init__.py`: `from .submodule import helper` | ✅ Resolved |
-| JavaScript/TypeScript | `index.js`: `export { foo } from './foo'` | ❌ Not yet |
-| Rust | `lib.rs`: `pub use crate::module::item` | ❌ Not yet |
-| Haskell | `module Foo (module Bar) where` | ❌ Not yet |
-| OCaml | `include` in module signatures | ❌ Not yet |
-| Scala | Scala 3 `export` clauses | ❌ Not yet |
-| Elixir | `defdelegate` | ❌ Not yet |
-| Dart | `export 'src/foo.dart'` | ❌ Not yet |
-| Zig | `pub usingnamespace` | ❌ Not yet |
+# main.py
+from mypackage import helper   # Consumer imports from package
+helper()                       # Call should resolve to submodule.helper
+```
 
-**Not affected:**
-- **Go**: All files in a package share a namespace (no re-export concept)
-- **C/C++**: Headers declare symbols; different model
-- **Java**: Direct class imports; no re-export pattern
+When unresolved, call edges may point to placeholder IDs instead of real symbols. Slicing still works but may miss connections through re-exported symbols.
 
-**Impact when unresolved:**
-- Call edges may point to placeholder IDs instead of real symbols
-- Import edges resolve correctly (they point to the package, which is valid)
-- Slicing still works but may miss connections through re-exported symbols
+**Affected languages:** Python, JavaScript/TypeScript, Rust, Haskell, OCaml, Scala, Elixir, Dart, Zig
 
-**Workaround:** Use fully-qualified imports (e.g., `from mypackage.submodule import helper` instead of `from mypackage import helper`) when precise edge resolution is critical.
+**Not affected:** Go (package namespace sharing), C/C++ (headers), Java (direct class imports)
+
+**Workaround:** Use fully-qualified imports when precise resolution is critical.
 
 ## 10) Milestones (MVP + buffer)
 **Total timeline: 9 weeks** (2-week de-risking + 5 weeks core + 2 weeks buffer)
