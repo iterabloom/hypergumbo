@@ -16,10 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Wolfram Language analyzer (Mathematica support)
 - Agda analyzer (dependently typed proof assistant)
 - `scripts/build-source-grammars` for building experimental tree-sitter grammars
+- `scripts/contribute` for fork-based contributor workflow
 - `docs/EXPERIMENTAL_GRAMMARS.md` wishlist of domain-specific languages
 - `docs/GOVERNANCE.md` contributor trust model and release policies
 - Release automation: `scripts/release-check`, `scripts/release`, `scripts/integration-test`, `scripts/bump-version`
 - Extended release CI workflow with multi-Python/multi-platform testing
+- Contributor Mode documentation in AGENTS.md
 - Sketch improvements: two-phase symbol selection, per-file render compression, entrypoint preservation
 - Deterministic sketch output (sorted SOURCE_DIRS iteration)
 - Conservative token estimation using ceiling division

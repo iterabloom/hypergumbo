@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# Contributor workflow script for fork-based development.
+#
+# This script helps external contributors create PRs from their fork
+# to the upstream repository. Unlike auto-pr, this does NOT auto-merge
+# (contributors don't have write access to upstream).
+#
+# Usage:
+#   ./scripts/contribute [--title "PR title"] [--body "PR description"]
+#
+# Prerequisites:
+#   1. Fork the repo to your account
+#   2. Clone YOUR fork (not upstream)
+#   3. Add upstream remote: git remote add upstream <upstream-url>
+#   4. Set FORGEJO_USER and FORGEJO_TOKEN env vars
+#
+# The script will:
+#   1. Push your branch to your fork (origin)
+#   2. Create a PR from your fork to upstream/main
+#   3. Print the PR URL for tracking
+#
+# You'll need to wait for maintainer review and merge.
+#
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# ------------------------------------------------------------------
+# Load secrets from .env if present
+# ------------------------------------------------------------------
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  set -o allexport
+  source "$REPO_ROOT/.env"
+  set +o allexport
+fi
+
+# ------------------------------------------------------------------
+# Parse arguments
+# ------------------------------------------------------------------
+TITLE=""
+BODY=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --title)
+            TITLE="$2"
+            shift 2
+            ;;
+        --body)
+            BODY="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# ------------------------------------------------------------------
+# Validate environment
+# ------------------------------------------------------------------
+USER="${FORGEJO_USER:-}"
+TOKEN="${FORGEJO_TOKEN:-}"
+
+if [[ -z "$USER" ]]; then
+    echo -e "${RED}Error: FORGEJO_USER not set${NC}"
+    echo "Set it in .env or export FORGEJO_USER=your-username"
+    exit 1
+fi
+
+if [[ -z "$TOKEN" ]]; then
+    echo -e "${RED}Error: FORGEJO_TOKEN not set${NC}"
+    echo "Set it in .env or export FORGEJO_TOKEN=your-token"
+    exit 1
+fi
+
+BRANCH="$(git branch --show-current)"
+if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
+    echo -e "${RED}Error: You're on '$BRANCH'. Create a feature branch first:${NC}"
+    echo "  git checkout -b yourname/feat/description"
+    exit 1
+fi
+
+# ------------------------------------------------------------------
+# Detect fork setup
+# ------------------------------------------------------------------
+ORIGIN_URL="$(git remote get-url origin)"
+UPSTREAM_URL="$(git remote get-url upstream 2>/dev/null || echo "")"
+
+if [[ -z "$UPSTREAM_URL" ]]; then
+    echo -e "${RED}Error: No 'upstream' remote found${NC}"
+    echo ""
+    echo "Fork-based workflow requires:"
+    echo "  1. Fork the repo on Codeberg"
+    echo "  2. Clone YOUR fork"
+    echo "  3. Add upstream: git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git"
+    echo ""
+    echo "Your current origin: $ORIGIN_URL"
+    exit 1
+fi
+
+# Extract repo slugs
+extract_slug() {
+    echo "$1" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}'
+}
+
+FORK_SLUG=$(extract_slug "$ORIGIN_URL")
+UPSTREAM_SLUG=$(extract_slug "$UPSTREAM_URL")
+LOCAL_SHA="$(git rev-parse HEAD)"
+
+echo "╔════════════════════════════════════════╗"
+echo "║       Contributor PR Workflow          ║"
+echo "╚════════════════════════════════════════╝"
+echo ""
+echo -e "📂 Fork:     ${BLUE}$FORK_SLUG${NC}"
+echo -e "📂 Upstream: ${BLUE}$UPSTREAM_SLUG${NC}"
+echo -e "🌿 Branch:   ${BLUE}$BRANCH${NC}"
+echo -e "🔑 Commit:   ${BLUE}${LOCAL_SHA:0:7}${NC}"
+echo ""
+
+# ------------------------------------------------------------------
+# Pre-flight checks
+# ------------------------------------------------------------------
+echo "━━━ Pre-flight Checks ━━━"
+
+# Check for uncommitted changes
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo -e "${RED}✗ Uncommitted changes detected${NC}"
+    git status --short
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Working directory clean"
+
+# Check if branch is ahead of main
+AHEAD=$(git rev-list --count main..HEAD 2>/dev/null || echo "0")
+if [[ "$AHEAD" -eq 0 ]]; then
+    echo -e "${RED}✗ No commits ahead of main${NC}"
+    echo "  Make some commits first!"
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} $AHEAD commit(s) ahead of main"
+
+# Check for DCO sign-off on all commits
+UNSIGNED=$(git log main..HEAD --pretty=format:'%H %s' | while read sha msg; do
+    if ! git log -1 --format='%B' "$sha" | grep -q "^Signed-off-by:"; then
+        echo "$sha"
+    fi
+done)
+if [[ -n "$UNSIGNED" ]]; then
+    echo -e "${YELLOW}!${NC} Some commits lack DCO sign-off"
+    echo "  Consider: git rebase -i main and amend commits with -s"
+fi
+
+echo ""
+
+# ------------------------------------------------------------------
+# Push to fork
+# ------------------------------------------------------------------
+echo "━━━ Pushing to Fork ━━━"
+
+git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+    push -u origin "$BRANCH" --force-with-lease
+
+echo -e "${GREEN}✓${NC} Pushed to $FORK_SLUG:$BRANCH"
+echo ""
+
+# ------------------------------------------------------------------
+# Create PR to upstream
+# ------------------------------------------------------------------
+echo "━━━ Creating Pull Request ━━━"
+
+# Default title from branch name or last commit
+if [[ -z "$TITLE" ]]; then
+    TITLE=$(git log -1 --pretty=%s)
+fi
+
+# Default body from commit messages
+if [[ -z "$BODY" ]]; then
+    BODY=$(git log main..HEAD --pretty=format:'- %s' | head -10)
+fi
+
+# Check if PR already exists
+API_BASE="https://codeberg.org/api/v1/repos/$UPSTREAM_SLUG"
+
+# Search for existing PR from this fork/branch
+EXISTING_PR=$(curl -s -H "Authorization: token $TOKEN" \
+    "$API_BASE/pulls?state=open" | \
+    python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    fork_slug = '$FORK_SLUG'
+    branch = '$BRANCH'
+    for pr in data:
+        head_repo = pr.get('head', {}).get('repo', {}).get('full_name', '')
+        head_branch = pr.get('head', {}).get('ref', '')
+        if head_repo == fork_slug and head_branch == branch:
+            print(pr['number'])
+            break
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
+if [[ -n "$EXISTING_PR" ]]; then
+    echo -e "${YELLOW}PR #$EXISTING_PR already exists for this branch${NC}"
+    echo "🔗 https://codeberg.org/$UPSTREAM_SLUG/pulls/$EXISTING_PR"
+    echo ""
+    echo "To update the PR, just push more commits."
+    exit 0
+fi
+
+# Create new PR
+PR_RESPONSE=$(curl -s -X POST \
+    -H "Authorization: token $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"title\": $(printf '%s' "$TITLE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+        \"body\": $(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+        \"head\": \"$USER:$BRANCH\",
+        \"base\": \"main\"
+    }" \
+    "$API_BASE/pulls")
+
+PR_NUM=$(echo "$PR_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('number', ''))" 2>/dev/null || echo "")
+
+if [[ -n "$PR_NUM" && "$PR_NUM" != "None" ]]; then
+    echo -e "${GREEN}✓${NC} Created PR #$PR_NUM"
+    echo ""
+    echo "╔════════════════════════════════════════╗"
+    echo -e "║  ${GREEN}PR Created Successfully!${NC}              ║"
+    echo "╚════════════════════════════════════════╝"
+    echo ""
+    echo "🔗 https://codeberg.org/$UPSTREAM_SLUG/pulls/$PR_NUM"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Wait for CI to run"
+    echo "  2. Address any review feedback"
+    echo "  3. Maintainer will merge when ready"
+    echo ""
+    echo -e "${YELLOW}Note: You don't have write access, so the PR will NOT auto-merge.${NC}"
+else
+    echo -e "${RED}✗ Failed to create PR${NC}"
+    echo "Response: $PR_RESPONSE"
+    echo ""
+    echo "You can create manually at:"
+    echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/main...$USER:$BRANCH"
+    exit 1
+fi
