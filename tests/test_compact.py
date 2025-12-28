@@ -944,3 +944,68 @@ class TestSelectByTokensFiltering:
 
         # Omitted should include both filtered symbols
         assert result.omitted.count >= 2
+
+    def test_deduplicates_names_by_default(self):
+        """Duplicate symbol names are excluded by default."""
+        # Create multiple symbols with the same name from different files
+        push1 = make_symbol("push", path="src/array.ts")
+        push2 = make_symbol("push", path="src/collection.ts")
+        push3 = make_symbol("push", path="src/stack.ts")
+        unique = make_symbol("pop", path="src/array.ts")
+
+        result = select_by_tokens(
+            [push1, push2, push3, unique], [],
+            target_tokens=10000,
+        )
+
+        # Only one "push" should be included
+        included_names = [s.name for s in result.included.symbols]
+        assert included_names.count("push") == 1
+        assert "pop" in included_names
+
+    def test_deduplication_prefers_higher_centrality(self):
+        """Deduplication keeps the symbol with higher centrality."""
+        # Create duplicates where one has more edges
+        push_important = make_symbol("push", path="src/core.ts")
+        push_minor = make_symbol("push", path="src/util.ts")
+        caller = make_symbol("caller")
+
+        # Make push_important have higher centrality
+        edges = [make_edge(caller.id, push_important.id)]
+
+        result = select_by_tokens(
+            [push_important, push_minor, caller], edges,
+            target_tokens=10000,
+        )
+
+        # The important push should be included
+        included_paths = {s.path for s in result.included.symbols if s.name == "push"}
+        assert "src/core.ts" in included_paths
+        assert "src/util.ts" not in included_paths
+
+    def test_deduplicate_names_can_be_disabled(self):
+        """deduplicate_names=False includes all symbols."""
+        push1 = make_symbol("push", path="src/array.ts")
+        push2 = make_symbol("push", path="src/collection.ts")
+
+        result = select_by_tokens(
+            [push1, push2], [],
+            target_tokens=10000,
+            deduplicate_names=False,
+        )
+
+        # Both should be included
+        included_names = [s.name for s in result.included.symbols]
+        assert included_names.count("push") == 2
+
+    def test_deduplication_counts_skipped_as_omitted(self):
+        """Deduplicated symbols count toward omitted."""
+        push1 = make_symbol("push", path="src/array.ts")
+        push2 = make_symbol("push", path="src/collection.ts")
+        push3 = make_symbol("push", path="src/stack.ts")
+
+        result = select_by_tokens([push1, push2, push3], [], target_tokens=10000)
+
+        # One included, two omitted
+        assert result.included.count == 1
+        assert result.omitted.count == 2
