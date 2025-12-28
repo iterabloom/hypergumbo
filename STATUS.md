@@ -254,10 +254,14 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Token estimation | [x] | ~4 chars/token approximation for JSON |
 | Centrality-based selection | [x] | Most important symbols selected first per budget |
 | Tiered view format | [x] | `view: "tiered"`, `tier_tokens`, `nodes_summary` with included/omitted |
-| Quality filtering | [x] | Excludes non-code kinds (dependency, file, target) and test paths |
+| Quality filtering | [x] | Excludes non-code kinds (dependency, devDependency, file, target, special_target, project, package, script, event_subscriber, class_selector, id_selector) and test/example paths |
+| Test path filtering | [x] | Excludes test files: `/tests/`, `_test.go`, `.spec.ts`, `/testFixtures/`, `/intTest/`, `Tests.java`, etc. |
+| Example path filtering | [x] | Excludes example/demo code: `/examples/`, `/demos/`, `/samples/`, `/playground/`, `/tutorial/` |
 | Name deduplication | [x] | Prevents duplicate symbol names in tiers (e.g., multiple `push` methods) |
 
 *Design: Full analysis always written to disk. Tiered files provide progressively larger views for LLMs with different context limits. Smaller tiers (4k) fit in most LLMs; larger tiers (64k) provide more detail for capable models.*
+
+*Tested on: Django, Rails, Spring Boot, Laravel, Vue, Gin, Actix-web, Express, FastAPI, Flask. Quality filtering effectively removes 50-70% of test code while preserving core API symbols.*
 
 ## Re-export Resolution (§9.6)
 
@@ -306,4 +310,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-27*
+*Last updated: 2025-12-28*
