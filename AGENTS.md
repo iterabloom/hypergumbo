@@ -122,39 +122,36 @@ When testing analyzers that depend on optional tree-sitter grammars:
 - Example: `tests/test_agda.py`
 
 ### For build-from-source grammars (e.g., tree-sitter-lean, tree-sitter-wolfram)
-**DO NOT use pytest.mark.skipif escape hatches.** Instead, use mocking:
+These grammars are built from source in CI via `scripts/build-source-grammars`.
 
-1. **Mock availability detection:**
-   ```python
-   from hypergumbo.analyze import lean as lean_module
+**DO NOT use pytest.mark.skipif escape hatches.** Write real tests that:
+1. Directly call the analyzer with real files
+2. Assert on real parsing results
+3. Use mocking ONLY for testing the "unavailable" code path
 
-   with patch.object(lean_module, "importlib") as mock_importlib:
-       mock_importlib.util.find_spec.return_value = None
-       assert lean_module.is_lean_tree_sitter_available() is False
-   ```
+```python
+# Real test - uses actual tree-sitter parsing
+def test_detect_def(self, tmp_path: Path) -> None:
+    make_lean_file(tmp_path, "Example.lean", "def double := 2")
+    result = analyze_lean(tmp_path)
+    assert not result.skipped
+    func = next((s for s in result.symbols if s.name == "double"), None)
+    assert func is not None
 
-2. **Mock the analyzer for unavailability testing:**
-   ```python
-   with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=False):
-       with pytest.warns(UserWarning, match="Lean analysis skipped"):
-           result = lean_module.analyze_lean(tmp_path)
-   ```
-
-3. **Mock tree-sitter parser for feature testing:**
-   ```python
-   with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=True):
-       mock_tree_sitter = MagicMock()
-       mock_parser = MagicMock()
-       mock_parser.parse.return_value = mock_tree  # mock AST structure
-       mock_tree_sitter.Parser.return_value = mock_parser
-
-       with patch.dict("sys.modules", {"tree_sitter": mock_tree_sitter, ...}):
-           result = lean_module.analyze_lean(tmp_path)
-   ```
-
-This ensures 100% coverage in CI even when the grammar isn't installed.
+# Mock test - only for testing unavailability handling
+def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
+    with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=False):
+        with pytest.warns(UserWarning, match="Lean analysis skipped"):
+            result = lean_module.analyze_lean(tmp_path)
+    assert result.skipped is True
+```
 
 **Examples:** `tests/test_lean.py`, `tests/test_wolfram.py`
+
+### Adding a new build-from-source grammar
+1. Add build steps to `scripts/build-source-grammars`
+2. CI will automatically build it before running tests
+3. Write real tests (not mocked) for the analyzer
 
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
