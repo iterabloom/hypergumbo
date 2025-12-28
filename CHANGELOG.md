@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `scripts/contribute` for fork-based contributor workflow
 - `docs/EXPERIMENTAL_GRAMMARS.md` wishlist of domain-specific languages
 - `docs/GOVERNANCE.md` contributor trust model and release policies
+- `docs/MAINTAINER_AGENT_SPEC.md` specification for automated PR processing
 - Release automation: `scripts/release-check`, `scripts/release`, `scripts/integration-test`, `scripts/bump-version`
 - Extended release CI workflow with multi-Python/multi-platform testing
 - Contributor Mode documentation in AGENTS.md
