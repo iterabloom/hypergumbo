@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix", "glsl", "fortran", "toml", "css"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "agda", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix", "glsl", "fortran", "toml", "css"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -218,6 +218,12 @@ def get_default_catalog() -> Catalog:
                 description="Haskell via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[haskell]",
+            ),
+            Pass(
+                id="agda-v1",
+                description="Agda proof assistant via tree-sitter",
+                availability="extra",
+                requires="hypergumbo[agda]",
             ),
             Pass(
                 id="ocaml-ts-v1",

@@ -468,6 +468,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Haskell analysis failed or tree-sitter not available
 
+    if "agda" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.agda import analyze_agda  # pragma: no cover
+            result = analyze_agda(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Agda analysis failed or tree-sitter not available
+
     if "ocaml" in profile.languages:
         try:  # pragma: no cover
             from .analyze.ocaml import analyze_ocaml  # pragma: no cover

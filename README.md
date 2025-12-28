@@ -80,7 +80,7 @@ Falls back to template-based generation if LLM is unavailable or fails.
 > equivalent results. This feature will become practical as the catalog expands with
 > framework-specific packs and configuration options.
 
-### Supported Languages (49 Analyzers)
+### Supported Languages (50 Analyzers)
 
 | Category | Languages |
 |----------|-----------|
@@ -91,6 +91,7 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
 | **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
 | **Frontend** | Vue, Svelte, HTML |
+| **Proof/Formal** | Agda |
 | **Legacy/Academic** | COBOL, LaTeX |
 
 All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
