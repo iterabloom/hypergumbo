@@ -529,6 +529,7 @@ def select_by_tokens(
     first_party_priority: bool = True,
     exclude_tests: bool = True,
     exclude_non_code: bool = True,
+    deduplicate_names: bool = True,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -542,6 +543,8 @@ def select_by_tokens(
         first_party_priority: Apply tier weighting. Default True.
         exclude_tests: Exclude symbols from test files. Default True.
         exclude_non_code: Exclude non-code kinds (deps, files). Default True.
+        deduplicate_names: Skip symbols with already-included names. Default True.
+            Prevents "push" appearing 4 times from different files.
 
     Returns:
         CompactResult with symbols fitting the budget.
@@ -591,8 +594,13 @@ def select_by_tokens(
     included: List[Symbol] = []
     included_centrality = 0.0
     tokens_used = 0
+    seen_names: set[str] = set()  # For deduplication
 
     for sym in sorted_symbols:
+        # Skip duplicate names if deduplication is enabled
+        if deduplicate_names and sym.name in seen_names:
+            continue
+
         node_dict = sym.to_dict()
         node_tokens = estimate_node_tokens(node_dict)
 
@@ -602,6 +610,7 @@ def select_by_tokens(
         included.append(sym)
         included_centrality += centrality.get(sym.id, 0)
         tokens_used += node_tokens
+        seen_names.add(sym.name)
 
     # Compute omitted symbols
     included_ids = {s.id for s in included}
