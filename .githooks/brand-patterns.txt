@@ -9,7 +9,6 @@ Claude
 Gemini
 Gemma
 Grok
-Command
 Aya
 Titan
 Nova
@@ -25,7 +24,6 @@ Hunyuan
 Kimi
 Pangu
 CLOVA
-Stable
 Falcon
 DBRX
 Arctic
