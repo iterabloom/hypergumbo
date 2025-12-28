@@ -155,8 +155,9 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    assert len(data["limits"]["skipped_passes"]) == 1
-    assert data["limits"]["skipped_passes"][0]["pass"] == "javascript-ts-v1"
+    # Check that JS is in the skipped list (there may be other skipped passes too)
+    skipped_passes = [p["pass"] for p in data["limits"]["skipped_passes"]]
+    assert "javascript-ts-v1" in skipped_passes
 
 
 def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
