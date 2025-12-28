@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+# Integration tests against real-world repositories.
+#
+# This script clones popular open source projects and runs hypergumbo
+# against them to verify it works on real codebases.
+#
+# Usage:
+#   ./scripts/integration-test [--quick] [--repo REPO_URL]
+#
+# Options:
+#   --quick       Test only a subset of repos (faster)
+#   --repo URL    Test a specific repo instead of the default set
+#
+# Exit codes:
+#   0 - All tests passed
+#   1 - One or more tests failed
+#
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+QUICK_MODE=false
+CUSTOM_REPO=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --quick)
+            QUICK_MODE=true
+            shift
+            ;;
+        --repo)
+            CUSTOM_REPO="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Get project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
+# Test repos - diverse languages and frameworks
+declare -A REPOS
+REPOS=(
+    # Python
+    ["flask"]="https://github.com/pallets/flask.git"
+    ["fastapi"]="https://github.com/tiangolo/fastapi.git"
+    ["django"]="https://github.com/django/django.git"
+
+    # JavaScript/TypeScript
+    ["express"]="https://github.com/expressjs/express.git"
+    ["nestjs"]="https://github.com/nestjs/nest.git"
+
+    # Rust
+    ["axum"]="https://github.com/tokio-rs/axum.git"
+    ["actix-web"]="https://github.com/actix/actix-web.git"
+
+    # Go
+    ["gin"]="https://github.com/gin-gonic/gin.git"
+    ["echo"]="https://github.com/labstack/echo.git"
+
+    # Java
+    ["spring-boot"]="https://github.com/spring-projects/spring-boot.git"
+
+    # Ruby
+    ["rails"]="https://github.com/rails/rails.git"
+
+    # Elixir
+    ["phoenix"]="https://github.com/phoenixframework/phoenix.git"
+)
+
+# Quick mode uses a smaller subset
+if $QUICK_MODE; then
+    REPOS=(
+        ["flask"]="https://github.com/pallets/flask.git"
+        ["express"]="https://github.com/expressjs/express.git"
+        ["gin"]="https://github.com/gin-gonic/gin.git"
+    )
+fi
+
+# Custom repo overrides everything
+if [[ -n "$CUSTOM_REPO" ]]; then
+    REPOS=(
+        ["custom"]="$CUSTOM_REPO"
+    )
+fi
+
+# Create temp directory for clones
+WORK_DIR=$(mktemp -d)
+trap "rm -rf $WORK_DIR" EXIT
+
+PASSED=0
+FAILED=0
+RESULTS=()
+
+echo "╔════════════════════════════════════════╗"
+echo "║      Integration Test Suite            ║"
+echo "╚════════════════════════════════════════╝"
+echo ""
+echo "Testing ${#REPOS[@]} repositories..."
+echo "Work directory: $WORK_DIR"
+echo ""
+
+test_repo() {
+    local name="$1"
+    local url="$2"
+    local clone_dir="$WORK_DIR/$name"
+
+    echo "━━━ Testing: $name ━━━"
+
+    # Clone (shallow for speed)
+    echo "  Cloning $url..."
+    if ! git clone --depth 1 --quiet "$url" "$clone_dir" 2>/dev/null; then
+        echo -e "  ${RED}✗ Clone failed${NC}"
+        RESULTS+=("$name: CLONE_FAILED")
+        FAILED=$((FAILED + 1))
+        return 1
+    fi
+
+    # Run hypergumbo sketch
+    echo "  Running: hypergumbo sketch..."
+    local start_time=$(date +%s.%N)
+    if hypergumbo "$clone_dir" -t 2000 > "$WORK_DIR/$name-sketch.md" 2>&1; then
+        local end_time=$(date +%s.%N)
+        local duration=$(echo "$end_time - $start_time" | bc)
+        local lines=$(wc -l < "$WORK_DIR/$name-sketch.md")
+        echo -e "  ${GREEN}✓ Sketch generated${NC} (${duration}s, ${lines} lines)"
+    else
+        echo -e "  ${YELLOW}! Sketch had issues${NC}"
+    fi
+
+    # Run hypergumbo run
+    echo "  Running: hypergumbo run..."
+    start_time=$(date +%s.%N)
+    if hypergumbo run "$clone_dir" -o "$WORK_DIR/$name-output.json" 2>&1; then
+        end_time=$(date +%s.%N)
+        duration=$(echo "$end_time - $start_time" | bc)
+
+        # Extract stats from output
+        if [[ -f "$WORK_DIR/$name-output.json" ]]; then
+            local nodes=$(jq '.nodes | length' "$WORK_DIR/$name-output.json" 2>/dev/null || echo "?")
+            local edges=$(jq '.edges | length' "$WORK_DIR/$name-output.json" 2>/dev/null || echo "?")
+            echo -e "  ${GREEN}✓ Analysis complete${NC} (${duration}s, ${nodes} nodes, ${edges} edges)"
+            RESULTS+=("$name: PASSED (${nodes} nodes, ${edges} edges)")
+            PASSED=$((PASSED + 1))
+        else
+            echo -e "  ${RED}✗ No output file${NC}"
+            RESULTS+=("$name: NO_OUTPUT")
+            FAILED=$((FAILED + 1))
+            return 1
+        fi
+    else
+        echo -e "  ${RED}✗ Analysis failed${NC}"
+        RESULTS+=("$name: ANALYSIS_FAILED")
+        FAILED=$((FAILED + 1))
+        return 1
+    fi
+
+    # Run hypergumbo routes (if applicable)
+    echo "  Running: hypergumbo routes..."
+    if hypergumbo routes "$clone_dir" > "$WORK_DIR/$name-routes.txt" 2>&1; then
+        local route_count=$(wc -l < "$WORK_DIR/$name-routes.txt")
+        if [[ $route_count -gt 1 ]]; then
+            echo -e "  ${GREEN}✓ Routes detected${NC} ($route_count lines)"
+        else
+            echo "  (no routes found)"
+        fi
+    fi
+
+    # Validate output against schema
+    echo "  Validating output schema..."
+    if command -v check-jsonschema &>/dev/null; then
+        if check-jsonschema --schemafile docs/schema.json "$WORK_DIR/$name-output.json" 2>/dev/null; then
+            echo -e "  ${GREEN}✓ Schema valid${NC}"
+        else
+            echo -e "  ${YELLOW}! Schema validation issues${NC}"
+        fi
+    fi
+
+    echo ""
+    return 0
+}
+
+# Run tests
+for name in "${!REPOS[@]}"; do
+    test_repo "$name" "${REPOS[$name]}" || true
+done
+
+# Summary
+echo "╔════════════════════════════════════════╗"
+echo "║              Summary                   ║"
+echo "╚════════════════════════════════════════╝"
+echo ""
+
+for result in "${RESULTS[@]}"; do
+    if [[ "$result" == *"PASSED"* ]]; then
+        echo -e "  ${GREEN}✓${NC} $result"
+    else
+        echo -e "  ${RED}✗${NC} $result"
+    fi
+done
+
+echo ""
+echo "Passed: $PASSED / $((PASSED + FAILED))"
+
+if [[ $FAILED -gt 0 ]]; then
+    echo -e "${RED}Some tests failed${NC}"
+    exit 1
+else
+    echo -e "${GREEN}All tests passed!${NC}"
+    exit 0
+fi
