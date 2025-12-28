@@ -53,6 +53,51 @@ from .ir import Symbol, Edge
 from .ranking import compute_centrality, apply_tier_weights
 
 
+# Symbol kinds to exclude from tiered output
+# These have high centrality but don't represent useful code
+EXCLUDED_KINDS = frozenset({
+    "dependency",       # package.json, pyproject.toml dependencies
+    "devDependency",    # package.json dev dependencies
+    "file",             # file-level nodes (import targets)
+    "target",           # Makefile targets
+    "special_target",   # .PHONY and other special targets
+    "project",          # project-level nodes
+})
+
+# Path patterns indicating test files
+TEST_PATH_PATTERNS = (
+    "/tests/",
+    "/test/",
+    "/__tests__/",
+    "_test.go",
+    "_test.py",
+    ".test.ts",
+    ".test.js",
+    ".test.tsx",
+    ".test.jsx",
+    ".spec.ts",
+    ".spec.js",
+    ".spec.tsx",
+    ".spec.jsx",
+    ".test-d.ts",
+    ".test-d.tsx",
+    "test_",           # Python test files: test_foo.py
+)
+
+
+def _is_test_path(path: str) -> bool:
+    """Check if a path represents a test file.
+
+    Args:
+        path: File path to check.
+
+    Returns:
+        True if the path appears to be a test file.
+    """
+    path_lower = path.lower()
+    return any(pattern in path_lower for pattern in TEST_PATH_PATTERNS)
+
+
 @dataclass
 class CompactConfig:
     """Configuration for compact output mode.
@@ -482,6 +527,8 @@ def select_by_tokens(
     edges: List[Edge],
     target_tokens: int,
     first_party_priority: bool = True,
+    exclude_tests: bool = True,
+    exclude_non_code: bool = True,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -493,6 +540,8 @@ def select_by_tokens(
         edges: Edges for centrality computation.
         target_tokens: Target token budget.
         first_party_priority: Apply tier weighting. Default True.
+        exclude_tests: Exclude symbols from test files. Default True.
+        exclude_non_code: Exclude non-code kinds (deps, files). Default True.
 
     Returns:
         CompactResult with symbols fitting the budget.
@@ -508,7 +557,15 @@ def select_by_tokens(
             ),
         )
 
-    # Compute centrality
+    # Filter symbols for tiered output quality
+    # These are excluded from selection but still count toward "omitted"
+    eligible_symbols = symbols
+    if exclude_non_code:
+        eligible_symbols = [s for s in eligible_symbols if s.kind not in EXCLUDED_KINDS]
+    if exclude_tests:
+        eligible_symbols = [s for s in eligible_symbols if not _is_test_path(s.path)]
+
+    # Compute centrality on ALL symbols (for accurate coverage)
     raw_centrality = compute_centrality(symbols, edges)
 
     if first_party_priority:
@@ -516,9 +573,9 @@ def select_by_tokens(
     else:
         centrality = raw_centrality
 
-    # Sort by centrality (highest first)
+    # Sort eligible symbols by centrality (highest first)
     sorted_symbols = sorted(
-        symbols,
+        eligible_symbols,
         key=lambda s: (-centrality.get(s.id, 0), s.name)
     )
 
