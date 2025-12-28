@@ -254,6 +254,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Token estimation | [x] | ~4 chars/token approximation for JSON |
 | Centrality-based selection | [x] | Most important symbols selected first per budget |
 | Tiered view format | [x] | `view: "tiered"`, `tier_tokens`, `nodes_summary` with included/omitted |
+| Quality filtering | [x] | Excludes non-code kinds (dependency, file, target) and test paths |
+| Name deduplication | [x] | Prevents duplicate symbol names in tiers (e.g., multiple `push` methods) |
 
 *Design: Full analysis always written to disk. Tiered files provide progressively larger views for LLMs with different context limits. Smaller tiers (4k) fit in most LLMs; larger tiers (64k) provide more detail for capable models.*
 
