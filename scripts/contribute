@@ -16,7 +16,7 @@
 #
 # The script will:
 #   1. Push your branch to your fork (origin)
-#   2. Create a PR from your fork to upstream/main
+#   2. Create a PR from your fork to upstream/dev
 #   3. Print the PR URL for tracking
 #
 # You'll need to wait for maintainer review and merge.
@@ -137,24 +137,24 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 echo -e "${GREEN}✓${NC} Working directory clean"
 
-# Check if branch is ahead of main
-AHEAD=$(git rev-list --count main..HEAD 2>/dev/null || echo "0")
+# Check if branch is ahead of dev
+AHEAD=$(git rev-list --count dev..HEAD 2>/dev/null || echo "0")
 if [[ "$AHEAD" -eq 0 ]]; then
-    echo -e "${RED}✗ No commits ahead of main${NC}"
+    echo -e "${RED}✗ No commits ahead of dev${NC}"
     echo "  Make some commits first!"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} $AHEAD commit(s) ahead of main"
+echo -e "${GREEN}✓${NC} $AHEAD commit(s) ahead of dev"
 
 # Check for DCO sign-off on all commits
-UNSIGNED=$(git log main..HEAD --pretty=format:'%H %s' | while read sha msg; do
+UNSIGNED=$(git log dev..HEAD --pretty=format:'%H %s' | while read sha msg; do
     if ! git log -1 --format='%B' "$sha" | grep -q "^Signed-off-by:"; then
         echo "$sha"
     fi
 done)
 if [[ -n "$UNSIGNED" ]]; then
     echo -e "${YELLOW}!${NC} Some commits lack DCO sign-off"
-    echo "  Consider: git rebase -i main and amend commits with -s"
+    echo "  Consider: git rebase -i dev and amend commits with -s"
 fi
 
 echo ""
@@ -182,7 +182,7 @@ fi
 
 # Default body from commit messages
 if [[ -z "$BODY" ]]; then
-    BODY=$(git log main..HEAD --pretty=format:'- %s' | head -10)
+    BODY=$(git log dev..HEAD --pretty=format:'- %s' | head -10)
 fi
 
 # Check if PR already exists
@@ -223,7 +223,7 @@ PR_RESPONSE=$(curl -s -X POST \
         \"title\": $(printf '%s' "$TITLE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
         \"body\": $(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
         \"head\": \"$USER:$BRANCH\",
-        \"base\": \"main\"
+        \"base\": \"dev\"
     }" \
     "$API_BASE/pulls")
 
@@ -249,6 +249,6 @@ else
     echo "Response: $PR_RESPONSE"
     echo ""
     echo "You can create manually at:"
-    echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/main...$USER:$BRANCH"
+    echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/dev...$USER:$BRANCH"
     exit 1
 fi
