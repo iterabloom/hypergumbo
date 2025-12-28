@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Build tree-sitter grammars that are not available on PyPI.
+#
+# This script builds tree-sitter-lean and tree-sitter-wolfram from source.
+# These grammars require building because they are not published to PyPI.
+#
+# Requirements:
+# - git (to clone repos)
+# - gcc or clang (C/C++ compiler)
+# - Python development headers
+# - pip
+#
+# Usage:
+#   ./scripts/build-source-grammars
+#
+set -euo pipefail
+
+BUILD_DIR="${BUILD_DIR:-/tmp/ts-grammar-build}"
+mkdir -p "$BUILD_DIR"
+
+echo "Building tree-sitter grammars from source..."
+echo "Build directory: $BUILD_DIR"
+
+# Function to build a grammar
+# Args: name, repo_url, function_name, scanner_type (none|c|cc)
+build_grammar() {
+    local name="$1"
+    local repo_url="$2"
+    local function_name="$3"
+    local scanner_type="${4:-none}"
+
+    local repo_dir="$BUILD_DIR/tree-sitter-$name"
+    local pkg_dir="$BUILD_DIR/tree-sitter-$name-py"
+    local module_name="tree_sitter_$name"
+
+    echo ""
+    echo "=== Building tree-sitter-$name ==="
+
+    # Clone or update the repository
+    if [ -d "$repo_dir" ]; then
+        echo "Updating existing repo..."
+        git -C "$repo_dir" pull --ff-only 2>/dev/null || true
+    else
+        echo "Cloning $repo_url..."
+        git clone --depth 1 "$repo_url" "$repo_dir"
+    fi
+
+    # Create Python package directory
+    rm -rf "$pkg_dir"
+    mkdir -p "$pkg_dir/$module_name"
+
+    # Create __init__.py
+    cat > "$pkg_dir/$module_name/__init__.py" << 'EOF'
+"""Grammar for tree-sitter."""
+
+from ._binding import language
+
+__all__ = ["language"]
+EOF
+
+    # Create binding.c
+    cat > "$pkg_dir/$module_name/binding.c" << BINDINGEOF
+#include <Python.h>
+
+typedef struct TSLanguage TSLanguage;
+
+TSLanguage *$function_name(void);
+
+static PyObject* _binding_language(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(args)) {
+    return PyCapsule_New($function_name(), "tree_sitter.Language", NULL);
+}
+
+static PyMethodDef methods[] = {
+    {"language", _binding_language, METH_NOARGS,
+     "Get the tree-sitter language for this grammar."},
+    {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef module = {
+    .m_base = PyModuleDef_HEAD_INIT,
+    .m_name = "_binding",
+    .m_doc = NULL,
+    .m_size = -1,
+    .m_methods = methods
+};
+
+PyMODINIT_FUNC PyInit__binding(void) {
+    return PyModule_Create(&module);
+}
+BINDINGEOF
+
+    # Build sources list based on scanner type
+    local sources="os.path.join(SRC_DIR, 'parser.c'), '$module_name/binding.c'"
+    local extra_compile_args="['-std=c11', '-Wno-unused-parameter']"
+
+    case "$scanner_type" in
+        c)
+            sources="os.path.join(SRC_DIR, 'parser.c'), os.path.join(SRC_DIR, 'scanner.c'), '$module_name/binding.c'"
+            ;;
+        cc)
+            sources="os.path.join(SRC_DIR, 'parser.c'), os.path.join(SRC_DIR, 'scanner.cc'), '$module_name/binding.c'"
+            extra_compile_args="['-std=c++14', '-Wno-unused-parameter']"
+            ;;
+    esac
+
+    cat > "$pkg_dir/setup.py" << SETUPEOF
+"""Setup for tree-sitter-$name Python bindings."""
+from setuptools import setup, Extension
+import os
+
+TREE_SITTER_DIR = '$repo_dir'
+SRC_DIR = os.path.join(TREE_SITTER_DIR, 'src')
+
+ext_module = Extension(
+    '$module_name._binding',
+    sources=[$sources],
+    include_dirs=[SRC_DIR],
+    extra_compile_args=$extra_compile_args,
+)
+
+setup(
+    name='tree-sitter-$name',
+    version='0.1.0',
+    description='$name grammar for tree-sitter',
+    packages=['$module_name'],
+    ext_modules=[ext_module],
+    python_requires='>=3.9',
+    install_requires=['tree-sitter>=0.21.0'],
+)
+SETUPEOF
+
+    # Build and install
+    echo "Building and installing..."
+    pip install "$pkg_dir" --quiet
+
+    echo "Successfully installed tree-sitter-$name"
+}
+
+# Build tree-sitter-lean
+# Repository: https://github.com/Julian/tree-sitter-lean
+# Has scanner.c (C)
+build_grammar "lean" "https://github.com/Julian/tree-sitter-lean.git" "tree_sitter_lean" "c"
+
+# Build tree-sitter-wolfram
+# Repository: https://github.com/bostick/tree-sitter-wolfram
+# Has scanner.cc (C++)
+build_grammar "wolfram" "https://github.com/bostick/tree-sitter-wolfram.git" "tree_sitter_wolfram" "cc"
+
+echo ""
+echo "=== All grammars built successfully ==="
+echo ""
+
+# Verify installation
+python3 -c "import tree_sitter_lean; print('tree-sitter-lean:', tree_sitter_lean.language())"
+python3 -c "import tree_sitter_wolfram; print('tree-sitter-wolfram:', tree_sitter_wolfram.language())"
