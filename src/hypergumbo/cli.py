@@ -53,6 +53,7 @@ from .analyze.scala import analyze_scala
 from .analyze.lua import analyze_lua
 from .analyze.dart import analyze_dart
 from .analyze.haskell import analyze_haskell
+from .analyze.agda import analyze_agda
 from .analyze.ocaml import analyze_ocaml
 from .analyze.solidity import analyze_solidity
 from .analyze.csharp import analyze_csharp
@@ -1213,6 +1214,19 @@ def run_behavior_map(
             analysis_runs.append(haskell_result.run.to_dict())
             all_symbols.extend(haskell_result.symbols)
             all_edges.extend(haskell_result.edges)
+
+    # Run Agda analysis (optional, requires tree-sitter-agda)
+    agda_result = analyze_agda(repo_root)
+    if agda_result.run is not None:
+        if agda_result.skipped:  # pragma: no cover - agda installed
+            limits.skipped_passes.append({
+                "pass": agda_result.run.pass_id,
+                "reason": agda_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(agda_result.run.to_dict())
+            all_symbols.extend(agda_result.symbols)
+            all_edges.extend(agda_result.edges)
 
     # Run OCaml analysis (optional, requires tree-sitter-ocaml)
     ocaml_result = analyze_ocaml(repo_root)
