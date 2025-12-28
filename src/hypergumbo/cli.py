@@ -54,6 +54,7 @@ from .analyze.lua import analyze_lua
 from .analyze.dart import analyze_dart
 from .analyze.haskell import analyze_haskell
 from .analyze.agda import analyze_agda
+from .analyze.lean import analyze_lean
 from .analyze.ocaml import analyze_ocaml
 from .analyze.solidity import analyze_solidity
 from .analyze.csharp import analyze_csharp
@@ -1227,6 +1228,19 @@ def run_behavior_map(
             analysis_runs.append(agda_result.run.to_dict())
             all_symbols.extend(agda_result.symbols)
             all_edges.extend(agda_result.edges)
+
+    # Run Lean analysis (optional, requires tree-sitter-lean built from source)
+    lean_result = analyze_lean(repo_root)
+    if lean_result.run is not None:
+        if lean_result.skipped:  # pragma: no cover - lean not installed
+            limits.skipped_passes.append({
+                "pass": lean_result.run.pass_id,
+                "reason": lean_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(lean_result.run.to_dict())
+            all_symbols.extend(lean_result.symbols)
+            all_edges.extend(lean_result.edges)
 
     # Run OCaml analysis (optional, requires tree-sitter-ocaml)
     ocaml_result = analyze_ocaml(repo_root)

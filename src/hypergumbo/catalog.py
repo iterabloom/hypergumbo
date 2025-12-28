@@ -120,7 +120,7 @@ def is_available(p: Pass) -> bool:
 
     # Check for tree-sitter dependency based on the requires field
     if p.requires:
-        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "agda", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix", "glsl", "fortran", "toml", "css"]
+        ts_langs = ["javascript", "php", "c", "java", "elixir", "rust", "go", "ruby", "kotlin", "swift", "scala", "lua", "haskell", "agda", "lean", "ocaml", "sql", "dockerfile", "cuda", "verilog", "cmake", "make", "vhdl", "graphql", "nix", "glsl", "fortran", "toml", "css"]
         if any(lang in p.requires for lang in ts_langs):
             return importlib.util.find_spec("tree_sitter") is not None
 
@@ -224,6 +224,12 @@ def get_default_catalog() -> Catalog:
                 description="Agda proof assistant via tree-sitter",
                 availability="extra",
                 requires="hypergumbo[agda]",
+            ),
+            Pass(
+                id="lean-v1",
+                description="Lean 4 theorem prover via tree-sitter (build from source)",
+                availability="extra",
+                requires="hypergumbo[lean]",
             ),
             Pass(
                 id="ocaml-ts-v1",

@@ -58,6 +58,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "lua": ["*.lua"],
     "haskell": ["*.hs", "*.lhs"],
     "agda": ["*.agda", "*.lagda", "*.lagda.md"],
+    "lean": ["*.lean"],
     "ocaml": ["*.ml", "*.mli"],
     "solidity": ["*.sol"],
     "csharp": ["*.cs"],
