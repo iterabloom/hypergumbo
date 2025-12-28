@@ -103,7 +103,7 @@ Trust is continuous, not discrete, but for practical purposes:
 Changes to these require extra scrutiny:
 - `AGENTS.md`, `GOVERNANCE.md`, `CODEOWNERS`
 - `.github/workflows/*`
-- `scripts/auto-pr`, `scripts/release-*`
+- `scripts/auto-pr`, `scripts/contribute`, `scripts/release-*`
 - `.githooks/*`
 - Any file that handles secrets, auth, or network calls
 
