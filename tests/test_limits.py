@@ -100,6 +100,21 @@ class TestLimits:
 
         assert d["max_files_per_analyzer"] == 100
 
+    def test_test_files_excluded(self) -> None:
+        """Tracks test_files_excluded in output."""
+        limits = Limits()
+        limits.test_files_excluded = True
+        d = limits.to_dict()
+
+        assert d["test_files_excluded"] is True
+
+    def test_test_files_excluded_not_in_output_when_false(self) -> None:
+        """test_files_excluded not included in output when False."""
+        limits = Limits()  # Default is False
+        d = limits.to_dict()
+
+        assert "test_files_excluded" not in d
+
 
 class TestFailedFile:
     """Tests for FailedFile dataclass."""

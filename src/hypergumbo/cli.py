@@ -108,7 +108,7 @@ from .schema import new_behavior_map
 from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
-from .ranking import rank_symbols
+from .ranking import rank_symbols, _is_test_path
 from .compact import (
     format_compact_behavior_map,
     format_tiered_behavior_map,
@@ -223,6 +223,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
     tiers = getattr(args, "tiers", None)
+    exclude_tests = getattr(args, "exclude_tests", False)
 
     run_behavior_map(
         repo_root=repo_root,
@@ -232,6 +233,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         compact=compact,
         coverage=coverage,
         tiers=tiers,
+        exclude_tests=exclude_tests,
     )
     return 0
 
@@ -748,6 +750,12 @@ def build_parser() -> argparse.ArgumentParser:
              "like '4k,16k,64k'. Use 'default' for standard tiers (4k,16k,64k), "
              "'none' to disable. Default: generate tiered files alongside full output.",
     )
+    p_run.add_argument(
+        "-x", "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        help="Exclude test files from analysis output",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -969,6 +977,7 @@ def run_behavior_map(
     compact: bool = False,
     coverage: float = 0.8,
     tiers: str | None = None,
+    exclude_tests: bool = False,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -986,6 +995,8 @@ def run_behavior_map(
         tiers: Tiered output specification. Comma-separated tier specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
+        exclude_tests: If True, filter out symbols from test files after analysis.
+            This removes test helpers and test fixtures from the behavior map.
     """
     behavior_map = new_behavior_map()
 
@@ -1698,6 +1709,21 @@ def run_behavior_map(
     if dep_link_result.run is not None:
         analysis_runs.append(dep_link_result.run.to_dict())
         all_edges.extend(dep_link_result.edges)
+
+    # Filter out test files if requested
+    if exclude_tests:
+        # Filter symbols from test files
+        filtered_symbols = [s for s in all_symbols if not _is_test_path(s.path)]
+        # Get IDs of remaining symbols for edge filtering
+        remaining_ids = {s.id for s in filtered_symbols}
+        # Filter edges to only include those between remaining symbols
+        filtered_edges = [
+            e for e in all_edges
+            if e.src in remaining_ids and e.dst in remaining_ids
+        ]
+        all_symbols = filtered_symbols
+        all_edges = filtered_edges
+        limits.test_files_excluded = True
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
