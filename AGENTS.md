@@ -112,6 +112,50 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 - Document the pin with a comment
 - Never hide failures with pytest.skip() patterns
 
+## Testing Optional Dependencies
+
+When testing analyzers that depend on optional tree-sitter grammars:
+
+### For PyPI-available grammars (e.g., tree-sitter-agda)
+- Add the dependency to `pyproject.toml` and install it in CI
+- Write tests that directly call the analyzer; no mocking needed
+- Example: `tests/test_agda.py`
+
+### For build-from-source grammars (e.g., tree-sitter-lean, tree-sitter-wolfram)
+**DO NOT use pytest.mark.skipif escape hatches.** Instead, use mocking:
+
+1. **Mock availability detection:**
+   ```python
+   from hypergumbo.analyze import lean as lean_module
+
+   with patch.object(lean_module, "importlib") as mock_importlib:
+       mock_importlib.util.find_spec.return_value = None
+       assert lean_module.is_lean_tree_sitter_available() is False
+   ```
+
+2. **Mock the analyzer for unavailability testing:**
+   ```python
+   with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=False):
+       with pytest.warns(UserWarning, match="Lean analysis skipped"):
+           result = lean_module.analyze_lean(tmp_path)
+   ```
+
+3. **Mock tree-sitter parser for feature testing:**
+   ```python
+   with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=True):
+       mock_tree_sitter = MagicMock()
+       mock_parser = MagicMock()
+       mock_parser.parse.return_value = mock_tree  # mock AST structure
+       mock_tree_sitter.Parser.return_value = mock_parser
+
+       with patch.dict("sys.modules", {"tree_sitter": mock_tree_sitter, ...}):
+           result = lean_module.analyze_lean(tmp_path)
+   ```
+
+This ensures 100% coverage in CI even when the grammar isn't installed.
+
+**Examples:** `tests/test_lean.py`, `tests/test_wolfram.py`
+
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
 - **Stack:** Python 3.9+, standard library preferred where possible.
