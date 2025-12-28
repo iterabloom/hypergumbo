@@ -36,20 +36,6 @@ hypergumbo . -t 500   # concise overview
 hypergumbo . -t 2000  # include symbols and entry points
 ```
 
-## Installation
-
-```bash
-pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
-```
-
-All 32 language analyzers are included by default (Python, JavaScript, TypeScript, PHP, C, C++, Java, Elixir, Rust, Go, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Solidity, C#, Zig, Groovy, Julia, Bash, Objective-C, Terraform/HCL, YAML/Ansible, SQL, Dockerfile, CUDA, GraphQL, Nix, R, and more).
-
-For LLM-assisted plan generation:
-```bash
-pip install "hypergumbo[llm-assist] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"  # OpenRouter/OpenAI
-pip install "hypergumbo[llm-local] @ git+https://codeberg.org/iterabloom/hypergumbo-experimental.git"   # local models via llm
-```
-
 ## CLI Commands
 
 ```bash
@@ -94,30 +80,20 @@ Falls back to template-based generation if LLM is unavailable or fails.
 > equivalent results. This feature will become practical as the catalog expands with
 > framework-specific packs and configuration options.
 
-### Supported Languages (32 Analyzers)
+### Supported Languages (49 Analyzers)
 
-**Application Languages:**
-Python, JavaScript, TypeScript, Java, C#, Go, Rust, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Lua, Haskell, OCaml, Julia, R
+| Category | Languages |
+|----------|-----------|
+| **Application** | Python, JavaScript, TypeScript, Java, C#, Go, Rust, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
+| **Systems** | C, C++, Zig, Objective-C, CUDA, Fortran |
+| **Smart Contracts** | Solidity |
+| **Hardware** | Verilog, VHDL, GLSL, WGSL |
+| **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
+| **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
+| **Frontend** | Vue, Svelte, HTML |
+| **Legacy/Academic** | COBOL, LaTeX |
 
-**Systems Languages:**
-C, C++, Zig, Objective-C, CUDA, Fortran
-
-**Smart Contracts:**
-Solidity
-
-**Hardware Description:**
-Verilog, VHDL, GLSL, WGSL
-
-**Infrastructure/Config:**
-Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible
-
-**Data/Schema:**
-SQL, GraphQL, JSON, TOML, XML, CSS
-
-**Frontend Frameworks:**
-Vue, Svelte (extract `<script>` blocks with adjusted line numbers)
-
-All analyzers detect symbols (functions, classes, methods, etc.) and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for detailed per-language capabilities.
+All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
 
 ### Cross-Language Linkers (12 Linkers)
 
@@ -137,8 +113,6 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 | Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
 | Database Query | SQL in app code → table definitions in schema files |
 | Event Sourcing | EventEmitter, Django signals, Spring events |
-
-See [STATUS.md](STATUS.md) for detailed edge types and framework support.
 
 ## Development
 
