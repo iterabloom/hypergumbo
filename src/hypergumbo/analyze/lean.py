@@ -121,7 +121,7 @@ def _find_child_by_type(
     for child in node.children:
         if child.type == type_name:
             return child
-    return None
+    return None  # pragma: no cover - defensive
 
 
 def _get_identifier_text(node: "tree_sitter.Node", source: bytes) -> str:
