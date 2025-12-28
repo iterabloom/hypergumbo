@@ -87,6 +87,11 @@ TEST_PATH_PATTERNS = (
     ".test-d.ts",
     ".test-d.tsx",
     "test_",           # Python test files: test_foo.py
+    "/testfixtures/",  # Gradle test fixtures (case-insensitive match)
+    "/inttest/",       # Gradle integration test source set
+    "/integrationtest/",  # Alternative integration test naming
+    "tests.java",      # Java test files: FooTests.java
+    "test.java",       # Java test files: FooTest.java (but not TestFoo.java utilities)
 )
 
 # Path patterns indicating example/demo code
