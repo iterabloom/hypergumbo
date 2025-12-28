@@ -29,6 +29,9 @@ from hypergumbo.compact import (
     generate_tier_filename,
     DEFAULT_TIERS,
     CHARS_PER_TOKEN,
+    # Filtering constants
+    EXCLUDED_KINDS,
+    _is_test_path,
 )
 
 
@@ -793,3 +796,151 @@ class TestCharsPerToken:
         # Typical values are 3-5 chars per token
         assert CHARS_PER_TOKEN >= 3
         assert CHARS_PER_TOKEN <= 6
+
+
+class TestExcludedKinds:
+    """Tests for EXCLUDED_KINDS constant."""
+
+    def test_dependency_excluded(self):
+        """Dependency kinds are excluded."""
+        assert "dependency" in EXCLUDED_KINDS
+        assert "devDependency" in EXCLUDED_KINDS
+
+    def test_file_excluded(self):
+        """File-level nodes are excluded."""
+        assert "file" in EXCLUDED_KINDS
+
+    def test_code_kinds_not_excluded(self):
+        """Code kinds are not excluded."""
+        assert "function" not in EXCLUDED_KINDS
+        assert "method" not in EXCLUDED_KINDS
+        assert "class" not in EXCLUDED_KINDS
+
+
+class TestIsTestPath:
+    """Tests for _is_test_path function."""
+
+    def test_tests_directory(self):
+        """tests/ directory is detected."""
+        assert _is_test_path("/home/project/tests/test_foo.py")
+        assert _is_test_path("src/tests/unit/test_bar.py")
+
+    def test_test_directory(self):
+        """test/ directory is detected."""
+        assert _is_test_path("/home/project/test/foo_test.go")
+
+    def test_dunder_tests(self):
+        """__tests__/ directory is detected (Jest style)."""
+        assert _is_test_path("src/__tests__/Component.test.tsx")
+
+    def test_go_test_files(self):
+        """Go test files are detected."""
+        assert _is_test_path("pkg/handler_test.go")
+        assert _is_test_path("internal/service_test.go")
+
+    def test_ts_spec_files(self):
+        """TypeScript spec files are detected."""
+        assert _is_test_path("src/utils.spec.ts")
+        assert _is_test_path("components/Button.spec.tsx")
+
+    def test_js_test_files(self):
+        """JavaScript test files are detected."""
+        assert _is_test_path("src/utils.test.js")
+        assert _is_test_path("lib/helper.test.jsx")
+
+    def test_python_test_files(self):
+        """Python test files are detected."""
+        assert _is_test_path("tests/test_cli.py")
+        assert _is_test_path("src/test_utils.py")
+
+    def test_dts_test_files(self):
+        """TypeScript definition test files are detected."""
+        assert _is_test_path("types/component.test-d.ts")
+        assert _is_test_path("dts-test/foo.test-d.tsx")
+
+    def test_production_files_not_detected(self):
+        """Production files are not detected as tests."""
+        assert not _is_test_path("src/app.py")
+        assert not _is_test_path("lib/utils.ts")
+        assert not _is_test_path("pkg/handler.go")
+        assert not _is_test_path("components/Button.tsx")
+
+
+class TestSelectByTokensFiltering:
+    """Tests for filtering in select_by_tokens."""
+
+    def test_excludes_dependency_kinds(self):
+        """Dependency kinds are excluded from selection."""
+        dep = make_symbol("lodash", kind="dependency")
+        func = make_symbol("myFunc", kind="function")
+
+        # Both have edges to make them central
+        caller = make_symbol("caller")
+        edges = [
+            make_edge(caller.id, dep.id),
+            make_edge(caller.id, func.id),
+        ]
+
+        result = select_by_tokens([dep, func, caller], edges, target_tokens=5000)
+
+        # Function should be included, dependency should not
+        included_kinds = {s.kind for s in result.included.symbols}
+        assert "function" in included_kinds
+        assert "dependency" not in included_kinds
+
+    def test_excludes_test_paths(self):
+        """Symbols from test files are excluded."""
+        test_sym = make_symbol("test_helper", path="tests/test_utils.py")
+        prod_sym = make_symbol("real_func", path="src/utils.py")
+
+        edges = []
+
+        result = select_by_tokens([test_sym, prod_sym], edges, target_tokens=5000)
+
+        # Production symbol should be included, test should not
+        included_paths = {s.path for s in result.included.symbols}
+        assert any("src/" in p for p in included_paths)
+        assert not any("tests/" in p for p in included_paths)
+
+    def test_exclude_tests_can_be_disabled(self):
+        """exclude_tests=False includes test symbols."""
+        test_sym = make_symbol("test_helper", path="tests/test_utils.py")
+        prod_sym = make_symbol("real_func", path="src/utils.py")
+
+        result = select_by_tokens(
+            [test_sym, prod_sym], [],
+            target_tokens=5000,
+            exclude_tests=False,
+        )
+
+        # Both should be included
+        included_names = {s.name for s in result.included.symbols}
+        assert "test_helper" in included_names
+        assert "real_func" in included_names
+
+    def test_exclude_non_code_can_be_disabled(self):
+        """exclude_non_code=False includes dependency kinds."""
+        dep = make_symbol("lodash", kind="dependency")
+        func = make_symbol("myFunc", kind="function")
+
+        result = select_by_tokens(
+            [dep, func], [],
+            target_tokens=5000,
+            exclude_non_code=False,
+        )
+
+        # Both should be included
+        included_kinds = {s.kind for s in result.included.symbols}
+        assert "dependency" in included_kinds
+        assert "function" in included_kinds
+
+    def test_omitted_includes_filtered_symbols(self):
+        """Filtered symbols count toward omitted summary."""
+        dep = make_symbol("lodash", kind="dependency")
+        test_sym = make_symbol("test_helper", path="tests/test_utils.py")
+        prod_sym = make_symbol("real_func", path="src/utils.py")
+
+        result = select_by_tokens([dep, test_sym, prod_sym], [], target_tokens=5000)
+
+        # Omitted should include both filtered symbols
+        assert result.omitted.count >= 2
