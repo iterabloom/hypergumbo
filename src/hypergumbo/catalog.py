@@ -232,6 +232,12 @@ def get_default_catalog() -> Catalog:
                 requires="hypergumbo[lean]",
             ),
             Pass(
+                id="wolfram-v1",
+                description="Wolfram Language via tree-sitter (build from source)",
+                availability="extra",
+                requires="hypergumbo[wolfram]",
+            ),
+            Pass(
                 id="ocaml-ts-v1",
                 description="OCaml via tree-sitter",
                 availability="extra",

@@ -486,6 +486,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Lean analysis failed or tree-sitter not available
 
+    if "wolfram" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.wolfram import analyze_wolfram  # pragma: no cover
+            result = analyze_wolfram(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Wolfram analysis failed or tree-sitter not available
+
     if "ocaml" in profile.languages:
         try:  # pragma: no cover
             from .analyze.ocaml import analyze_ocaml  # pragma: no cover
