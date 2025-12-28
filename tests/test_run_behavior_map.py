@@ -119,6 +119,7 @@ def test_run_behavior_map_compact_mode(tmp_path):
         out_path=out_path,
         compact=True,
         coverage=0.8,
+        tiers="none",  # Disable tiers for this test
     )
 
     data = json.loads(out_path.read_text())
@@ -140,4 +141,169 @@ def test_run_behavior_map_compact_mode(tmp_path):
     assert "top_words" in summary["omitted"]
     assert "top_paths" in summary["omitted"]
     assert "kinds" in summary["omitted"]
+
+
+def test_run_behavior_map_default_tiered_output(tmp_path):
+    """Default run generates tiered output files (4k, 16k, 64k)."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    # Create source files
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path)
+
+    # Main file should exist
+    assert out_path.is_file()
+
+    # Default tiered files should be generated
+    tier_4k = tmp_path / "hypergumbo.results.4k.json"
+    tier_16k = tmp_path / "hypergumbo.results.16k.json"
+    tier_64k = tmp_path / "hypergumbo.results.64k.json"
+
+    assert tier_4k.is_file(), "4k tier file should be generated"
+    assert tier_16k.is_file(), "16k tier file should be generated"
+    assert tier_64k.is_file(), "64k tier file should be generated"
+
+    # Check tiered file structure
+    data_4k = json.loads(tier_4k.read_text())
+    assert data_4k["view"] == "tiered"
+    assert data_4k["tier_tokens"] == 4000
+    assert "nodes_summary" in data_4k
+
+    data_16k = json.loads(tier_16k.read_text())
+    assert data_16k["view"] == "tiered"
+    assert data_16k["tier_tokens"] == 16000
+
+    data_64k = json.loads(tier_64k.read_text())
+    assert data_64k["view"] == "tiered"
+    assert data_64k["tier_tokens"] == 64000
+
+
+def test_run_behavior_map_custom_tiers(tmp_path):
+    """Custom tier specification generates specified tier files."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        tiers="2k,8k",  # Custom tiers
+    )
+
+    # Custom tier files should be generated
+    tier_2k = tmp_path / "output.2k.json"
+    tier_8k = tmp_path / "output.8k.json"
+
+    assert tier_2k.is_file(), "2k tier file should be generated"
+    assert tier_8k.is_file(), "8k tier file should be generated"
+
+    # Default tiers should NOT be generated
+    tier_4k = tmp_path / "output.4k.json"
+    tier_16k = tmp_path / "output.16k.json"
+    tier_64k = tmp_path / "output.64k.json"
+
+    assert not tier_4k.exists(), "4k tier file should NOT be generated"
+    assert not tier_16k.exists(), "16k tier file should NOT be generated"
+    assert not tier_64k.exists(), "64k tier file should NOT be generated"
+
+    # Check custom tier structure
+    data_2k = json.loads(tier_2k.read_text())
+    assert data_2k["view"] == "tiered"
+    assert data_2k["tier_tokens"] == 2000
+
+
+def test_run_behavior_map_tiers_none(tmp_path):
+    """tiers='none' disables tiered output generation."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        tiers="none",  # Disable tiered output
+    )
+
+    # Main file should exist
+    assert out_path.is_file()
+
+    # No tiered files should be generated
+    tier_4k = tmp_path / "output.4k.json"
+    tier_16k = tmp_path / "output.16k.json"
+    tier_64k = tmp_path / "output.64k.json"
+
+    assert not tier_4k.exists(), "4k tier file should NOT be generated when tiers=none"
+    assert not tier_16k.exists(), "16k tier file should NOT be generated when tiers=none"
+    assert not tier_64k.exists(), "64k tier file should NOT be generated when tiers=none"
+
+
+def test_run_behavior_map_tiers_default_keyword(tmp_path):
+    """tiers='default' generates standard tier files."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        tiers="default",  # Explicit default
+    )
+
+    # Default tiered files should be generated
+    tier_4k = tmp_path / "output.4k.json"
+    tier_16k = tmp_path / "output.16k.json"
+    tier_64k = tmp_path / "output.64k.json"
+
+    assert tier_4k.is_file(), "4k tier file should be generated"
+    assert tier_16k.is_file(), "16k tier file should be generated"
+    assert tier_64k.is_file(), "64k tier file should be generated"
+
+
+def test_run_behavior_map_tiers_invalid_spec_skipped(tmp_path):
+    """Invalid tier specs are silently skipped, valid ones still work."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json"
+    # Mix valid and invalid tier specs
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        tiers="4k,invalid_tier,16k",  # Invalid spec in the middle
+    )
+
+    # Main file should exist
+    assert out_path.is_file()
+
+    # Valid tier files should be generated
+    tier_4k = tmp_path / "output.4k.json"
+    tier_16k = tmp_path / "output.16k.json"
+
+    assert tier_4k.is_file(), "4k tier file should be generated"
+    assert tier_16k.is_file(), "16k tier file should be generated"
+
+    # Invalid tier file should NOT exist
+    tier_invalid = tmp_path / "output.invalid_tier.json"
+    assert not tier_invalid.exists(), "Invalid tier file should NOT be generated"
 

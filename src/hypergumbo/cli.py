@@ -109,7 +109,14 @@ from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import rank_symbols
-from .compact import format_compact_behavior_map, CompactConfig
+from .compact import (
+    format_compact_behavior_map,
+    format_tiered_behavior_map,
+    generate_tier_filename,
+    parse_tier_spec,
+    CompactConfig,
+    DEFAULT_TIERS,
+)
 
 
 def cmd_sketch(args: argparse.Namespace) -> int:
@@ -215,6 +222,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_files = getattr(args, "max_files", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
+    tiers = getattr(args, "tiers", None)
 
     run_behavior_map(
         repo_root=repo_root,
@@ -223,6 +231,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         max_files=max_files,
         compact=compact,
         coverage=coverage,
+        tiers=tiers,
     )
     return 0
 
@@ -731,6 +740,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.8,
         help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
     )
+    p_run.add_argument(
+        "--tiers",
+        type=str,
+        default=None,
+        help="Generate tiered output files at token budgets. Comma-separated specs "
+             "like '4k,16k,64k'. Use 'default' for standard tiers (4k,16k,64k), "
+             "'none' to disable. Default: generate tiered files alongside full output.",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -951,6 +968,7 @@ def run_behavior_map(
     max_files: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
+    tiers: str | None = None,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -965,6 +983,9 @@ def run_behavior_map(
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).
+        tiers: Tiered output specification. Comma-separated tier specs like
+            "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
+            If None, defaults to generating DEFAULT_TIERS alongside full output.
     """
     behavior_map = new_behavior_map()
 
@@ -1748,6 +1769,28 @@ def run_behavior_map(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     out_path.write_text(json.dumps(behavior_map, indent=2))
+
+    # Generate tiered output files
+    # Default behavior: generate DEFAULT_TIERS unless explicitly disabled
+    if tiers != "none":
+        tier_specs: list[str]
+        if tiers is None or tiers == "default":
+            tier_specs = list(DEFAULT_TIERS)
+        else:
+            tier_specs = [t.strip() for t in tiers.split(",") if t.strip()]
+
+        # Generate each tier file
+        for tier_spec in tier_specs:
+            try:
+                target_tokens = parse_tier_spec(tier_spec)
+                tier_path = Path(generate_tier_filename(str(out_path), tier_spec))
+                tiered_map = format_tiered_behavior_map(
+                    behavior_map, all_symbols, all_edges, target_tokens
+                )
+                tier_path.write_text(json.dumps(tiered_map, indent=2))
+            except ValueError:
+                # Skip invalid tier specs silently
+                pass
 
 
 def main(argv=None) -> int:

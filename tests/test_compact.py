@@ -3,6 +3,7 @@
 This module tests the coverage-based truncation and bag-of-words
 summarization for LLM-friendly output.
 """
+import pytest
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.compact import (
     tokenize_name,
@@ -19,6 +20,15 @@ from hypergumbo.compact import (
     CompactResult,
     STOP_WORDS,
     MIN_WORD_LENGTH,
+    # Tiered output functions
+    parse_tier_spec,
+    estimate_node_tokens,
+    estimate_behavior_map_tokens,
+    select_by_tokens,
+    format_tiered_behavior_map,
+    generate_tier_filename,
+    DEFAULT_TIERS,
+    CHARS_PER_TOKEN,
 )
 
 
@@ -495,3 +505,291 @@ class TestFirstPartyPriorityFalse:
         # Without tier weighting, external should be included (has incoming edge)
         included_names = {s.name for s in result.included.symbols}
         assert "lodash" in included_names
+
+
+# ============================================================================
+# Tiered output tests
+# ============================================================================
+
+
+class TestParseTierSpec:
+    """Tests for parse_tier_spec function."""
+
+    def test_parse_k_suffix(self):
+        """Parse specs with 'k' suffix."""
+        assert parse_tier_spec("4k") == 4000
+        assert parse_tier_spec("16k") == 16000
+        assert parse_tier_spec("64k") == 64000
+
+    def test_parse_uppercase_k(self):
+        """Parse specs with uppercase 'K' suffix."""
+        assert parse_tier_spec("4K") == 4000
+        assert parse_tier_spec("16K") == 16000
+
+    def test_parse_decimal_k(self):
+        """Parse specs with decimal values."""
+        assert parse_tier_spec("1.5k") == 1500
+        assert parse_tier_spec("2.5k") == 2500
+
+    def test_parse_raw_number(self):
+        """Parse raw number specs."""
+        assert parse_tier_spec("4000") == 4000
+        assert parse_tier_spec("16000") == 16000
+
+    def test_parse_with_whitespace(self):
+        """Parse specs with leading/trailing whitespace."""
+        assert parse_tier_spec("  4k  ") == 4000
+        assert parse_tier_spec("\t16k\n") == 16000
+
+    def test_invalid_spec_raises(self):
+        """Invalid specs raise ValueError."""
+        with pytest.raises(ValueError):
+            parse_tier_spec("invalid")
+
+
+class TestEstimateNodeTokens:
+    """Tests for estimate_node_tokens function."""
+
+    def test_basic_node(self):
+        """Basic node token estimation."""
+        node_dict = {
+            "id": "python:src/main.py:1-10:function:main",
+            "name": "main",
+            "kind": "function",
+            "language": "python",
+            "path": "src/main.py",
+        }
+        tokens = estimate_node_tokens(node_dict)
+        # Should be roughly len(json) / CHARS_PER_TOKEN
+        assert tokens > 0
+        assert isinstance(tokens, int)
+
+    def test_larger_node_more_tokens(self):
+        """Larger nodes should have more tokens."""
+        small_node = {"id": "a", "name": "x"}
+        large_node = {
+            "id": "python:src/very/long/path/to/file.py:1-100:function:very_long_function_name",
+            "name": "very_long_function_name",
+            "kind": "function",
+            "language": "python",
+            "path": "src/very/long/path/to/file.py",
+            "meta": {"route_path": "/api/v1/users/{id}/profile"},
+        }
+        assert estimate_node_tokens(large_node) > estimate_node_tokens(small_node)
+
+
+class TestEstimateBehaviorMapTokens:
+    """Tests for estimate_behavior_map_tokens function."""
+
+    def test_basic_behavior_map(self):
+        """Basic behavior map token estimation."""
+        behavior_map = {
+            "schema_version": "0.1.0",
+            "nodes": [{"id": "a", "name": "foo"}],
+            "edges": [],
+        }
+        tokens = estimate_behavior_map_tokens(behavior_map)
+        assert tokens > 0
+        assert isinstance(tokens, int)
+
+    def test_empty_behavior_map(self):
+        """Empty behavior map has minimal tokens."""
+        behavior_map = {}
+        tokens = estimate_behavior_map_tokens(behavior_map)
+        # Should be very small (just "{}")
+        assert tokens < 5
+
+
+class TestSelectByTokens:
+    """Tests for select_by_tokens function."""
+
+    def test_empty_symbols(self):
+        """Empty input returns empty result."""
+        result = select_by_tokens([], [], target_tokens=4000)
+        assert result.included.count == 0
+        assert result.omitted.count == 0
+        assert result.included.coverage == 1.0
+
+    def test_fits_within_budget(self):
+        """Small symbol set fits within budget."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(5)]
+        result = select_by_tokens(symbols, [], target_tokens=100000)
+        # With large budget, all should fit
+        assert result.included.count == 5
+        assert result.omitted.count == 0
+
+    def test_respects_token_limit(self):
+        """Large symbol sets are truncated to fit budget."""
+        # Create many symbols
+        symbols = [make_symbol(f"symbol_with_longer_name_{i}") for i in range(100)]
+        edges = []
+
+        # Use a small token budget
+        result = select_by_tokens(symbols, edges, target_tokens=1000)
+
+        # Should include fewer than all symbols
+        assert result.included.count < 100
+        assert result.omitted.count > 0
+
+    def test_omitted_has_summary(self):
+        """Omitted summary is populated."""
+        symbols = [make_symbol(f"test_func_{i}") for i in range(50)]
+        result = select_by_tokens(symbols, [], target_tokens=500)
+
+        if result.omitted.count > 0:
+            # Should have summary info
+            assert isinstance(result.omitted.top_words, list)
+            assert isinstance(result.omitted.top_paths, list)
+            assert isinstance(result.omitted.kinds, dict)
+
+    def test_first_party_priority_true(self):
+        """First party symbols prioritized when flag is True."""
+        first_party = make_symbol("my_core", tier=1)
+        external = make_symbol("external_dep", tier=3)
+        caller = make_symbol("caller")
+
+        # External has more edges
+        edges = [make_edge(caller.id, external.id)]
+
+        # Use larger budget to ensure symbols fit
+        result = select_by_tokens(
+            [first_party, external, caller], edges,
+            target_tokens=2000,
+            first_party_priority=True,
+        )
+
+        # With tier weighting, first party should get priority
+        included_names = {s.name for s in result.included.symbols}
+        assert "my_core" in included_names
+
+    def test_first_party_priority_false(self):
+        """Raw centrality used when first_party_priority=False."""
+        first_party = make_symbol("my_core", tier=1)
+        external = make_symbol("external_dep", tier=3)
+        caller = make_symbol("caller")
+
+        # External has more edges
+        edges = [make_edge(caller.id, external.id)]
+
+        # Use larger budget to ensure symbols fit
+        result = select_by_tokens(
+            [first_party, external, caller], edges,
+            target_tokens=2000,
+            first_party_priority=False,
+        )
+
+        # Without tier weighting, external with edges should be included
+        included_names = {s.name for s in result.included.symbols}
+        assert "external_dep" in included_names
+
+
+class TestFormatTieredBehaviorMap:
+    """Tests for format_tiered_behavior_map function."""
+
+    def test_basic_formatting(self):
+        """Basic tiered behavior map formatting."""
+        symbols = [make_symbol("core"), make_symbol("helper")]
+        edges = [make_edge(symbols[1].id, symbols[0].id)]
+
+        behavior_map = {
+            "schema_version": "0.1.0",
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, edges, target_tokens=4000
+        )
+
+        assert result["view"] == "tiered"
+        assert result["tier_tokens"] == 4000
+        assert "nodes_summary" in result
+        assert isinstance(result["nodes"], list)
+
+    def test_tier_tokens_in_output(self):
+        """Output includes tier_tokens field."""
+        symbols = [make_symbol("foo")]
+        behavior_map = {"nodes": [s.to_dict() for s in symbols], "edges": []}
+
+        result = format_tiered_behavior_map(behavior_map, symbols, [], 16000)
+        assert result["tier_tokens"] == 16000
+
+    def test_edges_filtered(self):
+        """Only edges connecting included nodes are kept."""
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+
+        edge_ab = make_edge(sym_a.id, sym_b.id)
+        edge_bc = make_edge(sym_b.id, sym_c.id)
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
+            "edges": [edge_ab.to_dict(), edge_bc.to_dict()],
+        }
+
+        # Small budget to force truncation
+        result = format_tiered_behavior_map(
+            behavior_map, [sym_a, sym_b, sym_c], [edge_ab, edge_bc],
+            target_tokens=500
+        )
+
+        # Edges should only connect to included nodes
+        included_ids = {n["id"] for n in result["nodes"]}
+        for edge in result["edges"]:
+            assert edge["src"] in included_ids or edge["dst"] in included_ids
+
+
+class TestGenerateTierFilename:
+    """Tests for generate_tier_filename function."""
+
+    def test_basic_json(self):
+        """Generate filename for JSON file."""
+        assert generate_tier_filename("hypergumbo.results.json", "4k") == \
+            "hypergumbo.results.4k.json"
+
+    def test_different_tiers(self):
+        """Generate filenames for different tiers."""
+        base = "output.json"
+        assert generate_tier_filename(base, "4k") == "output.4k.json"
+        assert generate_tier_filename(base, "16k") == "output.16k.json"
+        assert generate_tier_filename(base, "64k") == "output.64k.json"
+
+    def test_nested_path(self):
+        """Handle nested paths correctly."""
+        assert generate_tier_filename("/path/to/results.json", "4k") == \
+            "/path/to/results.4k.json"
+
+    def test_multiple_dots(self):
+        """Handle filenames with multiple dots."""
+        assert generate_tier_filename("my.results.json", "16k") == \
+            "my.results.16k.json"
+
+
+class TestDefaultTiers:
+    """Tests for DEFAULT_TIERS constant."""
+
+    def test_default_tiers_exist(self):
+        """Default tiers are defined."""
+        assert len(DEFAULT_TIERS) >= 3
+
+    def test_default_tiers_parseable(self):
+        """All default tiers can be parsed."""
+        for tier in DEFAULT_TIERS:
+            tokens = parse_tier_spec(tier)
+            assert tokens > 0
+
+    def test_default_tiers_ascending(self):
+        """Default tiers are in ascending order."""
+        parsed = [parse_tier_spec(t) for t in DEFAULT_TIERS]
+        assert parsed == sorted(parsed)
+
+
+class TestCharsPerToken:
+    """Tests for CHARS_PER_TOKEN constant."""
+
+    def test_reasonable_value(self):
+        """CHARS_PER_TOKEN is a reasonable approximation."""
+        # Typical values are 3-5 chars per token
+        assert CHARS_PER_TOKEN >= 3
+        assert CHARS_PER_TOKEN <= 6
