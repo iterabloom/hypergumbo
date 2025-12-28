@@ -101,7 +101,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `-x` / `--exclude-tests` | [x] | Skip test files during analysis (17% faster on large codebases) |
 | `hypergumbo --version` | [x] | Print version |
 | `hypergumbo init [path]` | [x] | Initialize capsule |
-| `hypergumbo run [path]` | [x] | Run analysis |
+| `hypergumbo run [path] [-x]` | [x] | Run analysis. Supports `-x/--exclude-tests` to filter test files |
 | `hypergumbo slice --entry X` | [x] | Produce reduced slice |
 | `hypergumbo catalog` | [x] | List passes/packs |
 | `hypergumbo export-capsule` | [x] | Export shareable capsule |
