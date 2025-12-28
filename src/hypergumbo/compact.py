@@ -413,3 +413,218 @@ def format_compact_behavior_map(
     ]
 
     return compact_map
+
+
+# Token estimation constants
+# ~4 chars per token is a reasonable approximation for JSON with code
+CHARS_PER_TOKEN = 4
+
+# Overhead per node (JSON structure, keys, formatting)
+# Estimated from typical node: {"id": "...", "name": "...", "kind": "...", ...}
+TOKENS_PER_NODE_OVERHEAD = 50
+
+# Overhead for behavior map shell (schema_version, view, metrics, etc.)
+TOKENS_BEHAVIOR_MAP_OVERHEAD = 200
+
+# Default tiers in tokens (k = 1000 tokens)
+DEFAULT_TIERS = ["4k", "16k", "64k"]
+
+
+def parse_tier_spec(spec: str) -> int:
+    """Parse a tier specification into target tokens.
+
+    Args:
+        spec: Tier spec like "4k", "16k", "64000", etc.
+
+    Returns:
+        Target token count.
+
+    Raises:
+        ValueError: If spec cannot be parsed.
+    """
+    spec = spec.lower().strip()
+    if spec.endswith("k"):
+        return int(float(spec[:-1]) * 1000)
+    return int(spec)
+
+
+def estimate_node_tokens(node_dict: dict) -> int:
+    """Estimate tokens for a serialized node.
+
+    Args:
+        node_dict: Node dictionary from Symbol.to_dict().
+
+    Returns:
+        Estimated token count.
+    """
+    # Rough estimate based on JSON serialization
+    import json
+    json_str = json.dumps(node_dict)
+    return len(json_str) // CHARS_PER_TOKEN
+
+
+def estimate_behavior_map_tokens(behavior_map: dict) -> int:
+    """Estimate total tokens for a behavior map.
+
+    Args:
+        behavior_map: Full behavior map dictionary.
+
+    Returns:
+        Estimated token count.
+    """
+    import json
+    json_str = json.dumps(behavior_map)
+    return len(json_str) // CHARS_PER_TOKEN
+
+
+def select_by_tokens(
+    symbols: List[Symbol],
+    edges: List[Edge],
+    target_tokens: int,
+    first_party_priority: bool = True,
+) -> CompactResult:
+    """Select symbols to fit within a token budget.
+
+    Uses centrality ranking to select the most important symbols that
+    fit within the target token count.
+
+    Args:
+        symbols: All symbols to consider.
+        edges: Edges for centrality computation.
+        target_tokens: Target token budget.
+        first_party_priority: Apply tier weighting. Default True.
+
+    Returns:
+        CompactResult with symbols fitting the budget.
+    """
+    if not symbols:
+        return CompactResult(
+            included=IncludedSummary(
+                count=0, centrality_sum=0.0, coverage=1.0, symbols=[]
+            ),
+            omitted=OmittedSummary(
+                count=0, centrality_sum=0.0, max_centrality=0.0,
+                top_words=[], top_paths=[], kinds={}, tiers={}
+            ),
+        )
+
+    # Compute centrality
+    raw_centrality = compute_centrality(symbols, edges)
+
+    if first_party_priority:
+        centrality = apply_tier_weights(raw_centrality, symbols)
+    else:
+        centrality = raw_centrality
+
+    # Sort by centrality (highest first)
+    sorted_symbols = sorted(
+        symbols,
+        key=lambda s: (-centrality.get(s.id, 0), s.name)
+    )
+
+    # Compute total centrality for coverage calculation
+    total_centrality = sum(centrality.values())
+    if total_centrality == 0:
+        total_centrality = 1.0
+
+    # Select symbols until we approach the token budget
+    # Reserve tokens for overhead and summary
+    available_tokens = target_tokens - TOKENS_BEHAVIOR_MAP_OVERHEAD - 200  # summary
+
+    included: List[Symbol] = []
+    included_centrality = 0.0
+    tokens_used = 0
+
+    for sym in sorted_symbols:
+        node_dict = sym.to_dict()
+        node_tokens = estimate_node_tokens(node_dict)
+
+        if tokens_used + node_tokens > available_tokens:
+            break
+
+        included.append(sym)
+        included_centrality += centrality.get(sym.id, 0)
+        tokens_used += node_tokens
+
+    # Compute omitted symbols
+    included_ids = {s.id for s in included}
+    omitted = [s for s in symbols if s.id not in included_ids]
+
+    # Compute summaries
+    omitted_centrality = sum(centrality.get(s.id, 0) for s in omitted)
+    max_omitted = max((centrality.get(s.id, 0) for s in omitted), default=0.0)
+
+    # Bag-of-words analysis on omitted symbols
+    word_freq = compute_word_frequencies(omitted)
+    path_freq = compute_path_frequencies(omitted)
+    kind_dist = compute_kind_distribution(omitted)
+    tier_dist = compute_tier_distribution(omitted)
+
+    return CompactResult(
+        included=IncludedSummary(
+            count=len(included),
+            centrality_sum=included_centrality,
+            coverage=included_centrality / total_centrality,
+            symbols=included,
+        ),
+        omitted=OmittedSummary(
+            count=len(omitted),
+            centrality_sum=omitted_centrality,
+            max_centrality=max_omitted,
+            top_words=word_freq.most_common(10),
+            top_paths=path_freq.most_common(5),
+            kinds=kind_dist,
+            tiers=tier_dist,
+        ),
+    )
+
+
+def format_tiered_behavior_map(
+    behavior_map: dict,
+    symbols: List[Symbol],
+    edges: List[Edge],
+    target_tokens: int,
+) -> dict:
+    """Format a behavior map for a specific token tier.
+
+    Args:
+        behavior_map: Original full behavior map.
+        symbols: Symbol objects.
+        edges: Edge objects.
+        target_tokens: Target token budget.
+
+    Returns:
+        Behavior map formatted for the token tier.
+    """
+    result = select_by_tokens(symbols, edges, target_tokens)
+
+    # Create tiered output
+    tiered_map = dict(behavior_map)
+    tiered_map["view"] = "tiered"
+    tiered_map["tier_tokens"] = target_tokens
+    tiered_map["nodes"] = [s.to_dict() for s in result.included.symbols]
+    tiered_map["nodes_summary"] = result.to_dict()
+
+    # Keep edges that connect included nodes
+    included_ids = {s.id for s in result.included.symbols}
+    tiered_map["edges"] = [
+        e for e in behavior_map.get("edges", [])
+        if e.get("src") in included_ids or e.get("dst") in included_ids
+    ]
+
+    return tiered_map
+
+
+def generate_tier_filename(base_path: str, tier_spec: str) -> str:
+    """Generate filename for a tier output file.
+
+    Args:
+        base_path: Base output path like "hypergumbo.results.json"
+        tier_spec: Tier spec like "4k", "16k"
+
+    Returns:
+        Tier-specific filename like "hypergumbo.results.4k.json"
+    """
+    import os
+    base, ext = os.path.splitext(base_path)
+    return f"{base}.{tier_spec}{ext}"
