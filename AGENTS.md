@@ -107,10 +107,10 @@ export FORGEJO_TOKEN=your-token
 ```bash
 # 1. Sync with upstream
 git fetch upstream
-git checkout main
-git merge upstream/main
+git checkout dev
+git merge upstream/dev
 
-# 2. Create feature branch
+# 2. Create feature branch (from dev)
 git checkout -b yourname/feat/description
 
 # 3. Do TDD work (same as maintainer workflow)
@@ -128,7 +128,7 @@ git commit -s -m "feat: description"
 | Aspect | Maintainer (`auto-pr`) | Contributor (`contribute`) |
 |--------|------------------------|---------------------------|
 | Push target | Upstream directly | Your fork |
-| PR creation | refs/for/main/branch | Fork → upstream PR |
+| PR creation | refs/for/main/branch | Fork → upstream/dev PR |
 | CI polling | Waits and auto-merges | Exits after PR creation |
 | Merge | Automatic on CI pass | Requires maintainer approval |
 
@@ -136,7 +136,7 @@ git commit -s -m "feat: description"
 
 If two contributors work on overlapping areas:
 1. Whoever gets their PR merged first "wins"
-2. The other contributor must rebase on the updated main
+2. The other contributor must rebase on the updated dev
 3. No special coordination is expected or required
 4. CI will fail on the second PR if there are conflicts
 
@@ -147,10 +147,10 @@ This is standard git workflow - small, focused PRs reduce conflict risk.
 Once a maintainer merges your PR:
 ```bash
 # Sync your fork with upstream
-git checkout main
+git checkout dev
 git fetch upstream
-git merge upstream/main
-git push origin main
+git merge upstream/dev
+git push origin dev
 
 # Delete your feature branch
 git branch -d yourname/feat/description

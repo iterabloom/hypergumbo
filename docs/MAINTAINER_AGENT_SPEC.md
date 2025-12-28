@@ -36,7 +36,7 @@ The agent does NOT activate for:
 - PRs from maintainers (they use `auto-pr`)
 - Draft PRs
 - PRs marked `[WIP]` or `[DO NOT MERGE]`
-- PRs to branches other than `main`
+- PRs to branches other than `dev`
 
 ## Processing Pipeline
 
@@ -81,7 +81,7 @@ Immediate rejection if:
 
 | Condition | Response |
 |-----------|----------|
-| PR targets non-main branch | "Please target `main` branch" |
+| PR targets non-dev branch | "Please target `dev` branch" |
 | No commits | "Empty PR" |
 | All commits unsigned (no DCO) | "Please sign commits with `-s`" |
 | Binary files added | "Binary files require maintainer review" |
@@ -247,13 +247,13 @@ def process_queue():
 ### Rebase Requests
 
 ```markdown
-This PR has merge conflicts with `main`.
+This PR has merge conflicts with `dev`.
 
 Another PR was merged while yours was in review. Please rebase:
 
 ```bash
 git fetch upstream
-git rebase upstream/main
+git rebase upstream/dev
 git push --force-with-lease origin your-branch
 ```
 
