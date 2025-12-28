@@ -32,6 +32,8 @@ from hypergumbo.compact import (
     # Filtering constants
     EXCLUDED_KINDS,
     _is_test_path,
+    _is_example_path,
+    EXAMPLE_PATH_PATTERNS,
 )
 
 
@@ -866,6 +868,70 @@ class TestIsTestPath:
         assert not _is_test_path("components/Button.tsx")
 
 
+class TestIsExamplePath:
+    """Tests for _is_example_path function."""
+
+    def test_examples_directory(self):
+        """examples/ directory is detected."""
+        assert _is_example_path("/home/project/examples/basic.py")
+        assert _is_example_path("src/examples/demo.ts")
+
+    def test_example_singular(self):
+        """example/ directory is detected."""
+        assert _is_example_path("/home/project/example/basic.py")
+
+    def test_demos_directory(self):
+        """demos/ directory is detected."""
+        assert _is_example_path("/home/project/demos/showcase.py")
+        assert _is_example_path("src/demos/feature.ts")
+
+    def test_demo_singular(self):
+        """demo/ directory is detected."""
+        assert _is_example_path("/home/project/demo/showcase.py")
+
+    def test_samples_directory(self):
+        """samples/ directory is detected."""
+        assert _is_example_path("/home/project/samples/basic.py")
+
+    def test_sample_singular(self):
+        """sample/ directory is detected."""
+        assert _is_example_path("/home/project/sample/basic.py")
+
+    def test_playground_directory(self):
+        """playground/ directory is detected."""
+        assert _is_example_path("src/playground/experiment.ts")
+
+    def test_tutorials_directory(self):
+        """tutorials/ directory is detected."""
+        assert _is_example_path("/home/project/tutorials/getting_started.py")
+        assert _is_example_path("docs/tutorial/step1.py")
+
+    def test_production_files_not_detected(self):
+        """Production files are not detected as examples."""
+        assert not _is_example_path("src/app.py")
+        assert not _is_example_path("lib/utils.ts")
+        assert not _is_example_path("pkg/handler.go")
+        assert not _is_example_path("components/Button.tsx")
+
+    def test_case_insensitive(self):
+        """Detection is case insensitive."""
+        assert _is_example_path("/home/project/Examples/basic.py")
+        assert _is_example_path("/home/project/EXAMPLES/demo.ts")
+
+
+class TestExamplePathPatterns:
+    """Tests for EXAMPLE_PATH_PATTERNS constant."""
+
+    def test_expected_patterns(self):
+        """Expected patterns are in the constant."""
+        assert "/examples/" in EXAMPLE_PATH_PATTERNS
+        assert "/example/" in EXAMPLE_PATH_PATTERNS
+        assert "/demos/" in EXAMPLE_PATH_PATTERNS
+        assert "/demo/" in EXAMPLE_PATH_PATTERNS
+        assert "/samples/" in EXAMPLE_PATH_PATTERNS
+        assert "/playground/" in EXAMPLE_PATH_PATTERNS
+
+
 class TestSelectByTokensFiltering:
     """Tests for filtering in select_by_tokens."""
 
@@ -1009,3 +1075,41 @@ class TestSelectByTokensFiltering:
         # One included, two omitted
         assert result.included.count == 1
         assert result.omitted.count == 2
+
+    def test_excludes_example_paths(self):
+        """Symbols from example directories are excluded."""
+        example_sym = make_symbol("demo_handler", path="/project/examples/basic/handler.py")
+        prod_sym = make_symbol("real_handler", path="src/handlers.py")
+
+        result = select_by_tokens([example_sym, prod_sym], [], target_tokens=5000)
+
+        # Production symbol should be included, example should not
+        included_paths = {s.path for s in result.included.symbols}
+        assert any("src/" in p for p in included_paths)
+        assert not any("/examples/" in p for p in included_paths)
+
+    def test_exclude_examples_can_be_disabled(self):
+        """exclude_examples=False includes example symbols."""
+        example_sym = make_symbol("demo_handler", path="/project/examples/basic/handler.py")
+        prod_sym = make_symbol("real_handler", path="src/handlers.py")
+
+        result = select_by_tokens(
+            [example_sym, prod_sym], [],
+            target_tokens=5000,
+            exclude_examples=False,
+        )
+
+        # Both should be included
+        included_names = {s.name for s in result.included.symbols}
+        assert "demo_handler" in included_names
+        assert "real_handler" in included_names
+
+    def test_omitted_includes_example_symbols(self):
+        """Example symbols count toward omitted summary."""
+        example_sym = make_symbol("demo_handler", path="/project/examples/basic/handler.py")
+        prod_sym = make_symbol("real_handler", path="src/handlers.py")
+
+        result = select_by_tokens([example_sym, prod_sym], [], target_tokens=5000)
+
+        # Omitted should include filtered example symbol
+        assert result.omitted.count >= 1

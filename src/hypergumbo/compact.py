@@ -84,6 +84,19 @@ TEST_PATH_PATTERNS = (
     "test_",           # Python test files: test_foo.py
 )
 
+# Path patterns indicating example/demo code
+EXAMPLE_PATH_PATTERNS = (
+    "/examples/",
+    "/example/",
+    "/demos/",
+    "/demo/",
+    "/samples/",
+    "/sample/",
+    "/playground/",
+    "/tutorial/",
+    "/tutorials/",
+)
+
 
 def _is_test_path(path: str) -> bool:
     """Check if a path represents a test file.
@@ -96,6 +109,19 @@ def _is_test_path(path: str) -> bool:
     """
     path_lower = path.lower()
     return any(pattern in path_lower for pattern in TEST_PATH_PATTERNS)
+
+
+def _is_example_path(path: str) -> bool:
+    """Check if a path represents example/demo code.
+
+    Args:
+        path: File path to check.
+
+    Returns:
+        True if the path appears to be example code.
+    """
+    path_lower = path.lower()
+    return any(pattern in path_lower for pattern in EXAMPLE_PATH_PATTERNS)
 
 
 @dataclass
@@ -530,6 +556,7 @@ def select_by_tokens(
     exclude_tests: bool = True,
     exclude_non_code: bool = True,
     deduplicate_names: bool = True,
+    exclude_examples: bool = True,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -545,6 +572,8 @@ def select_by_tokens(
         exclude_non_code: Exclude non-code kinds (deps, files). Default True.
         deduplicate_names: Skip symbols with already-included names. Default True.
             Prevents "push" appearing 4 times from different files.
+        exclude_examples: Exclude symbols from example directories. Default True.
+            Prevents example handlers from polluting tiers.
 
     Returns:
         CompactResult with symbols fitting the budget.
@@ -567,6 +596,8 @@ def select_by_tokens(
         eligible_symbols = [s for s in eligible_symbols if s.kind not in EXCLUDED_KINDS]
     if exclude_tests:
         eligible_symbols = [s for s in eligible_symbols if not _is_test_path(s.path)]
+    if exclude_examples:
+        eligible_symbols = [s for s in eligible_symbols if not _is_example_path(s.path)]
 
     # Compute centrality on ALL symbols (for accurate coverage)
     raw_centrality = compute_centrality(symbols, edges)
