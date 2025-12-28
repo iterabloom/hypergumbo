@@ -238,6 +238,25 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Capsule plan `supply_chain` config | [x] | `SupplyChainConfig` class with custom patterns for tiers |
 | `limits.supply_chain` logging | [x] | `SupplyChainLimits` tracks classification_failures and ambiguous_paths |
 
+## LLM-Friendly Output Modes
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Compact Mode** | | |
+| `--compact` flag on `run` | [x] | Coverage-based truncation with bag-of-words summarization |
+| `--coverage` parameter | [x] | Target centrality coverage (0.0-1.0, default: 0.8) |
+| `nodes_summary` in output | [x] | Included count/coverage + omitted word frequencies, path patterns, kinds |
+| **Tiered Token-Based Output** | | |
+| Default tiered files | [x] | Automatically generates `.4k.json`, `.16k.json`, `.64k.json` alongside full output |
+| `--tiers` flag | [x] | Custom tier specs (e.g., `"2k,8k,32k"`) |
+| `--tiers none` | [x] | Disable tiered output generation |
+| `--tiers default` | [x] | Explicit default tiers (4k, 16k, 64k) |
+| Token estimation | [x] | ~4 chars/token approximation for JSON |
+| Centrality-based selection | [x] | Most important symbols selected first per budget |
+| Tiered view format | [x] | `view: "tiered"`, `tier_tokens`, `nodes_summary` with included/omitted |
+
+*Design: Full analysis always written to disk. Tiered files provide progressively larger views for LLMs with different context limits. Smaller tiers (4k) fit in most LLMs; larger tiers (64k) provide more detail for capable models.*
+
 ## Re-export Resolution (§9.6)
 
 Tracks implementation of re-export resolution per language. See [spec §9.6](docs/hypergumbo-spec.md#96-known-analysis-limitations) for details.
