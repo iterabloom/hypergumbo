@@ -55,6 +55,7 @@ from .analyze.dart import analyze_dart
 from .analyze.haskell import analyze_haskell
 from .analyze.agda import analyze_agda
 from .analyze.lean import analyze_lean
+from .analyze.wolfram import analyze_wolfram
 from .analyze.ocaml import analyze_ocaml
 from .analyze.solidity import analyze_solidity
 from .analyze.csharp import analyze_csharp
@@ -1241,6 +1242,19 @@ def run_behavior_map(
             analysis_runs.append(lean_result.run.to_dict())
             all_symbols.extend(lean_result.symbols)
             all_edges.extend(lean_result.edges)
+
+    # Run Wolfram analysis (optional, requires tree-sitter-wolfram built from source)
+    wolfram_result = analyze_wolfram(repo_root)
+    if wolfram_result.run is not None:
+        if wolfram_result.skipped:  # pragma: no cover - wolfram not installed
+            limits.skipped_passes.append({
+                "pass": wolfram_result.run.pass_id,
+                "reason": wolfram_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(wolfram_result.run.to_dict())
+            all_symbols.extend(wolfram_result.symbols)
+            all_edges.extend(wolfram_result.edges)
 
     # Run OCaml analysis (optional, requires tree-sitter-ocaml)
     ocaml_result = analyze_ocaml(repo_root)
