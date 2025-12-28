@@ -186,7 +186,8 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Lua | [x] tree-sitter | function, method | calls, imports | Detects `function`, `local function`, method-style `Table:method()`, `require()` imports. Two-pass cross-file resolution. Optional: `pip install hypergumbo[lua]` |
 | Haskell | [x] tree-sitter | function, data, class, instance | calls, imports | Detects functions (with/without type signatures), data types, type classes, instances, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[haskell]` |
 | Agda | [x] tree-sitter | module, function, data, record | imports | Dependently typed proof assistant. Detects modules, functions (including theorems/lemmas), data types, records, postulates. Two-pass cross-file resolution. Tested on agda-stdlib (18,949 symbols) and PLFA (6,014 symbols). Optional: `pip install tree-sitter-agda` |
-| Lean | [x] tree-sitter | function, theorem, structure, inductive, class, instance | imports | Lean 4 theorem prover. Detects defs, theorems, lemmas, structures, inductive types, classes, instances. Two-pass cross-file resolution. Tested on Mathematics in Lean (379 symbols). **Note:** Requires building tree-sitter-lean from source: https://github.com/Julian/tree-sitter-lean |
+| Lean | [x] tree-sitter | function, theorem, structure, inductive, class, instance | imports | Lean 4 theorem prover. Detects defs, theorems, lemmas, structures, inductive types, classes, instances. Two-pass cross-file resolution. Tested on Mathematics in Lean (379 symbols). Built from source via `scripts/build-source-grammars`. |
+| Wolfram | [x] tree-sitter | function, variable | calls, imports | Wolfram Language (Mathematica). Detects SetDelayed (:=) function definitions, Set (=) assignments, function calls, Get/Needs/Import statements. Two-pass cross-file resolution. Built from source via `scripts/build-source-grammars`. |
 | OCaml | [x] tree-sitter | function, type, module | calls, imports | Detects let bindings (functions), types, modules, `open` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ocaml]` |
 | Solidity | [x] tree-sitter | contract, interface, library, function, constructor, modifier, event | calls, imports | Ethereum smart contracts. Detects contracts, interfaces, libraries, functions, constructors, modifiers, events, and import statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-solidity` |
 | C# | [x] tree-sitter | class, interface, struct, enum, method, constructor, property | calls, imports, instantiates | Two-pass cross-file resolution. Detects method calls, `using` directives, `new ClassName()`. Optional: `pip install hypergumbo[csharp]` |
@@ -309,6 +310,7 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 |---------|--------|-------|
 | Test escape hatch removal | [x] | ADR 0002: Tests no longer skip when dependencies unavailable. All tree-sitter packages listed in `pyproject.toml`. |
 | CI debugging tools | [x] | `./scripts/ci-debug` for Forgejo Actions troubleshooting. Commands: `runs`, `status`, `analyze-deps`. |
+| Source-only grammar builds | [x] | `./scripts/build-source-grammars` builds tree-sitter-lean and tree-sitter-wolfram from source in CI. Adds ~30s to CI time. |
 
 ---
 
