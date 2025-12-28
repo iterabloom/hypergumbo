@@ -1758,20 +1758,11 @@ def run_behavior_map(
             limits.partial_results_reason = "some files skipped during analysis"
     behavior_map["limits"] = limits.to_dict()
 
-    # Apply compact mode if requested
-    if compact:
-        config = CompactConfig(target_coverage=coverage)
-        behavior_map = format_compact_behavior_map(
-            behavior_map, all_symbols, all_edges, config
-        )
-
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    out_path.write_text(json.dumps(behavior_map, indent=2))
-
-    # Generate tiered output files
-    # Default behavior: generate DEFAULT_TIERS unless explicitly disabled
+    # Generate tiered output files BEFORE compact mode
+    # (tiered files are always based on full analysis, not compact)
     if tiers != "none":
         tier_specs: list[str]
         if tiers is None or tiers == "default":
@@ -1779,7 +1770,7 @@ def run_behavior_map(
         else:
             tier_specs = [t.strip() for t in tiers.split(",") if t.strip()]
 
-        # Generate each tier file
+        # Generate each tier file from full behavior map
         for tier_spec in tier_specs:
             try:
                 target_tokens = parse_tier_spec(tier_spec)
@@ -1791,6 +1782,15 @@ def run_behavior_map(
             except ValueError:
                 # Skip invalid tier specs silently
                 pass
+
+    # Apply compact mode if requested (modifies main output only)
+    if compact:
+        config = CompactConfig(target_coverage=coverage)
+        behavior_map = format_compact_behavior_map(
+            behavior_map, all_symbols, all_edges, config
+        )
+
+    out_path.write_text(json.dumps(behavior_map, indent=2))
 
 
 def main(argv=None) -> int:
