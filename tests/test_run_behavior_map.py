@@ -101,3 +101,43 @@ def test_run_behavior_map_includes_supply_chain_summary(tmp_path):
     assert "paths" in summary["derived_skipped"]
     assert isinstance(summary["derived_skipped"]["paths"], list)
 
+
+def test_run_behavior_map_compact_mode(tmp_path):
+    """Compact mode produces coverage-based output with summaries."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    # Create source files so we have symbols to work with
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def main(): helper()\n")
+    (src_dir / "utils.py").write_text("def helper(): pass\n")
+
+    out_path = tmp_path / "compact.json"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        compact=True,
+        coverage=0.8,
+    )
+
+    data = json.loads(out_path.read_text())
+
+    # Should have compact view and nodes_summary
+    assert data["view"] == "compact"
+    assert "nodes_summary" in data
+
+    summary = data["nodes_summary"]
+    assert "included" in summary
+    assert "omitted" in summary
+
+    # Included summary should have count and coverage
+    assert "count" in summary["included"]
+    assert "coverage" in summary["included"]
+
+    # Omitted summary should have semantic flavor
+    assert "count" in summary["omitted"]
+    assert "top_words" in summary["omitted"]
+    assert "top_paths" in summary["omitted"]
+    assert "kinds" in summary["omitted"]
+

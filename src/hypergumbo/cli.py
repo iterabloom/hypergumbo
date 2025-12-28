@@ -109,6 +109,7 @@ from .sketch import generate_sketch
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import rank_symbols
+from .compact import format_compact_behavior_map, CompactConfig
 
 
 def cmd_sketch(args: argparse.Namespace) -> int:
@@ -212,12 +213,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     out_path = Path(args.out)
     max_tier = getattr(args, "max_tier", None)
     max_files = getattr(args, "max_files", None)
+    compact = getattr(args, "compact", False)
+    coverage = getattr(args, "coverage", 0.8)
 
     run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
         max_tier=max_tier,
         max_files=max_files,
+        compact=compact,
+        coverage=coverage,
     )
     return 0
 
@@ -714,6 +719,18 @@ def build_parser() -> argparse.ArgumentParser:
         dest="max_files",
         help="Maximum files to analyze per language (for large repos)",
     )
+    p_run.add_argument(
+        "--compact",
+        action="store_true",
+        help="Compact output: include top symbols by centrality coverage with "
+             "bag-of-words summary of omitted items (LLM-friendly)",
+    )
+    p_run.add_argument(
+        "--coverage",
+        type=float,
+        default=0.8,
+        help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -932,6 +949,8 @@ def run_behavior_map(
     out_path: Path,
     max_tier: int | None = None,
     max_files: int | None = None,
+    compact: bool = False,
+    coverage: float = 0.8,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -943,6 +962,9 @@ def run_behavior_map(
             tier > max_tier are filtered out. None means no filtering.
         max_files: Optional maximum files per language analyzer. Limits
             how many files each analyzer processes (for large repos).
+        compact: If True, output compact mode with coverage-based truncation
+            and bag-of-words summary of omitted items.
+        coverage: Target centrality coverage for compact mode (0.0-1.0).
     """
     behavior_map = new_behavior_map()
 
@@ -1714,6 +1736,13 @@ def run_behavior_map(
         if run.get("files_skipped", 0) > 0:
             limits.partial_results_reason = "some files skipped during analysis"
     behavior_map["limits"] = limits.to_dict()
+
+    # Apply compact mode if requested
+    if compact:
+        config = CompactConfig(target_coverage=coverage)
+        behavior_map = format_compact_behavior_map(
+            behavior_map, all_symbols, all_edges, config
+        )
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
