@@ -22,8 +22,8 @@ The workflow runs four jobs in sequence:
 ```
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   test-matrix   │  │  security-audit │  │integration-tests│
-│  (Python 3.10-   │  │  (pip-audit,    │  │  (quick mode)   │
-│   3.12 on Linux)│  │  bandit, etc.)  │  │                 │
+│  (Python 3.10-  │  │  (pip-audit,    │  │  (quick mode)   │
+│   3.13 on Linux)│  │  bandit, etc.)  │  │                 │
 └────────┬────────┘  └────────┬────────┘  └────────┬────────┘
          │                    │                    │
          └────────────────────┼────────────────────┘
@@ -91,8 +91,10 @@ Update `CHANGELOG.md` with release notes. The workflow extracts the section matc
 ### Option A: Tag-Based Release (Recommended)
 
 ```bash
-# 1. Ensure you're on main and up to date
-git checkout main && git pull
+# 1. Sync dev and merge to main
+git checkout dev && git pull origin dev
+git checkout main && git pull origin main
+git merge dev --no-ff -m "chore: merge dev into main for release"
 
 # 2. Update version and changelog
 ./scripts/bump-version 0.6.0
@@ -105,6 +107,11 @@ git commit -s -m "chore: release v0.6.0"
 # 4. Create and push tag
 git tag v0.6.0
 git push origin main v0.6.0
+
+# 5. Merge release commit back to dev
+git checkout dev
+git merge main
+git push origin dev
 ```
 
 The workflow triggers automatically on tag push.

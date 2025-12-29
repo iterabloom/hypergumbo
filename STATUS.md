@@ -314,6 +314,41 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | Source-only grammar builds | [x] | `./scripts/build-source-grammars` builds tree-sitter-lean and tree-sitter-wolfram from source in CI. Adds ~30s to CI time. |
 | Pytest warning filters | [x] | `pyproject.toml` filters expected test warnings (tree-sitter unavailability from mocked tests, API deprecations). |
 
+## Release Pipeline
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Workflow** | | `.github/workflows/release.yml` |
+| Tag-triggered releases | [x] | Push `v*` tag to trigger release |
+| Manual dispatch | [x] | Workflow dispatch with version + dry_run inputs |
+| Dry run mode | [x] | Skip PyPI publish and Forgejo release creation |
+| **Test Matrix** | | |
+| Python 3.10 | [x] | Minimum supported version |
+| Python 3.11 | [x] | |
+| Python 3.12 | [x] | |
+| Python 3.13 | [x] | Latest Python version |
+| **Security Audit** | | |
+| pip-audit | [x] | Dependency vulnerability scanning (`--skip-editable`) |
+| Bandit | [x] | Security linting |
+| Safety | [x] | Advisory check (non-blocking) |
+| pip-licenses | [x] | License audit, warns on copyleft |
+| trufflehog | [x] | Secret scanning |
+| **Integration Tests** | | |
+| Quick mode | [x] | `./scripts/integration-test --quick` |
+| Real repo testing | [x] | Express, Gin, Flask |
+| **Build & Publish** | | |
+| Wheel build | [x] | `python -m build` |
+| Source distribution | [x] | Included in build |
+| SHA256 checksums | [x] | `dist/SHA256SUMS` |
+| SBOM generation | [x] | CycloneDX format (`dist/sbom.json`) |
+| Wheel verification | [x] | `pip install --dry-run` + `twine check` |
+| PyPI publish | [x] | Via twine with `PYPI_TOKEN` secret |
+| Forgejo release | [x] | Via API with `FORGEJO_TOKEN` secret |
+| Changelog extraction | [x] | Auto-extracts version section for release notes |
+| Asset upload | [x] | Wheel, tarball, checksums, SBOM |
+| **Documentation** | | |
+| Release SOP | [x] | `docs/RELEASE_SOP.md` |
+
 ---
 
-*Last updated: 2025-12-28*
+*Last updated: 2025-12-29*
