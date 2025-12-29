@@ -119,7 +119,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
     # Build the schema with definitions
     schema: Dict[str, Any] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://codeberg.org/iterabloom/hypergumbo-experimental/docs/schema.json",
+        "$id": "https://codeberg.org/iterabloom/hypergumbo/docs/schema.json",
         "title": "Hypergumbo Behavior Map",
         "description": "Output schema for hypergumbo analysis. Auto-generated from Python dataclasses.",
         "type": "object",
