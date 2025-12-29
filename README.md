@@ -2,8 +2,11 @@
 
 Get a quick overview of any codebase, sized to fit your context window.
 
+**Requires Python 3.10+**
+
 ```bash
-pip install git+https://codeberg.org/iterabloom/hypergumbo.git
+pip install hypergumbo              # from PyPI (after release)
+pip install git+https://codeberg.org/iterabloom/hypergumbo.git  # from source
 hypergumbo .
 ```
 
@@ -66,7 +69,7 @@ hypergumbo build-grammars    # build Lean/Wolfram grammars from source
 **Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
 - **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
 - **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
-- **Cross-language edges**: JNI bridges (Java↔C), IPC channels (Electron, Web Workers)
+- **Cross-language edges**: 12 linkers connect symbols across language boundaries (see table below)
 
 **LLM-assisted init** (`hypergumbo init --assistant llm`) uses an LLM to generate
 a customized analysis plan based on your repo's profile. Supports:
@@ -80,7 +83,7 @@ Keys are stored in `~/.config/hypergumbo/config.json`.
 Falls back to template-based generation if LLM is unavailable or fails.
 
 > **Note:** LLM-assisted plan generation is currently proof-of-concept infrastructure.
-> With 9 passes and 3 packs in the catalog, template-based generation produces
+> With 33 passes and 3 packs in the catalog, template-based generation produces
 > equivalent results. This feature will become practical as the catalog expands with
 > framework-specific packs and configuration options.
 
@@ -141,6 +144,14 @@ All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
 
 See [STATUS.md](STATUS.md) for implementation progress.
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[AGPL-3.0-or-later](LICENSE)
 
 ![Hypergumbo logo](docs/hypergumbo%20FINAL%20halfres.jpg)
 
