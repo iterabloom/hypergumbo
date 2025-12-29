@@ -176,7 +176,7 @@ jobs:
       - name: Verify wheel
         run: |
           pip install dist/*.whl --dry-run
-          twine check dist/*
+          twine check dist/*.whl dist/*.tar.gz
 
       - name: Publish to PyPI
         if: github.event_name == 'push' || github.event.inputs.dry_run != 'true'
