@@ -381,6 +381,21 @@ module.exports = __webpack_require__(0);
 """)
         assert is_likely_minified(bundled) is True
 
+    def test_unreadable_file_returns_false(self, tmp_path):
+        """Unreadable files return False gracefully."""
+        from unittest.mock import patch, MagicMock
+
+        file_path = tmp_path / "unreadable.js"
+        file_path.write_text("some content")
+
+        # Mock read_text to raise OSError (simulates permission denied, etc.)
+        mock_path = MagicMock(spec=Path)
+        mock_path.read_text.side_effect = OSError("Permission denied")
+
+        with patch.object(Path, "read_text", side_effect=OSError("Permission denied")):
+            # Create a real path but mock its read_text method
+            assert is_likely_minified(file_path) is False
+
 
 class TestClassificationPriority:
     """Test that classification checks are applied in correct order."""

@@ -140,7 +140,7 @@ setup(
     description='{name} grammar for tree-sitter',
     packages=['{module_name}'],
     ext_modules=[ext_module],
-    python_requires='>=3.9',
+    python_requires='>=3.10',
     install_requires=['tree-sitter>=0.21.0'],
 )
 '''

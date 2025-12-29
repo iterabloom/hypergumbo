@@ -156,7 +156,7 @@ Future automation could track:
 Releases merge `dev` → `main` and require:
 
 1. **Extended CI** (not just the 5-minute dev CI)
-   - Multi-Python version matrix (3.9-3.12)
+   - Multi-Python version matrix (3.10-3.13)
    - Multi-platform (Linux, macOS, Windows)
    - Integration tests on real repositories
    - Performance regression check
