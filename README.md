@@ -82,10 +82,12 @@ Keys are stored in `~/.config/hypergumbo/config.json`.
 
 Falls back to template-based generation if LLM is unavailable or fails.
 
-> **Note:** LLM-assisted plan generation is currently proof-of-concept infrastructure.
-> With 33 passes and 3 packs in the catalog, template-based generation produces
-> equivalent results. This feature will become practical as the catalog expands with
-> framework-specific packs and configuration options.
+> **Note:** LLM-assisted plan generation currently provides no advantage over the
+> default template-based approach. The catalog's passes are language-specific (Python
+> analyzer, Rust analyzer, etc.), so both methods select the same passes based on
+> detected languages. LLM assistance will become valuable when the catalog offers
+> framework-specific packs (e.g., "Django routes" vs "FastAPI routes") or configurable
+> options where intelligent selection matters.
 
 ### Supported Languages (51 Analyzers)
 
