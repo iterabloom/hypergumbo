@@ -355,7 +355,7 @@ Declares execution requirements and security policy:
   "version": "0.1.0",
   "validation_mode": "strict",
   "requires": {
-    "runtime": "python>=3.9",
+    "runtime": "python>=3.10",
     "toolchains": [],
     "hypergumbo_schema": "0.1.0"
   },
@@ -550,7 +550,7 @@ Shipped with hypergumbo, describes available components:
       "name": "Python AST Parser",
       "version": "hypergumbo-0.1.0",
       "capabilities": ["python"],
-      "requires": {"runtime": "python>=3.9"},
+      "requires": {"runtime": "python>=3.10"},
       "evidence_types": ["ast_call_direct", "ast_call_method", "import_static"],
       "config_schema": {
         "parse_decorators": {"type": "boolean", "default": true}

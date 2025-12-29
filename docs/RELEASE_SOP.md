@@ -22,7 +22,7 @@ The workflow runs four jobs in sequence:
 ```
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   test-matrix   │  │  security-audit │  │integration-tests│
-│  (Python 3.9-   │  │  (pip-audit,    │  │  (quick mode)   │
+│  (Python 3.10-   │  │  (pip-audit,    │  │  (quick mode)   │
 │   3.12 on Linux)│  │  bandit, etc.)  │  │                 │
 └────────┬────────┘  └────────┬────────┘  └────────┬────────┘
          │                    │                    │
@@ -35,7 +35,7 @@ The workflow runs four jobs in sequence:
 ```
 
 #### Job 1: test-matrix
-- Runs tests on Python 3.9, 3.10, 3.11, and 3.12
+- Runs tests on Python 3.10, 3.11, 3.12, and 3.13
 - Builds source-only grammars
 - Requires 100% test coverage
 

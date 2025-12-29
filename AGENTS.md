@@ -228,7 +228,7 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
 
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
-- **Stack:** Python 3.9+, standard library preferred where possible.
+- **Stack:** Python 3.10+, standard library preferred where possible.
 - **Core:** `src/hypergumbo` contains the logic. `cli.py` is the entry point.
 - **Specs:** See `docs/hypergumbo-spec.md` for the design contract. Current work targets **Spec A (MVP)**; Spec B (future roadmap) is not in scope.
 - **Status:** See `STATUS.md` for implementation progress against Spec A.
