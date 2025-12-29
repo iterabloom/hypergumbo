@@ -64,7 +64,7 @@ git commit -s -m "feat: description"
 - **TDD Protocol:**
   1. **Red:** Write a failing test first.
   2. **Green:** Write minimal code to pass the test.
-  3. **Refactor:** Clean up code while keeping tests green.
+  3. **Refactor:** Clean up code and then re-run tests. If tests go red, no worries; that just means you are back at step 1; repeat for as many cycles as seems appropriate.
 - **Branch Naming:** Use `<author>/[feat|fix|docs|refactor]/<short-description>` (e.g., `jgstern-agent/feat/dart-analyzer`).
 - **Integration Protocol:**
   1. Run full suite locally (`pytest`).

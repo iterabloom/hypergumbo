@@ -8,6 +8,9 @@ This document describes contributor trust, review policies, and release processe
 
 We start from a presumption of good faith. Every contributor is assumed to have good intentions until their behavior indicates otherwise. Trust is not about credentials, social proof, or reputation—it's about observable patterns of behavior over time.
 
+All contributors are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md). 
+Violations affect trust status just as technical violations do.
+
 Each contributor has their own trust profile, updated with every interaction.
 
 ## Behavioral Signals
