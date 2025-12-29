@@ -3,7 +3,7 @@
 Get a quick overview of any codebase, sized to fit your context window.
 
 ```bash
-pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
+pip install git+https://codeberg.org/iterabloom/hypergumbo.git
 hypergumbo .
 ```
 
@@ -74,6 +74,9 @@ a customized analysis plan based on your repo's profile. Supports:
 - **OpenAI**: Set `OPENAI_API_KEY` env var
 - **Local models**: Install `hypergumbo[llm-local]` for the [llm](https://pypi.org/project/llm/) package
 
+If no API key is configured, hypergumbo will offer to set one up interactively.
+Keys are stored in `~/.config/hypergumbo/config.json`.
+
 Falls back to template-based generation if LLM is unavailable or fails.
 
 > **Note:** LLM-assisted plan generation is currently proof-of-concept infrastructure.
@@ -124,7 +127,7 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 To contribute to hypergumbo:
 
 ```bash
-git clone https://codeberg.org/iterabloom/hypergumbo-experimental.git
+git clone https://codeberg.org/iterabloom/hypergumbo.git
 cd hypergumbo
 python3 -m venv .venv
 source .venv/bin/activate
@@ -133,10 +136,6 @@ pip install -e .[dev]
 hypergumbo build-grammars  # optional: enables Lean and Wolfram analyzers
 pytest
 ```
-
-> **Note:** A few warnings like "C analysis skipped: requires tree-sitter-c" are expected—
-> they come from fallback tests that mock dependencies as unavailable. If you see many
-> such warnings or actual test failures, double-check that `pip install -e .[dev]` succeeded.
 
 All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
