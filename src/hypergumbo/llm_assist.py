@@ -168,7 +168,10 @@ def detect_backend() -> Tuple[LLMBackend, LLMConfig]:
 
     # Priority 2: Auto-detect based on available credentials/packages
     # Check OpenRouter first (free tier available)
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    # Check both env var and user config file
+    from .user_config import get_api_key
+
+    openrouter_key = get_api_key("openrouter")
     if openrouter_key:
         return LLMBackend.OPENROUTER, LLMConfig(
             backend=LLMBackend.OPENROUTER,
@@ -178,7 +181,7 @@ def detect_backend() -> Tuple[LLMBackend, LLMConfig]:
         )
 
     # Check OpenAI
-    openai_key = os.environ.get("OPENAI_API_KEY")
+    openai_key = get_api_key("openai")
     if openai_key:
         return LLMBackend.OPENAI, LLMConfig(
             backend=LLMBackend.OPENAI,

@@ -170,6 +170,19 @@ def cmd_init(args: argparse.Namespace) -> int:
     # Generate capsule plan (template or LLM-assisted)
     catalog = get_default_catalog()
     use_llm = args.assistant == "llm"
+
+    # If LLM requested but no backend available, offer interactive setup
+    if use_llm:
+        from .llm_assist import detect_backend, LLMBackend
+        from .user_config import prompt_for_llm_setup
+
+        backend, _ = detect_backend()
+        if backend == LLMBackend.NONE and sys.stdin.isatty():
+            # Offer to set up LLM backend interactively
+            if prompt_for_llm_setup():
+                # Re-detect after setup
+                backend, _ = detect_backend()
+
     plan, llm_result = generate_plan_with_fallback(
         profile, catalog, use_llm=use_llm, tier=args.llm_input
     )
