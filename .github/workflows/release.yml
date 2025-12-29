@@ -14,8 +14,11 @@ on:
       dry_run:
         description: 'Dry run (no publish)'
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+        default: 'false'
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -174,7 +177,7 @@ jobs:
           twine check dist/*
 
       - name: Publish to PyPI
-        if: github.event_name == 'push' || !github.event.inputs.dry_run
+        if: github.event_name == 'push' || github.event.inputs.dry_run != 'true'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
