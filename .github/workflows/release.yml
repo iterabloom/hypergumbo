@@ -51,7 +51,9 @@ jobs:
         run: ./scripts/build-source-grammars
 
       - name: Run tests with coverage
-        run: pytest --cov=src --cov-fail-under=100
+        run: |
+          # Show missing lines to help debug coverage gaps
+          pytest --cov=src --cov-report=term-missing --cov-fail-under=100
 
   # ─────────────────────────────────────────────────────────────
   # Security audit
