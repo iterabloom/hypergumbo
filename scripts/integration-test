@@ -140,7 +140,7 @@ test_repo() {
     # Run hypergumbo run
     echo "  Running: hypergumbo run..."
     start_time=$(date +%s.%N)
-    if hypergumbo run "$clone_dir" -o "$WORK_DIR/$name-output.json" 2>&1; then
+    if hypergumbo run "$clone_dir" --out "$WORK_DIR/$name-output.json" 2>&1; then
         end_time=$(date +%s.%N)
         duration=$(echo "$end_time - $start_time" | bc)
 
