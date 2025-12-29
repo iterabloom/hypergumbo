@@ -71,23 +71,12 @@ hypergumbo build-grammars    # build Lean/Wolfram grammars from source
 - **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
 - **Cross-language edges**: 12 linkers connect symbols across language boundaries (see table below)
 
-**LLM-assisted init** (`hypergumbo init --assistant llm`) uses an LLM to generate
-a customized analysis plan based on your repo's profile. Supports:
-- **OpenRouter** (free tier): Set `OPENROUTER_API_KEY` env var
-- **OpenAI**: Set `OPENAI_API_KEY` env var
-- **Local models**: Install `hypergumbo[llm-local]` for the [llm](https://pypi.org/project/llm/) package
-
-If no API key is configured, hypergumbo will offer to set one up interactively.
-Keys are stored in `~/.config/hypergumbo/config.json`.
-
-Falls back to template-based generation if LLM is unavailable or fails.
-
-> **Note:** LLM-assisted plan generation currently provides no advantage over the
-> default template-based approach. The catalog's passes are language-specific (Python
-> analyzer, Rust analyzer, etc.), so both methods select the same passes based on
-> detected languages. LLM assistance will become valuable when the catalog offers
-> framework-specific packs (e.g., "Django routes" vs "FastAPI routes") or configurable
-> options where intelligent selection matters.
+**LLM-assisted init** (`hypergumbo init --assistant llm`) demonstrates LLM integration
+patterns but provides no practical advantage over the default template-based approach.
+Since analyzers are language-level (not framework-level), both methods select the same
+passes. This feature exists as a technical scaffold showing how to integrate OpenRouter,
+OpenAI, or local models via the [llm](https://pypi.org/project/llm/) package. It may be
+removed in a future release.
 
 ### Supported Languages (51 Analyzers)
 
