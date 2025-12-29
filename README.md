@@ -123,7 +123,7 @@ To contribute to hypergumbo:
 
 ```bash
 git clone https://codeberg.org/iterabloom/hypergumbo-experimental.git
-cd hypergumbo-experimental
+cd hypergumbo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
