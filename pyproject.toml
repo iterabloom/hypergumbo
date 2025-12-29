@@ -86,6 +86,16 @@ llm-local = [
 [project.scripts]
 hypergumbo = "hypergumbo.cli:main"
 
+[tool.pytest.ini_options]
+# Filter expected warnings from tests
+filterwarnings = [
+    # tree-sitter unavailability in fallback tests
+    "ignore:tree-sitter-.*not available:UserWarning",
+    "ignore:.*analysis skipped.*requires tree-sitter:UserWarning",
+    # tree-sitter deprecation warnings (older grammar packages)
+    "ignore:int argument support is deprecated:DeprecationWarning",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/hypergumbo"]
 
