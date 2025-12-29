@@ -13,6 +13,7 @@ The CLI uses argparse with subcommands for different operations:
 - **slice**: Extract subgraph from an entry point
 - **catalog**: List available analysis passes and packs
 - **export-capsule**: Export capsule as shareable tarball
+- **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
@@ -120,6 +121,7 @@ from .compact import (
     CompactConfig,
     DEFAULT_TIERS,
 )
+from .build_grammars import build_all_grammars, check_grammar_availability
 
 
 def cmd_sketch(args: argparse.Namespace) -> int:
@@ -625,6 +627,34 @@ def cmd_export_capsule(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_build_grammars(args: argparse.Namespace) -> int:
+    """Build tree-sitter grammars from source (Lean, Wolfram)."""
+    if args.check:
+        # Just check availability
+        status = check_grammar_availability()
+        all_available = all(status.values())
+
+        print("Grammar availability:")
+        for name, available in status.items():
+            symbol = "✓" if available else "✗"
+            print(f"  {symbol} tree-sitter-{name}")
+
+        if not all_available:
+            print("\nRun 'hypergumbo build-grammars' to build missing grammars.")
+            return 1
+        return 0
+
+    # Build grammars
+    results = build_all_grammars(quiet=args.quiet)
+
+    if all(results.values()):
+        return 0
+    else:
+        failed = [name for name, ok in results.items() if not ok]
+        print(f"\nFailed to build: {', '.join(failed)}", file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="hypergumbo",
@@ -919,6 +949,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output tarball path (default: capsule.tar.gz)",
     )
     p_export.set_defaults(func=cmd_export_capsule)
+
+    # hypergumbo build-grammars
+    p_build = sub.add_parser(
+        "build-grammars",
+        help="Build tree-sitter grammars from source (Lean, Wolfram)",
+    )
+    p_build.add_argument(
+        "--check",
+        action="store_true",
+        help="Check grammar availability without building",
+    )
+    p_build.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_build.set_defaults(func=cmd_build_grammars)
 
     return p
 
@@ -1868,7 +1915,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    subcommands = {"init", "run", "slice", "search", "routes", "catalog", "export-capsule", "sketch"}
+    subcommands = {"init", "run", "slice", "search", "routes", "catalog", "export-capsule", "sketch", "build-grammars"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

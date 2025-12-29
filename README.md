@@ -51,6 +51,7 @@ hypergumbo init [path]       # initialize .hypergumbo/ capsule
 hypergumbo init --assistant llm  # use LLM to generate analysis plan
 hypergumbo catalog           # list available analysis passes
 hypergumbo export-capsule    # export shareable capsule tarball
+hypergumbo build-grammars    # build Lean/Wolfram grammars from source
 ```
 
 ## What It Does
@@ -91,10 +92,11 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
 | **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
 | **Frontend** | Vue, Svelte, HTML |
-| **Proof/Formal** | Agda, Lean* |
+| **Proof/Formal** | Agda, Lean*, Wolfram* |
 | **Legacy/Academic** | COBOL, LaTeX |
 
-\* Lean requires building tree-sitter-lean from source (not on PyPI)
+\* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI).
+Run `hypergumbo build-grammars` to enable these analyzers.
 
 All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
 
@@ -128,6 +130,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
+hypergumbo build-grammars  # optional: enables Lean and Wolfram analyzers
 pytest
 ```
 
