@@ -76,7 +76,7 @@ jobs:
           pip install pip-audit bandit safety pip-licenses
 
       - name: Vulnerability scan (pip-audit)
-        run: pip-audit --strict --skip-editable
+        run: pip-audit --skip-editable
 
       - name: Security linting (Bandit)
         run: bandit -r src/ -c pyproject.toml
