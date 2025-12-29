@@ -8,6 +8,9 @@ This document describes contributor trust, review policies, and release processe
 
 We start from a presumption of good faith. Every contributor is assumed to have good intentions until their behavior indicates otherwise. Trust is not about credentials, social proof, or reputation—it's about observable patterns of behavior over time.
 
+All contributors are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md). 
+Violations affect trust status just as technical violations do.
+
 Each contributor has their own trust profile, updated with every interaction.
 
 ## Behavioral Signals
@@ -156,7 +159,7 @@ Future automation could track:
 Releases merge `dev` → `main` and require:
 
 1. **Extended CI** (not just the 5-minute dev CI)
-   - Multi-Python version matrix (3.9-3.12)
+   - Multi-Python version matrix (3.10-3.13)
    - Multi-platform (Linux, macOS, Windows)
    - Integration tests on real repositories
    - Performance regression check

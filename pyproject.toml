@@ -7,7 +7,7 @@ name = "hypergumbo"
 version = "0.5.0"
 description = "Local-first repo behavior map generator (MVP)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Hypergumbo contributors" }]
 keywords = ["static-analysis", "code-graph", "cli", "local-first"]
@@ -86,11 +86,21 @@ llm-local = [
 [project.scripts]
 hypergumbo = "hypergumbo.cli:main"
 
+[tool.pytest.ini_options]
+# Filter expected warnings from tests
+filterwarnings = [
+    # tree-sitter unavailability in fallback tests
+    "ignore:tree-sitter-.*not available:UserWarning",
+    "ignore:.*analysis skipped.*requires tree-sitter:UserWarning",
+    # tree-sitter deprecation warnings (older grammar packages)
+    "ignore:int argument support is deprecated:DeprecationWarning",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/hypergumbo"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 100
 src = ["src", "tests"]
 

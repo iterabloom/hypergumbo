@@ -2,8 +2,11 @@
 
 Get a quick overview of any codebase, sized to fit your context window.
 
+**Requires Python 3.10+**
+
 ```bash
-pip install git+https://codeberg.org/iterabloom/hypergumbo-experimental.git
+pip install hypergumbo              # from PyPI (after release)
+pip install git+https://codeberg.org/iterabloom/hypergumbo.git  # from source
 hypergumbo .
 ```
 
@@ -51,6 +54,7 @@ hypergumbo init [path]       # initialize .hypergumbo/ capsule
 hypergumbo init --assistant llm  # use LLM to generate analysis plan
 hypergumbo catalog           # list available analysis passes
 hypergumbo export-capsule    # export shareable capsule tarball
+hypergumbo build-grammars    # build Lean/Wolfram grammars from source
 ```
 
 ## What It Does
@@ -65,20 +69,14 @@ hypergumbo export-capsule    # export shareable capsule tarball
 **Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
 - **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
 - **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
-- **Cross-language edges**: JNI bridges (Java↔C), IPC channels (Electron, Web Workers)
+- **Cross-language edges**: 12 linkers connect symbols across language boundaries (see table below)
 
-**LLM-assisted init** (`hypergumbo init --assistant llm`) uses an LLM to generate
-a customized analysis plan based on your repo's profile. Supports:
-- **OpenRouter** (free tier): Set `OPENROUTER_API_KEY` env var
-- **OpenAI**: Set `OPENAI_API_KEY` env var
-- **Local models**: Install `hypergumbo[llm-local]` for the [llm](https://pypi.org/project/llm/) package
-
-Falls back to template-based generation if LLM is unavailable or fails.
-
-> **Note:** LLM-assisted plan generation is currently proof-of-concept infrastructure.
-> With 9 passes and 3 packs in the catalog, template-based generation produces
-> equivalent results. This feature will become practical as the catalog expands with
-> framework-specific packs and configuration options.
+**LLM-assisted init** (`hypergumbo init --assistant llm`) demonstrates LLM integration
+patterns but provides no practical advantage over the default template-based approach.
+Since analyzers are language-level (not framework-level), both methods select the same
+passes. This feature exists as a technical scaffold showing how to integrate OpenRouter,
+OpenAI, or local models via the [llm](https://pypi.org/project/llm/) package. It may be
+removed in a future release.
 
 ### Supported Languages (51 Analyzers)
 
@@ -91,10 +89,11 @@ Falls back to template-based generation if LLM is unavailable or fails.
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
 | **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
 | **Frontend** | Vue, Svelte, HTML |
-| **Proof/Formal** | Agda, Lean* |
+| **Proof/Formal** | Agda, Lean*, Wolfram* |
 | **Legacy/Academic** | COBOL, LaTeX |
 
-\* Lean requires building tree-sitter-lean from source (not on PyPI)
+\* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI).
+Run `hypergumbo build-grammars` to enable these analyzers.
 
 All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
 
@@ -122,23 +121,28 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 To contribute to hypergumbo:
 
 ```bash
-git clone https://codeberg.org/iterabloom/hypergumbo-experimental.git
-cd hypergumbo-experimental
+git clone https://codeberg.org/iterabloom/hypergumbo.git
+cd hypergumbo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
+hypergumbo build-grammars  # optional: enables Lean and Wolfram analyzers
 pytest
 ```
-
-> **Note:** A few warnings like "C analysis skipped: requires tree-sitter-c" are expected—
-> they come from fallback tests that mock dependencies as unavailable. If you see many
-> such warnings or actual test failures, double-check that `pip install -e .[dev]` succeeded.
 
 All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
 
 See [STATUS.md](STATUS.md) for implementation progress.
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[AGPL-3.0-or-later](LICENSE)
 
 ![Hypergumbo logo](docs/hypergumbo%20FINAL%20halfres.jpg)
 

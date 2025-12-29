@@ -65,7 +65,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 |---------|--------|-------|
 | `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` + `capsule_plan.json` |
 | Template-based plan generation | [x] | `plan.py` - generates from profile + catalog |
-| LLM-assisted plan generation | [x] | `llm_assist.py` - OpenRouter, OpenAI, llm package backends. *Proof-of-concept; template-based generation currently produces equivalent results.* |
+| LLM-assisted plan generation | [x] | `llm_assist.py` - OpenRouter, OpenAI, llm package backends. Interactive setup prompts if no API key configured. Keys stored in `~/.config/hypergumbo/config.json`. *Proof-of-concept; template-based generation currently produces equivalent results.* |
 | `hypergumbo catalog` command | [x] | Lists passes and packs |
 | `hypergumbo export-capsule` command | [x] | `export.py` - tarball with privacy redactions |
 
@@ -107,6 +107,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo export-capsule` | [x] | Export shareable capsule |
 | `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Django/DRF, Express.js, Koa, Fastify, NestJS, Rails, Axum, Actix-web, Rocket, Gin, Echo, Fiber). Shows HTTP methods, route paths, and handler functions |
 | `hypergumbo search <query>` | [x] | Search symbols by name pattern |
+| `hypergumbo build-grammars` | [x] | Build Lean/Wolfram grammars from source (tree-sitter) |
 
 ## Output Schema Compliance
 
@@ -311,7 +312,43 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | Test escape hatch removal | [x] | ADR 0002: Tests no longer skip when dependencies unavailable. All tree-sitter packages listed in `pyproject.toml`. |
 | CI debugging tools | [x] | `./scripts/ci-debug` for Forgejo Actions troubleshooting. Commands: `runs`, `status`, `analyze-deps`. |
 | Source-only grammar builds | [x] | `./scripts/build-source-grammars` builds tree-sitter-lean and tree-sitter-wolfram from source in CI. Adds ~30s to CI time. |
+| Pytest warning filters | [x] | `pyproject.toml` filters expected test warnings (tree-sitter unavailability from mocked tests, API deprecations). |
+
+## Release Pipeline
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Workflow** | | `.github/workflows/release.yml` |
+| Tag-triggered releases | [x] | Push `v*` tag to trigger release |
+| Manual dispatch | [x] | Workflow dispatch with version + dry_run inputs |
+| Dry run mode | [x] | Skip PyPI publish and Forgejo release creation |
+| **Test Matrix** | | |
+| Python 3.10 | [x] | Minimum supported version |
+| Python 3.11 | [x] | |
+| Python 3.12 | [x] | |
+| Python 3.13 | [x] | Latest Python version |
+| **Security Audit** | | |
+| pip-audit | [x] | Dependency vulnerability scanning (`--skip-editable`) |
+| Bandit | [x] | Security linting |
+| Safety | [x] | Advisory check (non-blocking) |
+| pip-licenses | [x] | License audit, warns on copyleft |
+| trufflehog | [x] | Secret scanning |
+| **Integration Tests** | | |
+| Quick mode | [x] | `./scripts/integration-test --quick` |
+| Real repo testing | [x] | Express, Gin, Flask |
+| **Build & Publish** | | |
+| Wheel build | [x] | `python -m build` |
+| Source distribution | [x] | Included in build |
+| SHA256 checksums | [x] | `dist/SHA256SUMS` |
+| SBOM generation | [x] | CycloneDX format (`dist/sbom.json`) |
+| Wheel verification | [x] | `pip install --dry-run` + `twine check` |
+| PyPI publish | [x] | Via twine with `PYPI_TOKEN` secret |
+| Forgejo release | [x] | Via API with `FORGEJO_TOKEN` secret |
+| Changelog extraction | [x] | Auto-extracts version section for release notes |
+| Asset upload | [x] | Wheel, tarball, checksums, SBOM |
+| **Documentation** | | |
+| Release SOP | [x] | `docs/RELEASE_SOP.md` |
 
 ---
 
-*Last updated: 2025-12-28*
+*Last updated: 2025-12-29*

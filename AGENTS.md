@@ -64,7 +64,7 @@ git commit -s -m "feat: description"
 - **TDD Protocol:**
   1. **Red:** Write a failing test first.
   2. **Green:** Write minimal code to pass the test.
-  3. **Refactor:** Clean up code while keeping tests green.
+  3. **Refactor:** Clean up code and then re-run tests. If tests go red, no worries; that just means you are back at step 1; repeat for as many cycles as seems appropriate.
 - **Branch Naming:** Use `<author>/[feat|fix|docs|refactor]/<short-description>` (e.g., `jgstern-agent/feat/dart-analyzer`).
 - **Integration Protocol:**
   1. Run full suite locally (`pytest`).
@@ -228,7 +228,7 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
 
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
-- **Stack:** Python 3.9+, standard library preferred where possible.
+- **Stack:** Python 3.10+, standard library preferred where possible.
 - **Core:** `src/hypergumbo` contains the logic. `cli.py` is the entry point.
 - **Specs:** See `docs/hypergumbo-spec.md` for the design contract. Current work targets **Spec A (MVP)**; Spec B (future roadmap) is not in scope.
 - **Status:** See `STATUS.md` for implementation progress against Spec A.
@@ -239,7 +239,7 @@ When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE",
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo-experimental_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. Once you begin experimenting, keep going until it gets boring or repetitive. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
+- **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. Once you begin experimenting, keep going until it gets boring or repetitive. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 - **Keep STATUS.md updated:** Document what's implemented after each merge.
 - **Adjust specs based on experiments:** If experiments reveal better approaches, update Spec A/B.
 - **If you run out of Spec A items, dive into Spec B.**

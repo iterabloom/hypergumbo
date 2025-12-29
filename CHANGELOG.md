@@ -148,5 +148,5 @@ Initial public release with comprehensive static analysis capabilities.
 |---------|------|------------|
 | 0.5.0 | 2025-12-26 | Initial release: 32 analyzers, 12 linkers, sketch generation |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo-experimental/compare/v0.5.0...HEAD
-[0.5.0]: https://codeberg.org/iterabloom/hypergumbo-experimental/releases/tag/v0.5.0
+[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.5.0...HEAD
+[0.5.0]: https://codeberg.org/iterabloom/hypergumbo/releases/tag/v0.5.0

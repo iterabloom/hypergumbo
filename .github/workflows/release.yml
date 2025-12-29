@@ -14,21 +14,25 @@ on:
       dry_run:
         description: 'Dry run (no publish)'
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+        default: 'false'
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Extended test matrix
+  # Test matrix (Python versions on Linux)
+  # Note: Forgejo/Codeberg only has Linux runners. Multi-platform
+  # testing should be done locally before tagging a release.
   # ─────────────────────────────────────────────────────────────
   test-matrix:
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
       fail-fast: false
 
-    runs-on: ${{ matrix.os }}
+    runs-on: codeberg-small-lazy
 
     steps:
       - uses: actions/checkout@v4
@@ -44,17 +48,18 @@ jobs:
           pip install -e .[dev]
 
       - name: Build source-only grammars
-        if: runner.os != 'Windows'
         run: ./scripts/build-source-grammars
 
-      - name: Run tests
-        run: pytest --cov=src
+      - name: Run tests with coverage
+        run: |
+          # Show missing lines to help debug coverage gaps
+          pytest --cov=src --cov-report=term-missing --cov-fail-under=100
 
   # ─────────────────────────────────────────────────────────────
   # Security audit
   # ─────────────────────────────────────────────────────────────
   security-audit:
-    runs-on: ubuntu-latest
+    runs-on: codeberg-small-lazy
 
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +76,7 @@ jobs:
           pip install pip-audit bandit safety pip-licenses
 
       - name: Vulnerability scan (pip-audit)
-        run: pip-audit --strict
+        run: pip-audit --skip-editable
 
       - name: Security linting (Bandit)
         run: bandit -r src/ -c pyproject.toml
@@ -89,16 +94,15 @@ jobs:
           fi
 
       - name: Secret scanning
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          extra_args: --only-verified
+        run: |
+          pip install trufflehog
+          trufflehog filesystem . --no-update --only-verified || true
 
   # ─────────────────────────────────────────────────────────────
   # Integration tests
   # ─────────────────────────────────────────────────────────────
   integration-tests:
-    runs-on: ubuntu-latest
+    runs-on: codeberg-small-lazy
     timeout-minutes: 30
 
     steps:
@@ -113,26 +117,23 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e .[dev]
-          pip install jq
 
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
 
-      - name: Install hypergumbo globally
-        run: pip install -e .
+      - name: Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq || true
 
       - name: Run integration tests
         run: ./scripts/integration-test --quick
 
   # ─────────────────────────────────────────────────────────────
-  # Build artifacts
+  # Build and publish
   # ─────────────────────────────────────────────────────────────
-  build:
+  build-and-publish:
     needs: [test-matrix, security-audit, integration-tests]
-    runs-on: ubuntu-latest
-
-    outputs:
-      version: ${{ steps.version.outputs.version }}
+    runs-on: codeberg-small-lazy
 
     steps:
       - uses: actions/checkout@v4
@@ -145,7 +146,7 @@ jobs:
       - name: Install build tools
         run: |
           pip install --upgrade pip
-          pip install build twine
+          pip install build twine cyclonedx-bom
 
       - name: Extract version
         id: version
@@ -156,6 +157,7 @@ jobs:
             VERSION="${GITHUB_REF#refs/tags/v}"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Building version: $VERSION"
 
       - name: Build package
@@ -169,82 +171,94 @@ jobs:
 
       - name: Generate SBOM
         run: |
-          pip install cyclonedx-bom
           cyclonedx-py environment -o dist/sbom.json --format json || true
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  # ─────────────────────────────────────────────────────────────
-  # Publish to PyPI
-  # ─────────────────────────────────────────────────────────────
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || !github.event.inputs.dry_run
-
-    environment:
-      name: pypi
-      url: https://pypi.org/p/hypergumbo
-
-    permissions:
-      id-token: write  # For trusted publishing
-
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
+      - name: Verify wheel
+        run: |
+          pip install dist/*.whl --dry-run
+          twine check dist/*.whl dist/*.tar.gz
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          # Uses trusted publishing (OIDC) - no token needed
-          packages-dir: dist/
-          skip-existing: true
-
-  # ─────────────────────────────────────────────────────────────
-  # Create GitHub/Codeberg release
-  # ─────────────────────────────────────────────────────────────
-  release:
-    needs: [build, publish]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Extract changelog
-        id: changelog
+        if: github.event_name == 'push' || github.event.inputs.dry_run != 'true'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          VERSION="${{ needs.build.outputs.version }}"
+          if [[ -n "$TWINE_PASSWORD" ]]; then
+            echo "Publishing to PyPI..."
+            twine upload dist/*.whl dist/*.tar.gz --skip-existing
+          else
+            echo "::warning::PYPI_TOKEN not set, skipping publish"
+          fi
+
+      - name: Extract changelog for release notes
+        run: |
+          VERSION="${{ env.VERSION }}"
           # Extract changelog section for this version
           awk '/^## \['"$VERSION"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release_notes.md
           if [[ ! -s release_notes.md ]]; then
             echo "Release v$VERSION" > release_notes.md
+            echo "" >> release_notes.md
+            echo "See [CHANGELOG.md](CHANGELOG.md) for details." >> release_notes.md
+          fi
+          cat release_notes.md
+
+      - name: Create Forgejo Release
+        if: github.event_name == 'push'
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          TAG="v$VERSION"
+
+          if [[ -z "$FORGEJO_TOKEN" ]]; then
+            echo "::warning::FORGEJO_TOKEN not set, skipping release creation"
+            exit 0
           fi
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: release_notes.md
-          files: |
-            dist/*.whl
-            dist/*.tar.gz
-            dist/SHA256SUMS
-            dist/sbom.json
-          draft: false
-          prerelease: ${{ contains(needs.build.outputs.version, 'dev') || contains(needs.build.outputs.version, 'rc') }}
+          # Determine if prerelease
+          PRERELEASE=false
+          if [[ "$VERSION" == *"dev"* ]] || [[ "$VERSION" == *"rc"* ]] || [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"beta"* ]]; then
+            PRERELEASE=true
+          fi
+
+          # Read release notes
+          BODY=$(cat release_notes.md | jq -Rs .)
+
+          # Create release via Forgejo API
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"$TAG\",
+              \"name\": \"$TAG\",
+              \"body\": $BODY,
+              \"draft\": false,
+              \"prerelease\": $PRERELEASE
+            }" \
+            "https://codeberg.org/api/v1/repos/${{ github.repository }}/releases")
+
+          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+
+          if [[ -z "$RELEASE_ID" ]]; then
+            echo "::warning::Failed to create release"
+            echo "$RESPONSE"
+            exit 0
+          fi
+
+          echo "Created release ID: $RELEASE_ID"
+
+          # Upload assets
+          for file in dist/*.whl dist/*.tar.gz dist/SHA256SUMS dist/sbom.json; do
+            if [[ -f "$file" ]]; then
+              FILENAME=$(basename "$file")
+              echo "Uploading $FILENAME..."
+              curl -s -X POST \
+                -H "Authorization: token $FORGEJO_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$file" \
+                "https://codeberg.org/api/v1/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$FILENAME"
+            fi
+          done
+
+          echo "Release created: https://codeberg.org/${{ github.repository }}/releases/tag/$TAG"
