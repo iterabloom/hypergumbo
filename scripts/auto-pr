@@ -23,8 +23,9 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 BRANCH="$(git branch --show-current)"
-if [[ "$BRANCH" == "main" ]]; then
-  echo "Error: You are on 'main'. Please create a feature branch first."
+BASE_BRANCH="${BASE_BRANCH:-dev}"  # Target dev by default, override with BASE_BRANCH=main for releases
+if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
+  echo "Error: You are on '$BRANCH'. Please create a feature branch first."
   exit 1
 fi
 
@@ -38,20 +39,20 @@ LOCAL_SHA="$(git rev-parse HEAD)"
 # ------------------------------------------------------------------
 cleanup_local() {
   rm -f .git/PR_PENDING
-  git checkout main
-  
+  git checkout "$BASE_BRANCH"
+
   local max_attempts=3
   local attempt=1
-  
+
   while [[ $attempt -le $max_attempts ]]; do
-    if git pull origin main; then
+    if git pull origin "$BASE_BRANCH"; then
       git branch -d "$BRANCH" 2>/dev/null || true
       return 0
     fi
-    
+
     echo ""
     echo "⚠️  Git pull failed (attempt $attempt/$max_attempts)"
-    
+
     if [[ $attempt -lt $max_attempts ]]; then
       read -p "Retry? [Y/n] " -n 1 -r REPLY
       echo ""
@@ -60,15 +61,15 @@ cleanup_local() {
         continue
       fi
     fi
-    
+
     echo "ℹ️  Skipping cleanup. Run manually later:"
-    echo "   git pull origin main && git branch -D $BRANCH"
+    echo "   git pull origin $BASE_BRANCH && git branch -D $BRANCH"
     return 0
   done
 }
 
 echo "🚀 Target: $REPO_SLUG"
-echo "🌿 Branch: $BRANCH"
+echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
 echo "🔑 Commit: ${LOCAL_SHA:0:7}"
 
 # 1. PUSH
@@ -78,7 +79,7 @@ TITLE="${1:-$(git log -1 --pretty=%s)}"
 DESC="${2:-$(git log -1 --pretty=%b | tr '\n' ' ' | sed 's/  */ /g')}"
 
 git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-  push origin "HEAD:refs/for/main/$BRANCH" \
+  push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
   -o title="$TITLE" \
   -o description="$DESC" \
   -o force-push=true
