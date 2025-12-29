@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo"
-version = "0.5.0"
+version = "0.6.0"
 description = "Local-first repo behavior map generator (MVP)"
 readme = "README.md"
 requires-python = ">=3.10"
