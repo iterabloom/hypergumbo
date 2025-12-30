@@ -77,7 +77,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Default CLI mode | [x] | `hypergumbo [path]` runs sketch |
 | Token limit flag | [x] | `-t N` / `--tokens N` |
 | Language breakdown | [x] | Sorted by LOC percentage |
-| Directory structure | [x] | Top-level dirs with type labels |
+| Directory structure | [x] | Top-level dirs with type labels. Filters excluded dirs (node_modules, __pycache__, etc.) |
 | Framework detection | [x] | Via profile.py. **Python:** FastAPI, Flask, Django, Starlette, Quart, Sanic, Litestar, Falcon, Bottle, CherryPy, Pyramid, Tornado, Aiohttp, PyTorch, TensorFlow, Keras, JAX, Transformers, spaCy, NLTK, LangChain, LangGraph, LlamaIndex, Haystack, scikit-learn, XGBoost, LightGBM, CatBoost, Optuna, MLflow, WandB, Ray, vLLM, DeepSpeed, PaddlePaddle, OpenAI, Anthropic. **JavaScript/TypeScript:** React, Vue, Angular, Svelte, Solid, Qwik, Preact, Lit, Alpine, htmx, Ember, Next.js, Nuxt, Remix, Astro, Gatsby, SvelteKit, Express, NestJS, Fastify, Koa, Hapi, Adonis, Sails, Hono, Elysia, React Native, Expo, Ionic, Capacitor, NativeScript, Electron, Tauri, Hardhat, Web3.js, ethers.js, Wagmi, Viem. **Rust:** Axum, Actix-web, Rocket, Warp, Tide, Gotham, Poem, Salvo, Tokio, async-std, Serde, Clap, Tauri, Solana/Anchor, Substrate, CosmWasm, ethers-rs, Alloy, Foundry, REVM, Arkworks, Bellman, Halo2, Plonky2/3, SP1, RISC Zero, Jolt, Nova, HyperNova, Zcash, libp2p, curve25519/ed25519, secp256k1. **Go:** Gin, Echo, Fiber, Chi, Gorilla, Buffalo, Revel, Beego, Iris. **PHP:** Laravel, Symfony, CodeIgniter, CakePHP, Yii, Phalcon, Slim. **Java/Kotlin:** Spring Boot, Micronaut, Quarkus, Dropwizard, Vert.x, Javalin, Helidon, Spark, Ktor, Jetpack Compose. **Swift:** Vapor, Kitura, Perfect, SwiftUI. **Scala:** Play, Akka HTTP, http4s, ZIO HTTP, Finatra. **Dart/Flutter:** Flutter SDK, flutter_bloc, Riverpod, Provider, GetX, MobX, Dio, Freezed, go_router, Flame. |
 | Section-boundary truncation | [x] | Preserves coherent sections when truncating |
 | Source file listings | [x] | Progressive expansion based on budget |
@@ -107,7 +107,9 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `hypergumbo export-capsule` | [x] | Export shareable capsule |
 | `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Django/DRF, Express.js, Koa, Fastify, NestJS, Rails, Axum, Actix-web, Rocket, Gin, Echo, Fiber). Shows HTTP methods, route paths, and handler functions |
 | `hypergumbo search <query>` | [x] | Search symbols by name pattern |
+| `hypergumbo explain <symbol>` | [x] | Show symbol details with callers/callees, complexity, LOC |
 | `hypergumbo build-grammars` | [x] | Build Lean/Wolfram grammars from source (tree-sitter) |
+| `-e/--exclude` | [x] | Custom exclude patterns for `sketch` and `run` (repeatable) |
 
 ## Output Schema Compliance
 
@@ -116,7 +118,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | `schema_version` | [x] | |
 | `profile` (languages, frameworks) | [x] | |
 | `analysis_runs[]` | [x] | Provenance tracking |
-| `nodes[]` with span, stable_id, shape_id | [x] | |
+| `nodes[]` with span, stable_id, shape_id | [x] | Includes `cyclomatic_complexity` and `lines_of_code` for Python symbols |
 | `edges[]` with id, confidence, meta | [x] | |
 | `features[]` | [x] | Via slice command output |
 | `metrics` | [x] | `metrics.py` - counts, avg confidence, per-language |
@@ -168,7 +170,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 | Language | Parser | Symbols | Edges | Notes |
 |----------|--------|---------|-------|-------|
-| Python | [x] AST | function, class, method, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`). **src/ layout detection:** Automatically detects PEP 517/518 `src/` layout projects and adjusts module name derivation (e.g., `src/flask/app.py` → `flask.app` instead of `src.flask.app`) for correct cross-file import resolution. **Route detection:** FastAPI (`@app.get`, `@router.post`), Flask (`@app.route`, `@app.get`), Django REST Framework (`@api_view(['GET', 'POST'])`), Django CBV methods (get/post/put/patch/delete), and Django URL patterns (`path()`, `re_path()`, `url()`) set `stable_id` to HTTP method for `routes` command discovery. **Router prefix detection:** `APIRouter(prefix='/api/v1')` and `Blueprint(url_prefix='/api')` prefixes are combined with route paths. |
+| Python | [x] AST | function, class, method, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`). **Metrics:** `cyclomatic_complexity` (McCabe: decision points + 1) and `lines_of_code` computed per symbol. **src/ layout detection:** Automatically detects PEP 517/518 `src/` layout projects and adjusts module name derivation (e.g., `src/flask/app.py` → `flask.app` instead of `src.flask.app`) for correct cross-file import resolution. **Route detection:** FastAPI (`@app.get`, `@router.post`), Flask (`@app.route`, `@app.get`), Django REST Framework (`@api_view(['GET', 'POST'])`), Django CBV methods (get/post/put/patch/delete), and Django URL patterns (`path()`, `re_path()`, `url()`) set `stable_id` to HTTP method for `routes` command discovery. **Router prefix detection:** `APIRouter(prefix='/api/v1')` and `Blueprint(url_prefix='/api')` prefixes are combined with route paths. |
 | HTML | [x] regex | file | script_src | Script tag detection |
 | JavaScript | [x] tree-sitter | function, class, method, getter, setter, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) handlers set `stable_id` to HTTP method. **Express.js enhancements:** Wrapper patterns (`catchAsync(handler)`), external handlers (`userController.create`), and chained syntax (`router.route('/').get(handler)`) all detected. Optional: `pip install hypergumbo[javascript]` |
 | TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) and NestJS decorators (`@Get()`, `@Post()`) set `stable_id` to HTTP method. **Express.js enhancements:** Wrapper patterns (`catchAsync(handler)`), external handlers (`userController.create`), and chained syntax (`router.route('/').get(handler)`) all detected. Optional: `pip install hypergumbo[javascript]` |
