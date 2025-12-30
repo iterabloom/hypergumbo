@@ -104,6 +104,11 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Default values | [x] | Shows defaults as ellipsis (e.g., `config=…`) |
 | *args/**kwargs | [x] | Properly formats varargs (e.g., `(*args, **kwargs)`) |
 | Async functions | [x] | Extracts signatures from `async def` functions |
+| **Domain Vocabulary** | | |
+| Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
+| Term filtering | [x] | Filters out common programming terms and testing vocabulary |
+| Compound word splitting | [x] | Splits camelCase, PascalCase, and snake_case identifiers |
+| Format | [x] | Displays as "Key terms: term1, term2, ..." for quick domain understanding |
 
 ## CLI Commands
 
