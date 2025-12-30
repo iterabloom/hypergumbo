@@ -349,6 +349,65 @@ def _extract_readme_description(
     return description
 
 
+def _extract_python_docstrings(
+    repo_root: Path, symbols: list[Symbol], max_len: int = 80
+) -> dict[str, str]:
+    """Extract docstrings for Python symbols.
+
+    Reads Python files and extracts the first line of docstrings for
+    functions and classes. Returns a dict mapping symbol IDs to docstring
+    summaries (truncated to max_len).
+
+    Args:
+        repo_root: Repository root path.
+        symbols: List of symbols to extract docstrings for.
+        max_len: Maximum length of docstring summary (default 80).
+
+    Returns:
+        Dict mapping symbol ID to first-line docstring summary.
+    """
+    import ast
+
+    docstrings: dict[str, str] = {}
+
+    # Group symbols by file for efficient reading
+    symbols_by_file: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if sym.language == "python" and sym.kind in ("function", "class", "method"):
+            symbols_by_file.setdefault(sym.path, []).append(sym)
+
+    for file_path, file_symbols in symbols_by_file.items():
+        try:
+            full_path = repo_root / file_path if not Path(file_path).is_absolute() else Path(file_path)
+            if not full_path.exists():
+                continue
+            source = full_path.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            continue
+
+        # Build a map of (start_line, name) -> docstring
+        node_docstrings: dict[tuple[int, str], str] = {}
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                docstring = ast.get_docstring(node)
+                if docstring:
+                    # Take first line only
+                    first_line = docstring.split("\n")[0].strip()
+                    if len(first_line) > max_len:
+                        first_line = first_line[:max_len - 1] + "…"
+                    node_docstrings[(node.lineno, node.name)] = first_line
+
+        # Match symbols to docstrings
+        for sym in file_symbols:
+            key = (sym.span.start_line, sym.name)
+            if key in node_docstrings:
+                docstrings[sym.id] = node_docstrings[key]
+
+    return docstrings
+
+
 # Source file extensions by language
 SOURCE_EXTENSIONS = {
     "python": ["*.py"],
@@ -851,6 +910,7 @@ def _format_symbols(
     first_party_priority: bool = True,
     entrypoint_files: set[str] | None = None,
     max_symbols_per_file: int = 5,
+    docstrings: dict[str, str] | None = None,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
@@ -872,7 +932,10 @@ def _format_symbols(
         first_party_priority: If True (default), boost first-party symbols.
         entrypoint_files: Set of file paths containing entrypoints (preserved).
         max_symbols_per_file: Max symbols to render per file (compression).
+        docstrings: Optional dict mapping symbol IDs to docstring summaries.
     """
+    if docstrings is None:
+        docstrings = {}
     if not symbols:
         return ""
 
@@ -974,10 +1037,12 @@ def _format_symbols(
         for sym in file_symbols[:max_symbols_per_file]:
             kind_label = sym.kind
             score = centrality.get(sym.id, 0)
-            if score >= star_threshold:
-                lines.append(f"- `{sym.name}` ({kind_label}) ★")
+            star = " ★" if score >= star_threshold else ""
+            docstring = docstrings.get(sym.id)
+            if docstring:
+                lines.append(f"- `{sym.name}` ({kind_label}){star} — {docstring}")
             else:
-                lines.append(f"- `{sym.name}` ({kind_label})")
+                lines.append(f"- `{sym.name}` ({kind_label}){star}")
             rendered_count += 1
             total_rendered += 1
 
@@ -1153,6 +1218,9 @@ def generate_sketch(
         budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
         max_symbols = max(10, budget_for_symbols // tokens_per_item)
 
+        # Extract docstrings for Python symbols
+        docstrings = _extract_python_docstrings(repo_root, symbols)
+
         symbols_section = _format_symbols(
             symbols,
             edges,
@@ -1160,6 +1228,7 @@ def generate_sketch(
             max_symbols=max_symbols,
             first_party_priority=first_party_priority,
             entrypoint_files=entrypoint_files,  # B4: preserve entrypoint files
+            docstrings=docstrings,
         )
         if symbols_section:
             sections.append(symbols_section)
