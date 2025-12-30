@@ -589,6 +589,125 @@ def cmd_routes(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_explain(args: argparse.Namespace) -> int:
+    """Explain a symbol with its callers and callees."""
+    repo_root = Path(args.path).resolve()
+
+    # Determine input file
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
+    else:
+        # Look for default results file
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+    edges = behavior_map.get("edges", [])
+
+    # Build lookup tables
+    nodes_by_id = {n["id"]: n for n in nodes}
+
+    # Find matching symbols (case-insensitive exact match on name)
+    pattern = args.symbol.lower()
+    matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+
+    if not matches:
+        print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)
+        return 1
+
+    # Display each match
+    for i, node in enumerate(matches):
+        if i > 0:
+            print("\n" + "=" * 60 + "\n")
+
+        symbol_id = node.get("id", "")
+        name = node.get("name", "")
+        kind = node.get("kind", "")
+        lang = node.get("language", "")
+        path = node.get("path", "")
+        span = node.get("span", {})
+        start_line = span.get("start_line", 0)
+        end_line = span.get("end_line", 0)
+
+        print(f"{name} ({kind})")
+        print(f"  Location: {path}:{start_line}-{end_line}")
+        print(f"  Language: {lang}")
+
+        # Show complexity and LOC if available
+        complexity = node.get("cyclomatic_complexity")
+        loc = node.get("lines_of_code")
+        if complexity is not None or loc is not None:
+            metrics = []
+            if complexity is not None:
+                metrics.append(f"complexity: {complexity}")
+            if loc is not None:
+                metrics.append(f"lines: {loc}")
+            print(f"  Metrics: {', '.join(metrics)}")
+
+        # Show supply chain info if available
+        supply_chain = node.get("supply_chain", {})
+        if supply_chain:
+            tier_name = supply_chain.get("tier_name", "")
+            reason = supply_chain.get("reason", "")
+            if tier_name:
+                sc_info = tier_name
+                if reason:
+                    sc_info += f" ({reason})"
+                print(f"  Supply chain: {sc_info}")
+
+        # Find callers (edges where dst = this symbol)
+        callers = []
+        for edge in edges:
+            if edge.get("dst") == symbol_id:
+                src_id = edge.get("src", "")
+                src_node = nodes_by_id.get(src_id, {})
+                src_name = src_node.get("name", src_id)
+                src_path = src_node.get("path", "")
+                src_line = edge.get("line", 0)
+                callers.append((src_name, src_path, src_line))
+
+        # Find callees (edges where src = this symbol)
+        callees = []
+        for edge in edges:
+            if edge.get("src") == symbol_id:
+                dst_id = edge.get("dst", "")
+                dst_node = nodes_by_id.get(dst_id, {})
+                dst_name = dst_node.get("name", dst_id)
+                dst_path = dst_node.get("path", "")
+                edge_line = edge.get("line", 0)
+                callees.append((dst_name, dst_path, edge_line))
+
+        # Display callers
+        print()
+        if callers:
+            print(f"  Called by ({len(callers)}):")
+            for caller_name, caller_path, caller_line in callers:
+                print(f"    - {caller_name} ({caller_path}:{caller_line})")
+        else:
+            print("  Called by: (none)")
+
+        # Display callees
+        if callees:
+            print(f"  Calls ({len(callees)}):")
+            for callee_name, callee_path, callee_line in callees:
+                print(f"    - {callee_name} ({callee_path}:{callee_line})")
+        else:
+            print("  Calls: (none)")
+
+    return 0
+
+
 def cmd_catalog(args: argparse.Namespace) -> int:
     """Display available passes and packs."""
     catalog = get_default_catalog()
@@ -950,6 +1069,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Filter by language (e.g., python, javascript)",
     )
     p_routes.set_defaults(func=cmd_routes)
+
+    # hypergumbo explain
+    p_explain = sub.add_parser("explain", help="Explain a symbol (callers, callees)")
+    p_explain.add_argument(
+        "symbol",
+        help="Symbol name to explain (case-insensitive)",
+    )
+    p_explain.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_explain.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_explain.set_defaults(func=cmd_explain)
 
     # hypergumbo catalog
     p_catalog = sub.add_parser("catalog", help="[stub] Show available passes/packs")
@@ -1952,7 +2089,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    subcommands = {"init", "run", "slice", "search", "routes", "catalog", "export-capsule", "sketch", "build-grammars"}
+    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
