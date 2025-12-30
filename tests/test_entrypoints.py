@@ -3042,3 +3042,9 @@ class TestIsTestFile:
         assert _is_test_file("src/MOCKS/service.go")
         assert _is_test_file("Fixtures/data.json")
         assert _is_test_file("TESTDATA/sample.txt")
+
+    def test_compound_directory_names(self) -> None:
+        """Detect directories ending with 'fakes' or 'mocks'."""
+        # These hit endswith("fakes") and endswith("mocks") specifically
+        assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
+        assert _is_test_file("internal/servicemocks/client.go")

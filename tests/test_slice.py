@@ -553,6 +553,13 @@ class TestIsTestFile:
         assert _is_test_file("pkg/testdata/sample.txt")
         assert _is_test_file("internal/testutils/helpers.go")
 
+    def test_compound_directory_names(self) -> None:
+        """Detect files in directories ending with 'fakes' or 'mocks'."""
+        from hypergumbo.slice import _is_test_file
+        # These hit endswith("fakes") and endswith("mocks") specifically
+        assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
+        assert _is_test_file("internal/servicemocks/client.go")
+
 
 class TestSliceEdgeCases:
     """Edge case tests for slice functionality."""
