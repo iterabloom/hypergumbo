@@ -91,6 +91,12 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Per-file render compression | [x] | Max 5 symbols per file with "… +N more (top score: X.XX)" overflow summary |
 | Entrypoint file preservation | [x] | Entry points and their containing files prioritized in Key Symbols section |
 | Deterministic output | [x] | Sorted iteration over SOURCE_DIRS ensures reproducible output across runs |
+| **Project Description** | | |
+| README extraction | [x] | Extracts first descriptive paragraph from README.md/rst/txt, skips badges/images/HTML |
+| Title subtitle fallback | [x] | Falls back to title subtitle (e.g., "Project: Description here") if no paragraph found |
+| **Python Docstrings** | | |
+| Docstring extraction | [x] | Extracts first-line docstrings for Python functions/classes in Key Symbols |
+| Symbol annotation | [x] | Displays docstring as `— Description` after symbol name |
 
 ## CLI Commands
 
@@ -353,4 +359,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-29*
+*Last updated: 2025-12-30*
