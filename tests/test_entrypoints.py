@@ -4,6 +4,7 @@ from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import (
     detect_entrypoints,
     EntrypointKind,
+    _is_test_file,
 )
 
 
@@ -2959,3 +2960,85 @@ class TestGraphQLServerEntrypoints:
 
         graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
         assert len(graphql_eps) == 0
+
+
+class TestIsTestFile:
+    """Tests for _is_test_file function."""
+
+    def test_python_test_prefix(self) -> None:
+        """Detect Python test_ prefix."""
+        assert _is_test_file("test_main.py")
+        assert _is_test_file("src/test_utils.py")
+
+    def test_python_test_suffix(self) -> None:
+        """Detect Python _test.py suffix."""
+        assert _is_test_file("main_test.py")
+        assert _is_test_file("src/utils_test.py")
+
+    def test_python_spec_patterns(self) -> None:
+        """Detect Python spec patterns."""
+        assert _is_test_file("spec_main.py")
+        assert _is_test_file("main_spec.py")
+
+    def test_go_test_suffix(self) -> None:
+        """Detect Go _test.go suffix."""
+        assert _is_test_file("main_test.go")
+        assert _is_test_file("pkg/handlers/user_test.go")
+
+    def test_mock_filename_suffix(self) -> None:
+        """Detect *_mock.* filename patterns."""
+        assert _is_test_file("user_mock.go")
+        assert _is_test_file("service_mock.py")
+        assert _is_test_file("src/handler_mock.ts")
+
+    def test_mock_filename_prefix(self) -> None:
+        """Detect mock_*.* filename patterns."""
+        assert _is_test_file("src/mock_user.go")
+        assert _is_test_file("mock_service.py")
+
+    def test_fake_filename_suffix(self) -> None:
+        """Detect *_fake.* filename patterns."""
+        assert _is_test_file("user_fake.go")
+        assert _is_test_file("src/handler_fake.ts")
+
+    def test_fake_filename_prefix(self) -> None:
+        """Detect fake_*.* filename patterns."""
+        assert _is_test_file("src/fake_user.go")
+        assert _is_test_file("fake_handler.go")
+
+    def test_fakes_directory(self) -> None:
+        """Detect files in fakes/ directory."""
+        assert _is_test_file("pkg/rtc/transport/transportfakes/fake_handler.go")
+        assert _is_test_file("internal/fakes/mock_service.go")
+
+    def test_mocks_directory(self) -> None:
+        """Detect files in mocks/ directory."""
+        assert _is_test_file("pkg/mocks/user_service.go")
+        assert _is_test_file("src/mocks/api_client.ts")
+
+    def test_fixtures_directory(self) -> None:
+        """Detect files in fixtures/ directory."""
+        assert _is_test_file("tests/fixtures/sample_data.json")
+        assert _is_test_file("fixtures/test_user.py")
+
+    def test_testdata_directory(self) -> None:
+        """Detect files in testdata/ directory."""
+        assert _is_test_file("pkg/testdata/sample.txt")
+        assert _is_test_file("testdata/config.yaml")
+
+    def test_testutils_directory(self) -> None:
+        """Detect files in testutils/ directory."""
+        assert _is_test_file("pkg/testutils/helpers.go")
+        assert _is_test_file("testutils/factory.py")
+
+    def test_regular_file_not_detected(self) -> None:
+        """Regular source files are not detected as test files."""
+        assert not _is_test_file("src/main.py")
+        assert not _is_test_file("pkg/handlers/user.go")
+        assert not _is_test_file("internal/api/routes.ts")
+
+    def test_case_insensitive_directories(self) -> None:
+        """Directory matching is case-insensitive."""
+        assert _is_test_file("src/MOCKS/service.go")
+        assert _is_test_file("Fixtures/data.json")
+        assert _is_test_file("TESTDATA/sample.txt")

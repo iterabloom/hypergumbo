@@ -307,19 +307,38 @@ def _is_test_file(path: str) -> bool:
 
     Excludes:
     - Files starting with test_ or ending with _test.py
-    - Files in tests/, test/, spec/ directories
+    - Go test files (*_test.go)
+    - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
+    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
     """
     filename = _get_filename(path)
+    filename_lower = filename.lower()
 
-    # Check filename patterns
+    # Check filename patterns - Python tests
     if filename.startswith("test_") or filename.endswith("_test.py"):
         return True
     if filename.startswith("spec_") or filename.endswith("_spec.py"):
         return True
 
-    # Check directory patterns
+    # Check filename patterns - Go tests
+    if filename.endswith("_test.go"):
+        return True
+
+    # Check filename patterns - Mock/fake files (any language)
+    name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
+    if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
+        return True
+    if name_without_ext.startswith("mock_") or name_without_ext.startswith("fake_"):
+        return True
+
+    # Check directory patterns - test and mock directories
     path_parts = path.replace("\\", "/").split("/")
-    return any(part in {"tests", "test", "spec", "__tests__"} for part in path_parts)
+    test_dirs = {
+        "tests", "test", "spec", "__tests__",  # Test directories
+        "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
+        "fixtures", "testdata", "testutils",  # Test support directories
+    }
+    return any(part.lower() in test_dirs for part in path_parts)
 
 
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
