@@ -12,6 +12,7 @@ from hypergumbo.sketch import (
     _format_entrypoints,
     _format_symbols,
     _format_structure,
+    _extract_python_docstrings,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -1226,3 +1227,142 @@ class TestFormatStructure:
 
         structure = _format_structure(tmp_path)
         assert "- `docs/` — Documentation" in structure
+
+
+class TestExtractPythonDocstrings:
+    """Tests for Python docstring extraction."""
+
+    def test_extracts_function_docstring(self, tmp_path: Path) -> None:
+        """Extracts docstring from Python function."""
+        (tmp_path / "app.py").write_text(
+            "def hello():\n"
+            "    \"\"\"Greets the user.\"\"\"\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="hello",
+            name="hello",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 3, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol])
+
+        assert result.get("hello") == "Greets the user."
+
+    def test_extracts_class_docstring(self, tmp_path: Path) -> None:
+        """Extracts docstring from Python class."""
+        (tmp_path / "models.py").write_text(
+            "class User:\n"
+            "    \"\"\"Represents a user in the system.\"\"\"\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="User",
+            name="User",
+            kind="class",
+            language="python",
+            path=str(tmp_path / "models.py"),
+            span=Span(1, 3, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol])
+
+        assert result.get("User") == "Represents a user in the system."
+
+    def test_truncates_long_docstrings(self, tmp_path: Path) -> None:
+        """Truncates docstrings longer than max_len."""
+        long_doc = "A" * 100
+        (tmp_path / "app.py").write_text(
+            f"def process():\n"
+            f"    \"\"\"{long_doc}\"\"\"\n"
+            f"    pass\n"
+        )
+        symbol = Symbol(
+            id="process",
+            name="process",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 3, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol], max_len=50)
+
+        assert result.get("process") is not None
+        assert len(result["process"]) <= 50
+        assert result["process"].endswith("…")
+
+    def test_handles_missing_file(self, tmp_path: Path) -> None:
+        """Gracefully handles missing files."""
+        symbol = Symbol(
+            id="missing",
+            name="missing",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "nonexistent.py"),
+            span=Span(1, 3, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol])
+
+        assert result.get("missing") is None
+
+    def test_handles_syntax_error(self, tmp_path: Path) -> None:
+        """Gracefully handles syntax errors in Python files."""
+        (tmp_path / "bad.py").write_text("def broken(:\n    pass\n")
+        symbol = Symbol(
+            id="broken",
+            name="broken",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "bad.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol])
+
+        # Should not crash, just return empty
+        assert result.get("broken") is None
+
+    def test_ignores_non_python_symbols(self, tmp_path: Path) -> None:
+        """Ignores symbols from non-Python languages."""
+        symbol = Symbol(
+            id="main",
+            name="main",
+            kind="function",
+            language="javascript",
+            path=str(tmp_path / "app.js"),
+            span=Span(1, 3, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol])
+
+        assert len(result) == 0
+
+    def test_extracts_first_line_only(self, tmp_path: Path) -> None:
+        """Only extracts first line of multi-line docstrings."""
+        (tmp_path / "app.py").write_text(
+            "def compute():\n"
+            "    \"\"\"Computes the result.\n\n"
+            "    This is a longer explanation\n"
+            "    that spans multiple lines.\n"
+            "    \"\"\"\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="compute",
+            name="compute",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 7, 0, 10),
+        )
+
+        result = _extract_python_docstrings(tmp_path, [symbol])
+
+        assert result.get("compute") == "Computes the result."
+        assert "longer explanation" not in result.get("compute", "")
+
