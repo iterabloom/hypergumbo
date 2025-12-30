@@ -58,6 +58,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "lua": ["*.lua"],
     "clojure": ["*.clj", "*.cljs", "*.cljc", "*.edn"],
     "erlang": ["*.erl", "*.hrl"],
+    "elm": ["*.elm"],
     "haskell": ["*.hs", "*.lhs"],
     "agda": ["*.agda", "*.lagda", "*.lagda.md"],
     "lean": ["*.lean"],
