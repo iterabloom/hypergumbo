@@ -216,7 +216,14 @@ def find_entry_nodes(
 
 
 def _is_test_file(path: str) -> bool:
-    """Check if a path looks like a test file."""
+    """Check if a path looks like a test file.
+
+    Excludes:
+    - Files starting with test_ or ending with _test.py/_test.js/etc.
+    - Go test files (*_test.go)
+    - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
+    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
+    """
     # Common test file patterns
     if "/test_" in path or "/tests/" in path:
         return True
@@ -228,7 +235,25 @@ def _is_test_file(path: str) -> bool:
         return True
     if "/spec/" in path or "_spec.py" in path or ".spec.js" in path:
         return True
-    return False
+
+    # Go test files
+    if "_test.go" in path:
+        return True
+
+    # Mock/fake file patterns
+    path_lower = path.lower()
+    if "_mock." in path_lower or "_fake." in path_lower:
+        return True
+    if "/mock_" in path_lower or "/fake_" in path_lower:
+        return True
+
+    # Mock/fake directories
+    path_parts = path.replace("\\", "/").split("/")
+    test_dirs = {
+        "fakes", "mocks", "testfakes", "testmocks",
+        "fixtures", "testdata", "testutils",
+    }
+    return any(part.lower() in test_dirs for part in path_parts)
 
 
 def slice_graph(

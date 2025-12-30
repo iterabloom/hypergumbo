@@ -526,6 +526,33 @@ class TestIsTestFile:
         assert not _is_test_file("src/main.py")
         assert not _is_test_file("utils.py")
 
+    def test_go_test_suffix(self) -> None:
+        """Detect Go _test.go suffix."""
+        from hypergumbo.slice import _is_test_file
+        assert _is_test_file("main_test.go")
+        assert _is_test_file("pkg/handlers/user_test.go")
+
+    def test_mock_filename_patterns(self) -> None:
+        """Detect *_mock.* and mock_*.* filename patterns."""
+        from hypergumbo.slice import _is_test_file
+        assert _is_test_file("user_mock.go")
+        assert _is_test_file("src/mock_service.py")
+
+    def test_fake_filename_patterns(self) -> None:
+        """Detect *_fake.* and fake_*.* filename patterns."""
+        from hypergumbo.slice import _is_test_file
+        assert _is_test_file("handler_fake.ts")
+        assert _is_test_file("pkg/fake_client.go")
+
+    def test_mock_directories(self) -> None:
+        """Detect files in fakes/, mocks/, fixtures/, testdata/, testutils/ directories."""
+        from hypergumbo.slice import _is_test_file
+        assert _is_test_file("pkg/fakes/handler.go")
+        assert _is_test_file("src/mocks/service.ts")
+        assert _is_test_file("tests/fixtures/data.json")
+        assert _is_test_file("pkg/testdata/sample.txt")
+        assert _is_test_file("internal/testutils/helpers.go")
+
 
 class TestSliceEdgeCases:
     """Edge case tests for slice functionality."""
