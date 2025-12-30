@@ -13,6 +13,10 @@ from hypergumbo.sketch import (
     _format_symbols,
     _format_structure,
     _extract_python_docstrings,
+    _extract_python_signatures,
+    _format_function_signature,
+    _format_arg,
+    _format_annotation,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -1365,4 +1369,355 @@ class TestExtractPythonDocstrings:
 
         assert result.get("compute") == "Computes the result."
         assert "longer explanation" not in result.get("compute", "")
+
+
+class TestExtractPythonSignatures:
+    """Tests for Python function signature extraction."""
+
+    def test_extracts_simple_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a simple function."""
+        (tmp_path / "app.py").write_text(
+            "def greet(name):\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="greet",
+            name="greet",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("greet") == "(name)"
+
+    def test_extracts_typed_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with type annotations."""
+        (tmp_path / "app.py").write_text(
+            "def add(x: int, y: int) -> int:\n"
+            "    return x + y\n"
+        )
+        symbol = Symbol(
+            id="add",
+            name="add",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("add") == "(x: int, y: int) -> int"
+
+    def test_extracts_default_values(self, tmp_path: Path) -> None:
+        """Extracts signature with default values (shown as ellipsis)."""
+        (tmp_path / "app.py").write_text(
+            "def configure(debug=False, timeout=30):\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="configure",
+            name="configure",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("configure") == "(debug=…, timeout=…)"
+
+    def test_extracts_varargs(self, tmp_path: Path) -> None:
+        """Extracts signature with *args and **kwargs."""
+        (tmp_path / "app.py").write_text(
+            "def log(*args, **kwargs):\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="log",
+            name="log",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("log") == "(*args, **kwargs)"
+
+    def test_extracts_complex_types(self, tmp_path: Path) -> None:
+        """Extracts signature with complex type annotations."""
+        (tmp_path / "app.py").write_text(
+            "from typing import List, Dict, Optional\n"
+            "def process(items: List[str], config: Dict[str, int]) -> Optional[str]:\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="process",
+            name="process",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(2, 3, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        sig = result.get("process")
+        assert sig is not None
+        assert "List[str]" in sig
+        assert "Dict[str, int]" in sig
+
+    def test_extracts_union_types(self, tmp_path: Path) -> None:
+        """Extracts signature with union types (X | Y syntax)."""
+        (tmp_path / "app.py").write_text(
+            "def parse(data: str | bytes) -> dict | None:\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="parse",
+            name="parse",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        sig = result.get("parse")
+        assert sig is not None
+        assert "str | bytes" in sig
+        assert "dict | None" in sig
+
+    def test_truncates_long_signatures(self, tmp_path: Path) -> None:
+        """Truncates signatures longer than max_len."""
+        long_params = ", ".join(f"param_{i}: int" for i in range(20))
+        (tmp_path / "app.py").write_text(
+            f"def long_function({long_params}):\n"
+            f"    pass\n"
+        )
+        symbol = Symbol(
+            id="long_function",
+            name="long_function",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol], max_len=40)
+
+        sig = result.get("long_function")
+        assert sig is not None
+        assert len(sig) <= 40
+        assert sig.endswith("…")
+
+    def test_handles_async_functions(self, tmp_path: Path) -> None:
+        """Extracts signature from async functions."""
+        (tmp_path / "app.py").write_text(
+            "async def fetch(url: str) -> bytes:\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="fetch",
+            name="fetch",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("fetch") == "(url: str) -> bytes"
+
+    def test_ignores_classes(self, tmp_path: Path) -> None:
+        """Ignores class symbols (only extracts functions/methods)."""
+        (tmp_path / "app.py").write_text(
+            "class User:\n"
+            "    pass\n"
+        )
+        symbol = Symbol(
+            id="User",
+            name="User",
+            kind="class",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert len(result) == 0
+
+    def test_handles_missing_file(self, tmp_path: Path) -> None:
+        """Gracefully handles missing files."""
+        symbol = Symbol(
+            id="missing",
+            name="missing",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "nonexistent.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("missing") is None
+
+    def test_handles_syntax_error(self, tmp_path: Path) -> None:
+        """Gracefully handles syntax errors."""
+        (tmp_path / "bad.py").write_text("def broken(:\n    pass\n")
+        symbol = Symbol(
+            id="broken",
+            name="broken",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "bad.py"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert result.get("broken") is None
+
+    def test_ignores_non_python_symbols(self, tmp_path: Path) -> None:
+        """Ignores symbols from non-Python languages."""
+        symbol = Symbol(
+            id="main",
+            name="main",
+            kind="function",
+            language="javascript",
+            path=str(tmp_path / "app.js"),
+            span=Span(1, 2, 0, 10),
+        )
+
+        result = _extract_python_signatures(tmp_path, [symbol])
+
+        assert len(result) == 0
+
+
+class TestFormatAnnotation:
+    """Tests for _format_annotation helper function."""
+
+    def test_format_simple_name(self) -> None:
+        """Formats a simple Name node."""
+        import ast
+        tree = ast.parse("def f(x: int): pass")
+        func = tree.body[0]
+        ann = func.args.args[0].annotation
+        assert _format_annotation(ann) == "int"
+
+    def test_format_subscript(self) -> None:
+        """Formats a subscript like List[str]."""
+        import ast
+        tree = ast.parse("def f(x: List[str]): pass")
+        func = tree.body[0]
+        ann = func.args.args[0].annotation
+        assert _format_annotation(ann) == "List[str]"
+
+    def test_format_union_bitor(self) -> None:
+        """Formats a union type (X | Y)."""
+        import ast
+        tree = ast.parse("def f(x: int | str): pass")
+        func = tree.body[0]
+        ann = func.args.args[0].annotation
+        assert _format_annotation(ann) == "int | str"
+
+    def test_format_constant(self) -> None:
+        """Formats a constant annotation (e.g., None)."""
+        import ast
+        tree = ast.parse("def f() -> None: pass")
+        func = tree.body[0]
+        ann = func.returns
+        assert _format_annotation(ann) == "None"
+
+    def test_format_attribute(self) -> None:
+        """Formats an attribute like typing.Optional."""
+        import ast
+        tree = ast.parse("def f(x: typing.Optional): pass")
+        func = tree.body[0]
+        ann = func.args.args[0].annotation
+        assert _format_annotation(ann) == "typing.Optional"
+
+    def test_format_unknown_returns_empty(self) -> None:
+        """Returns empty string for unknown node types."""
+        import ast
+        # Lambda node is not a typical annotation
+        node = ast.Lambda(args=ast.arguments(
+            posonlyargs=[], args=[], kwonlyargs=[],
+            kw_defaults=[], defaults=[]
+        ), body=ast.Constant(value=1))
+        assert _format_annotation(node) == ""
+
+
+class TestFormatArg:
+    """Tests for _format_arg helper function."""
+
+    def test_format_simple_arg(self) -> None:
+        """Formats a simple argument without annotation."""
+        import ast
+        tree = ast.parse("def f(x): pass")
+        func = tree.body[0]
+        arg = func.args.args[0]
+        assert _format_arg(arg) == "x"
+
+    def test_format_annotated_arg(self) -> None:
+        """Formats an argument with type annotation."""
+        import ast
+        tree = ast.parse("def f(x: int): pass")
+        func = tree.body[0]
+        arg = func.args.args[0]
+        assert _format_arg(arg) == "x: int"
+
+
+class TestFormatFunctionSignature:
+    """Tests for _format_function_signature helper function."""
+
+    def test_format_no_args(self) -> None:
+        """Formats a function with no arguments."""
+        import ast
+        tree = ast.parse("def f(): pass")
+        func = tree.body[0]
+        assert _format_function_signature(func) == "()"
+
+    def test_format_with_return_type(self) -> None:
+        """Formats a function with return type."""
+        import ast
+        tree = ast.parse("def f() -> int: pass")
+        func = tree.body[0]
+        assert _format_function_signature(func) == "() -> int"
+
+    def test_format_positional_only_args(self) -> None:
+        """Formats positional-only arguments."""
+        import ast
+        tree = ast.parse("def f(x, /, y): pass")
+        func = tree.body[0]
+        sig = _format_function_signature(func)
+        assert "x" in sig
+        assert "y" in sig
+
+    def test_format_keyword_only_args(self) -> None:
+        """Formats keyword-only arguments."""
+        import ast
+        tree = ast.parse("def f(*, key=1): pass")
+        func = tree.body[0]
+        sig = _format_function_signature(func)
+        assert "key=…" in sig
+
+    def test_truncation(self) -> None:
+        """Truncates long signatures."""
+        import ast
+        params = ", ".join(f"p{i}: int" for i in range(10))
+        tree = ast.parse(f"def f({params}): pass")
+        func = tree.body[0]
+        sig = _format_function_signature(func, max_len=30)
+        assert len(sig) <= 30
+        assert sig.endswith("…")
 
