@@ -85,6 +85,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "dart": ["*.dart"],
     "cobol": ["*.cob", "*.cbl", "*.cobol", "*.cpy"],
     "latex": ["*.tex", "*.sty", "*.cls"],
+    "fsharp": ["*.fs", "*.fsi", "*.fsx"],
 }
 
 # Framework detection patterns

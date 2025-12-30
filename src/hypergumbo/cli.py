@@ -90,6 +90,7 @@ from .analyze.toml_config import analyze_toml_files
 from .analyze.css import analyze_css_files
 from .analyze.cobol import analyze_cobol
 from .analyze.latex import analyze_latex
+from .analyze.fsharp import analyze_fsharp
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -1902,6 +1903,19 @@ def run_behavior_map(
             analysis_runs.append(latex_result.run.to_dict())
         all_symbols.extend(latex_result.symbols)
         all_edges.extend(latex_result.edges)
+
+    # Run F# analysis (optional, requires tree-sitter-language-pack)
+    fsharp_result = analyze_fsharp(repo_root)
+    if fsharp_result.run is not None:
+        if fsharp_result.skipped:  # pragma: no cover - fsharp installed
+            limits.skipped_passes.append({
+                "pass": fsharp_result.run.pass_id,
+                "reason": fsharp_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(fsharp_result.run.to_dict())
+            all_symbols.extend(fsharp_result.symbols)
+            all_edges.extend(fsharp_result.edges)
 
     # Run cross-language linkers
 
