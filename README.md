@@ -10,6 +10,8 @@ pip install git+https://codeberg.org/iterabloom/hypergumbo.git  # from source
 hypergumbo .
 ```
 
+**Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](docs/INTEL_MAC.md) for a Docker-based workaround.
+
 Output:
 ```markdown
 # my-project
