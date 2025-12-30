@@ -53,6 +53,7 @@ from .analyze.swift import analyze_swift
 from .analyze.scala import analyze_scala
 from .analyze.lua import analyze_lua
 from .analyze.dart import analyze_dart
+from .analyze.clojure import analyze_clojure
 from .analyze.haskell import analyze_haskell
 from .analyze.agda import analyze_agda
 from .analyze.lean import analyze_lean
@@ -1430,6 +1431,19 @@ def run_behavior_map(
             analysis_runs.append(dart_result.run.to_dict())
             all_symbols.extend(dart_result.symbols)
             all_edges.extend(dart_result.edges)
+
+    # Run Clojure analysis (requires tree-sitter-language-pack)
+    clojure_result = analyze_clojure(repo_root)
+    if clojure_result.run is not None:
+        if clojure_result.skipped:  # pragma: no cover - requires missing tree-sitter
+            limits.skipped_passes.append({
+                "pass": clojure_result.run.pass_id,
+                "reason": clojure_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(clojure_result.run.to_dict())
+            all_symbols.extend(clojure_result.symbols)
+            all_edges.extend(clojure_result.edges)
 
     # Run Haskell analysis (optional, requires tree-sitter-haskell)
     haskell_result = analyze_haskell(repo_root)
