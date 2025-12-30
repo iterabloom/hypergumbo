@@ -54,6 +54,7 @@ from .analyze.scala import analyze_scala
 from .analyze.lua import analyze_lua
 from .analyze.dart import analyze_dart
 from .analyze.clojure import analyze_clojure
+from .analyze.elm import analyze_elm
 from .analyze.erlang import analyze_erlang
 from .analyze.haskell import analyze_haskell
 from .analyze.agda import analyze_agda
@@ -1458,6 +1459,19 @@ def run_behavior_map(
             analysis_runs.append(erlang_result.run.to_dict())
             all_symbols.extend(erlang_result.symbols)
             all_edges.extend(erlang_result.edges)
+
+    # Run Elm analysis (requires tree-sitter-language-pack)
+    elm_result = analyze_elm(repo_root)
+    if elm_result.run is not None:
+        if elm_result.skipped:  # pragma: no cover - requires missing tree-sitter
+            limits.skipped_passes.append({
+                "pass": elm_result.run.pass_id,
+                "reason": elm_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(elm_result.run.to_dict())
+            all_symbols.extend(elm_result.symbols)
+            all_edges.extend(elm_result.edges)
 
     # Run Haskell analysis (optional, requires tree-sitter-haskell)
     haskell_result = analyze_haskell(repo_root)
