@@ -384,6 +384,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         exclude_tests=args.exclude_tests,
         reverse=args.reverse,
         max_tier=max_tier,
+        language=args.language,
     )
 
     # Perform slice
@@ -1008,6 +1009,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="max_tier",
         help="Stop at supply chain tier boundary (1=first-party only, "
              "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
+    )
+    p_slice.add_argument(
+        "--language",
+        default=None,
+        help="Filter entry point matches to this language (e.g., python, javascript)",
     )
     p_slice.add_argument(
         "--inline",

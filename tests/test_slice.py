@@ -126,6 +126,26 @@ class TestFindEntryNodes:
 
         assert matches == []
 
+    def test_find_with_language_filter(self) -> None:
+        """Language filter restricts matches to specified language."""
+        py_main = make_symbol("main", path="src/app.py", language="python")
+        js_main = make_symbol("main", path="src/index.js", language="javascript")
+        nodes = [py_main, js_main]
+
+        # Without filter: both match
+        matches = find_entry_nodes(nodes, "main")
+        assert len(matches) == 2
+
+        # With python filter: only Python matches
+        matches = find_entry_nodes(nodes, "main", language="python")
+        assert len(matches) == 1
+        assert matches[0].language == "python"
+
+        # With javascript filter: only JS matches
+        matches = find_entry_nodes(nodes, "main", language="javascript")
+        assert len(matches) == 1
+        assert matches[0].language == "javascript"
+
 
 class TestAmbiguousEntryDetection:
     """Tests for detecting and reporting ambiguous entry points."""
@@ -162,6 +182,24 @@ class TestAmbiguousEntryDetection:
 
         assert py_ping.id in result.node_ids
         assert ts_ping.id not in result.node_ids
+
+    def test_no_error_when_language_filter_used(self) -> None:
+        """Language filter avoids ambiguity by restricting to one language."""
+        py_ping = make_symbol("ping", path="src/app.py", language="python")
+        ts_ping = make_symbol("ping", path="web/client.ts", language="typescript")
+        nodes = [py_ping, ts_ping]
+        edges: List[Edge] = []
+
+        # Use language filter - should not be ambiguous
+        query = SliceQuery(entrypoint="ping", max_hops=3, max_files=20, language="python")
+        result = slice_graph(nodes, edges, query)
+
+        assert py_ping.id in result.node_ids
+        assert ts_ping.id not in result.node_ids
+
+        # Language should be in the query dict
+        query_dict = query.to_dict()
+        assert query_dict["language"] == "python"
 
     def test_no_error_when_same_name_same_file(self) -> None:
         """Multiple matches in same file are OK (e.g., overloads or nested)."""
