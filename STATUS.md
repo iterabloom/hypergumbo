@@ -97,6 +97,13 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | **Python Docstrings** | | |
 | Docstring extraction | [x] | Extracts first-line docstrings for Python functions/classes in Key Symbols |
 | Symbol annotation | [x] | Displays docstring as `— Description` after symbol name |
+| **Python Function Signatures** | | |
+| Signature extraction | [x] | Extracts function signatures (parameters + return types) for Python functions/methods |
+| Type annotations | [x] | Displays typed parameters and return types (e.g., `func(x: int) -> str`) |
+| Complex types | [x] | Handles `List[T]`, `Dict[K,V]`, `Optional[T]`, `X | Y` unions |
+| Default values | [x] | Shows defaults as ellipsis (e.g., `config=…`) |
+| *args/**kwargs | [x] | Properly formats varargs (e.g., `(*args, **kwargs)`) |
+| Async functions | [x] | Extracts signatures from `async def` functions |
 
 ## CLI Commands
 
