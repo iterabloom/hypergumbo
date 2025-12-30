@@ -26,7 +26,7 @@ effectively while remaining coherent.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
@@ -874,6 +874,7 @@ def generate_sketch(
     max_tokens: Optional[int] = None,
     exclude_tests: bool = False,
     first_party_priority: bool = True,
+    extra_excludes: Optional[List[str]] = None,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -892,12 +893,14 @@ def generate_sketch(
         exclude_tests: If True, skip analyzing test files for faster performance.
         first_party_priority: If True (default), boost first-party symbols in
             ranking. Set False to use raw centrality scores.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+            Useful for excluding project-specific files (e.g., "*.json", "vendor").
 
     Returns:
         Markdown-formatted sketch string.
     """
     repo_root = Path(repo_root).resolve()
-    profile = detect_profile(repo_root)
+    profile = detect_profile(repo_root, extra_excludes=extra_excludes)
     repo_name = _get_repo_name(repo_root)
 
     # Build base sections (always included)

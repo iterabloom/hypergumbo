@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3cc4d95b2c5f
+  commit: e8da57360bc0
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -15,7 +15,7 @@ GENERATION METADATA (for drift detection):
 hypergumbo analyzed its own source code and found:
 - **82** Python modules (49 analyzers, 13 linkers)
 - **1083** symbols (functions, classes, methods)
-- **4150** edges (calls, imports, instantiates)
+- **4152** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 85 files · ~32,796 LOC
+Python (100%) · 85 files · ~32,839 LOC
 
 ## Structure
 
@@ -249,7 +249,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1083 Symbols + 4150 Edges
+│  analyzers  │────▶│     IR      │  1083 Symbols + 4152 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
