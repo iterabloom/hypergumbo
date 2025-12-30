@@ -79,9 +79,31 @@ def test_default_excludes_contains_expected_patterns() -> None:
         "__pycache__",
         ".hypergumbo",  # Hypergumbo output directory
         "hypergumbo.results.json",  # Hypergumbo behavior map
+        # Lock files - generated, inflate LOC counts
+        "package-lock.json",
+        "yarn.lock",
+        "poetry.lock",
+        "Cargo.lock",
+        "go.sum",
     ]
     for pattern in expected:
         assert pattern in DEFAULT_EXCLUDES
+
+
+def test_is_excluded_lock_files(tmp_path: Path) -> None:
+    """Lock files should be excluded to prevent inflated LOC counts."""
+    lock_files = [
+        "package-lock.json",
+        "yarn.lock",
+        "poetry.lock",
+        "Cargo.lock",
+        "go.sum",
+        "composer.lock",
+        "Gemfile.lock",
+    ]
+    for lock_file in lock_files:
+        lock_path = tmp_path / lock_file
+        assert is_excluded(lock_path, tmp_path) is True, f"{lock_file} should be excluded"
 
 
 def test_is_excluded_hypergumbo_artifacts(tmp_path: Path) -> None:

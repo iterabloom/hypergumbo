@@ -20,6 +20,18 @@ DEFAULT_EXCLUDES = [
     # Hypergumbo output artifacts - exclude to prevent sketch/analysis pollution
     ".hypergumbo",
     "hypergumbo.results.json",
+    # Lock files - generated, inflate LOC counts
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "Pipfile.lock",
+    "Gemfile.lock",
+    "composer.lock",
+    "Cargo.lock",
+    "go.sum",
+    "pubspec.lock",  # Dart/Flutter
+    "packages.lock.json",  # NuGet (.NET)
 ]
 
 
