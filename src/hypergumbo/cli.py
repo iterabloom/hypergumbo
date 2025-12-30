@@ -135,11 +135,13 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     max_tokens = args.tokens if args.tokens else None
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
+    extra_excludes = getattr(args, "extra_excludes", [])
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
         exclude_tests=exclude_tests,
         first_party_priority=first_party_priority,
+        extra_excludes=extra_excludes,
     )
     print(sketch)
     return 0
@@ -242,6 +244,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     coverage = getattr(args, "coverage", 0.8)
     tiers = getattr(args, "tiers", None)
     exclude_tests = getattr(args, "exclude_tests", False)
+    extra_excludes = getattr(args, "extra_excludes", [])
 
     run_behavior_map(
         repo_root=repo_root,
@@ -252,6 +255,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         coverage=coverage,
         tiers=tiers,
         exclude_tests=exclude_tests,
+        extra_excludes=extra_excludes,
     )
     return 0
 
@@ -711,6 +715,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="first_party_priority",
         help="Disable supply chain tier weighting in symbol ranking",
     )
+    p_sketch.add_argument(
+        "-e", "--exclude",
+        action="append",
+        default=[],
+        dest="extra_excludes",
+        metavar="PATTERN",
+        help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
+    )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
 
     # hypergumbo init
@@ -801,6 +813,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="exclude_tests",
         help="Exclude test files from analysis output",
+    )
+    p_run.add_argument(
+        "-e", "--exclude",
+        action="append",
+        default=[],
+        dest="extra_excludes",
+        metavar="PATTERN",
+        help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
     )
     p_run.set_defaults(func=cmd_run)
 
@@ -1041,6 +1061,7 @@ def run_behavior_map(
     coverage: float = 0.8,
     tiers: str | None = None,
     exclude_tests: bool = False,
+    extra_excludes: list[str] | None = None,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -1060,11 +1081,14 @@ def run_behavior_map(
             If None, defaults to generating DEFAULT_TIERS alongside full output.
         exclude_tests: If True, filter out symbols from test files after analysis.
             This removes test helpers and test fixtures from the behavior map.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+            Affects profile detection (language stats). Use for excluding
+            project-specific files like "*.json" or "vendor".
     """
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
-    profile = detect_profile(repo_root)
+    profile = detect_profile(repo_root, extra_excludes=extra_excludes)
     behavior_map["profile"] = profile.to_dict()
 
     # Detect internal package roots for supply chain classification
