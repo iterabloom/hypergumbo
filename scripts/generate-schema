@@ -343,6 +343,14 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "reason": {"type": "string", "description": "Why this tier was assigned"}
                 },
                 "required": ["tier", "tier_name", "reason"]
+            },
+            "cyclomatic_complexity": {
+                "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
+                "description": "McCabe cyclomatic complexity (decision points + 1)"
+            },
+            "lines_of_code": {
+                "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
+                "description": "Number of source lines in the symbol body"
             }
         },
         "required": ["id", "name", "kind", "language", "path", "span"]

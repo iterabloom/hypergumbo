@@ -401,6 +401,67 @@ PASS_ID = "python-ast-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
 
+def _compute_cyclomatic_complexity(node: ast.AST) -> int:
+    """Compute McCabe cyclomatic complexity for a function or class.
+
+    Cyclomatic complexity = number of decision points + 1.
+
+    Decision points counted:
+    - if (each elif counts separately)
+    - for loops
+    - while loops
+    - except handlers
+    - with statements
+    - boolean operators (and, or)
+    - conditional expressions (ternary)
+    - match/case statements (Python 3.10+)
+    - comprehensions with if clauses
+
+    Returns 1 for straight-line code (no branches).
+    """
+    complexity = 1  # Base complexity
+
+    for child in ast.walk(node):
+        # Conditional statements
+        if isinstance(child, ast.If):
+            complexity += 1
+        # Loops
+        elif isinstance(child, (ast.For, ast.While, ast.AsyncFor)):
+            complexity += 1
+        # Exception handlers (each except clause adds a branch)
+        elif isinstance(child, ast.ExceptHandler):
+            complexity += 1
+        # With statements
+        elif isinstance(child, (ast.With, ast.AsyncWith)):
+            complexity += 1
+        # Boolean operators in conditions
+        elif isinstance(child, ast.BoolOp):
+            # and/or each add (n-1) where n is number of operands
+            complexity += len(child.values) - 1
+        # Conditional expressions (ternary: x if cond else y)
+        elif isinstance(child, ast.IfExp):
+            complexity += 1
+        # Comprehensions with if clauses
+        elif isinstance(child, ast.comprehension):
+            complexity += len(child.ifs)
+        # Match/case (Python 3.10+)
+        elif isinstance(child, ast.Match):
+            # Each case is a branch
+            complexity += len(child.cases)
+
+    return complexity
+
+
+def _compute_lines_of_code(node: ast.AST) -> int:
+    """Compute lines of code for a function or class.
+
+    Returns end_line - start_line + 1.
+    """
+    start = node.lineno
+    end = getattr(node, "end_lineno", node.lineno)
+    return end - start + 1
+
+
 @dataclass
 class AnalysisResult:
     """Result of analyzing Python files."""
@@ -650,6 +711,8 @@ def _extract_file_analysis(
                 span=span,
                 stable_id=_compute_stable_id(node),
                 shape_id=_compute_shape_id(node),
+                cyclomatic_complexity=_compute_cyclomatic_complexity(node),
+                lines_of_code=_compute_lines_of_code(node),
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -682,6 +745,8 @@ def _extract_file_analysis(
                         span=method_span,
                         stable_id=stable_id,
                         shape_id=_compute_shape_id(item),
+                        cyclomatic_complexity=_compute_cyclomatic_complexity(item),
+                        lines_of_code=_compute_lines_of_code(item),
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
@@ -723,6 +788,8 @@ def _extract_file_analysis(
                     stable_id=http_method_upper if http_method_upper else _compute_stable_id(node),
                     shape_id=_compute_shape_id(node),
                     meta=meta,
+                    cyclomatic_complexity=_compute_cyclomatic_complexity(node),
+                    lines_of_code=_compute_lines_of_code(node),
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
