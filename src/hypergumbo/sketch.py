@@ -560,6 +560,131 @@ def _extract_python_signatures(
     return signatures
 
 
+# Common programming terms to exclude from domain vocabulary
+_COMMON_TERMS = frozenset({
+    # English stopwords
+    "the", "and", "for", "not", "with", "this", "that", "from", "have", "has",
+    "are", "was", "were", "been", "being", "will", "would", "could", "should",
+    "all", "any", "each", "every", "both", "few", "more", "most", "other",
+    "some", "such", "than", "too", "very", "when", "where", "which", "while",
+    "who", "why", "how", "what", "then", "also", "just", "only",
+    # Generic programming terms
+    "get", "set", "add", "remove", "delete", "update", "create", "read", "write",
+    "init", "start", "stop", "open", "close", "run", "call", "return", "value",
+    "name", "type", "data", "item", "items", "list", "array", "object",
+    "key", "keys", "val", "var", "vars", "arg", "args", "param", "params",
+    "result", "results", "output", "input", "index", "idx", "len", "length",
+    "count", "num", "number", "str", "string", "int", "integer", "float", "bool",
+    "true", "false", "null", "none", "void", "use", "using", "used",
+    "new", "old", "first", "last", "next", "prev", "current", "default",
+    "error", "errors", "log", "console", "print", "debug", "info", "warn",
+    "text", "msg", "message", "callback", "handler", "listener", "event",
+    "async", "await", "promise", "resolve", "reject", "load", "save", "fetch",
+    "send", "receive", "process", "handle", "path", "file", "config", "option",
+    "options", "state", "props", "ref", "self", "super", "base", "parent",
+    "child", "node", "tree", "root", "body", "head", "main", "temp", "util",
+    "helper", "wrapper", "manager", "service", "factory", "builder", "module",
+    "component", "context", "scope", "global", "local", "instance", "static",
+    "public", "private", "protected", "virtual", "abstract", "final", "const",
+    # Testing-related terms
+    "test", "tests", "expect", "mock", "stub", "spy", "fixture",
+    "logger", "logging", "describe", "spec", "suite", "setup",
+    "teardown", "before", "after", "given", "verify",
+})
+
+# Programming language keywords to exclude
+_KEYWORDS = frozenset({
+    "class", "function", "return", "import", "export", "const", "else", "elif",
+    "while", "break", "continue", "finally", "catch", "throw", "extends",
+    "implements", "interface", "static", "public", "private", "protected",
+    "super", "switch", "case", "yield", "assert", "raise", "pass", "lambda",
+    "struct", "enum", "impl", "match", "trait", "package", "include", "define",
+    "ifdef", "ifndef", "endif", "extern", "typedef", "sizeof", "typeof",
+})
+
+
+def _extract_domain_vocabulary(
+    repo_root: Path, profile: "RepoProfile", max_terms: int = 12
+) -> list[str]:
+    """Extract domain-specific vocabulary from source code.
+
+    Analyzes identifiers in source files to find domain-specific terms.
+    Filters out common programming terms and language keywords to highlight
+    terms unique to this codebase's domain.
+
+    Args:
+        repo_root: Path to the repository root.
+        profile: Repository profile with language info.
+        max_terms: Maximum number of domain terms to return (default 12).
+
+    Returns:
+        List of domain-specific terms, ordered by frequency.
+    """
+    import re
+    from collections import Counter
+
+    word_counts: Counter[str] = Counter()
+
+    # File extensions to analyze
+    extensions = ["*.py", "*.js", "*.ts", "*.jsx", "*.tsx", "*.java", "*.c", "*.h",
+                  "*.go", "*.rs", "*.rb", "*.php", "*.cpp", "*.cc", "*.hpp"]
+
+    # Directories to exclude
+    excludes = {"node_modules", "__pycache__", "dist", "build", ".venv", "vendor",
+                ".git", "target", "coverage", "htmlcov", ".pytest_cache"}
+
+    for ext in extensions:
+        for f in repo_root.rglob(ext):
+            # Skip excluded directories
+            if any(excl in f.parts for excl in excludes):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+                # Extract identifiers
+                for match in re.finditer(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', text):
+                    word = match.group()
+                    if len(word) <= 3:
+                        continue
+                    if word.lower() in _KEYWORDS:
+                        continue
+                    # Split compound words (camelCase, PascalCase, snake_case)
+                    # First try to find camelCase/PascalCase parts
+                    parts = re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', word)
+                    if parts:
+                        for p in parts:
+                            p_lower = p.lower()
+                            if len(p_lower) > 3 and p_lower not in _COMMON_TERMS:
+                                word_counts[p_lower] += 1
+                    # Also split by underscore for snake_case (including UPPER_CASE)
+                    for part in word.split('_'):
+                        p_lower = part.lower()
+                        if len(p_lower) > 3 and p_lower not in _COMMON_TERMS:
+                            word_counts[p_lower] += 1
+            except OSError:
+                continue
+
+    # Return top terms by frequency
+    return [word for word, _ in word_counts.most_common(max_terms)]
+
+
+def _format_vocabulary(terms: list[str]) -> str:
+    """Format domain vocabulary as a Markdown section.
+
+    Args:
+        terms: List of domain-specific terms.
+
+    Returns:
+        Markdown-formatted vocabulary section.
+    """
+    if not terms:
+        return ""
+
+    lines = ["## Domain Vocabulary", ""]
+    lines.append(f"*Key terms: {', '.join(terms)}*")
+
+    return "\n".join(lines)
+
+
 # Source file extensions by language
 SOURCE_EXTENSIONS = {
     "python": ["*.py"],
@@ -1288,6 +1413,13 @@ def generate_sketch(
     frameworks = _format_frameworks(profile)
     if frameworks:
         sections.append(frameworks)
+
+    # Section 3.5: Domain Vocabulary (only for medium+ budgets)
+    if max_tokens is None or max_tokens >= 500:
+        vocab_terms = _extract_domain_vocabulary(repo_root, profile)
+        vocabulary = _format_vocabulary(vocab_terms)
+        if vocabulary:
+            sections.append(vocabulary)
 
     # Combine base sections
     base_sketch = "\n\n".join(sections)
