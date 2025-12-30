@@ -247,6 +247,202 @@ class TestGenerateSketch:
         # Should be truncated to ~20 chars
         assert len(result) <= 25
 
+    def test_includes_readme_description(self, tmp_path: Path) -> None:
+        """Sketch includes project description from README.md."""
+        (tmp_path / "README.md").write_text(
+            "# My Project\n\n"
+            "A powerful tool for analyzing code.\n\n"
+            "## Installation\n"
+            "pip install myproject\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should include the first descriptive paragraph from README
+        assert "powerful tool for analyzing code" in sketch
+
+    def test_readme_description_from_various_formats(self, tmp_path: Path) -> None:
+        """Sketch extracts description from README.rst and README.txt."""
+        (tmp_path / "README.rst").write_text(
+            "My Project\n"
+            "==========\n\n"
+            "An excellent library for data processing.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        assert "excellent library for data processing" in sketch
+
+    def test_readme_description_truncated(self, tmp_path: Path) -> None:
+        """Long README descriptions are truncated to fit token budget."""
+        long_desc = "This is a very long project description. " * 50
+        (tmp_path / "README.md").write_text(f"# Project\n\n{long_desc}\n")
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=200)
+
+        # Description should be present but truncated
+        assert "project description" in sketch.lower()
+        # Full long_desc should NOT be included (would exceed budget)
+        assert long_desc not in sketch
+
+    def test_no_readme_graceful(self, tmp_path: Path) -> None:
+        """Sketch works gracefully when no README exists."""
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should not crash, should still include overview
+        assert "## Overview" in sketch
+
+    def test_readme_stops_at_section_header(self, tmp_path: Path) -> None:
+        """README extraction stops at next section header."""
+        (tmp_path / "README.md").write_text(
+            "# Project\n\n"
+            "First line of description.\n"
+            "## Installation\n"
+            "This should not be included.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        assert "First line of description" in sketch
+        assert "should not be included" not in sketch
+
+    def test_readme_empty_description(self, tmp_path: Path) -> None:
+        """README with only title and no description."""
+        (tmp_path / "README.md").write_text(
+            "# Project Title\n\n"
+            "## Installation\n"
+            "pip install foo\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should not include installation instructions as description
+        assert "pip install" not in sketch.split("## Overview")[0]
+
+    def test_readme_truncation_no_word_boundary(self, tmp_path: Path) -> None:
+        """README truncation handles long words without spaces."""
+        # Create a description with a very long word (no spaces for truncation)
+        long_word = "a" * 300
+        (tmp_path / "README.md").write_text(f"# Project\n\n{long_word}\n")
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should truncate and add ellipsis
+        assert "…" in sketch
+        # Should not include the full long word
+        assert long_word not in sketch
+
+    def test_readme_skips_badges_and_images(self, tmp_path: Path) -> None:
+        """README extraction skips badge images and links."""
+        (tmp_path / "README.md").write_text(
+            "# Project\n\n"
+            "![Badge](https://badge.url)\n"
+            "[![CI](https://ci.url)](https://link)\n"
+            "[Some Link](https://example.com)\n"
+            "A real description of the project.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should include the real description
+        assert "real description of the project" in sketch
+        # Should not include badge URLs
+        assert "badge.url" not in sketch
+        assert "ci.url" not in sketch
+
+    def test_readme_skips_html_comments(self, tmp_path: Path) -> None:
+        """README extraction skips HTML comments."""
+        (tmp_path / "README.md").write_text(
+            "# Project\n\n"
+            "<!-- This is a comment -->\n"
+            "<!-- BEGIN_BANNER -->\n"
+            "The actual project description.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should include the real description
+        assert "actual project description" in sketch
+        # Should not include HTML comments
+        assert "<!--" not in sketch
+        assert "BEGIN_BANNER" not in sketch
+
+    def test_readme_skips_html_tags(self, tmp_path: Path) -> None:
+        """README extraction skips HTML picture/img/source tags."""
+        (tmp_path / "README.md").write_text(
+            "# Project\n\n"
+            "<picture>\n"
+            "  <source media='...' srcset='...'>\n"
+            "  <img src='banner.png'>\n"
+            "</picture>\n\n"
+            "A description after the banner.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should include the real description
+        assert "description after the banner" in sketch
+        # Should not include HTML tags
+        assert "<picture>" not in sketch
+        assert "<img" not in sketch
+
+    def test_readme_title_with_subtitle(self, tmp_path: Path) -> None:
+        """README extracts subtitle from title when main description unavailable."""
+        (tmp_path / "README.md").write_text(
+            "![Badge](https://badge.url)\n"
+            "<picture><img src='banner.png'></picture>\n\n"
+            "# MyProject: A powerful tool for code analysis\n\n"
+            "[![More](https://badge.url)](https://link)\n"
+            "[![Badges](https://badge.url)](https://link)\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Should use the title subtitle as description
+        assert "powerful tool for code analysis" in sketch
+
+    def test_readme_shields_before_title(self, tmp_path: Path) -> None:
+        """README skips shields/images that appear before the title."""
+        (tmp_path / "README.md").write_text(
+            "![Build Status](https://ci.url/shield)\n"
+            "[![Coverage](https://coverage.url)](https://link)\n\n"
+            "# Project Title\n\n"
+            "This is the actual description.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        assert "actual description" in sketch
+        # Shield URLs should not appear in description area
+        assert "ci.url" not in sketch
+
+    def test_readme_html_tags_before_title(self, tmp_path: Path) -> None:
+        """README skips HTML tags that appear before the title."""
+        (tmp_path / "README.md").write_text(
+            "<!-- Banner image -->\n"
+            "<picture><img src='banner.png'></picture>\n\n"
+            "# Project Title\n\n"
+            "The project description text.\n"
+        )
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        assert "project description text" in sketch
+
 
 class TestCollectSourceFiles:
     """Tests for source file collection."""

@@ -236,6 +236,119 @@ def _get_repo_name(repo_root: Path) -> str:
     return repo_root.resolve().name
 
 
+def _extract_readme_description(
+    repo_root: Path, max_chars: int = 200
+) -> Optional[str]:
+    """Extract a description from the project README file.
+
+    Looks for README.md, README.rst, README.txt, or README (in that order)
+    and extracts the first descriptive paragraph after the title.
+
+    Args:
+        repo_root: Path to the repository root.
+        max_chars: Maximum characters to extract (default 200).
+
+    Returns:
+        Extracted description string, or None if no README found.
+    """
+    import re
+
+    # Try different README file names in priority order
+    readme_names = ["README.md", "README.rst", "README.txt", "README"]
+    readme_path = None
+    for name in readme_names:
+        candidate = repo_root / name
+        if candidate.is_file():
+            readme_path = candidate
+            break
+
+    if readme_path is None:
+        return None
+
+    try:
+        content = readme_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover
+        return None
+
+    # Find the markdown title and extract description
+    lines = content.split("\n")
+    start_idx = 0
+    title_subtitle = None
+
+    # Find the first markdown H1 title (# ...)
+    for i, line in enumerate(lines):
+        if line.startswith("# "):
+            # Check if title has a subtitle (e.g., "# Project: Description here")
+            title_text = line[2:].strip()
+            if ":" in title_text:
+                parts = title_text.split(":", 1)
+                if len(parts[1].strip()) > 10:  # Meaningful subtitle
+                    title_subtitle = parts[1].strip()
+            start_idx = i + 1
+            break
+        # Skip lines before title that are badges/images/comments
+        stripped = line.strip()
+        if stripped.startswith("![") or stripped.startswith("<!--"):
+            continue
+        if stripped.startswith("<"):
+            continue
+        # If we hit a non-skip line before finding title, treat as RST format
+        if stripped and not stripped.startswith("#"):
+            # RST title: text followed by === or --- underline
+            if i + 1 < len(lines) and re.match(r"^[=\-~^]+$", lines[i + 1].strip()):
+                start_idx = i + 2
+                break
+
+    # Skip any empty lines after title
+    while start_idx < len(lines) and not lines[start_idx].strip():
+        start_idx += 1
+
+    # Find the first non-empty paragraph (stop at next header or empty line)
+    # Skip common non-description content: badges, images, HTML comments
+    paragraph_lines = []
+    for line in lines[start_idx:]:
+        stripped = line.strip()
+        # Stop at headers (markdown ## or RST underlines)
+        if line.startswith("#") or re.match(r"^[=\-~^]+$", stripped):
+            break
+        # Stop at empty line (end of paragraph)
+        if not stripped and paragraph_lines:
+            break
+        # Skip markdown images and badges
+        if stripped.startswith("![") or stripped.startswith("[!["):
+            continue
+        # Skip HTML comments
+        if stripped.startswith("<!--"):
+            continue
+        # Skip HTML tags (picture, source, img, etc.)
+        if stripped.startswith("<") and not stripped.startswith("<http"):
+            continue
+        # Skip lines that are just links (often badge URLs)
+        if re.match(r"^\[.*\]\(https?://.*\)$", stripped):
+            continue
+        if stripped:
+            paragraph_lines.append(stripped)
+
+    if not paragraph_lines:
+        # Fall back to title subtitle if available
+        if title_subtitle:
+            return title_subtitle
+        return None
+
+    description = " ".join(paragraph_lines)
+
+    # Truncate if too long, trying to break at word boundary
+    if len(description) > max_chars:
+        # Find last space before max_chars
+        truncate_at = description.rfind(" ", 0, max_chars)
+        if truncate_at > max_chars // 2:
+            description = description[:truncate_at] + "…"
+        else:
+            description = description[: max_chars - 1] + "…"
+
+    return description
+
+
 # Source file extensions by language
 SOURCE_EXTENSIONS = {
     "python": ["*.py"],
@@ -927,7 +1040,16 @@ def generate_sketch(
     sections = []
 
     # Section 1: Header (always included, highest priority)
-    header = f"# {repo_name}\n\n## Overview\n{_format_language_stats(profile)}"
+    # Include project description from README if available
+    readme_desc = _extract_readme_description(repo_root)
+    if readme_desc:
+        header = (
+            f"# {repo_name}\n\n"
+            f"{readme_desc}\n\n"
+            f"## Overview\n{_format_language_stats(profile)}"
+        )
+    else:
+        header = f"# {repo_name}\n\n## Overview\n{_format_language_stats(profile)}"
     sections.append(header)
 
     # Section 2: Structure
