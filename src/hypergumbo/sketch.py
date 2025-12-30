@@ -168,15 +168,35 @@ def _format_language_stats(profile: RepoProfile) -> str:
     return f"{', '.join(parts)} · {total_files} files · ~{total_loc:,} LOC"
 
 
-def _format_structure(repo_root: Path) -> str:
-    """Format top-level directory structure."""
+def _format_structure(
+    repo_root: Path, extra_excludes: Optional[List[str]] = None
+) -> str:
+    """Format top-level directory structure.
+
+    Filters out directories that match DEFAULT_EXCLUDES patterns
+    (e.g., node_modules, __pycache__, .git) to show only meaningful
+    project structure.
+    """
+    from fnmatch import fnmatch
+
     lines = ["## Structure", ""]
 
-    # Get top-level directories
-    dirs = sorted([
-        d.name for d in repo_root.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    ])
+    # Combine default and extra excludes
+    excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:
+        excludes.extend(extra_excludes)
+
+    # Get top-level directories, filtering out excluded ones
+    dirs = []
+    for d in repo_root.iterdir():
+        if not d.is_dir():
+            continue
+        # Check if directory matches any exclude pattern
+        excluded = any(fnmatch(d.name, pattern) for pattern in excludes)
+        if not excluded:
+            dirs.append(d.name)
+
+    dirs = sorted(dirs)
 
     # Common source directories to highlight
     source_dirs = {"src", "lib", "app", "pkg", "cmd", "internal", "core"}
@@ -911,7 +931,7 @@ def generate_sketch(
     sections.append(header)
 
     # Section 2: Structure
-    structure = _format_structure(repo_root)
+    structure = _format_structure(repo_root, extra_excludes=extra_excludes)
     if structure:
         sections.append(structure)
 
