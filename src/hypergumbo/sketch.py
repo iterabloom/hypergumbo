@@ -1442,8 +1442,10 @@ def generate_sketch(
     # Typical line: "- `path/to/long/filename.py`" is ~50 chars = ~12 tokens
     tokens_per_file = 12
 
-    # Estimate tokens per entry point or symbol item (~25 chars = ~6 tokens)
-    tokens_per_item = 6
+    # Estimate tokens per entry point or symbol item with docstring/signature
+    # Typical line: "- `func(x: int) -> str` (function) — Description. — `path.py`"
+    # is ~70-100 chars = ~18-25 tokens. Use conservative estimate.
+    tokens_per_item = 20
 
     # Section 4: Source files (if we have budget >= 50 tokens remaining)
     if remaining_tokens > 50 and source_files:
