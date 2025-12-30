@@ -338,7 +338,14 @@ def _is_test_file(path: str) -> bool:
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
         "fixtures", "testdata", "testutils",  # Test support directories
     }
-    return any(part.lower() in test_dirs for part in path_parts)
+    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
+    for part in path_parts:
+        part_lower = part.lower()
+        if part_lower in test_dirs:
+            return True
+        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
+            return True
+    return False
 
 
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
