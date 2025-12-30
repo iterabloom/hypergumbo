@@ -17,6 +17,8 @@ from hypergumbo.sketch import (
     _format_function_signature,
     _format_arg,
     _format_annotation,
+    _extract_domain_vocabulary,
+    _format_vocabulary,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -1720,4 +1722,217 @@ class TestFormatFunctionSignature:
         sig = _format_function_signature(func, max_len=30)
         assert len(sig) <= 30
         assert sig.endswith("…")
+
+
+class TestExtractDomainVocabulary:
+    """Tests for domain vocabulary extraction."""
+
+    def test_extracts_domain_terms(self, tmp_path: Path) -> None:
+        """Extracts domain-specific terms from source code."""
+        (tmp_path / "server.py").write_text(
+            "def handleAuthentication(user, token):\n"
+            "    validateToken(token)\n"
+            "    authenticateUser(user)\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert "authentication" in terms or "authenticate" in terms
+        assert "token" in terms or "validate" in terms
+
+    def test_filters_common_terms(self, tmp_path: Path) -> None:
+        """Filters out common programming terms."""
+        (tmp_path / "app.py").write_text(
+            "def get_value():\n"
+            "    result = process_data(input_value)\n"
+            "    return result\n"
+            "\n"
+            "def calculatePaymentTotal(invoice):\n"
+            "    total = invoice.amount\n"
+            "    return total\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        # Common terms should be filtered
+        assert "value" not in terms
+        assert "result" not in terms
+        # Domain terms should be included
+        assert "payment" in terms or "invoice" in terms or "calculate" in terms
+
+    def test_splits_camel_case(self, tmp_path: Path) -> None:
+        """Splits camelCase and PascalCase identifiers."""
+        (tmp_path / "service.py").write_text(
+            "class UserAuthenticationService:\n"
+            "    def validateCredentials(self):\n"
+            "        pass\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert "authentication" in terms or "validate" in terms or "credentials" in terms
+
+    def test_splits_snake_case(self, tmp_path: Path) -> None:
+        """Splits snake_case identifiers."""
+        (tmp_path / "handler.py").write_text(
+            "def process_payment_request(payment_details):\n"
+            "    validate_payment_amount(payment_details)\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert "payment" in terms
+
+    def test_respects_max_terms(self, tmp_path: Path) -> None:
+        """Respects max_terms limit."""
+        # Create file with many unique terms
+        (tmp_path / "app.py").write_text(
+            "def alpha(): pass\n"
+            "def bravo(): pass\n"
+            "def charlie(): pass\n"
+            "def delta(): pass\n"
+            "def echo(): pass\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile, max_terms=3)
+
+        assert len(terms) <= 3
+
+    def test_excludes_node_modules(self, tmp_path: Path) -> None:
+        """Excludes node_modules directory."""
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "lib.js").write_text(
+            "function excludedTerm() {}\n"
+        )
+        (tmp_path / "app.py").write_text(
+            "def includedTerm():\n"
+            "    pass\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert "excluded" not in terms
+
+    def test_handles_empty_project(self, tmp_path: Path) -> None:
+        """Returns empty list for project with no source files."""
+        (tmp_path / "README.md").write_text("# Project\n")
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert terms == []
+
+    def test_handles_unreadable_files(self, tmp_path: Path) -> None:
+        """Gracefully handles unreadable files."""
+        (tmp_path / "good.py").write_text("def validFunction(): pass\n")
+        profile = detect_profile(tmp_path)
+
+        # Just verify no exception is raised
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+        assert isinstance(terms, list)
+
+    def test_handles_pure_snake_case(self, tmp_path: Path) -> None:
+        """Handles pure snake_case identifiers without uppercase letters."""
+        (tmp_path / "handler.py").write_text(
+            "def process_customer_payment_request():\n"
+            "    validate_invoice_amount()\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert "customer" in terms or "payment" in terms or "invoice" in terms
+
+    def test_handles_all_uppercase_constants(self, tmp_path: Path) -> None:
+        """Handles ALL_UPPERCASE_CONSTANTS (snake_case fallback path)."""
+        (tmp_path / "constants.py").write_text(
+            "MAX_CUSTOMER_LIMIT = 100\n"
+            "DEFAULT_PAYMENT_TIMEOUT = 30\n"
+        )
+        profile = detect_profile(tmp_path)
+
+        terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert "customer" in terms or "payment" in terms or "limit" in terms or "timeout" in terms
+
+    def test_handles_file_read_error(self, tmp_path: Path) -> None:
+        """Gracefully handles file read errors (OSError)."""
+        from unittest.mock import patch
+
+        (tmp_path / "good.py").write_text("def validTerm(): pass\n")
+        profile = detect_profile(tmp_path)
+
+        # Mock file reading to raise OSError
+        original_read_text = Path.read_text
+
+        def mock_read_text(self, *args, **kwargs):
+            if "good.py" in str(self):
+                raise OSError("Mocked read error")
+            return original_read_text(self, *args, **kwargs)
+
+        with patch.object(Path, "read_text", mock_read_text):
+            # This should not raise even when files can't be read
+            terms = _extract_domain_vocabulary(tmp_path, profile)
+
+        assert isinstance(terms, list)
+
+
+class TestFormatVocabulary:
+    """Tests for vocabulary formatting."""
+
+    def test_formats_vocabulary_section(self) -> None:
+        """Formats vocabulary as Markdown section."""
+        terms = ["authentication", "payment", "invoice", "customer"]
+
+        result = _format_vocabulary(terms)
+
+        assert "## Domain Vocabulary" in result
+        assert "authentication" in result
+        assert "payment" in result
+        assert "invoice" in result
+        assert "customer" in result
+
+    def test_empty_terms_returns_empty(self) -> None:
+        """Returns empty string for empty terms list."""
+        result = _format_vocabulary([])
+
+        assert result == ""
+
+    def test_formats_as_key_terms(self) -> None:
+        """Formats terms with 'Key terms:' prefix."""
+        terms = ["user", "session", "token"]
+
+        result = _format_vocabulary(terms)
+
+        assert "*Key terms:" in result
+        assert "user, session, token" in result
+
+
+class TestGenerateSketchWithVocabulary:
+    """Tests for vocabulary in generate_sketch."""
+
+    def test_includes_vocabulary_at_medium_budget(self, tmp_path: Path) -> None:
+        """Includes vocabulary section at medium token budget."""
+        (tmp_path / "payment.py").write_text(
+            "def processPayment(amount):\n"
+            "    validatePaymentDetails(amount)\n"
+        )
+
+        sketch = generate_sketch(tmp_path, max_tokens=800)
+
+        assert "## Domain Vocabulary" in sketch
+
+    def test_excludes_vocabulary_at_small_budget(self, tmp_path: Path) -> None:
+        """Excludes vocabulary section at small token budget."""
+        (tmp_path / "app.py").write_text("def main(): pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=200)
+
+        assert "## Domain Vocabulary" not in sketch
 
