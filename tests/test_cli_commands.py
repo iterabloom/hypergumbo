@@ -647,6 +647,7 @@ def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -695,6 +696,7 @@ def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -717,6 +719,7 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -753,6 +756,7 @@ def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -826,6 +830,7 @@ def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -873,6 +878,7 @@ def test_edge_from_dict_defaults(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -918,6 +924,7 @@ def test_cmd_slice_list_entries(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = True
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -957,6 +964,7 @@ def test_cmd_slice_list_entries_none(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = True
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -996,6 +1004,7 @@ def test_cmd_slice_auto_entry(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -1036,6 +1045,7 @@ def test_cmd_slice_auto_entry_no_entrypoints(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -1091,6 +1101,7 @@ def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = True  # Reverse slice
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -1159,6 +1170,7 @@ def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.reverse = False
+    args.language = None
     args.list_entries = False
     args.max_tier = None
     args.inline = True  # Enable inline mode
@@ -1219,6 +1231,7 @@ def test_cmd_slice_without_inline_has_ids_only(tmp_path: Path) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.reverse = False
+    args.language = None
     args.list_entries = False
     args.max_tier = None
     args.inline = False  # Disable inline mode (default)
@@ -1280,6 +1293,7 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.reverse = False
+    args.language = None
     args.list_entries = False
     args.max_tier = None
 

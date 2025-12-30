@@ -104,6 +104,7 @@ class SliceQuery:
                  If False (default), find callees (forward traversal).
         max_tier: Maximum supply chain tier to include (1-4). None means no
                   tier filtering. Lower tiers are higher priority.
+        language: Filter entry point matches to this language (e.g., "python").
     """
 
     entrypoint: str
@@ -114,6 +115,7 @@ class SliceQuery:
     method: str = "bfs"
     reverse: bool = False
     max_tier: int | None = None
+    language: str | None = None
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -127,6 +129,8 @@ class SliceQuery:
         }
         if self.max_tier is not None:
             result["max_tier"] = self.max_tier
+        if self.language is not None:
+            result["language"] = self.language
         return result
 
 
@@ -168,7 +172,9 @@ class SliceResult:
         }
 
 
-def find_entry_nodes(nodes: List[Symbol], entry_spec: str) -> List[Symbol]:
+def find_entry_nodes(
+    nodes: List[Symbol], entry_spec: str, language: str | None = None
+) -> List[Symbol]:
     """Find nodes matching the entry specification.
 
     Matching rules (in order of priority):
@@ -180,10 +186,15 @@ def find_entry_nodes(nodes: List[Symbol], entry_spec: str) -> List[Symbol]:
     Args:
         nodes: All available nodes.
         entry_spec: Entry point specification (name, path, or ID).
+        language: Optional language filter (e.g., "python").
 
     Returns:
         List of matching nodes.
     """
+    # Apply language filter if specified
+    if language:
+        nodes = [n for n in nodes if n.language == language]
+
     # Try exact ID match first
     exact_id_matches = [n for n in nodes if n.id == entry_spec]
     if exact_id_matches:
@@ -269,7 +280,7 @@ def slice_graph(
             file_node_ids[node.path].append(file_id)
 
     # Find entry nodes
-    entry_nodes = find_entry_nodes(nodes, query.entrypoint)
+    entry_nodes = find_entry_nodes(nodes, query.entrypoint, query.language)
     if not entry_nodes:
         return SliceResult(
             entry_nodes=[],
