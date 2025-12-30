@@ -3,7 +3,14 @@ import json
 from pathlib import Path
 
 from hypergumbo.cli import run_behavior_map
-from hypergumbo.analyze.py import extract_nodes, _module_name_from_path, _resolve_relative_import
+from hypergumbo.analyze.py import (
+    extract_nodes,
+    _module_name_from_path,
+    _resolve_relative_import,
+    _compute_cyclomatic_complexity,
+    _compute_lines_of_code,
+)
+import ast
 
 
 def test_run_detects_python_function(tmp_path: Path) -> None:
@@ -1348,3 +1355,296 @@ def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
     call_dsts = {e["dst"] for e in call_edges}
     assert helper_id in call_dsts, \
         f"Call edge should resolve to helper {helper_id}, got {call_dsts}"
+
+
+# ============================================================================
+# Cyclomatic Complexity and Lines of Code Tests
+# ============================================================================
+
+
+def test_cyclomatic_complexity_simple_function() -> None:
+    """A function with no branches should have complexity 1."""
+    code = """
+def simple():
+    x = 1
+    y = 2
+    return x + y
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    assert _compute_cyclomatic_complexity(func) == 1
+
+
+def test_cyclomatic_complexity_with_if() -> None:
+    """Each if statement adds 1 to complexity."""
+    code = """
+def with_if(x):
+    if x > 0:
+        return 1
+    return 0
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 if = 2
+    assert _compute_cyclomatic_complexity(func) == 2
+
+
+def test_cyclomatic_complexity_with_if_elif_else() -> None:
+    """Each if/elif adds 1; else doesn't add (it's the default path)."""
+    code = """
+def with_branches(x):
+    if x > 0:
+        return "positive"
+    elif x < 0:
+        return "negative"
+    else:
+        return "zero"
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 if + 1 elif = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_loops() -> None:
+    """for and while loops each add 1."""
+    code = """
+def with_loops(items):
+    result = 0
+    for item in items:
+        result += item
+    while result > 100:
+        result -= 10
+    return result
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 for + 1 while = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_exception_handling() -> None:
+    """Each except handler adds 1."""
+    code = """
+def with_exceptions():
+    try:
+        risky_operation()
+    except ValueError:
+        handle_value_error()
+    except TypeError:
+        handle_type_error()
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 except handlers = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_context_managers() -> None:
+    """with statements add 1 each."""
+    code = """
+def with_context():
+    with open('file.txt') as f:
+        with lock:
+            data = f.read()
+    return data
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 with statements = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_boolean_operators() -> None:
+    """and/or operators add (n-1) where n is operand count."""
+    code = """
+def with_boolean(a, b, c):
+    if a and b and c:
+        return True
+    if a or b:
+        return True
+    return False
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 if + 2 (a and b and c has 3 operands) + 1 (a or b has 2 operands) = 6
+    assert _compute_cyclomatic_complexity(func) == 6
+
+
+def test_cyclomatic_complexity_with_ternary() -> None:
+    """Conditional expressions (ternary) add 1."""
+    code = """
+def with_ternary(x):
+    return "yes" if x else "no"
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 IfExp = 2
+    assert _compute_cyclomatic_complexity(func) == 2
+
+
+def test_cyclomatic_complexity_with_comprehension_if() -> None:
+    """Comprehension if clauses add to complexity."""
+    code = """
+def with_list_comp(items):
+    return [x for x in items if x > 0 if x < 100]
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 if clauses in comprehension = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_match_case() -> None:
+    """match/case (Python 3.10+) adds complexity per case."""
+    code = """
+def with_match(x):
+    match x:
+        case 1:
+            return "one"
+        case 2:
+            return "two"
+        case _:
+            return "other"
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 3 cases = 4
+    assert _compute_cyclomatic_complexity(func) == 4
+
+
+def test_cyclomatic_complexity_complex_function() -> None:
+    """Complex function with multiple branch types."""
+    code = """
+def complex_function(items, flag):
+    result = []
+    for item in items:
+        if item > 0 and flag:
+            try:
+                result.append(process(item))
+            except ValueError:
+                continue
+        elif item < 0:
+            result.append(-item)
+    return result if result else None
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 for + 1 if + 1 (and) + 1 except + 1 elif + 1 IfExp = 7
+    assert _compute_cyclomatic_complexity(func) == 7
+
+
+def test_lines_of_code_simple() -> None:
+    """LOC is end_line - start_line + 1."""
+    code = """def simple():
+    x = 1
+    return x
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Lines 1-3
+    assert _compute_lines_of_code(func) == 3
+
+
+def test_lines_of_code_multiline() -> None:
+    """LOC counts all lines in a function."""
+    code = """def multiline():
+    a = 1
+    b = 2
+    c = 3
+    d = 4
+    e = 5
+    return a + b + c + d + e
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Lines 1-7
+    assert _compute_lines_of_code(func) == 7
+
+
+def test_cyclomatic_complexity_in_output(tmp_path: Path) -> None:
+    """Cyclomatic complexity should appear in analysis output."""
+    py_file = tmp_path / "example.py"
+    py_file.write_text("""
+def simple():
+    return 42
+
+def branchy(x, y):
+    if x > 0:
+        if y > 0:
+            return "both positive"
+    return "not both positive"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
+
+    # simple() has complexity 1 (no branches)
+    assert functions["simple"]["cyclomatic_complexity"] == 1
+
+    # branchy() has complexity 3 (base 1 + 2 ifs)
+    assert functions["branchy"]["cyclomatic_complexity"] == 3
+
+
+def test_lines_of_code_in_output(tmp_path: Path) -> None:
+    """Lines of code should appear in analysis output."""
+    py_file = tmp_path / "example.py"
+    py_file.write_text("""def short():
+    return 1
+
+def longer():
+    a = 1
+    b = 2
+    c = 3
+    d = 4
+    return a + b + c + d
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
+
+    # short() is 2 lines
+    assert functions["short"]["lines_of_code"] == 2
+
+    # longer() is 6 lines
+    assert functions["longer"]["lines_of_code"] == 6
+
+
+def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
+    """Classes should also have cyclomatic_complexity and lines_of_code."""
+    py_file = tmp_path / "example.py"
+    py_file.write_text("""class MyClass:
+    def __init__(self, x):
+        self.x = x
+
+    def process(self):
+        if self.x > 0:
+            return self.x * 2
+        return 0
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Find the class
+    classes = [n for n in data["nodes"] if n["kind"] == "class"]
+    assert len(classes) == 1
+    cls = classes[0]
+    assert cls["lines_of_code"] == 8  # Lines 1-8
+    # Class complexity includes all methods' branches
+    assert cls["cyclomatic_complexity"] >= 1
+
+    # Find methods
+    methods = {n["name"]: n for n in data["nodes"] if n["kind"] == "method"}
+    assert methods["MyClass.__init__"]["lines_of_code"] == 2
+    assert methods["MyClass.__init__"]["cyclomatic_complexity"] == 1
+    assert methods["MyClass.process"]["lines_of_code"] == 4
+    assert methods["MyClass.process"]["cyclomatic_complexity"] == 2  # 1 base + 1 if
