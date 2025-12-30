@@ -349,6 +349,105 @@ def _extract_readme_description(
     return description
 
 
+def _format_function_signature(node, max_len: int = 60) -> str:
+    """Format a function signature from AST node.
+
+    Args:
+        node: AST FunctionDef or AsyncFunctionDef node.
+        max_len: Maximum length of signature (default 60).
+
+    Returns:
+        Formatted signature string like "(x: int, y: str) -> bool".
+    """
+    # Format arguments
+    args = node.args
+    all_args = []
+
+    # Positional-only args (before /)
+    for arg in args.posonlyargs:
+        all_args.append(_format_arg(arg))
+
+    # Regular args
+    for i, arg in enumerate(args.args):
+        arg_str = _format_arg(arg)
+        # Check for default value
+        num_defaults = len(args.defaults)
+        num_args = len(args.args)
+        default_idx = i - (num_args - num_defaults)
+        if default_idx >= 0 and default_idx < num_defaults:
+            arg_str += "=…"
+        all_args.append(arg_str)
+
+    # *args
+    if args.vararg:
+        all_args.append(f"*{args.vararg.arg}")
+
+    # Keyword-only args
+    for i, arg in enumerate(args.kwonlyargs):
+        arg_str = _format_arg(arg)
+        if i < len(args.kw_defaults) and args.kw_defaults[i] is not None:
+            arg_str += "=…"
+        all_args.append(arg_str)
+
+    # **kwargs
+    if args.kwarg:
+        all_args.append(f"**{args.kwarg.arg}")
+
+    sig = "(" + ", ".join(all_args) + ")"
+
+    # Add return type annotation if present
+    if node.returns:
+        ret_type = _format_annotation(node.returns)
+        if ret_type:
+            sig += f" -> {ret_type}"
+
+    # Truncate if too long
+    if len(sig) > max_len:
+        sig = sig[:max_len - 1] + "…"
+
+    return sig
+
+
+def _format_arg(arg) -> str:
+    """Format a single function argument."""
+    result = arg.arg
+    if arg.annotation:
+        ann = _format_annotation(arg.annotation)
+        if ann:
+            result += f": {ann}"
+    return result
+
+
+def _format_annotation(node) -> str:
+    """Format a type annotation node to a readable string."""
+    import ast
+
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Constant):
+        return repr(node.value)
+    elif isinstance(node, ast.Subscript):
+        # e.g., List[int], Dict[str, int]
+        base = _format_annotation(node.value)
+        slice_val = _format_annotation(node.slice)
+        return f"{base}[{slice_val}]"
+    elif isinstance(node, ast.Tuple):
+        # e.g., (int, str) for Dict keys
+        elts = [_format_annotation(e) for e in node.elts]
+        return ", ".join(elts)
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        # Union types: X | Y
+        left = _format_annotation(node.left)
+        right = _format_annotation(node.right)
+        return f"{left} | {right}"
+    elif isinstance(node, ast.Attribute):
+        # e.g., typing.Optional
+        value = _format_annotation(node.value)
+        return f"{value}.{node.attr}"
+    else:
+        return ""
+
+
 def _extract_python_docstrings(
     repo_root: Path, symbols: list[Symbol], max_len: int = 80
 ) -> dict[str, str]:
@@ -406,6 +505,59 @@ def _extract_python_docstrings(
                 docstrings[sym.id] = node_docstrings[key]
 
     return docstrings
+
+
+def _extract_python_signatures(
+    repo_root: Path, symbols: list[Symbol], max_len: int = 60
+) -> dict[str, str]:
+    """Extract function signatures for Python symbols.
+
+    Reads Python files and extracts function signatures (parameters + return type)
+    for functions and methods. Returns a dict mapping symbol IDs to signatures.
+
+    Args:
+        repo_root: Repository root path.
+        symbols: List of symbols to extract signatures for.
+        max_len: Maximum length of signature (default 60).
+
+    Returns:
+        Dict mapping symbol ID to signature string.
+    """
+    import ast
+
+    signatures: dict[str, str] = {}
+
+    # Group symbols by file for efficient reading
+    symbols_by_file: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if sym.language == "python" and sym.kind in ("function", "method"):
+            symbols_by_file.setdefault(sym.path, []).append(sym)
+
+    for file_path, file_symbols in symbols_by_file.items():
+        try:
+            full_path = repo_root / file_path if not Path(file_path).is_absolute() else Path(file_path)
+            if not full_path.exists():
+                continue
+            source = full_path.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            continue
+
+        # Build a map of (start_line, name) -> signature
+        node_signatures: dict[tuple[int, str], str] = {}
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                sig = _format_function_signature(node, max_len)
+                node_signatures[(node.lineno, node.name)] = sig
+
+        # Match symbols to signatures
+        for sym in file_symbols:
+            key = (sym.span.start_line, sym.name)
+            if key in node_signatures:
+                signatures[sym.id] = node_signatures[key]
+
+    return signatures
 
 
 # Source file extensions by language
@@ -911,6 +1063,7 @@ def _format_symbols(
     entrypoint_files: set[str] | None = None,
     max_symbols_per_file: int = 5,
     docstrings: dict[str, str] | None = None,
+    signatures: dict[str, str] | None = None,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
@@ -933,9 +1086,12 @@ def _format_symbols(
         entrypoint_files: Set of file paths containing entrypoints (preserved).
         max_symbols_per_file: Max symbols to render per file (compression).
         docstrings: Optional dict mapping symbol IDs to docstring summaries.
+        signatures: Optional dict mapping symbol IDs to function signatures.
     """
     if docstrings is None:
         docstrings = {}
+    if signatures is None:
+        signatures = {}
     if not symbols:
         return ""
 
@@ -1039,10 +1195,16 @@ def _format_symbols(
             score = centrality.get(sym.id, 0)
             star = " ★" if score >= star_threshold else ""
             docstring = docstrings.get(sym.id)
-            if docstring:
-                lines.append(f"- `{sym.name}` ({kind_label}){star} — {docstring}")
+            signature = signatures.get(sym.id)
+            # Build symbol display name (with signature for functions)
+            if signature and sym.kind in ("function", "method"):
+                display_name = f"{sym.name}{signature}"
             else:
-                lines.append(f"- `{sym.name}` ({kind_label}){star}")
+                display_name = sym.name
+            if docstring:
+                lines.append(f"- `{display_name}` ({kind_label}){star} — {docstring}")
+            else:
+                lines.append(f"- `{display_name}` ({kind_label}){star}")
             rendered_count += 1
             total_rendered += 1
 
@@ -1218,8 +1380,9 @@ def generate_sketch(
         budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
         max_symbols = max(10, budget_for_symbols // tokens_per_item)
 
-        # Extract docstrings for Python symbols
+        # Extract docstrings and signatures for Python symbols
         docstrings = _extract_python_docstrings(repo_root, symbols)
+        signatures = _extract_python_signatures(repo_root, symbols)
 
         symbols_section = _format_symbols(
             symbols,
@@ -1229,6 +1392,7 @@ def generate_sketch(
             first_party_priority=first_party_priority,
             entrypoint_files=entrypoint_files,  # B4: preserve entrypoint files
             docstrings=docstrings,
+            signatures=signatures,
         )
         if symbols_section:
             sections.append(symbols_section)
