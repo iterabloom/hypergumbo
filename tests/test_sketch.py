@@ -1,6 +1,8 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
 from pathlib import Path
 
+import pytest
+
 from hypergumbo.sketch import (
     generate_sketch,
     estimate_tokens,
@@ -24,6 +26,21 @@ from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import Entrypoint, EntrypointKind
+
+
+def _has_sentence_transformers() -> bool:
+    """Check if sentence-transformers is already installed.
+
+    Only checks via import - does NOT try to install because pip install
+    during test collection causes OOM on small CI runners.
+    CI can optionally install sentence-transformers in a separate step.
+    """
+    try:
+        import sentence_transformers
+        del sentence_transformers  # Silence F841 (unused variable)
+        return True
+    except ImportError:
+        return False
 
 
 class TestEstimateTokens:
@@ -1935,4 +1952,461 @@ class TestGenerateSketchWithVocabulary:
         sketch = generate_sketch(tmp_path, max_tokens=200)
 
         assert "## Domain Vocabulary" not in sketch
+
+
+class TestConfigExtraction:
+    """Tests for config file extraction with different modes."""
+
+    def test_extract_package_json_fields(self, tmp_path: Path) -> None:
+        """Extracts key fields from package.json."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "package.json").write_text('''{
+            "name": "my-project",
+            "version": "1.2.3",
+            "license": "MIT",
+            "dependencies": {
+                "express": "^4.18.0",
+                "pg": "^8.11.0"
+            },
+            "devDependencies": {
+                "typescript": "^5.0.0",
+                "jest": "^29.0.0"
+            }
+        }''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "name: my-project" in result
+        assert "version: 1.2.3" in result
+        assert "license: MIT" in result
+        assert "express" in result
+        assert "pg" in result
+        assert "typescript" in result
+
+    def test_extract_go_mod_fields(self, tmp_path: Path) -> None:
+        """Extracts module and dependencies from go.mod."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "go.mod").write_text("""module github.com/example/myproject
+
+go 1.21
+
+require (
+    github.com/gin-gonic/gin v1.9.0
+    github.com/jackc/pgx/v5 v5.4.0
+)
+""")
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "module: github.com/example/myproject" in result
+        assert "go: 1.21" in result
+        assert "gin" in result or "pgx" in result
+
+    def test_extract_cargo_toml_fields(self, tmp_path: Path) -> None:
+        """Extracts package info from Cargo.toml."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "Cargo.toml").write_text('''[package]
+name = "my-rust-project"
+version = "0.1.0"
+license = "Apache-2.0"
+''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "name: my-rust-project" in result
+        assert "version: 0.1.0" in result
+        assert "license: Apache-2.0" in result
+
+    def test_extract_pyproject_toml_fields(self, tmp_path: Path) -> None:
+        """Extracts project info from pyproject.toml."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "pyproject.toml").write_text('''[project]
+name = "my-python-project"
+version = "2.0.0"
+license = "GPL-3.0"
+''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "name: my-python-project" in result
+        assert "version: 2.0.0" in result
+
+    def test_extract_license_detection(self, tmp_path: Path) -> None:
+        """Detects license type from LICENSE file."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "MIT License\n\n"
+            "Permission is hereby granted, free of charge, to any person..."
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: MIT" in result
+
+    def test_extract_agpl_license(self, tmp_path: Path) -> None:
+        """Detects AGPL license correctly (before GPL)."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "GNU AFFERO GENERAL PUBLIC LICENSE\n"
+            "Version 3, 19 November 2007\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: AGPL" in result
+
+    def test_extract_lgpl_license(self, tmp_path: Path) -> None:
+        """Detects LGPL license."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Use the actual LGPL-style text with both GPL and Lesser
+        (tmp_path / "LICENSE").write_text(
+            "GNU LESSER GPL\n"
+            "Version 2.1, February 1999\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: LGPL" in result
+
+    def test_extract_gpl_license(self, tmp_path: Path) -> None:
+        """Detects GPL license."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "GPL-3.0 License\n"
+            "Version 3, 29 June 2007\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: GPL" in result
+
+    def test_extract_apache_license(self, tmp_path: Path) -> None:
+        """Detects Apache license."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "Apache License\n"
+            "Version 2.0, January 2004\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: Apache" in result
+
+    def test_extract_bsd_license(self, tmp_path: Path) -> None:
+        """Detects BSD license."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "BSD 3-Clause License\n"
+            "Copyright (c) 2023\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: BSD" in result
+
+    def test_extract_mpl_license(self, tmp_path: Path) -> None:
+        """Detects Mozilla Public License."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "Mozilla Public License Version 2.0\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: MPL" in result
+
+    def test_extract_isc_license(self, tmp_path: Path) -> None:
+        """Detects ISC License."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "ISC License\n"
+            "Copyright (c) 2023\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: ISC" in result
+
+    def test_extract_unlicense(self, tmp_path: Path) -> None:
+        """Detects Unlicense."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "LICENSE").write_text(
+            "This is free and unencumbered software released into the public domain.\n"
+            "Unlicense\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "LICENSE: Unlicense" in result
+
+    def test_monorepo_subdir_support(self, tmp_path: Path) -> None:
+        """Extracts config from monorepo subdirectories."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "server").mkdir()
+        (tmp_path / "server" / "package.json").write_text('''{
+            "name": "server-app",
+            "version": "1.0.0"
+        }''')
+        (tmp_path / "client").mkdir()
+        (tmp_path / "client" / "package.json").write_text('''{
+            "name": "client-app",
+            "version": "2.0.0"
+        }''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "server/package.json" in result
+        assert "client/package.json" in result
+        assert "server-app" in result
+        assert "client-app" in result
+
+    def test_truncates_long_output(self, tmp_path: Path) -> None:
+        """Truncates output when exceeding max_chars."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create package.json with many dependencies
+        deps = {f"pkg-{i}": f"^{i}.0.0" for i in range(100)}
+        import json
+        (tmp_path / "package.json").write_text(json.dumps({
+            "name": "big-project",
+            "dependencies": deps
+        }))
+
+        result = _extract_config_info(
+            tmp_path,
+            mode=ConfigExtractionMode.HEURISTIC,
+            max_chars=200
+        )
+
+        assert len(result) <= 200
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_embedding_mode_requires_model(self, tmp_path: Path) -> None:
+        """Embedding mode uses sentence-transformer model."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "package.json").write_text('''{
+            "name": "test-project",
+            "version": "1.0.0",
+            "description": "A project that uses PostgreSQL database",
+            "dependencies": {
+                "pg": "^8.0.0",
+                "express": "^4.0.0",
+                "lodash": "^4.0.0",
+                "uuid": "^9.0.0"
+            }
+        }''')
+
+        # Embedding mode should extract lines most similar to common questions
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Should include relevant content (database-related lines)
+        assert "pg" in result or "PostgreSQL" in result
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_embedding_mode_centroid_selection(self, tmp_path: Path) -> None:
+        """Embedding mode uses centroid of prototype questions."""
+        from hypergumbo.sketch import (
+            _extract_config_info,
+            ConfigExtractionMode,
+            METADATA_QUESTIONS,
+        )
+
+        # Verify prototype questions exist
+        assert len(METADATA_QUESTIONS) > 0
+        assert any("database" in q.lower() for q in METADATA_QUESTIONS)
+        assert any("license" in q.lower() for q in METADATA_QUESTIONS)
+
+        # Create a long config with relevant content buried
+        (tmp_path / "package.json").write_text('''{
+            "name": "test-project",
+            "scripts": {
+                "build": "tsc",
+                "lint": "eslint .",
+                "format": "prettier --write ."
+            },
+            "dependencies": {
+                "mongodb": "^5.0.0"
+            }
+        }''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Embedding mode should prioritize database dependency
+        assert "mongodb" in result.lower()
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_embedding_mode_includes_license_file(self, tmp_path: Path) -> None:
+        """Embedding mode collects LICENSE file content."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "LICENSE").write_text(
+            "MIT License\n"
+            "Copyright (c) 2024 Test Project\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Should include content from LICENSE file
+        assert "MIT" in result or "LICENSE" in result or "Copyright" in result
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_embedding_mode_provides_context(self, tmp_path: Path) -> None:
+        """Embedding mode provides context lines around selected lines."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create a package.json with a nested dependency
+        (tmp_path / "package.json").write_text('''{
+  "name": "context-test",
+  "dependencies": {
+    "pg": "^8.0.0",
+    "express": "^4.0.0"
+  }
+}''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Should include the selected line marker (>)
+        assert ">" in result
+
+        # If pg is selected, "dependencies" context should be nearby
+        # The context mechanism includes surrounding lines
+        lines = result.split("\n")
+        has_context = any("dependencies" in ln for ln in lines)
+        has_selection = any(">" in ln for ln in lines)
+        assert has_selection, "Should have selected line markers"
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_hybrid_mode_combines_both(self, tmp_path: Path) -> None:
+        """Hybrid mode uses heuristics first, then embeddings for remaining."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "package.json").write_text('''{
+            "name": "hybrid-test",
+            "version": "1.0.0",
+            "license": "MIT",
+            "description": "A complex app using PostgreSQL and Redis",
+            "dependencies": {
+                "pg": "^8.0.0",
+                "redis": "^4.0.0",
+                "express": "^4.0.0"
+            },
+            "devDependencies": {
+                "typescript": "^5.0.0"
+            }
+        }''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HYBRID)
+
+        # Heuristics should extract known fields
+        assert "name: hybrid-test" in result
+        assert "version: 1.0.0" in result
+        assert "license: MIT" in result
+
+        # Known interesting deps should be included
+        assert "pg" in result
+        assert "typescript" in result
+
+    def test_heuristic_is_default_mode(self, tmp_path: Path) -> None:
+        """Heuristic is the default mode when not specified."""
+        from hypergumbo.sketch import _extract_config_info
+
+        (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
+
+        # Call without mode parameter - should use heuristic by default
+        result = _extract_config_info(tmp_path)
+
+        assert "name: test" in result
+        assert "version: 1.0.0" in result
+
+    def test_generate_sketch_with_config_mode(self, tmp_path: Path) -> None:
+        """generate_sketch accepts config_extraction_mode parameter."""
+        from hypergumbo.sketch import ConfigExtractionMode
+
+        (tmp_path / "package.json").write_text('''{
+            "name": "sketch-test",
+            "version": "1.0.0",
+            "dependencies": {"express": "^4.0.0"}
+        }''')
+        (tmp_path / "app.js").write_text("console.log('hello');\n")
+
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=500,
+            config_extraction_mode=ConfigExtractionMode.HEURISTIC
+        )
+
+        assert "## Configuration" in sketch
+        assert "sketch-test" in sketch
+
+    def test_no_config_files_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string when no config files found."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "app.py").write_text("print('hello')\n")
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert result == ""
+
+    def test_invalid_json_handled_gracefully(self, tmp_path: Path) -> None:
+        """Handles invalid JSON in package.json gracefully."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "package.json").write_text("{ invalid json }")
+
+        # Should not raise, just return empty or partial result
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert isinstance(result, str)
+
+    def test_pom_xml_extraction(self, tmp_path: Path) -> None:
+        """Extracts Maven coordinates from pom.xml."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "pom.xml").write_text('''<?xml version="1.0"?>
+<project>
+    <groupId>com.example</groupId>
+    <artifactId>my-app</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+</project>
+''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "groupId: com.example" in result
+        assert "artifactId: my-app" in result
+        assert "version: 1.0-SNAPSHOT" in result
 

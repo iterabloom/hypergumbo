@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: fab9387a6114
+  commit: e7e1b35be1be
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -13,9 +13,9 @@ GENERATION METADATA (for drift detection):
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **82** Python modules (49 analyzers, 13 linkers)
-- **1083** symbols (functions, classes, methods)
-- **4153** edges (calls, imports, instantiates)
+- **87** Python modules (54 analyzers, 13 linkers)
+- **1158** symbols (functions, classes, methods)
+- **4508** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,11 +23,15 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 85 files · ~32,855 LOC
+Python (100%) · 90 files · ~36,149 LOC
 
 ## Structure
 
 - `hypergumbo/`
+
+## Domain Vocabulary
+
+*Key terms: line, symbol, symbols, sitter, files, source, edges, edge, analysis, find, pragma, cover*
 
 ## Source Files
 
@@ -61,180 +65,11 @@ Python (100%) · 85 files · ~32,855 LOC
 - `hypergumbo/analyze/xml_config.py`
 - `hypergumbo/analyze/css.py`
 - `hypergumbo/analyze/dart.py`
-- ... and 55 more files
+- ... and 60 more files
 
 ## Entry Points
 
 - `main` (CLI main) — `hypergumbo/cli.py`
-
-## Key Symbols
-
-*★ = centrality ≥ 50% of max*
-
-### `hypergumbo/ir.py`
-- `Span` (class) ★
-- `Symbol` (class) ★
-- `Edge` (class)
-- `_compute_edge_key` (function)
-- `_compute_run_signature` (function)
-  *… +2 more (top score: 0.01)*
-
-### `hypergumbo/discovery.py`
-- `find_files` (function)
-- `is_excluded` (function)
-
-### `hypergumbo/entrypoints.py`
-- `Entrypoint` (class)
-- `_get_filename` (function)
-- `detect_entrypoints` (function)
-- `_get_decorators` (function)
-- `_detect_aiohttp_views` (function)
-  *… +3 more (top score: 0.01)*
-
-### `hypergumbo/analyze/js_ts.py`
-- `_node_text` (function)
-- `_make_symbol_id` (function)
-- `_find_name_in_children` (function)
-- `_extract_symbols` (function)
-- `_extract_edges` (function)
-  *… +6 more (top score: 0.04)*
-
-### `hypergumbo/analyze/rust.py`
-- `_node_text` (function)
-- `_find_child_by_field` (function)
-- `_find_child_by_type` (function)
-- `_make_symbol_id` (function)
-- `RustAnalysisResult` (class)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/dart.py`
-- `_find_child_by_type` (function)
-- `_node_text` (function)
-- `_get_combined_span` (function)
-- `_find_next_sibling_by_type` (function)
-- `DartAnalysisResult` (class)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/julia.py`
-- `_find_child_by_type` (function)
-- `_node_text` (function)
-- `_make_symbol_id` (function)
-- `JuliaAnalysisResult` (class)
-- `FileAnalysis` (class)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/catalog.py`
-- `Pass` (class)
-- `Pack` (class)
-- `get_default_catalog` (function)
-- `is_available` (function)
-- `Catalog` (class)
-
-### `hypergumbo/analyze/cpp.py`
-- `_find_child_by_type` (function)
-- `_node_text` (function)
-- `_make_symbol_id` (function)
-- `CppAnalysisResult` (class)
-- `FileAnalysis` (class)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/go.py`
-- `_node_text` (function)
-- `_find_child_by_field` (function)
-- `_make_symbol_id` (function)
-- `GoAnalysisResult` (class)
-- `FileAnalysis` (class)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/zig.py`
-- `_find_child_by_type` (function)
-- `_node_text` (function)
-- `ZigAnalysisResult` (class)
-- `_make_symbol_id` (function)
-- `_get_function_name` (function)
-  *… +4 more (top score: 0.02)*
-
-### `hypergumbo/analyze/groovy.py`
-- `_find_child_by_type` (function)
-- `_node_text` (function)
-- `_make_symbol_id` (function)
-- `GroovyAnalysisResult` (class)
-- `FileAnalysis` (class)
-  *… +3 more (top score: 0.01)*
-
-### `hypergumbo/analyze/java.py`
-- `_node_text` (function)
-- `_get_class_name` (function)
-- `_make_symbol_id` (function)
-- `JavaAnalysisResult` (class)
-- `_get_method_name` (function)
-  *… +5 more (top score: 0.02)*
-
-### `hypergumbo/analyze/sql.py`
-- `_node_text` (function)
-- `_find_child_by_type` (function)
-- `_make_symbol_id` (function)
-- `SQLAnalysisResult` (class)
-- `_extract_table_name` (function)
-  *… +4 more (top score: 0.02)*
-
-### `hypergumbo/analyze/csharp.py`
-- `_node_text` (function)
-- `_find_child_by_type` (function)
-- `_make_symbol_id` (function)
-- `CSharpAnalysisResult` (class)
-- `FileAnalysis` (class)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/agda.py`
-- `_find_child_by_type` (function)
-- `_node_text` (function)
-- `_get_function_name_from_lhs` (function)
-- `_is_type_signature` (function)
-- `AgdaAnalysisResult` (class)
-  *… +4 more (top score: 0.02)*
-
-### `hypergumbo/analyze/ruby.py`
-- `_node_text` (function)
-- `_find_child_by_field` (function)
-- `_make_symbol_id` (function)
-- `RubyAnalysisResult` (class)
-- `_find_child_by_type` (function)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/hcl.py`
-- `_find_child_by_type` (function)
-- `_make_symbol_id` (function)
-- `_node_text` (function)
-- `HCLAnalysisResult` (class)
-- `_extract_block_info` (function)
-  *… +3 more (top score: 0.02)*
-
-### `hypergumbo/analyze/json_config.py`
-- `_find_object_key` (function)
-- `_get_string_content` (function)
-- `_make_symbol_id` (function)
-- `_process_dependencies` (function)
-- `JSONAnalysisResult` (class)
-  *… +4 more (top score: 0.03)*
-
-### `hypergumbo/analyze/css.py`
-- `_get_node_text` (function)
-- `_make_symbol_id` (function)
-- `_process_css_node` (function)
-- `CSSAnalysisResult` (class)
-- `_extract_font_family` (function)
-  *… +3 more (top score: 0.01)*
-
-### `hypergumbo/cli.py`
-- `_classify_symbols` (function)
-- `_compute_supply_chain_summary` (function)
-- `_edge_from_dict` (function)
-- `_node_from_dict` (function)
-- `build_parser` (function)
-  *… +1 more (top score: 0.01)*
-
-*… and 838 more symbols across 60 other files*
 ```
 
 ## Data Flow
@@ -249,7 +84,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1083 Symbols + 4153 Edges
+│  analyzers  │────▶│     IR      │  1158 Symbols + 4508 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -271,15 +106,14 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 277 | ir.py |
-| `Span` | class | 270 | ir.py |
-| `find_files` | function | 112 | discovery.py |
-| `Edge` | class | 88 | ir.py |
-| `AnalysisRun` | class | 62 | ir.py |
+| `Symbol` | class | 306 | ir.py |
+| `Span` | class | 299 | ir.py |
+| `find_files` | function | 122 | discovery.py |
+| `Edge` | class | 93 | ir.py |
+| `AnalysisRun` | class | 67 | ir.py |
 | `Pass` | class | 33 | catalog.py |
 | `Entrypoint` | class | 29 | entrypoints.py |
 | `_get_filename` | function | 24 | entrypoints.py |
-| `_node_text` | function | 21 | js_ts.py |
 
 ## Module Reference
 
@@ -305,6 +139,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.agda`**: Agda analysis pass using tree-sitter-agda.
 - **`analyze.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`analyze.c`**: C analysis pass using tree-sitter-c.
+- **`analyze.clojure`**: Clojure analysis pass using tree-sitter.
 - **`analyze.cmake`**: CMake analysis pass using tree-sitter-cmake.
 - **`analyze.cobol`**: COBOL analyzer using tree-sitter.
 - **`analyze.cpp`**: C++ analysis pass using tree-sitter-cpp.
@@ -314,7 +149,10 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.dart`**: Dart/Flutter analysis pass using tree-sitter.
 - **`analyze.dockerfile`**: Dockerfile analysis pass using tree-sitter-dockerfile.
 - **`analyze.elixir`**: Elixir analysis pass using tree-sitter-elixir.
+- **`analyze.elm`**: Elm analysis pass using tree-sitter.
+- **`analyze.erlang`**: Erlang analysis pass using tree-sitter.
 - **`analyze.fortran`**: Fortran analysis pass using tree-sitter-fortran.
+- **`analyze.fsharp`**: F# analysis pass using tree-sitter.
 - **`analyze.glsl`**: GLSL shader analysis pass using tree-sitter-glsl.
 - **`analyze.go`**: Go analysis pass using tree-sitter-go.
 - **`analyze.graphql`**: GraphQL schema analysis pass using tree-sitter-graphql.
@@ -334,6 +172,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.nix`**: Nix expression analysis pass using tree-sitter-nix.
 - **`analyze.objc`**: Objective-C analyzer using tree-sitter.
 - **`analyze.ocaml`**: OCaml analysis pass using tree-sitter-ocaml.
+- **`analyze.perl`**: Perl analysis pass using tree-sitter.
 - **`analyze.php`**: PHP analysis pass using tree-sitter-php.
 - **`analyze.py`**: Python AST analysis pass.
 - **`analyze.r_lang`**: R language analysis pass using tree-sitter.

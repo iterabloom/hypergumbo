@@ -25,6 +25,7 @@ effectively while remaining coherent.
 """
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
@@ -40,8 +41,624 @@ from .ranking import (
 )
 
 
+class ConfigExtractionMode(Enum):
+    """Mode for extracting config file content.
+
+    - HEURISTIC: Extract known fields using pattern matching (fast, no model)
+    - EMBEDDING: Use semantic similarity to prototype questions (requires model)
+    - HYBRID: Extract known fields first, then use embeddings for remaining budget
+    """
+
+    HEURISTIC = "heuristic"
+    EMBEDDING = "embedding"
+    HYBRID = "hybrid"
+
+
+# Prototype questions for semantic similarity in embedding mode.
+# This centroid represents the space of common metadata questions.
+# The broader this list, the better the embedding mode will work.
+METADATA_QUESTIONS = [
+    # License and legal
+    "What license does this project use?",
+    "Is this project open source?",
+    "What are the licensing terms?",
+    "Is this MIT licensed?",
+    "Is this GPL licensed?",
+    "Can I use this commercially?",
+
+    # Version and release info
+    "What version is this project?",
+    "What is the current version number?",
+    "When was the last release?",
+    "What version of Node.js does this require?",
+    "What Python version is required?",
+    "What is the minimum supported version?",
+
+    # Database and storage
+    "What database does this project use?",
+    "Does this use PostgreSQL?",
+    "Does this use MySQL?",
+    "Does this use MongoDB?",
+    "Does this use Redis?",
+    "Does this use SQLite?",
+    "What ORM does this use?",
+    "How does this store data?",
+
+    # Web frameworks and HTTP
+    "What web framework does this use?",
+    "Is this built with Express?",
+    "Is this built with FastAPI?",
+    "Is this built with Django?",
+    "Is this built with Flask?",
+    "Is this built with Rails?",
+    "Is this built with Spring?",
+    "Is this a REST API?",
+    "Does this use GraphQL?",
+
+    # Frontend frameworks
+    "What frontend framework does this use?",
+    "Is this built with React?",
+    "Is this built with Vue?",
+    "Is this built with Angular?",
+    "Is this built with Svelte?",
+    "Does this use TypeScript?",
+    "What CSS framework does this use?",
+
+    # Testing
+    "What testing framework does this use?",
+    "Does this use Jest?",
+    "Does this use pytest?",
+    "Does this use JUnit?",
+    "How do I run the tests?",
+    "What is the test coverage?",
+
+    # Build and tooling
+    "What build system does this use?",
+    "Does this use webpack?",
+    "Does this use Vite?",
+    "Does this use Maven?",
+    "Does this use Gradle?",
+    "Does this use Cargo?",
+    "How do I build this project?",
+
+    # Package management
+    "What package manager does this use?",
+    "Does this use npm or yarn?",
+    "Does this use pnpm?",
+    "Does this use pip?",
+    "What are the main dependencies?",
+    "What are the dev dependencies?",
+
+    # Language and runtime
+    "What programming language is this?",
+    "What runtime does this require?",
+    "Is this a TypeScript project?",
+    "Is this a Python project?",
+    "Is this a Go project?",
+    "Is this a Rust project?",
+    "Is this a Java project?",
+
+    # Project identity
+    "What is this project called?",
+    "What is the project name?",
+    "Who maintains this project?",
+    "What organization owns this?",
+    "Who are the contributors?",
+
+    # Deployment and infrastructure
+    "How do I deploy this?",
+    "Does this use Docker?",
+    "Does this use Kubernetes?",
+    "What cloud platform does this target?",
+    "Is this serverless?",
+
+    # API and protocols
+    "What API does this expose?",
+    "Does this use WebSockets?",
+    "Does this use gRPC?",
+    "What ports does this use?",
+
+    # Miscellaneous metadata
+    "What is the project description?",
+    "What problem does this solve?",
+    "Is this a library or application?",
+    "Is this a CLI tool?",
+    "Is this production ready?",
+]
+
+
 # Approximate characters per token (conservative estimate for English text)
 CHARS_PER_TOKEN = 4
+
+# Config files to extract project metadata from
+CONFIG_FILES = [
+    "package.json", "go.mod", "pom.xml", "Cargo.toml", "pyproject.toml",
+    "composer.json", "Gemfile", "build.gradle", "requirements.txt",
+]
+
+# Subdirectories to check for config files (monorepo support)
+CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
+
+# Key dependencies to highlight (db drivers, frameworks, etc.)
+INTERESTING_DEPS = frozenset({
+    # Databases
+    "pg", "postgres", "postgresql", "mysql", "mysql2", "mongodb", "mongoose",
+    "redis", "sqlite", "sqlite3", "prisma", "typeorm", "sequelize", "knex",
+    # Frameworks
+    "express", "fastify", "koa", "hapi", "nestjs", "next", "nuxt", "gatsby",
+    "react", "vue", "angular", "svelte", "django", "flask", "fastapi",
+    "spring", "rails", "laravel", "gin", "echo", "fiber",
+    # Testing
+    "jest", "vitest", "mocha", "pytest", "junit", "rspec",
+    # Build/tooling
+    "typescript", "webpack", "vite", "esbuild", "rollup", "babel",
+})
+
+# License file names to check
+LICENSE_FILES = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"]
+
+
+def _extract_config_heuristic(repo_root: Path) -> list[str]:
+    """Extract config metadata using heuristic pattern matching.
+
+    This is the fast path that extracts known fields from common config files
+    without requiring any ML models.
+
+    Args:
+        repo_root: Path to repository root.
+
+    Returns:
+        List of extracted metadata lines.
+    """
+    import json
+    import re
+
+    lines: list[str] = []
+
+    def _extract_package_json(path: Path, prefix: str) -> list[str]:
+        """Extract key fields from package.json."""
+        result = []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+            info = []
+
+            # Core metadata
+            for key in ["name", "version", "license"]:
+                if key in data:
+                    info.append(f"{key}: {data[key]}")
+
+            # Interesting dependencies with versions
+            for dep_type in ["dependencies", "devDependencies"]:
+                if dep_type in data and isinstance(data[dep_type], dict):
+                    deps = data[dep_type]
+                    for dep_name in INTERESTING_DEPS:
+                        if dep_name in deps:
+                            info.append(f"{dep_name}: {deps[dep_name]}")
+
+            if info:
+                result.append(f"{prefix}package.json: {'; '.join(info)}")
+        except (json.JSONDecodeError, OSError):
+            pass
+        return result
+
+    def _extract_go_mod(path: Path, prefix: str) -> list[str]:
+        """Extract module name and key dependencies from go.mod."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            extracted = []
+
+            # Module name
+            module_match = re.search(r"^module\s+(\S+)", content, re.MULTILINE)
+            if module_match:
+                extracted.append(f"module: {module_match.group(1)}")
+
+            # Go version
+            go_match = re.search(r"^go\s+([\d.]+)", content, re.MULTILINE)
+            if go_match:
+                extracted.append(f"go: {go_match.group(1)}")
+
+            # Key require statements (look for database drivers, web frameworks)
+            interesting_go = {
+                "gorilla/websocket", "gorilla/mux", "gin-gonic/gin",
+                "labstack/echo", "gofiber/fiber", "lib/pq", "go-sql-driver/mysql",
+                "jackc/pgx", "go-redis/redis", "mongodb/mongo-go-driver",
+            }
+            for dep in interesting_go:
+                if dep in content:
+                    extracted.append(dep.split("/")[-1])
+
+            if extracted:
+                result.append(f"{prefix}go.mod: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
+    def _extract_pom_xml(path: Path, prefix: str) -> list[str]:
+        """Extract Maven coordinates from pom.xml."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")[:4000]
+            extracted = []
+
+            for tag in ["groupId", "artifactId", "version", "packaging"]:
+                match = re.search(f"<{tag}>([^<]+)</{tag}>", content)
+                if match:
+                    extracted.append(f"{tag}: {match.group(1)}")
+
+            if extracted:
+                result.append(f"{prefix}pom.xml: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
+    def _extract_cargo_toml(path: Path, prefix: str) -> list[str]:
+        """Extract Rust package info from Cargo.toml."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            extracted = []
+
+            # Parse [package] section fields
+            for field in ["name", "version", "license"]:
+                match = re.search(rf'^{field}\s*=\s*"([^"]+)"', content, re.MULTILINE)
+                if match:
+                    extracted.append(f"{field}: {match.group(1)}")
+
+            if extracted:
+                result.append(f"{prefix}Cargo.toml: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
+    def _extract_pyproject_toml(path: Path, prefix: str) -> list[str]:
+        """Extract Python project info from pyproject.toml."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            extracted = []
+
+            for field in ["name", "version", "license"]:
+                # Handle both quoted and unquoted values
+                match = re.search(rf'^{field}\s*=\s*["\']?([^"\'#\n]+)', content, re.MULTILINE)
+                if match:
+                    extracted.append(f"{field}: {match.group(1).strip()}")
+
+            if extracted:
+                result.append(f"{prefix}pyproject.toml: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
+    # Scan config files in root and common subdirectories
+    for config_name in CONFIG_FILES:
+        for subdir in CONFIG_SUBDIRS:
+            config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
+            if not config_path.exists():
+                continue
+
+            prefix = f"{subdir}/" if subdir else ""
+
+            if config_name == "package.json":
+                lines.extend(_extract_package_json(config_path, prefix))
+            elif config_name == "go.mod":
+                lines.extend(_extract_go_mod(config_path, prefix))
+            elif config_name == "pom.xml":
+                lines.extend(_extract_pom_xml(config_path, prefix))
+            elif config_name == "Cargo.toml":
+                lines.extend(_extract_cargo_toml(config_path, prefix))
+            elif config_name == "pyproject.toml":
+                lines.extend(_extract_pyproject_toml(config_path, prefix))
+
+    # Detect license type from LICENSE files
+    for license_name in LICENSE_FILES:
+        license_path = repo_root / license_name
+        if license_path.exists():
+            try:
+                # Read just enough to detect license type
+                content = license_path.read_text(encoding="utf-8", errors="replace")[:500]
+                license_type = None
+
+                # Check for common license types (order matters: AGPL before GPL)
+                content_upper = content.upper()
+                if "AGPL" in content_upper or "AFFERO" in content_upper:
+                    license_type = "AGPL"
+                elif "GPL" in content_upper and "LESSER" in content_upper:
+                    license_type = "LGPL"
+                elif "GPL" in content_upper:
+                    license_type = "GPL"
+                elif "MIT LICENSE" in content_upper or "PERMISSION IS HEREBY GRANTED" in content_upper:
+                    license_type = "MIT"
+                elif "APACHE LICENSE" in content_upper:
+                    license_type = "Apache"
+                elif "BSD" in content_upper:
+                    license_type = "BSD"
+                elif "MOZILLA PUBLIC LICENSE" in content_upper:
+                    license_type = "MPL"
+                elif "ISC LICENSE" in content_upper:
+                    license_type = "ISC"
+                elif "UNLICENSE" in content_upper:
+                    license_type = "Unlicense"
+
+                if license_type:
+                    lines.append(f"LICENSE: {license_type}")
+                break  # Only process first found license file
+            except OSError:  # pragma: no cover
+                pass  # pragma: no cover
+
+    return lines
+
+
+def _collect_config_content(repo_root: Path) -> list[tuple[str, str]]:
+    """Collect all config file content as (filename, content) pairs.
+
+    Used by embedding mode to have raw content for semantic selection.
+
+    Args:
+        repo_root: Path to repository root.
+
+    Returns:
+        List of (prefixed_filename, content) tuples.
+    """
+    config_content: list[tuple[str, str]] = []
+
+    for config_name in CONFIG_FILES:
+        for subdir in CONFIG_SUBDIRS:
+            config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
+            if not config_path.exists():
+                continue
+
+            try:
+                content = config_path.read_text(encoding="utf-8", errors="replace")
+                prefix = f"{subdir}/" if subdir else ""
+                config_content.append((f"{prefix}{config_name}", content))
+            except OSError:  # pragma: no cover
+                pass  # pragma: no cover
+
+    # Also include LICENSE file content
+    for license_name in LICENSE_FILES:
+        license_path = repo_root / license_name
+        if license_path.exists():
+            try:
+                content = license_path.read_text(encoding="utf-8", errors="replace")[:2000]
+                config_content.append((license_name, content))
+                break  # Only first license file
+            except OSError:  # pragma: no cover
+                pass  # pragma: no cover
+
+    return config_content
+
+
+def _extract_config_embedding(
+    repo_root: Path,
+    max_lines: int = 30,
+) -> list[str]:
+    """Extract config metadata using embedding-based semantic selection.
+
+    Uses sentence-transformers with UnixCoder to compute similarity between
+    config file lines and a centroid of METADATA_QUESTIONS. Lines most
+    similar to the question centroid are selected.
+
+    Args:
+        repo_root: Path to repository root.
+        max_lines: Maximum lines to extract.
+
+    Returns:
+        List of extracted metadata lines, ordered by semantic relevance.
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        # Fall back to heuristic if sentence-transformers not available
+        return _extract_config_heuristic(repo_root)[:max_lines]
+
+    # Collect all config content
+    config_content = _collect_config_content(repo_root)
+    if not config_content:
+        return []  # pragma: no cover - defensive, caller checks for config files
+
+    # Split content into lines with source info, preserving line indices for context
+    # Structure: (source, line_idx, line_text, all_file_lines)
+    all_lines: list[tuple[str, int, str, list[str]]] = []
+    file_lines_cache: dict[str, list[str]] = {}
+
+    for source, content in config_content:
+        file_lines = [ln.strip() for ln in content.split("\n")]
+        file_lines_cache[source] = file_lines
+        for idx, line in enumerate(file_lines):
+            if line and len(line) > 3:  # Skip empty/trivial lines
+                all_lines.append((source, idx, line, file_lines))
+
+    if not all_lines:
+        return []  # pragma: no cover - defensive, requires empty config files
+
+    # Load embedding model
+    model = SentenceTransformer("microsoft/unixcoder-base")
+
+    # Compute centroid of METADATA_QUESTIONS
+    question_embeddings = model.encode(METADATA_QUESTIONS, convert_to_numpy=True)
+    centroid = np.mean(question_embeddings, axis=0)
+    centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+
+    # Embed all config lines
+    line_texts = [line for _, _, line, _ in all_lines]
+    line_embeddings = model.encode(line_texts, convert_to_numpy=True)
+
+    # Compute similarities to centroid
+    line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
+    normalized_embeddings = line_embeddings / (line_norms + 1e-8)
+    similarities = np.dot(normalized_embeddings, centroid_norm)
+
+    # Select top-k lines by similarity
+    top_indices = np.argsort(-similarities)[:max_lines]
+
+    # Build result with context (1 line before, selected line, 1 line after)
+    result_lines: list[str] = []
+    seen_sources: set[str] = set()
+    seen_contexts: set[tuple[str, int]] = set()  # (source, line_idx) already included
+
+    for sel_idx in top_indices:
+        source, line_idx, line, file_lines = all_lines[sel_idx]
+
+        # Add source header if new file
+        if source not in seen_sources:
+            if result_lines:  # Add separator between files
+                result_lines.append("")
+            result_lines.append(f"[{source}]")
+            seen_sources.add(source)
+
+        # Gather context window: 1 line before, selected line, 1 line after
+        context_start = max(0, line_idx - 1)
+        context_end = min(len(file_lines), line_idx + 2)
+
+        for ctx_idx in range(context_start, context_end):
+            ctx_key = (source, ctx_idx)
+            if ctx_key in seen_contexts:
+                continue  # Already included this line
+            seen_contexts.add(ctx_key)
+
+            ctx_line = file_lines[ctx_idx]
+            if not ctx_line:
+                continue
+
+            # Mark the selected line vs context
+            if ctx_idx == line_idx:
+                result_lines.append(f"  > {ctx_line}")  # Selected line
+            else:
+                result_lines.append(f"    {ctx_line}")  # Context line
+
+    return result_lines
+
+
+def _extract_config_hybrid(
+    repo_root: Path,
+    max_chars: int = 1500,
+) -> list[str]:
+    """Extract config using hybrid approach: heuristics first, then embeddings.
+
+    This combines the best of both approaches:
+    1. First, extract known fields using fast heuristic patterns
+    2. Then, use embedding-based selection to fill remaining budget
+       with semantically relevant content not captured by heuristics
+
+    Args:
+        repo_root: Path to repository root.
+        max_chars: Maximum characters for output.
+
+    Returns:
+        List of extracted metadata lines.
+    """
+    # Step 1: Get heuristic extraction (fast, reliable for known fields)
+    heuristic_lines = _extract_config_heuristic(repo_root)
+    heuristic_text = "\n".join(heuristic_lines)
+
+    # If heuristics already fill the budget, we're done
+    if len(heuristic_text) >= max_chars * 0.8:
+        return heuristic_lines  # pragma: no cover - edge case, very large configs
+
+    # Step 2: Compute remaining budget for embedding-based extraction
+    remaining_chars = max_chars - len(heuristic_text) - 50  # Buffer
+    if remaining_chars < 100:
+        return heuristic_lines  # pragma: no cover - edge case, budget nearly filled
+
+    # Estimate lines we can add
+    remaining_lines = max(5, remaining_chars // 50)
+
+    # Step 3: Get embedding-based extraction
+    try:
+        embedding_lines = _extract_config_embedding(repo_root, max_lines=remaining_lines)
+    except Exception:  # pragma: no cover
+        # If embedding fails, just return heuristic results
+        return heuristic_lines
+
+    # Step 4: Merge, avoiding duplicates
+    # Extract key terms from heuristic lines to avoid redundancy
+    heuristic_terms = set()
+    for line in heuristic_lines:
+        # Extract significant words
+        for word in line.lower().split():
+            if len(word) > 3:
+                heuristic_terms.add(word.strip(":;,"))
+
+    # Add embedding lines that provide new information
+    combined = heuristic_lines.copy()
+    if embedding_lines:
+        combined.append("")  # Separator
+        combined.append("# Additional context (semantic)")
+        for line in embedding_lines:
+            # Skip if line content is already covered by heuristics
+            line_lower = line.lower()
+            is_redundant = sum(1 for term in heuristic_terms if term in line_lower) > 2
+            if not is_redundant:
+                combined.append(line)
+
+    return combined
+
+
+def _extract_config_info(
+    repo_root: Path,
+    max_chars: int = 1500,
+    mode: ConfigExtractionMode = ConfigExtractionMode.HEURISTIC,
+) -> str:
+    """Extract key metadata from config files via extractive summarization.
+
+    Supports three extraction modes:
+    - HEURISTIC: Fast pattern-based extraction of known fields (default)
+    - EMBEDDING: Semantic selection using UnixCoder + question centroid
+    - HYBRID: Heuristics first, then embeddings for remaining budget
+
+    For long config files (e.g., package.json with hundreds of deps), only
+    the relevant fields/lines are extracted, keeping output bounded.
+
+    Args:
+        repo_root: Path to repository root.
+        max_chars: Maximum characters for config section output.
+        mode: Extraction mode (heuristic, embedding, or hybrid).
+
+    Returns:
+        Extracted config metadata as a formatted string, or empty string
+        if no config files found.
+    """
+    # Select extraction strategy based on mode
+    if mode == ConfigExtractionMode.EMBEDDING:
+        max_lines = max(10, max_chars // 50)
+        lines = _extract_config_embedding(repo_root, max_lines=max_lines)
+    elif mode == ConfigExtractionMode.HYBRID:
+        lines = _extract_config_hybrid(repo_root, max_chars=max_chars)
+    else:  # HEURISTIC (default)
+        lines = _extract_config_heuristic(repo_root)
+
+    # Truncate output to max_chars
+    result = "\n".join(lines[:30])  # Cap at 30 lines
+    if len(result) > max_chars:  # pragma: no cover - defensive truncation
+        result = result[:max_chars]  # pragma: no cover
+        # Try to truncate at a line boundary
+        last_newline = result.rfind("\n")  # pragma: no cover
+        if last_newline > max_chars // 2:  # pragma: no cover
+            result = result[:last_newline]  # pragma: no cover
+
+    return result
+
+
+def _format_config_section(config_info: str) -> str:
+    """Format config info as a Markdown section.
+
+    Args:
+        config_info: Extracted config information string.
+
+    Returns:
+        Markdown-formatted configuration section.
+    """
+    if not config_info:
+        return ""
+
+    lines = ["## Configuration", ""]
+    lines.append("```")
+    lines.append(config_info)
+    lines.append("```")
+
+    return "\n".join(lines)
 
 
 def estimate_tokens(text: str) -> int:
@@ -1360,6 +1977,7 @@ def generate_sketch(
     exclude_tests: bool = False,
     first_party_priority: bool = True,
     extra_excludes: Optional[List[str]] = None,
+    config_extraction_mode: ConfigExtractionMode = ConfigExtractionMode.HEURISTIC,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -1367,10 +1985,12 @@ def generate_sketch(
     1. Header with language breakdown and LOC (always included)
     2. Directory structure
     3. Detected frameworks
-    4. Source files (for medium budgets)
-    5. Entry points from static analysis (for larger budgets)
-    6. Key symbols from static analysis (for large budgets)
-    7. All files (for very large budgets)
+    4. Configuration metadata (extracted from package.json, go.mod, etc.)
+    5. Domain vocabulary
+    6. Source files (for medium budgets)
+    7. Entry points from static analysis (for larger budgets)
+    8. Key symbols from static analysis (for large budgets)
+    9. All files (for very large budgets)
 
     Args:
         repo_root: Path to the repository root.
@@ -1380,6 +2000,10 @@ def generate_sketch(
             ranking. Set False to use raw centrality scores.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
             Useful for excluding project-specific files (e.g., "*.json", "vendor").
+        config_extraction_mode: Mode for extracting config file metadata.
+            - HEURISTIC (default): Fast pattern-based extraction
+            - EMBEDDING: Semantic selection using UnixCoder + question centroid
+            - HYBRID: Heuristics first, then embeddings for remaining budget
 
     Returns:
         Markdown-formatted sketch string.
@@ -1414,7 +2038,15 @@ def generate_sketch(
     if frameworks:
         sections.append(frameworks)
 
-    # Section 3.5: Domain Vocabulary (only for medium+ budgets)
+    # Section 3.5: Configuration (extracted metadata from config files)
+    # This section is high value for answering project metadata questions
+    # (e.g., "what version of TypeScript?", "what license?", "what database?")
+    config_info = _extract_config_info(repo_root, mode=config_extraction_mode)
+    config_section = _format_config_section(config_info)
+    if config_section:
+        sections.append(config_section)
+
+    # Section 3.75: Domain Vocabulary (only for medium+ budgets)
     if max_tokens is None or max_tokens >= 500:
         vocab_terms = _extract_domain_vocabulary(repo_root, profile)
         vocabulary = _format_vocabulary(vocab_terms)
