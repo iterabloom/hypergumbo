@@ -143,12 +143,12 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     extra_excludes = getattr(args, "extra_excludes", [])
 
     # Convert string mode to enum
-    mode_str = getattr(args, "config_extraction_mode", "heuristic")
+    mode_str = getattr(args, "config_extraction_mode", "hybrid")
     config_mode = {
         "heuristic": ConfigExtractionMode.HEURISTIC,
         "embedding": ConfigExtractionMode.EMBEDDING,
         "hybrid": ConfigExtractionMode.HYBRID,
-    }.get(mode_str, ConfigExtractionMode.HEURISTIC)
+    }.get(mode_str, ConfigExtractionMode.HYBRID)
 
     sketch = generate_sketch(
         repo_root,
@@ -861,11 +861,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_sketch.add_argument(
         "--config-extraction",
         choices=["heuristic", "embedding", "hybrid"],
-        default="heuristic",
+        default="hybrid",
         dest="config_extraction_mode",
-        help="Config file extraction mode: heuristic (fast, default), "
+        help="Config file extraction mode: heuristic (fast), "
              "embedding (semantic, requires sentence-transformers), "
-             "hybrid (heuristics first, then embeddings)",
+             "hybrid (heuristics first, then embeddings; default)",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
 
