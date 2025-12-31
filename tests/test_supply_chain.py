@@ -179,6 +179,20 @@ class TestInternalDepDetection:
         roots = detect_package_roots(tmp_path)
         assert apps_dir in roots
 
+    def test_npm_workspaces_dot_pattern(self, tmp_path):
+        """Skip '.' workspace pattern (would cause glob error)."""
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": [".", "packages/*"]}')
+
+        # Create a packages subdirectory
+        pkg_dir = tmp_path / "packages" / "core"
+        pkg_dir.mkdir(parents=True)
+
+        # Should not crash, should find packages/core, should NOT add repo root
+        roots = detect_package_roots(tmp_path)
+        assert pkg_dir in roots
+        assert tmp_path not in roots  # "." pattern should be skipped
+
     def test_cargo_workspaces(self, tmp_path):
         """Detect internal crates from Cargo.toml workspace."""
         cargo_toml = tmp_path / "Cargo.toml"

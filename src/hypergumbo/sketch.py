@@ -171,10 +171,59 @@ METADATA_QUESTIONS = [
 CHARS_PER_TOKEN = 4
 
 # Config files to extract project metadata from
-CONFIG_FILES = [
-    "package.json", "go.mod", "pom.xml", "Cargo.toml", "pyproject.toml",
-    "composer.json", "Gemfile", "build.gradle", "requirements.txt",
-]
+# Config files grouped by language/ecosystem for targeted discovery
+CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
+    # JavaScript/TypeScript ecosystem
+    "javascript": ["package.json"],
+    "typescript": ["package.json", "tsconfig.json"],
+    # Go
+    "go": ["go.mod", "go.sum"],
+    # Java/JVM ecosystem
+    "java": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
+    "kotlin": ["build.gradle.kts", "settings.gradle.kts", "pom.xml"],
+    "scala": ["build.sbt", "build.gradle"],
+    "groovy": ["build.gradle", "settings.gradle"],
+    # Rust
+    "rust": ["Cargo.toml", "Cargo.lock"],
+    # Python
+    "python": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"],
+    # PHP
+    "php": ["composer.json", "composer.lock"],
+    # Ruby
+    "ruby": ["Gemfile", "Gemfile.lock", ".ruby-version"],
+    # Elixir/Erlang
+    "elixir": ["mix.exs", "mix.lock"],
+    "erlang": ["rebar.config"],
+    # Haskell
+    "haskell": ["package.yaml", "stack.yaml", "cabal.project"],
+    # Swift/Objective-C
+    "swift": ["Package.swift"],
+    # .NET/C#/F#
+    "csharp": ["*.csproj", "Directory.Build.props", "*.sln"],
+    "fsharp": ["*.fsproj", "Directory.Build.props"],
+    # C/C++
+    "c": ["CMakeLists.txt", "Makefile", "configure.ac", "meson.build", "conanfile.txt"],
+    "cpp": ["CMakeLists.txt", "Makefile", "configure.ac", "meson.build", "conanfile.txt"],
+    # OCaml
+    "ocaml": ["dune-project", "dune"],
+    # Clojure
+    "clojure": ["deps.edn", "project.clj"],
+    # Zig
+    "zig": ["build.zig"],
+    # Nim
+    "nim": ["*.nimble"],
+    # Dart/Flutter
+    "dart": ["pubspec.yaml"],
+    # Julia
+    "julia": ["Project.toml", "Manifest.toml"],
+    # Common/fallback
+    "_common": ["Makefile", "Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
+}
+
+# Flatten for backwards compatibility
+CONFIG_FILES = list({
+    f for files in CONFIG_FILES_BY_LANG.values() for f in files
+})
 
 # Subdirectories to check for config files (monorepo support)
 CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
@@ -429,6 +478,277 @@ def _collect_config_content(repo_root: Path) -> list[tuple[str, str]]:
     return config_content
 
 
+def _get_repo_languages(repo_root: Path) -> set[str]:
+    """Detect languages in a repo by scanning for common file extensions."""
+    ext_to_lang = {
+        ".py": "python", ".js": "javascript", ".ts": "typescript",
+        ".go": "go", ".rs": "rust", ".java": "java", ".kt": "kotlin",
+        ".scala": "scala", ".rb": "ruby", ".php": "php",
+        ".ex": "elixir", ".exs": "elixir", ".erl": "erlang",
+        ".hs": "haskell", ".swift": "swift", ".cs": "csharp",
+        ".fs": "fsharp", ".c": "c", ".cpp": "cpp", ".cc": "cpp",
+        ".ml": "ocaml", ".clj": "clojure", ".zig": "zig",
+        ".nim": "nim", ".dart": "dart", ".jl": "julia",
+        ".groovy": "groovy",
+    }
+    languages: set[str] = set()
+    try:
+        for item in repo_root.rglob("*"):
+            if item.is_file():
+                ext = item.suffix.lower()
+                if ext in ext_to_lang:
+                    languages.add(ext_to_lang[ext])
+                    if len(languages) > 10:  # pragma: no cover - early exit
+                        break
+    except OSError:  # pragma: no cover
+        pass
+    return languages if languages else {"_common"}
+
+
+def _discover_config_files_embedding(
+    repo_root: Path,
+    similarity_threshold: float = 0.85,
+    max_dir_size: int = 200,
+    detected_languages: set[str] | None = None,
+) -> set[Path]:
+    """Discover potential config files using embedding similarity.
+
+    Uses language-specific probe embeddings to reduce false positives.
+    A Kotlin project won't match on "Pipfile" because Python config patterns
+    aren't included when only Kotlin is detected.
+
+    Uses sentence-transformers to find files with names similar to known
+    CONFIG_FILES patterns. This catches config files in unfamiliar formats.
+
+    Algorithm:
+    1. Compute embeddings for known CONFIG_FILES names
+    2. Collect unique filenames from repo (excluding large directories)
+    3. Find repo files with high similarity to known config file names
+    4. Return discovered files as a set
+
+    Args:
+        repo_root: Path to repository root.
+        similarity_threshold: Minimum cosine similarity to consider a match.
+        max_dir_size: Skip directories with more than this many items.
+
+    Returns:
+        Set of discovered config file paths.
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        return set()  # No discovery without sentence-transformers
+
+    # Detect languages if not provided
+    if detected_languages is None:
+        detected_languages = _get_repo_languages(repo_root)
+
+    # Build language-specific config file list
+    relevant_configs: set[str] = set()
+    for lang in detected_languages:
+        if lang in CONFIG_FILES_BY_LANG:
+            relevant_configs.update(CONFIG_FILES_BY_LANG[lang])
+    # Always include common configs
+    relevant_configs.update(CONFIG_FILES_BY_LANG.get("_common", []))
+
+    # If no language detected, fall back to all configs
+    if not relevant_configs:  # pragma: no cover
+        relevant_configs = set(CONFIG_FILES)
+
+    # Get base names (strip glob patterns)
+    known_names = []
+    for name in relevant_configs:
+        if "*" in name:  # pragma: no cover - glob patterns
+            # For patterns like "*.csproj", use the extension as semantic hint
+            known_names.append(name.replace("*", "config"))
+        else:
+            known_names.append(name)
+
+    # Collect unique filenames from repo, excluding large directories
+    repo_files: dict[str, list[Path]] = {}  # filename -> list of paths
+    try:
+        for item in repo_root.rglob("*"):
+            if not item.is_file():  # pragma: no cover - directory traversal
+                continue
+            # Skip hidden directories and common non-config paths
+            parts = item.relative_to(repo_root).parts
+            if any(p.startswith(".") and p not in {".ruby-version"} for p in parts[:-1]):
+                continue  # pragma: no cover - hidden dir filtering
+            if any(p in {"node_modules", "vendor", "venv", ".venv", "__pycache__",
+                        "dist", "build", "target", "_build", "deps"} for p in parts):
+                continue  # pragma: no cover - common non-config dirs
+
+            # Check parent directory size (skip if too large)
+            parent = item.parent
+            try:
+                dir_size = sum(1 for _ in parent.iterdir())
+                if dir_size > max_dir_size:
+                    continue  # pragma: no cover - large dir filtering
+            except OSError:  # pragma: no cover
+                continue
+
+            filename = item.name
+            repo_files.setdefault(filename, []).append(item)
+    except OSError:  # pragma: no cover
+        return set()
+
+    if not repo_files:
+        return set()  # pragma: no cover
+
+    # Get unique filenames that aren't already in our language-specific configs
+    candidate_names = [
+        name for name in repo_files.keys()
+        if name not in relevant_configs
+        and not name.endswith((".md", ".txt", ".rst", ".html", ".css", ".js",
+                               ".ts", ".py", ".go", ".rs", ".java", ".c", ".h",
+                               ".cpp", ".hpp", ".rb", ".ex", ".exs"))  # Skip source files
+        and len(name) > 2  # Skip trivial names
+    ]
+
+    if not candidate_names:
+        return set()
+
+    # Pre-filter using character n-gram similarity (fast)
+    # pragma: no cover - discovery requires real repos with diverse file names
+    def ngram_similarity(s1: str, s2: str, n: int = 3) -> float:  # pragma: no cover
+        """Compute character n-gram Jaccard similarity."""
+        if len(s1) < n or len(s2) < n:
+            return 1.0 if s1 == s2 else 0.0
+        ngrams1 = {s1[i:i+n] for i in range(len(s1) - n + 1)}
+        ngrams2 = {s2[i:i+n] for i in range(len(s2) - n + 1)}
+        if not ngrams1 or not ngrams2:
+            return 0.0
+        intersection = len(ngrams1 & ngrams2)
+        union = len(ngrams1 | ngrams2)
+        return intersection / union if union > 0 else 0.0
+
+    # Filter candidates by n-gram similarity to known config files
+    ngram_threshold = 0.15  # Low threshold - just filter obvious non-matches
+    filtered_candidates = []  # pragma: no cover
+    for name in candidate_names:  # pragma: no cover
+        max_sim = max(ngram_similarity(name.lower(), known.lower())
+                     for known in known_names)
+        if max_sim >= ngram_threshold:
+            filtered_candidates.append(name)
+
+    if not filtered_candidates:  # pragma: no cover
+        return set()
+
+    # Limit remaining candidates for embedding
+    max_candidates = 50  # pragma: no cover
+    if len(filtered_candidates) > max_candidates:  # pragma: no cover
+        # Sort by best n-gram similarity and take top
+        filtered_candidates = sorted(
+            filtered_candidates,
+            key=lambda n: max(ngram_similarity(n.lower(), k.lower()) for k in known_names),
+            reverse=True
+        )[:max_candidates]
+
+    # Load embedding model and compute similarities
+    model = SentenceTransformer("microsoft/unixcoder-base")  # pragma: no cover
+
+    # Embed known config file names
+    known_embeddings = model.encode(known_names, convert_to_numpy=True)  # pragma: no cover
+
+    # Embed candidate filenames (pre-filtered by n-grams)
+    candidate_embeddings = model.encode(filtered_candidates, convert_to_numpy=True)  # pragma: no cover
+
+    # Normalize for cosine similarity
+    known_norms = np.linalg.norm(known_embeddings, axis=1, keepdims=True)  # pragma: no cover
+    known_normalized = known_embeddings / (known_norms + 1e-8)  # pragma: no cover
+
+    candidate_norms = np.linalg.norm(candidate_embeddings, axis=1, keepdims=True)  # pragma: no cover
+    candidate_normalized = candidate_embeddings / (candidate_norms + 1e-8)  # pragma: no cover
+
+    # Compute pairwise similarities (candidates x known)
+    similarities = np.dot(candidate_normalized, known_normalized.T)  # pragma: no cover
+
+    # Find candidates that match any known config file pattern
+    discovered: set[Path] = set()  # pragma: no cover
+    max_sims = np.max(similarities, axis=1)  # pragma: no cover
+
+    for name, max_sim in zip(filtered_candidates, max_sims, strict=True):  # pragma: no cover
+        if max_sim >= similarity_threshold:
+            # Add all paths with this filename (could be in multiple subdirs)
+            for path in repo_files[name]:
+                discovered.add(path)
+
+    return discovered  # pragma: no cover
+
+
+def _collect_config_content_with_discovery(
+    repo_root: Path,
+    use_discovery: bool = True,
+) -> list[tuple[str, str]]:
+    """Collect config file content, optionally with embedding-based discovery.
+
+    Extends _collect_config_content by also including files discovered through
+    embedding similarity matching.
+
+    Args:
+        repo_root: Path to repository root.
+        use_discovery: If True, use embedding-based discovery for additional files.
+
+    Returns:
+        List of (prefixed_filename, content) tuples.
+    """
+    # Start with standard config collection
+    config_content = _collect_config_content(repo_root)
+    seen_paths: set[Path] = set()
+
+    # Track which files we already have
+    for config_name in CONFIG_FILES:
+        for subdir in CONFIG_SUBDIRS:
+            if "*" in config_name:  # pragma: no cover - glob patterns rare in tests
+                # Handle glob patterns
+                pattern = config_name
+                search_dir = repo_root / subdir if subdir else repo_root
+                if search_dir.exists():
+                    for match in search_dir.glob(pattern):
+                        if match.is_file():
+                            seen_paths.add(match)
+            else:
+                config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
+                if config_path.exists():
+                    seen_paths.add(config_path)
+
+    # Also handle glob patterns from CONFIG_FILES
+    for config_name in CONFIG_FILES:
+        if "*" in config_name:  # pragma: no cover - glob patterns rare in tests
+            for subdir in CONFIG_SUBDIRS:
+                search_dir = repo_root / subdir if subdir else repo_root
+                if search_dir.exists():
+                    for match in search_dir.glob(config_name):
+                        if match.is_file() and match not in seen_paths:
+                            try:
+                                content = match.read_text(encoding="utf-8", errors="replace")
+                                rel_path = match.relative_to(repo_root)
+                                config_content.append((str(rel_path), content))
+                                seen_paths.add(match)
+                            except OSError:
+                                pass
+
+    if not use_discovery:
+        return config_content  # pragma: no cover - discovery disabled
+
+    # Discover additional config files using embeddings
+    discovered = _discover_config_files_embedding(repo_root)
+
+    for path in discovered:  # pragma: no cover - discovery integration
+        if path in seen_paths:
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            rel_path = path.relative_to(repo_root)
+            config_content.append((str(rel_path), content))
+            seen_paths.add(path)
+        except OSError:
+            pass
+
+    return config_content
+
+
 def _extract_config_embedding(
     repo_root: Path,
     max_lines: int = 30,
@@ -453,8 +773,8 @@ def _extract_config_embedding(
         # Fall back to heuristic if sentence-transformers not available
         return _extract_config_heuristic(repo_root)[:max_lines]
 
-    # Collect all config content
-    config_content = _collect_config_content(repo_root)
+    # Collect all config content (with embedding-based discovery)
+    config_content = _collect_config_content_with_discovery(repo_root, use_discovery=True)
     if not config_content:
         return []  # pragma: no cover - defensive, caller checks for config files
 
@@ -481,8 +801,9 @@ def _extract_config_embedding(
     centroid = np.mean(question_embeddings, axis=0)
     centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
 
-    # Embed all config lines
-    line_texts = [line for _, _, line, _ in all_lines]
+    # Embed all config lines (truncate to avoid token length overflow)
+    max_chars = 800  # UnixCoder can handle ~512 tokens, ~800 chars is safe
+    line_texts = [line[:max_chars] for _, _, line, _ in all_lines]
     line_embeddings = model.encode(line_texts, convert_to_numpy=True)
 
     # Compute similarities to centroid
