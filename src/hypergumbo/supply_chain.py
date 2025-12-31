@@ -333,6 +333,9 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
                 workspaces = workspaces.get("packages", [])
 
             for pattern in workspaces:
+                # Skip empty or current-dir patterns
+                if not pattern or pattern == ".":
+                    continue
                 # Expand globs like "packages/*"
                 for match in repo_root.glob(pattern):
                     if match.is_dir():
