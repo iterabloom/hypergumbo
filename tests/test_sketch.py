@@ -29,32 +29,17 @@ from hypergumbo.entrypoints import Entrypoint, EntrypointKind
 
 
 def _has_sentence_transformers() -> bool:
-    """Check if sentence-transformers is available, installing if needed.
+    """Check if sentence-transformers is already installed.
 
-    Attempts import first, then tries pip install if not found.
-    Returns False if installation fails (e.g., OOM in CI).
+    Only checks via import - does NOT try to install because pip install
+    during test collection causes OOM on small CI runners.
+    CI can optionally install sentence-transformers in a separate step.
     """
     try:
         import sentence_transformers
         del sentence_transformers  # Silence F841 (unused variable)
         return True
     except ImportError:
-        pass
-
-    # Try installing the package
-    import subprocess
-    import sys
-    try:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "sentence-transformers"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=300,  # 5 minute timeout
-        )
-        import sentence_transformers
-        del sentence_transformers
-        return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ImportError, OSError):
         return False
 
 
