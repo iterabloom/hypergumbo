@@ -2152,6 +2152,77 @@ license = "GPL-3.0"
 
         assert "LICENSE: Unlicense" in result
 
+    def test_extract_mix_exs(self, tmp_path: Path) -> None:
+        """Extracts Elixir project info from mix.exs."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "mix.exs").write_text('''
+defmodule MyApp.MixProject do
+  use Mix.Project
+
+  def project do
+    [
+      app: :my_app,
+      version: "0.1.0",
+      elixir: "~> 1.14",
+      deps: deps()
+    ]
+  end
+end
+''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "mix.exs" in result
+        assert "my_app" in result
+        assert "0.1.0" in result
+        assert "1.14" in result
+
+    def test_extract_build_gradle(self, tmp_path: Path) -> None:
+        """Extracts Kotlin/Java project info from build.gradle.kts."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "build.gradle.kts").write_text('''
+plugins {
+    kotlin("jvm") version "1.9.0"
+    application
+}
+
+group = "com.example"
+version = "1.0-SNAPSHOT"
+
+dependencies {
+    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+}
+''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "build.gradle.kts" in result
+        assert "com.example" in result
+        assert "1.0-SNAPSHOT" in result
+        assert "kotlin" in result
+
+    def test_extract_gemfile(self, tmp_path: Path) -> None:
+        """Extracts Ruby gems from Gemfile."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        (tmp_path / "Gemfile").write_text('''
+source "https://rubygems.org"
+
+ruby ">= 3.2.0"
+
+gem "rails", "~> 7.0"
+gem "pg"
+gem "puma"
+''')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        assert "Gemfile" in result
+        assert "3.2.0" in result
+        assert "rails" in result
+
     def test_monorepo_subdir_support(self, tmp_path: Path) -> None:
         """Extracts config from monorepo subdirectories."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
@@ -2225,17 +2296,22 @@ license = "GPL-3.0"
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
     def test_embedding_mode_centroid_selection(self, tmp_path: Path) -> None:
-        """Embedding mode uses centroid of prototype questions."""
+        """Embedding mode uses dual-probe centroid selection."""
         from hypergumbo.sketch import (
             _extract_config_info,
             ConfigExtractionMode,
-            METADATA_QUESTIONS,
+            ANSWER_PATTERNS,
+            BIG_PICTURE_QUESTIONS,
         )
 
-        # Verify prototype questions exist
-        assert len(METADATA_QUESTIONS) > 0
-        assert any("database" in q.lower() for q in METADATA_QUESTIONS)
-        assert any("license" in q.lower() for q in METADATA_QUESTIONS)
+        # Verify both probe lists exist
+        assert len(ANSWER_PATTERNS) > 0
+        assert len(BIG_PICTURE_QUESTIONS) > 0
+        # Answer patterns should have version/name examples
+        assert any("version" in p.lower() for p in ANSWER_PATTERNS)
+        # Big-picture questions should have database/license questions
+        assert any("database" in q.lower() for q in BIG_PICTURE_QUESTIONS)
+        assert any("license" in q.lower() for q in BIG_PICTURE_QUESTIONS)
 
         # Create a long config with relevant content buried
         (tmp_path / "package.json").write_text('''{
