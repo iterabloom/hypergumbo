@@ -144,11 +144,34 @@ setup(
 )
 SETUPEOF
 
-    # Build and install
+    # Build and install with retry logic (compilation can OOM on small runners)
     echo "Building and installing..."
-    pip install "$pkg_dir" --quiet
+    local max_retries=3
+    local retry=0
+    while [ $retry -lt $max_retries ]; do
+        # Clear pip cache to free memory before each attempt
+        pip cache purge 2>/dev/null || true
 
-    echo "Successfully installed tree-sitter-$name"
+        if pip install "$pkg_dir" --quiet --no-cache-dir 2>&1; then
+            echo "Successfully installed tree-sitter-$name"
+            return 0
+        fi
+
+        retry=$((retry + 1))
+        if [ $retry -lt $max_retries ]; then
+            echo "Build failed (possibly OOM), retrying ($retry/$max_retries)..."
+            # Clean up build artifacts to free memory
+            rm -rf "$pkg_dir/build" "$pkg_dir/*.egg-info" 2>/dev/null || true
+            # Flush filesystem buffers
+            sync 2>/dev/null || true
+            # Try to drop OS caches if we have permission (CI may run as root)
+            echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+            sleep 3
+        else
+            echo "Failed to build tree-sitter-$name after $max_retries attempts"
+            return 1
+        fi
+    done
 }
 
 # Build tree-sitter-lean
