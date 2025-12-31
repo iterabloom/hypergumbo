@@ -114,7 +114,7 @@ from .metrics import compute_metrics
 from .profile import detect_profile
 from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
-from .sketch import generate_sketch
+from .sketch import generate_sketch, ConfigExtractionMode
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import rank_symbols, _is_test_path
@@ -141,12 +141,22 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
+
+    # Convert string mode to enum
+    mode_str = getattr(args, "config_extraction_mode", "heuristic")
+    config_mode = {
+        "heuristic": ConfigExtractionMode.HEURISTIC,
+        "embedding": ConfigExtractionMode.EMBEDDING,
+        "hybrid": ConfigExtractionMode.HYBRID,
+    }.get(mode_str, ConfigExtractionMode.HEURISTIC)
+
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
         exclude_tests=exclude_tests,
         first_party_priority=first_party_priority,
         extra_excludes=extra_excludes,
+        config_extraction_mode=config_mode,
     )
     print(sketch)
     return 0
@@ -847,6 +857,15 @@ def build_parser() -> argparse.ArgumentParser:
         dest="extra_excludes",
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
+    )
+    p_sketch.add_argument(
+        "--config-extraction",
+        choices=["heuristic", "embedding", "hybrid"],
+        default="heuristic",
+        dest="config_extraction_mode",
+        help="Config file extraction mode: heuristic (fast, default), "
+             "embedding (semantic, requires sentence-transformers), "
+             "hybrid (heuristics first, then embeddings)",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
 
