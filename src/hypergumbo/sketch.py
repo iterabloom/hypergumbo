@@ -54,10 +54,61 @@ class ConfigExtractionMode(Enum):
     HYBRID = "hybrid"
 
 
-# Prototype questions for semantic similarity in embedding mode.
-# This centroid represents the space of common metadata questions.
-# The broader this list, the better the embedding mode will work.
-METADATA_QUESTIONS = [
+# Dual-probe system for embedding-based config extraction:
+# 1. ANSWER_PATTERNS: Example config lines that contain factual metadata
+# 2. BIG_PICTURE_QUESTIONS: Open-ended questions for architectural context
+#
+# A line is relevant if it matches EITHER probe well, ensuring both
+# factual metadata and high-level insights are captured.
+
+# Example answer patterns - what config metadata LOOKS LIKE
+ANSWER_PATTERNS = [
+    # Version and edition
+    'version = "1.0.0"',
+    'version: "2.3.4"',
+    '"version": "1.2.3"',
+    'edition = "2021"',
+    'edition = "2024"',
+    'rust-version = "1.70.0"',
+
+    # Names and identifiers
+    'name = "myproject"',
+    '"name": "my-package"',
+    'name: my_project',
+    'app: :myapp',
+    'module github.com/user/repo',
+
+    # License
+    'license = "MIT"',
+    '"license": "Apache-2.0"',
+    'license: MIT',
+
+    # Language versions
+    'python = "^3.10"',
+    '"node": ">=18"',
+    'ruby ">= 3.2.0"',
+    'elixir: "~> 1.14"',
+    'go 1.21',
+
+    # Dependencies declarations
+    '"dependencies": {',
+    '[dependencies]',
+    '[dev-dependencies]',
+    'dependencies:',
+    'gem "rails"',
+    'clap = { version = "4.0" }',
+    '"react": "^18.0.0"',
+
+    # Build and runtime config
+    '"scripts": {',
+    '"main": "index.js"',
+    '"type": "module"',
+    'entry_points = {',
+    '[build-system]',
+]
+
+# Open-ended questions for big-picture/architectural context
+BIG_PICTURE_QUESTIONS = [
     # License and legal
     "What license does this project use?",
     "Is this project open source?",
@@ -164,6 +215,46 @@ METADATA_QUESTIONS = [
     "Is this a library or application?",
     "Is this a CLI tool?",
     "Is this production ready?",
+
+    # Architecture and design (harder, open-ended)
+    "What is the overall architecture of this project?",
+    "How is the codebase organized?",
+    "What design patterns does this use?",
+    "How do the components communicate?",
+    "What is the data flow through the system?",
+    "How does authentication work?",
+    "How does authorization work?",
+    "What are the main modules or services?",
+    "Is this a monolith or microservices?",
+    "How is state managed?",
+
+    # Scale and complexity
+    "How large is this codebase?",
+    "How many services does this have?",
+    "What are the performance characteristics?",
+    "How does this handle concurrency?",
+    "What are the scaling considerations?",
+
+    # Integration and external systems
+    "What external services does this integrate with?",
+    "What third-party APIs does this call?",
+    "How does this communicate with other systems?",
+    "What message queues or event buses are used?",
+    "What caching strategy is used?",
+
+    # Security and reliability
+    "How are secrets managed?",
+    "What security measures are in place?",
+    "How are errors handled?",
+    "What logging and monitoring is used?",
+    "How is configuration managed across environments?",
+
+    # Development workflow
+    "How do I set up the development environment?",
+    "What are the contribution guidelines?",
+    "How is code review done?",
+    "What CI/CD pipeline is used?",
+    "How are database migrations handled?",
 ]
 
 
@@ -348,8 +439,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             content = path.read_text(encoding="utf-8", errors="replace")
             extracted = []
 
-            # Parse [package] section fields
-            for field in ["name", "version", "license"]:
+            # Parse [package] section fields (including edition and rust-version)
+            for field in ["name", "version", "edition", "rust-version", "license"]:
                 match = re.search(rf'^{field}\s*=\s*"([^"]+)"', content, re.MULTILINE)
                 if match:
                     extracted.append(f"{field}: {match.group(1)}")
@@ -379,6 +470,87 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             pass  # pragma: no cover
         return result
 
+    def _extract_mix_exs(path: Path, prefix: str) -> list[str]:
+        """Extract Elixir project info from mix.exs."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            extracted = []
+
+            # App name
+            app_match = re.search(r'app:\s*:(\w+)', content)
+            if app_match:
+                extracted.append(f"app: {app_match.group(1)}")
+
+            # Version
+            version_match = re.search(r'version:\s*"([^"]+)"', content)
+            if version_match:
+                extracted.append(f"version: {version_match.group(1)}")
+
+            # Elixir requirement
+            elixir_match = re.search(r'elixir:\s*"([^"]+)"', content)
+            if elixir_match:
+                extracted.append(f"elixir: {elixir_match.group(1)}")
+
+            if extracted:
+                result.append(f"{prefix}mix.exs: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
+    def _extract_build_gradle(path: Path, prefix: str) -> list[str]:
+        """Extract Kotlin/Java project info from build.gradle or build.gradle.kts."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")[:4000]
+            extracted = []
+
+            # Group
+            group_match = re.search(r'group\s*[=:]\s*["\']?([^"\'\s]+)', content)
+            if group_match:
+                extracted.append(f"group: {group_match.group(1)}")
+
+            # Version
+            version_match = re.search(r'version\s*[=:]\s*["\']?([^"\'\s]+)', content)
+            if version_match and version_match.group(1) != "=":
+                extracted.append(f"version: {version_match.group(1)}")
+
+            # Look for plugins (kotlin, java, application)
+            for plugin in ["kotlin", "java", "application", "dokka"]:
+                if f'"{plugin}"' in content or f"'{plugin}'" in content or "kotlin(" in content:
+                    extracted.append(plugin)
+
+            if extracted:
+                fname = path.name
+                result.append(f"{prefix}{fname}: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
+    def _extract_gemfile(path: Path, prefix: str) -> list[str]:
+        """Extract Ruby gems from Gemfile."""
+        result = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            extracted = []
+
+            # Ruby version
+            ruby_match = re.search(r'ruby\s+["\']([^"\']+)', content)
+            if ruby_match:
+                extracted.append(f"ruby: {ruby_match.group(1)}")
+
+            # Key gems
+            interesting_gems = {"rails", "sinatra", "puma", "devise", "sidekiq", "redis", "pg", "mysql2"}
+            for gem in interesting_gems:
+                if re.search(rf"gem\s+['\"]({gem})['\"]", content):
+                    extracted.append(gem)
+
+            if extracted:
+                result.append(f"{prefix}Gemfile: {'; '.join(extracted)}")
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
+        return result
+
     # Scan config files in root and common subdirectories
     for config_name in CONFIG_FILES:
         for subdir in CONFIG_SUBDIRS:
@@ -398,6 +570,12 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
                 lines.extend(_extract_cargo_toml(config_path, prefix))
             elif config_name == "pyproject.toml":
                 lines.extend(_extract_pyproject_toml(config_path, prefix))
+            elif config_name == "mix.exs":
+                lines.extend(_extract_mix_exs(config_path, prefix))
+            elif config_name in ("build.gradle", "build.gradle.kts"):
+                lines.extend(_extract_build_gradle(config_path, prefix))
+            elif config_name == "Gemfile":
+                lines.extend(_extract_gemfile(config_path, prefix))
 
     # Detect license type from LICENSE files
     for license_name in LICENSE_FILES:
@@ -752,19 +930,28 @@ def _collect_config_content_with_discovery(
 def _extract_config_embedding(
     repo_root: Path,
     max_lines: int = 30,
+    similarity_threshold: float = 0.25,
+    max_lines_per_file: int = 8,
 ) -> list[str]:
-    """Extract config metadata using embedding-based semantic selection.
+    """Extract config metadata using dual-probe stratified embedding selection.
 
-    Uses sentence-transformers with UnixCoder to compute similarity between
-    config file lines and a centroid of METADATA_QUESTIONS. Lines most
-    similar to the question centroid are selected.
+    Uses a dual-probe system with sentence-transformers:
+    1. ANSWER_PATTERNS probe: Matches factual metadata lines (version, name, etc.)
+    2. BIG_PICTURE_QUESTIONS probe: Matches architectural/contextual lines
+
+    Each file is searched independently (stratified) to prevent large files
+    from crowding out smaller ones. A line is included if it exceeds the
+    similarity threshold for EITHER probe, ensuring both factual metadata
+    and high-level insights are captured.
 
     Args:
         repo_root: Path to repository root.
-        max_lines: Maximum lines to extract.
+        max_lines: Maximum total lines to extract across all files.
+        similarity_threshold: Minimum similarity score to include a line.
+        max_lines_per_file: Maximum lines to extract per config file.
 
     Returns:
-        List of extracted metadata lines, ordered by semantic relevance.
+        List of extracted metadata lines, ordered by file then relevance.
     """
     try:
         from sentence_transformers import SentenceTransformer
@@ -778,76 +965,138 @@ def _extract_config_embedding(
     if not config_content:
         return []  # pragma: no cover - defensive, caller checks for config files
 
-    # Split content into lines with source info, preserving line indices for context
-    # Structure: (source, line_idx, line_text, all_file_lines)
-    all_lines: list[tuple[str, int, str, list[str]]] = []
-    file_lines_cache: dict[str, list[str]] = {}
+    # Load embedding model once
+    model = SentenceTransformer("microsoft/unixcoder-base")
+
+    # Compute normalized embeddings for both probes
+    # Using max-to-any-pattern approach (not centroid) for better exact matching
+    # Probe 1: Answer patterns (factual metadata lines)
+    answer_embeddings = model.encode(ANSWER_PATTERNS, convert_to_numpy=True)
+    answer_norms = np.linalg.norm(answer_embeddings, axis=1, keepdims=True)
+    normalized_answer_patterns = answer_embeddings / (answer_norms + 1e-8)
+
+    # Probe 2: Big-picture questions (architectural context)
+    question_embeddings = model.encode(BIG_PICTURE_QUESTIONS, convert_to_numpy=True)
+    question_norms = np.linalg.norm(question_embeddings, axis=1, keepdims=True)
+    normalized_question_patterns = question_embeddings / (question_norms + 1e-8)
+
+    # === PASS 1: Score all files, collect top candidates from each ===
+    # Structure: {source: [(sim, line_idx, line_text, file_lines), ...]}
+    max_chars = 800  # UnixCoder can handle ~512 tokens, ~800 chars is safe
+    file_candidates: dict[str, list[tuple[float, int, str, list[str]]]] = {}
 
     for source, content in config_content:
         file_lines = [ln.strip() for ln in content.split("\n")]
-        file_lines_cache[source] = file_lines
-        for idx, line in enumerate(file_lines):
-            if line and len(line) > 3:  # Skip empty/trivial lines
-                all_lines.append((source, idx, line, file_lines))
+        candidates: list[tuple[int, str]] = [
+            (idx, line) for idx, line in enumerate(file_lines)
+            if line and len(line) > 3
+        ]
 
-    if not all_lines:
-        return []  # pragma: no cover - defensive, requires empty config files
+        if not candidates:  # pragma: no cover
+            continue  # pragma: no cover
 
-    # Load embedding model
-    model = SentenceTransformer("microsoft/unixcoder-base")
+        # Embed lines from this file
+        line_texts = [line[:max_chars] for _, line in candidates]
+        line_embeddings = model.encode(line_texts, convert_to_numpy=True)
 
-    # Compute centroid of METADATA_QUESTIONS
-    question_embeddings = model.encode(METADATA_QUESTIONS, convert_to_numpy=True)
-    centroid = np.mean(question_embeddings, axis=0)
-    centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+        # Normalize lines and compute max similarity to ANY pattern in both probes
+        line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
+        normalized_embeddings = line_embeddings / (line_norms + 1e-8)
+        # Shape: (num_lines, num_answer_patterns)
+        answer_sim_matrix = np.dot(normalized_embeddings, normalized_answer_patterns.T)
+        max_answer_similarities = np.max(answer_sim_matrix, axis=1)
+        # Shape: (num_lines, num_question_patterns)
+        question_sim_matrix = np.dot(normalized_embeddings, normalized_question_patterns.T)
+        max_question_similarities = np.max(question_sim_matrix, axis=1)
+        # Take max of both probes
+        similarities = np.maximum(max_answer_similarities, max_question_similarities)
 
-    # Embed all config lines (truncate to avoid token length overflow)
-    max_chars = 800  # UnixCoder can handle ~512 tokens, ~800 chars is safe
-    line_texts = [line[:max_chars] for _, _, line, _ in all_lines]
-    line_embeddings = model.encode(line_texts, convert_to_numpy=True)
+        # Collect lines above threshold, sorted by similarity
+        above_threshold = [
+            (float(sim), idx, line, file_lines)
+            for (idx, line), sim in zip(candidates, similarities, strict=True)
+            if sim >= similarity_threshold
+        ]
+        above_threshold.sort(reverse=True, key=lambda x: x[0])
 
-    # Compute similarities to centroid
-    line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
-    normalized_embeddings = line_embeddings / (line_norms + 1e-8)
-    similarities = np.dot(normalized_embeddings, centroid_norm)
+        if above_threshold:
+            file_candidates[source] = above_threshold
 
-    # Select top-k lines by similarity
-    top_indices = np.argsort(-similarities)[:max_lines]
+    if not file_candidates:
+        return []  # pragma: no cover
 
-    # Build result with context (1 line before, selected line, 1 line after)
+    # === PASS 2: Fair allocation across files ===
+    # Each file gets equal base allocation, then remainder distributed by quality
+    base_per_file = max(5, max_lines_per_file // 2)  # Minimum 5 lines per file
+
+    # Collect selected lines with fair allocation
+    # Structure: [(sim, source, line_idx, line_text, file_lines), ...]
+    selected_lines: list[tuple[float, str, int, str, list[str]]] = []
+
+    # First: give each file its base allocation
+    for source, candidates in file_candidates.items():
+        for sim, line_idx, line, file_lines in candidates[:base_per_file]:
+            selected_lines.append((sim, source, line_idx, line, file_lines))
+
+    # Second: if budget remains, fill with best remaining candidates across all files
+    remaining_budget = max_lines - len(selected_lines)
+    if remaining_budget > 0:
+        # Collect all remaining candidates
+        overflow: list[tuple[float, str, int, str, list[str]]] = []
+        for source, candidates in file_candidates.items():
+            for sim, line_idx, line, file_lines in candidates[base_per_file:]:
+                overflow.append((sim, source, line_idx, line, file_lines))
+        # Sort by similarity and take best
+        overflow.sort(reverse=True, key=lambda x: x[0])
+        selected_lines.extend(overflow[:remaining_budget])
+
+    # === PASS 3: Format output, grouping by file ===
+    # Budget was managed in Pass 2 - now just format all selected lines
+    from collections import defaultdict
+    by_source: dict[str, list[tuple[float, int, str, list[str]]]] = defaultdict(list)
+    for sim, source, line_idx, line, file_lines in selected_lines:
+        by_source[source].append((sim, line_idx, line, file_lines))
+
+    # Sort each file's lines by line index for coherent output
+    for source in by_source:
+        by_source[source].sort(key=lambda x: x[1])
+
+    # Build output - all files get representation
     result_lines: list[str] = []
-    seen_sources: set[str] = set()
-    seen_contexts: set[tuple[str, int]] = set()  # (source, line_idx) already included
 
-    for sel_idx in top_indices:
-        source, line_idx, line, file_lines = all_lines[sel_idx]
+    for source in sorted(by_source.keys()):
+        file_selected = by_source[source]
+        if not file_selected:  # pragma: no cover
+            continue  # pragma: no cover
 
-        # Add source header if new file
-        if source not in seen_sources:
-            if result_lines:  # Add separator between files
-                result_lines.append("")
-            result_lines.append(f"[{source}]")
-            seen_sources.add(source)
+        # Get file_lines from first entry
+        file_lines = file_selected[0][3]
 
-        # Gather context window: 1 line before, selected line, 1 line after
-        context_start = max(0, line_idx - 1)
-        context_end = min(len(file_lines), line_idx + 2)
+        # Add file header
+        if result_lines:
+            result_lines.append("")
+        result_lines.append(f"[{source}]")
 
-        for ctx_idx in range(context_start, context_end):
-            ctx_key = (source, ctx_idx)
-            if ctx_key in seen_contexts:
-                continue  # Already included this line
-            seen_contexts.add(ctx_key)
+        # Build output with context (deduplicated)
+        seen_contexts: set[int] = set()
+        for _sim, line_idx, _line, _ in file_selected:
+            # Context window: 1 line before, selected line, 1 line after
+            context_start = max(0, line_idx - 1)
+            context_end = min(len(file_lines), line_idx + 2)
 
-            ctx_line = file_lines[ctx_idx]
-            if not ctx_line:
-                continue
+            for ctx_idx in range(context_start, context_end):
+                if ctx_idx in seen_contexts:
+                    continue
+                seen_contexts.add(ctx_idx)
 
-            # Mark the selected line vs context
-            if ctx_idx == line_idx:
-                result_lines.append(f"  > {ctx_line}")  # Selected line
-            else:
-                result_lines.append(f"    {ctx_line}")  # Context line
+                ctx_line = file_lines[ctx_idx]
+                if not ctx_line:
+                    continue
+
+                if ctx_idx == line_idx:
+                    result_lines.append(f"  > {ctx_line}")
+                else:
+                    result_lines.append(f"    {ctx_line}")
 
     return result_lines
 
@@ -950,16 +1199,87 @@ def _extract_config_info(
     else:  # HEURISTIC (default)
         lines = _extract_config_heuristic(repo_root)
 
-    # Truncate output to max_chars
-    result = "\n".join(lines[:30])  # Cap at 30 lines
-    if len(result) > max_chars:  # pragma: no cover - defensive truncation
-        result = result[:max_chars]  # pragma: no cover
-        # Try to truncate at a line boundary
-        last_newline = result.rfind("\n")  # pragma: no cover
-        if last_newline > max_chars // 2:  # pragma: no cover
-            result = result[:last_newline]  # pragma: no cover
+    # Check if output uses [filename] headers (embedding/hybrid modes)
+    # If not, just join and truncate (heuristic mode)
+    has_file_headers = any(
+        line.startswith("[") and line.endswith("]") and "/" not in line
+        for line in lines
+    )
 
-    return result
+    if not has_file_headers:
+        result = "\n".join(lines)
+        if len(result) > max_chars:  # pragma: no cover - defensive truncation
+            result = result[:max_chars]
+            last_newline = result.rfind("\n")
+            if last_newline > max_chars // 2:
+                result = result[:last_newline]
+        return result
+
+    # Fair character allocation: each file gets equal share
+    # First pass: group lines by file (lines starting with "[" are file headers)
+    # Also preserve any "preamble" lines that come before the first header (hybrid mode)
+    preamble_lines: list[str] = []
+    file_sections: list[tuple[str, list[str]]] = []
+    current_file = ""
+    current_lines: list[str] = []
+
+    for line in lines:
+        if line.startswith("[") and line.endswith("]") and "/" not in line:
+            if current_file and current_lines:
+                file_sections.append((current_file, current_lines))
+            elif current_lines:
+                # Lines before first header are preamble (e.g., heuristic in hybrid)
+                preamble_lines = current_lines
+            current_file = line
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_file and current_lines:
+        file_sections.append((current_file, current_lines))
+
+    if not file_sections and not preamble_lines:  # pragma: no cover
+        return "\n".join(lines)[:max_chars]  # pragma: no cover
+
+    # Second pass: allocate chars - preamble gets priority, rest shared among files
+    preamble_text = "\n".join(preamble_lines) if preamble_lines else ""
+    remaining_chars = max_chars - len(preamble_text)
+    if preamble_text:
+        remaining_chars -= 2  # Account for separator newlines
+
+    if not file_sections:  # pragma: no cover - defensive, no file headers
+        # Only preamble, no file sections
+        if len(preamble_text) > max_chars:
+            preamble_text = preamble_text[:max_chars]
+            last_newline = preamble_text.rfind("\n")
+            if last_newline > max_chars // 2:
+                preamble_text = preamble_text[:last_newline]
+        return preamble_text
+
+    num_files = len(file_sections)
+    chars_per_file = remaining_chars // num_files if num_files > 0 else remaining_chars
+
+    result_parts: list[str] = []
+    if preamble_text:
+        result_parts.append(preamble_text)
+
+    for file_header, file_lines in file_sections:
+        # Build this file's content
+        file_content = file_header + "\n" + "\n".join(file_lines)
+
+        # Truncate to per-file budget
+        if len(file_content) > chars_per_file:  # pragma: no cover - large file edge case
+            file_content = file_content[:chars_per_file]
+            # Try to cut at line boundary
+            last_newline = file_content.rfind("\n")
+            if last_newline > chars_per_file // 2:
+                file_content = file_content[:last_newline]
+
+        if result_parts:
+            result_parts.append("")  # Separator
+        result_parts.append(file_content)
+
+    return "\n".join(result_parts)
 
 
 def _format_config_section(config_info: str) -> str:
