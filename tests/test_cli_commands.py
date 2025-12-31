@@ -8,6 +8,7 @@ from hypergumbo.cli import (
     cmd_slice,
     cmd_catalog,
     cmd_export_capsule,
+    cmd_sketch,
     main,
 )
 
@@ -1427,3 +1428,58 @@ def test_main_with_export_capsule(tmp_path: Path) -> None:
     result = main(["export-capsule", str(tmp_path), "--out", str(out_path)])
     assert result == 0
     assert out_path.exists()
+
+
+def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
+    """Test --config-extraction flag with all modes."""
+    # Create a simple package.json
+    (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
+
+    # Test default (heuristic) mode
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 1000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "test" in out  # Should include package name
+
+    # Test embedding mode (will use heuristic if sentence-transformers unavailable)
+    args.config_extraction_mode = "embedding"
+    result = cmd_sketch(args)
+    assert result == 0
+
+    # Test hybrid mode
+    args.config_extraction_mode = "hybrid"
+    result = cmd_sketch(args)
+    assert result == 0
+
+
+def test_main_sketch_config_extraction_flag(tmp_path: Path) -> None:
+    """Test sketch command with --config-extraction flag via main()."""
+    (tmp_path / "package.json").write_text('{"name": "cli-test", "version": "2.0.0"}')
+
+    # Test with explicit heuristic mode
+    result = main(["sketch", str(tmp_path), "--config-extraction", "heuristic"])
+    assert result == 0
+
+
+def test_cmd_sketch_nonexistent_path(capsys) -> None:
+    """Test cmd_sketch with nonexistent path returns error."""
+    args = FakeArgs()
+    args.path = "/nonexistent/path/that/does/not/exist"
+    args.tokens = None
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "does not exist" in err
