@@ -1170,7 +1170,9 @@ def _extract_python_signatures(
 
         # Match symbols to signatures
         for sym in file_symbols:
-            key = (sym.span.start_line, sym.name)
+            # For methods, sym.name is "ClassName.method_name" but AST has just "method_name"
+            match_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            key = (sym.span.start_line, match_name)
             if key in node_signatures:
                 signatures[sym.id] = node_signatures[key]
 
