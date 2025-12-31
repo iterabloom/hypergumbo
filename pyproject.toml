@@ -75,12 +75,16 @@ dev = [
   "bandit>=1.8",
   "pip-audit>=2.7",
   "jsonschema>=4.18",  # For schema validation tests (4.18+ uses referencing)
+  "sentence-transformers>=2.2",  # For config extraction embedding mode tests
 ]
 llm-assist = [
   "openai>=1.0",
 ]
 llm-local = [
   "llm>=0.19",
+]
+embeddings = [
+  "sentence-transformers>=2.2",  # For embedding-based config extraction
 ]
 
 [project.scripts]
