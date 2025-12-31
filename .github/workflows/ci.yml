@@ -91,18 +91,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e .[dev]
-      - name: Try install sentence-transformers (optional, may OOM)
-        run: |
-          # Check available memory (need ~2GB for torch)
-          free_mem=$(free -m | awk '/Mem:/ {print $7}')
-          echo "Available memory: ${free_mem}MB"
-          if [ "$free_mem" -lt 2000 ]; then
-            echo "::warning::Skipping sentence-transformers: only ${free_mem}MB available (need 2000MB)"
-            exit 0
-          fi
-          # Try install with timeout to avoid getting killed by OOM
-          timeout 300 pip install sentence-transformers 2>&1 || echo "::warning::sentence-transformers install failed"
-        continue-on-error: true
+          # Note: sentence-transformers (1GB+ torch) not installed on small runners
+          # Embedding tests skip gracefully when unavailable
       - name: Build source-only grammars
         run: |
           ./scripts/build-source-grammars

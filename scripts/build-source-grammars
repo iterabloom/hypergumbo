@@ -36,13 +36,28 @@ build_grammar() {
     echo ""
     echo "=== Building tree-sitter-$name ==="
 
-    # Clone or update the repository
+    # Clone or update the repository (with retry for network issues)
     if [ -d "$repo_dir" ]; then
         echo "Updating existing repo..."
         git -C "$repo_dir" pull --ff-only 2>/dev/null || true
     else
         echo "Cloning $repo_url..."
-        git clone --depth 1 "$repo_url" "$repo_dir"
+        local max_retries=3
+        local retry=0
+        while [ $retry -lt $max_retries ]; do
+            if git clone --depth 1 "$repo_url" "$repo_dir" 2>&1; then
+                break
+            fi
+            retry=$((retry + 1))
+            if [ $retry -lt $max_retries ]; then
+                echo "Clone failed, retrying ($retry/$max_retries)..."
+                sleep 5
+                rm -rf "$repo_dir" 2>/dev/null || true
+            else
+                echo "Failed to clone after $max_retries attempts"
+                return 1
+            fi
+        done
     fi
 
     # Create Python package directory
