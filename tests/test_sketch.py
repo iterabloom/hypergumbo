@@ -1,6 +1,8 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
 from pathlib import Path
 
+import pytest
+
 from hypergumbo.sketch import (
     generate_sketch,
     estimate_tokens,
@@ -24,6 +26,36 @@ from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import Entrypoint, EntrypointKind
+
+
+def _has_sentence_transformers() -> bool:
+    """Check if sentence-transformers is available, installing if needed.
+
+    Attempts import first, then tries pip install if not found.
+    Returns False if installation fails (e.g., OOM in CI).
+    """
+    try:
+        import sentence_transformers
+        del sentence_transformers  # Silence F841 (unused variable)
+        return True
+    except ImportError:
+        pass
+
+    # Try installing the package
+    import subprocess
+    import sys
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "sentence-transformers"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=300,  # 5 minute timeout
+        )
+        import sentence_transformers
+        del sentence_transformers
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ImportError, OSError):
+        return False
 
 
 class TestEstimateTokens:
@@ -2177,6 +2209,10 @@ license = "GPL-3.0"
 
         assert len(result) <= 200
 
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_embedding_mode_requires_model(self, tmp_path: Path) -> None:
         """Embedding mode uses sentence-transformer model."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
@@ -2199,6 +2235,10 @@ license = "GPL-3.0"
         # Should include relevant content (database-related lines)
         assert "pg" in result or "PostgreSQL" in result
 
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_embedding_mode_centroid_selection(self, tmp_path: Path) -> None:
         """Embedding mode uses centroid of prototype questions."""
         from hypergumbo.sketch import (
@@ -2230,6 +2270,10 @@ license = "GPL-3.0"
         # Embedding mode should prioritize database dependency
         assert "mongodb" in result.lower()
 
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_embedding_mode_includes_license_file(self, tmp_path: Path) -> None:
         """Embedding mode collects LICENSE file content."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
@@ -2246,6 +2290,10 @@ license = "GPL-3.0"
         # Should include content from LICENSE file
         assert "MIT" in result or "LICENSE" in result or "Copyright" in result
 
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_embedding_mode_provides_context(self, tmp_path: Path) -> None:
         """Embedding mode provides context lines around selected lines."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
@@ -2271,6 +2319,10 @@ license = "GPL-3.0"
         has_selection = any(">" in ln for ln in lines)
         assert has_selection, "Should have selected line markers"
 
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_hybrid_mode_combines_both(self, tmp_path: Path) -> None:
         """Hybrid mode uses heuristics first, then embeddings for remaining."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
