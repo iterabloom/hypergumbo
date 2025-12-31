@@ -91,6 +91,7 @@ from .analyze.css import analyze_css_files
 from .analyze.cobol import analyze_cobol
 from .analyze.latex import analyze_latex
 from .analyze.fsharp import analyze_fsharp
+from .analyze.perl import analyze_perl
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -1916,6 +1917,19 @@ def run_behavior_map(
             analysis_runs.append(fsharp_result.run.to_dict())
             all_symbols.extend(fsharp_result.symbols)
             all_edges.extend(fsharp_result.edges)
+
+    # Run Perl analysis (optional, requires tree-sitter-language-pack)
+    perl_result = analyze_perl(repo_root)
+    if perl_result.run is not None:
+        if perl_result.skipped:  # pragma: no cover - perl installed
+            limits.skipped_passes.append({
+                "pass": perl_result.run.pass_id,
+                "reason": perl_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(perl_result.run.to_dict())
+            all_symbols.extend(perl_result.symbols)
+            all_edges.extend(perl_result.edges)
 
     # Run cross-language linkers
 
