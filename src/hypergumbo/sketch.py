@@ -25,6 +25,7 @@ effectively while remaining coherent.
 """
 from __future__ import annotations
 
+import os
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -927,11 +928,117 @@ def _collect_config_content_with_discovery(
     return config_content
 
 
+def _compute_log_sample_size(num_lines: int, fleximax: int) -> int:
+    """Compute log-scaled sample size for a file.
+
+    For small files (num_lines <= fleximax), samples all lines.
+    For larger files, uses formula: fleximax + log10(num_lines) * (fleximax/10)
+
+    This ensures large files get more samples but growth is logarithmic.
+    """
+    import math
+    if num_lines <= fleximax:
+        return num_lines
+    # log10(1000) = 3, so a 1000-line file with fleximax=100 gets 100 + 3*10 = 130
+    return int(fleximax + math.log10(num_lines) * (fleximax / 10))
+
+
+def _compute_stride(num_lines: int, sample_size: int) -> int:
+    """Compute stride N for sampling, ensuring N >= 4 for context windows.
+
+    Returns the smallest N >= 4 such that num_lines / N <= sample_size.
+    If num_lines <= sample_size, returns 1 (sample all).
+    """
+    if num_lines <= sample_size:
+        return 1
+    # Find N such that ceil(num_lines / N) <= sample_size
+    # N = ceil(num_lines / sample_size)
+    n = (num_lines + sample_size - 1) // sample_size
+    return max(4, n)
+
+
+def _build_context_chunk(
+    lines: list[str],
+    center_idx: int,
+    max_chunk_chars: int,
+    fleximax_words: int = 50,
+) -> str:
+    """Build a 3-line chunk with context, subsampling words if too long.
+
+    Takes lines [center_idx-1, center_idx, center_idx+1] and joins them.
+    If the result exceeds max_chunk_chars, applies word-level subsampling
+    with ellipsis to indicate elision.
+
+    Args:
+        lines: All lines in the file.
+        center_idx: Index of the center line to build chunk around.
+        max_chunk_chars: Maximum characters for the chunk.
+        fleximax_words: Base sample size for word-level subsampling.
+
+    Returns:
+        Chunk string, possibly with ellipsis if words were subsampled.
+    """
+    import math
+
+    # Get context lines (before, center, after)
+    start_idx = max(0, center_idx - 1)
+    end_idx = min(len(lines), center_idx + 2)
+    context_lines = [lines[i] for i in range(start_idx, end_idx) if lines[i]]
+
+    chunk = " ".join(context_lines)
+
+    # If within limit, return as-is
+    if len(chunk) <= max_chunk_chars:
+        return chunk
+
+    # Need to subsample at word level
+    words = chunk.split()
+    num_words = len(words)
+
+    if num_words <= fleximax_words:
+        # Just truncate to max_chars
+        return chunk[:max_chunk_chars]
+
+    # Compute log-scaled sample size for words
+    sample_size = int(fleximax_words + math.log10(num_words) * (fleximax_words / 10))
+    stride = max(4, (num_words + sample_size - 1) // sample_size)
+
+    # Sample words with context (before, target, after) and ellipsis
+    result_parts: list[str] = []
+    i = 0
+    while i < num_words:
+        # Get context: before, center, after
+        before_idx = max(0, i - 1)
+        after_idx = min(num_words - 1, i + 1)
+
+        context_words = []
+        if before_idx < i:
+            context_words.append(words[before_idx])
+        context_words.append(words[i])
+        if after_idx > i:
+            context_words.append(words[after_idx])
+
+        result_parts.append(" ".join(context_words))
+        i += stride
+
+    # Join with ellipsis
+    result = " ... ".join(result_parts)
+
+    # Final truncation if still too long
+    if len(result) > max_chunk_chars:
+        result = result[:max_chunk_chars - 3] + "..."
+
+    return result
+
+
 def _extract_config_embedding(
     repo_root: Path,
     max_lines: int = 30,
     similarity_threshold: float = 0.25,
     max_lines_per_file: int = 8,
+    max_config_files: int = 15,
+    fleximax_lines: int = 100,
+    max_chunk_chars: int = 800,
 ) -> list[str]:
     """Extract config metadata using dual-probe stratified embedding selection.
 
@@ -940,15 +1047,21 @@ def _extract_config_embedding(
     2. BIG_PICTURE_QUESTIONS probe: Matches architectural/contextual lines
 
     Each file is searched independently (stratified) to prevent large files
-    from crowding out smaller ones. A line is included if it exceeds the
-    similarity threshold for EITHER probe, ensuring both factual metadata
-    and high-level insights are captured.
+    from crowding out smaller ones. Uses log-scaled sampling for large files:
+    files with more lines get proportionally more samples (logarithmically).
+
+    Lines are sampled with context (before/after) and combined into chunks
+    for embedding. If chunks exceed max_chunk_chars, word-level subsampling
+    with ellipsis is applied.
 
     Args:
         repo_root: Path to repository root.
         max_lines: Maximum total lines to extract across all files.
         similarity_threshold: Minimum similarity score to include a line.
         max_lines_per_file: Maximum lines to extract per config file.
+        max_config_files: Maximum number of config files to process.
+        fleximax_lines: Base sample size for log-scaled line sampling.
+        max_chunk_chars: Maximum characters per chunk for embedding.
 
     Returns:
         List of extracted metadata lines, ordered by file then relevance.
@@ -965,11 +1078,23 @@ def _extract_config_embedding(
     if not config_content:
         return []  # pragma: no cover - defensive, caller checks for config files
 
+    # Verbose logging setup
+    import sys as _sys
+    import time as _time
+    _verbose = "HYPERGUMBO_VERBOSE" in os.environ
+
+    def _vlog(msg: str) -> None:
+        if _verbose:  # pragma: no cover
+            print(f"[embed] {msg}", file=_sys.stderr)
+
     # Load embedding model once
+    _t_load = _time.time()
     model = SentenceTransformer("microsoft/unixcoder-base")
+    _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
     # Compute normalized embeddings for both probes
     # Using max-to-any-pattern approach (not centroid) for better exact matching
+    _t_probes = _time.time()
     # Probe 1: Answer patterns (factual metadata lines)
     answer_embeddings = model.encode(ANSWER_PATTERNS, convert_to_numpy=True)
     answer_norms = np.linalg.norm(answer_embeddings, axis=1, keepdims=True)
@@ -979,48 +1104,82 @@ def _extract_config_embedding(
     question_embeddings = model.encode(BIG_PICTURE_QUESTIONS, convert_to_numpy=True)
     question_norms = np.linalg.norm(question_embeddings, axis=1, keepdims=True)
     normalized_question_patterns = question_embeddings / (question_norms + 1e-8)
+    _vlog(f"Probe embeddings ({len(ANSWER_PATTERNS)}+{len(BIG_PICTURE_QUESTIONS)}) in {_time.time() - _t_probes:.1f}s")
 
     # === PASS 1: Score all files, collect top candidates from each ===
-    # Structure: {source: [(sim, line_idx, line_text, file_lines), ...]}
-    max_chars = 800  # UnixCoder can handle ~512 tokens, ~800 chars is safe
+    # Structure: {source: [(sim, center_idx, chunk_text, file_lines), ...]}
     file_candidates: dict[str, list[tuple[float, int, str, list[str]]]] = {}
+    processed_files = 0
 
     for source, content in config_content:
-        file_lines = [ln.strip() for ln in content.split("\n")]
-        candidates: list[tuple[int, str]] = [
-            (idx, line) for idx, line in enumerate(file_lines)
-            if line and len(line) > 3
-        ]
+        if processed_files >= max_config_files:  # pragma: no cover
+            break
 
-        if not candidates:  # pragma: no cover
+        file_lines = [ln.strip() for ln in content.split("\n")]
+        _vlog(f"Processing {source} ({len(file_lines)} lines)...")
+
+        # Get non-empty lines with their indices
+        non_empty = [(idx, line) for idx, line in enumerate(file_lines)
+                     if line and len(line) > 3]
+
+        if not non_empty:  # pragma: no cover
             continue  # pragma: no cover
 
-        # Embed lines from this file
-        line_texts = [line[:max_chars] for _, line in candidates]
-        line_embeddings = model.encode(line_texts, convert_to_numpy=True)
+        num_lines = len(non_empty)
 
-        # Normalize lines and compute max similarity to ANY pattern in both probes
-        line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
-        normalized_embeddings = line_embeddings / (line_norms + 1e-8)
-        # Shape: (num_lines, num_answer_patterns)
-        answer_sim_matrix = np.dot(normalized_embeddings, normalized_answer_patterns.T)
+        # Compute log-scaled sample size and stride
+        sample_size = _compute_log_sample_size(num_lines, fleximax_lines)
+        stride = _compute_stride(num_lines, sample_size)
+        _vlog(f"  Log-scaled: {num_lines} lines -> sample {sample_size}, stride {stride}")
+
+        # Sample line indices at stride intervals
+        sampled_indices: list[int] = []
+        for i in range(0, num_lines, stride):
+            sampled_indices.append(non_empty[i][0])  # Get original line index
+
+        # Build context chunks for each sampled line
+        chunks: list[tuple[int, str]] = []  # (center_idx, chunk_text)
+        for center_idx in sampled_indices:
+            chunk = _build_context_chunk(file_lines, center_idx, max_chunk_chars)
+            if chunk:  # Skip empty chunks
+                chunks.append((center_idx, chunk))
+
+        if not chunks:  # pragma: no cover
+            continue  # pragma: no cover
+
+        # Embed chunks
+        chunk_texts = [chunk for _, chunk in chunks]
+        _t0 = _time.time()
+        chunk_embeddings = model.encode(chunk_texts, convert_to_numpy=True)
+        _vlog(f"  Encoded {len(chunk_texts)} chunks in {_time.time() - _t0:.1f}s")
+
+        # Normalize chunks and compute max similarity to ANY pattern in both probes
+        _t1 = _time.time()
+        chunk_norms = np.linalg.norm(chunk_embeddings, axis=1, keepdims=True)
+        normalized_chunks = chunk_embeddings / (chunk_norms + 1e-8)
+        # Shape: (num_chunks, num_answer_patterns)
+        answer_sim_matrix = np.dot(normalized_chunks, normalized_answer_patterns.T)
         max_answer_similarities = np.max(answer_sim_matrix, axis=1)
-        # Shape: (num_lines, num_question_patterns)
-        question_sim_matrix = np.dot(normalized_embeddings, normalized_question_patterns.T)
+        # Shape: (num_chunks, num_question_patterns)
+        question_sim_matrix = np.dot(normalized_chunks, normalized_question_patterns.T)
         max_question_similarities = np.max(question_sim_matrix, axis=1)
         # Take max of both probes
         similarities = np.maximum(max_answer_similarities, max_question_similarities)
+        _vlog(f"  Dot products/similarity in {(_time.time() - _t1)*1000:.1f}ms")
 
-        # Collect lines above threshold, sorted by similarity
+        # Collect chunks above threshold, sorted by similarity
+        # Store center_idx and chunk_text for later formatting
         above_threshold = [
-            (float(sim), idx, line, file_lines)
-            for (idx, line), sim in zip(candidates, similarities, strict=True)
+            (float(sim), center_idx, chunk_text, file_lines)
+            for (center_idx, chunk_text), sim in zip(chunks, similarities, strict=True)
             if sim >= similarity_threshold
         ]
         above_threshold.sort(reverse=True, key=lambda x: x[0])
 
         if above_threshold:
             file_candidates[source] = above_threshold
+
+        processed_files += 1
 
     if not file_candidates:
         return []  # pragma: no cover
@@ -1029,35 +1188,34 @@ def _extract_config_embedding(
     # Each file gets equal base allocation, then remainder distributed by quality
     base_per_file = max(5, max_lines_per_file // 2)  # Minimum 5 lines per file
 
-    # Collect selected lines with fair allocation
-    # Structure: [(sim, source, line_idx, line_text, file_lines), ...]
-    selected_lines: list[tuple[float, str, int, str, list[str]]] = []
+    # Collect selected chunks with fair allocation
+    # Structure: [(sim, source, center_idx, chunk_text), ...]
+    selected_chunks: list[tuple[float, str, int, str]] = []
 
     # First: give each file its base allocation
     for source, candidates in file_candidates.items():
-        for sim, line_idx, line, file_lines in candidates[:base_per_file]:
-            selected_lines.append((sim, source, line_idx, line, file_lines))
+        for sim, center_idx, chunk_text, _file_lines in candidates[:base_per_file]:
+            selected_chunks.append((sim, source, center_idx, chunk_text))
 
     # Second: if budget remains, fill with best remaining candidates across all files
-    remaining_budget = max_lines - len(selected_lines)
+    remaining_budget = max_lines - len(selected_chunks)
     if remaining_budget > 0:
         # Collect all remaining candidates
-        overflow: list[tuple[float, str, int, str, list[str]]] = []
+        overflow: list[tuple[float, str, int, str]] = []
         for source, candidates in file_candidates.items():
-            for sim, line_idx, line, file_lines in candidates[base_per_file:]:
-                overflow.append((sim, source, line_idx, line, file_lines))
+            for sim, center_idx, chunk_text, _file_lines in candidates[base_per_file:]:
+                overflow.append((sim, source, center_idx, chunk_text))
         # Sort by similarity and take best
         overflow.sort(reverse=True, key=lambda x: x[0])
-        selected_lines.extend(overflow[:remaining_budget])
+        selected_chunks.extend(overflow[:remaining_budget])
 
     # === PASS 3: Format output, grouping by file ===
-    # Budget was managed in Pass 2 - now just format all selected lines
     from collections import defaultdict
-    by_source: dict[str, list[tuple[float, int, str, list[str]]]] = defaultdict(list)
-    for sim, source, line_idx, line, file_lines in selected_lines:
-        by_source[source].append((sim, line_idx, line, file_lines))
+    by_source: dict[str, list[tuple[float, int, str]]] = defaultdict(list)
+    for sim, source, center_idx, chunk_text in selected_chunks:
+        by_source[source].append((sim, center_idx, chunk_text))
 
-    # Sort each file's lines by line index for coherent output
+    # Sort each file's chunks by center line index for coherent output
     for source in by_source:
         by_source[source].sort(key=lambda x: x[1])
 
@@ -1069,34 +1227,24 @@ def _extract_config_embedding(
         if not file_selected:  # pragma: no cover
             continue  # pragma: no cover
 
-        # Get file_lines from first entry
-        file_lines = file_selected[0][3]
-
         # Add file header
         if result_lines:
             result_lines.append("")
         result_lines.append(f"[{source}]")
 
-        # Build output with context (deduplicated)
-        seen_contexts: set[int] = set()
-        for _sim, line_idx, _line, _ in file_selected:
-            # Context window: 1 line before, selected line, 1 line after
-            context_start = max(0, line_idx - 1)
-            context_end = min(len(file_lines), line_idx + 2)
+        # Output chunks (context already included, may have ellipsis for subsampled)
+        seen_chunks: set[int] = set()
+        for _sim, center_idx, chunk_text in file_selected:
+            # Deduplicate overlapping chunks by center index
+            if center_idx in seen_chunks:  # pragma: no cover
+                continue
+            seen_chunks.add(center_idx)
 
-            for ctx_idx in range(context_start, context_end):
-                if ctx_idx in seen_contexts:
-                    continue
-                seen_contexts.add(ctx_idx)
-
-                ctx_line = file_lines[ctx_idx]
-                if not ctx_line:
-                    continue
-
-                if ctx_idx == line_idx:
-                    result_lines.append(f"  > {ctx_line}")
-                else:
-                    result_lines.append(f"    {ctx_line}")
+            # Format chunk - indent and mark with ~ if it contains ellipsis (was subsampled)
+            if " ... " in chunk_text:  # pragma: no cover - tested in unit test
+                result_lines.append(f"  ~ {chunk_text}")
+            else:
+                result_lines.append(f"  > {chunk_text}")
 
     return result_lines
 
@@ -1104,6 +1252,9 @@ def _extract_config_embedding(
 def _extract_config_hybrid(
     repo_root: Path,
     max_chars: int = 1500,
+    max_config_files: int = 15,
+    fleximax_lines: int = 100,
+    max_chunk_chars: int = 800,
 ) -> list[str]:
     """Extract config using hybrid approach: heuristics first, then embeddings.
 
@@ -1115,6 +1266,9 @@ def _extract_config_hybrid(
     Args:
         repo_root: Path to repository root.
         max_chars: Maximum characters for output.
+        max_config_files: Maximum config files to process (embedding mode).
+        fleximax_lines: Base sample size for log-scaled line sampling.
+        max_chunk_chars: Maximum characters per chunk for embedding.
 
     Returns:
         List of extracted metadata lines.
@@ -1137,7 +1291,13 @@ def _extract_config_hybrid(
 
     # Step 3: Get embedding-based extraction
     try:
-        embedding_lines = _extract_config_embedding(repo_root, max_lines=remaining_lines)
+        embedding_lines = _extract_config_embedding(
+            repo_root,
+            max_lines=remaining_lines,
+            max_config_files=max_config_files,
+            fleximax_lines=fleximax_lines,
+            max_chunk_chars=max_chunk_chars,
+        )
     except Exception:  # pragma: no cover
         # If embedding fails, just return heuristic results
         return heuristic_lines
@@ -1170,6 +1330,9 @@ def _extract_config_info(
     repo_root: Path,
     max_chars: int = 1500,
     mode: ConfigExtractionMode = ConfigExtractionMode.HEURISTIC,
+    max_config_files: int = 15,
+    fleximax_lines: int = 100,
+    max_chunk_chars: int = 800,
 ) -> str:
     """Extract key metadata from config files via extractive summarization.
 
@@ -1185,6 +1348,9 @@ def _extract_config_info(
         repo_root: Path to repository root.
         max_chars: Maximum characters for config section output.
         mode: Extraction mode (heuristic, embedding, or hybrid).
+        max_config_files: Maximum config files to process (embedding mode).
+        fleximax_lines: Base sample size for log-scaled line sampling.
+        max_chunk_chars: Maximum characters per chunk for embedding.
 
     Returns:
         Extracted config metadata as a formatted string, or empty string
@@ -1193,9 +1359,21 @@ def _extract_config_info(
     # Select extraction strategy based on mode
     if mode == ConfigExtractionMode.EMBEDDING:
         max_lines = max(10, max_chars // 50)
-        lines = _extract_config_embedding(repo_root, max_lines=max_lines)
+        lines = _extract_config_embedding(
+            repo_root,
+            max_lines=max_lines,
+            max_config_files=max_config_files,
+            fleximax_lines=fleximax_lines,
+            max_chunk_chars=max_chunk_chars,
+        )
     elif mode == ConfigExtractionMode.HYBRID:
-        lines = _extract_config_hybrid(repo_root, max_chars=max_chars)
+        lines = _extract_config_hybrid(
+            repo_root,
+            max_chars=max_chars,
+            max_config_files=max_config_files,
+            fleximax_lines=fleximax_lines,
+            max_chunk_chars=max_chunk_chars,
+        )
     else:  # HEURISTIC (default)
         lines = _extract_config_heuristic(repo_root)
 
@@ -2621,6 +2799,10 @@ def generate_sketch(
     first_party_priority: bool = True,
     extra_excludes: Optional[List[str]] = None,
     config_extraction_mode: ConfigExtractionMode = ConfigExtractionMode.HEURISTIC,
+    verbose: bool = False,
+    max_config_files: int = 15,
+    fleximax_lines: int = 100,
+    max_chunk_chars: int = 800,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -2647,12 +2829,28 @@ def generate_sketch(
             - HEURISTIC (default): Fast pattern-based extraction
             - EMBEDDING: Semantic selection using UnixCoder + question centroid
             - HYBRID: Heuristics first, then embeddings for remaining budget
+        verbose: If True, print progress messages to stderr.
+        max_config_files: Maximum config files to process (embedding mode).
+        fleximax_lines: Base sample size for log-scaled line sampling.
+        max_chunk_chars: Maximum characters per chunk for embedding.
 
     Returns:
         Markdown-formatted sketch string.
     """
+    import sys
+    import time
+
+    def _log(msg: str) -> None:
+        if verbose:  # pragma: no cover
+            print(f"[sketch] {msg}", file=sys.stderr)
+
+    t0 = time.time()
+    _log("Starting sketch generation...")
+
     repo_root = Path(repo_root).resolve()
+    _log(f"Detecting profile for {repo_root.name}...")
     profile = detect_profile(repo_root, extra_excludes=extra_excludes)
+    _log(f"Profile detected in {time.time() - t0:.1f}s")
     repo_name = _get_repo_name(repo_root)
 
     # Build base sections (always included)
@@ -2684,7 +2882,16 @@ def generate_sketch(
     # Section 3.5: Configuration (extracted metadata from config files)
     # This section is high value for answering project metadata questions
     # (e.g., "what version of TypeScript?", "what license?", "what database?")
-    config_info = _extract_config_info(repo_root, mode=config_extraction_mode)
+    t_config = time.time()
+    _log(f"Extracting config ({config_extraction_mode.value})...")
+    config_info = _extract_config_info(
+        repo_root,
+        mode=config_extraction_mode,
+        max_config_files=max_config_files,
+        fleximax_lines=fleximax_lines,
+        max_chunk_chars=max_chunk_chars,
+    )
+    _log(f"Config extracted in {time.time() - t_config:.1f}s")
     config_section = _format_config_section(config_info)
     if config_section:
         sections.append(config_section)

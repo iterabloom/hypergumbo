@@ -2486,3 +2486,111 @@ gem "puma"
         assert "artifactId: my-app" in result
         assert "version: 1.0-SNAPSHOT" in result
 
+
+class TestLogScaledSampling:
+    """Tests for log-scaled sampling helper functions."""
+
+    def test_compute_log_sample_size_small_file(self) -> None:
+        """Small files return their full line count."""
+        from hypergumbo.sketch import _compute_log_sample_size
+
+        # File smaller than fleximax
+        assert _compute_log_sample_size(50, fleximax=100) == 50
+        assert _compute_log_sample_size(100, fleximax=100) == 100
+
+    def test_compute_log_sample_size_large_file(self) -> None:
+        """Large files use log-scaled formula."""
+        from hypergumbo.sketch import _compute_log_sample_size
+
+        # 1000 lines with fleximax=100: 100 + log10(1000) * 10 = 100 + 30 = 130
+        result = _compute_log_sample_size(1000, fleximax=100)
+        assert result == 130
+
+        # 10000 lines: 100 + log10(10000) * 10 = 100 + 40 = 140
+        result = _compute_log_sample_size(10000, fleximax=100)
+        assert result == 140
+
+    def test_compute_stride_small_file(self) -> None:
+        """Small files get stride 1 (sample all)."""
+        from hypergumbo.sketch import _compute_stride
+
+        assert _compute_stride(50, sample_size=100) == 1
+        assert _compute_stride(100, sample_size=100) == 1
+
+    def test_compute_stride_large_file(self) -> None:
+        """Large files get stride >= 4."""
+        from hypergumbo.sketch import _compute_stride
+
+        # 400 lines with sample_size=100 -> stride 4
+        assert _compute_stride(400, sample_size=100) == 4
+
+        # 800 lines with sample_size=100 -> stride 8
+        assert _compute_stride(800, sample_size=100) == 8
+
+        # 101 lines with sample_size=100 -> stride should be 4 minimum
+        assert _compute_stride(101, sample_size=100) == 4
+
+    def test_build_context_chunk_simple(self) -> None:
+        """Builds 3-line chunk with context."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        lines = ["line0", "line1", "line2", "line3", "line4"]
+
+        # Center at index 2 should include lines 1, 2, 3
+        chunk = _build_context_chunk(lines, center_idx=2, max_chunk_chars=800)
+        assert "line1" in chunk
+        assert "line2" in chunk
+        assert "line3" in chunk
+
+    def test_build_context_chunk_at_start(self) -> None:
+        """Chunk at start of file only includes available context."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        lines = ["line0", "line1", "line2"]
+
+        # Center at index 0 should include lines 0, 1
+        chunk = _build_context_chunk(lines, center_idx=0, max_chunk_chars=800)
+        assert "line0" in chunk
+        assert "line1" in chunk
+
+    def test_build_context_chunk_at_end(self) -> None:
+        """Chunk at end of file only includes available context."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        lines = ["line0", "line1", "line2"]
+
+        # Center at index 2 should include lines 1, 2
+        chunk = _build_context_chunk(lines, center_idx=2, max_chunk_chars=800)
+        assert "line1" in chunk
+        assert "line2" in chunk
+
+    def test_build_context_chunk_word_subsampling(self) -> None:
+        """Long chunks get word-level subsampling with ellipsis."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        # Create lines that together exceed max_chunk_chars
+        long_line = "word " * 200  # 1000+ chars
+        lines = ["before", long_line, "after"]
+
+        chunk = _build_context_chunk(lines, center_idx=1, max_chunk_chars=200)
+
+        # Should contain ellipsis indicating subsampling
+        assert " ... " in chunk
+        # Should be truncated to max_chunk_chars
+        assert len(chunk) <= 200
+
+    def test_build_context_chunk_truncation(self) -> None:
+        """Chunks that exceed max_chars but have few words get truncated."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        # Create a line with few but very long words
+        long_word = "x" * 300
+        lines = ["before", long_word, "after"]
+
+        chunk = _build_context_chunk(
+            lines, center_idx=1, max_chunk_chars=200, fleximax_words=50
+        )
+
+        # Should be truncated
+        assert len(chunk) <= 200
+
