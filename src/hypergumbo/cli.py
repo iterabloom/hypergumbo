@@ -141,6 +141,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
+    verbose = getattr(args, "verbose", False)
 
     # Convert string mode to enum
     mode_str = getattr(args, "config_extraction_mode", "hybrid")
@@ -150,6 +151,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         "hybrid": ConfigExtractionMode.HYBRID,
     }.get(mode_str, ConfigExtractionMode.HYBRID)
 
+    # Get embedding-related parameters
+    max_config_files = getattr(args, "max_config_files", 15)
+    fleximax_lines = getattr(args, "fleximax_lines", 100)
+    max_chunk_chars = getattr(args, "max_chunk_chars", 800)
+
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
@@ -157,6 +163,10 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         first_party_priority=first_party_priority,
         extra_excludes=extra_excludes,
         config_extraction_mode=config_mode,
+        verbose=verbose,
+        max_config_files=max_config_files,
+        fleximax_lines=fleximax_lines,
+        max_chunk_chars=max_chunk_chars,
     )
     print(sketch)
     return 0
@@ -866,6 +876,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Config file extraction mode: heuristic (fast), "
              "embedding (semantic, requires sentence-transformers), "
              "hybrid (heuristics first, then embeddings; default)",
+    )
+    p_sketch.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Print progress messages to stderr",
+    )
+    p_sketch.add_argument(
+        "--max-config-files",
+        type=int,
+        default=15,
+        help="Maximum config files to process in embedding mode (default: 15)",
+    )
+    p_sketch.add_argument(
+        "--fleximax-lines",
+        type=int,
+        default=100,
+        help="Base sample size for log-scaled line sampling (default: 100)",
+    )
+    p_sketch.add_argument(
+        "--max-chunk-chars",
+        type=int,
+        default=800,
+        help="Maximum characters per chunk for embedding (default: 800)",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
 
