@@ -2730,6 +2730,7 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
 **Future B1.5:**
 - Learned relevance models
 - Agent feedback loop (which code was actually edited?)
+- **Embedding-based context expansion**: Use embedding selections as a scaffold, then expand context around them as token budget allows. At line level: grow ±N lines around selected chunks. At word level: grow ±N words around selected phrases. No recomputation of embeddings needed—just expand around already-selected items. Applicable to Key Symbols (once embeddings are used there) and config extraction.
 
 #### Complexity warning
 * **Natural language query parsing** (step 1) requires embedding models + semantic search
