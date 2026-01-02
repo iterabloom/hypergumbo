@@ -109,14 +109,24 @@ ANSWER_PATTERNS = [
 ]
 
 # Open-ended questions for big-picture/architectural context
+# NOTE: License questions removed - ANSWER_PATTERNS already captures compact
+# license declarations (e.g., 'license = "MIT"') without matching verbose
+# LICENSE file boilerplate.
 BIG_PICTURE_QUESTIONS = [
-    # License and legal
-    "What license does this project use?",
-    "Is this project open source?",
-    "What are the licensing terms?",
-    "Is this MIT licensed?",
-    "Is this GPL licensed?",
-    "Can I use this commercially?",
+    # Machine learning and AI
+    "What ML framework does this use?",
+    "Does this use PyTorch?",
+    "Does this use TensorFlow?",
+    "Does this use JAX?",
+    "Does this use scikit-learn?",
+    "Does this use Hugging Face Transformers?",
+    "What model architecture does this implement?",
+    "Does this support GPU acceleration?",
+    "Does this support TPU?",
+    "Does this use CUDA?",
+    "What quantization methods are supported?",
+    "Does this use ONNX?",
+    "What inference runtime does this use?",
 
     # Version and release info
     "What version is this project?",
@@ -203,6 +213,15 @@ BIG_PICTURE_QUESTIONS = [
     "Does this use Kubernetes?",
     "What cloud platform does this target?",
     "Is this serverless?",
+    "Does this run on AWS?",
+    "Does this run on GCP?",
+    "Does this run on Azure?",
+    "Does this use Terraform?",
+    "Does this use Helm?",
+    "What container registry does this use?",
+    "Does this use GitHub Actions?",
+    "Does this use GitLab CI?",
+    "What infrastructure as code tool is used?",
 
     # API and protocols
     "What API does this expose?",
@@ -1165,6 +1184,16 @@ def _extract_config_embedding(
         max_question_similarities = np.max(question_sim_matrix, axis=1)
         # Take max of both probes
         similarities = np.maximum(max_answer_similarities, max_question_similarities)
+
+        # Apply penalty for LICENSE/COPYING files - their verbose content is
+        # semantically similar to many probes but has low information density.
+        # ANSWER_PATTERNS already captures compact 'license = "MIT"' declarations.
+        source_lower = source.lower()
+        if "license" in source_lower or "copying" in source_lower:
+            license_penalty = 0.5  # Reduce similarity scores by 50%
+            similarities = similarities * license_penalty
+            _vlog(f"  Applied LICENSE penalty ({license_penalty}x) to {source}")
+
         _vlog(f"  Dot products/similarity in {(_time.time() - _t1)*1000:.1f}ms")
 
         # Collect chunks above threshold, sorted by similarity

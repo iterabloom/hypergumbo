@@ -2307,11 +2307,14 @@ gem "puma"
         # Verify both probe lists exist
         assert len(ANSWER_PATTERNS) > 0
         assert len(BIG_PICTURE_QUESTIONS) > 0
-        # Answer patterns should have version/name examples
+        # Answer patterns should have version/name/license examples
         assert any("version" in p.lower() for p in ANSWER_PATTERNS)
-        # Big-picture questions should have database/license questions
+        assert any("license" in p.lower() for p in ANSWER_PATTERNS)
+        # Big-picture questions should have database/ML questions
+        # (license questions removed - handled by ANSWER_PATTERNS to avoid
+        # matching verbose LICENSE file content)
         assert any("database" in q.lower() for q in BIG_PICTURE_QUESTIONS)
-        assert any("license" in q.lower() for q in BIG_PICTURE_QUESTIONS)
+        assert any("ml" in q.lower() or "jax" in q.lower() for q in BIG_PICTURE_QUESTIONS)
 
         # Create a long config with relevant content buried
         (tmp_path / "package.json").write_text('''{
@@ -2335,11 +2338,21 @@ gem "puma"
         not _has_sentence_transformers(),
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
-    def test_embedding_mode_includes_license_file(self, tmp_path: Path) -> None:
-        """Embedding mode collects LICENSE file content."""
+    def test_embedding_mode_deprioritizes_license_file(self, tmp_path: Path) -> None:
+        """Embedding mode deprioritizes LICENSE files to favor informative content.
+
+        LICENSE files have verbose legal boilerplate that matches many probes
+        but has low information density. A 50% penalty is applied to LICENSE/COPYING
+        files to prioritize more useful config content.
+        """
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
 
-        (tmp_path / "package.json").write_text('{"name": "test"}')
+        # Create a rich package.json and a verbose LICENSE
+        (tmp_path / "package.json").write_text('''{
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {"express": "^4.0.0", "pg": "^8.0.0"}
+        }''')
         (tmp_path / "LICENSE").write_text(
             "MIT License\n"
             "Copyright (c) 2024 Test Project\n"
@@ -2348,8 +2361,8 @@ gem "puma"
 
         result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
 
-        # Should include content from LICENSE file
-        assert "MIT" in result or "LICENSE" in result or "Copyright" in result
+        # Should prioritize package.json content over LICENSE boilerplate
+        assert "package.json" in result or "test-project" in result or "express" in result
 
     @pytest.mark.skipif(
         not _has_sentence_transformers(),
