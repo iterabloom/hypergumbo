@@ -11,6 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Embedding mode config extraction now uses diminishing returns and intra-file diversity
+  - Prevents any single file (e.g., LICENSE) from dominating the config section
+  - Prioritizes diverse, relevant content across multiple config files
+  - Uses same diminishing returns formula as symbol selection (marginal = score / (1 + α * picks))
+  - Diversity mechanism penalizes chunks similar to already-selected chunks from the same file
+
 ## [0.6.0] - 2025-12-29
 
 ### Added
