@@ -1168,10 +1168,12 @@ def _extract_config_embedding(
         _vlog(f"  Dot products/similarity in {(_time.time() - _t1)*1000:.1f}ms")
 
         # Collect chunks above threshold, sorted by similarity
-        # Store center_idx and chunk_text for later formatting
+        # Store center_idx, chunk_text, file_lines, AND embedding for diversity computation
         above_threshold = [
-            (float(sim), center_idx, chunk_text, file_lines)
-            for (center_idx, chunk_text), sim in zip(chunks, similarities, strict=True)
+            (float(sim), center_idx, chunk_text, file_lines, normalized_chunks[i])
+            for i, ((center_idx, chunk_text), sim) in enumerate(
+                zip(chunks, similarities, strict=True)
+            )
             if sim >= similarity_threshold
         ]
         above_threshold.sort(reverse=True, key=lambda x: x[0])
@@ -1192,22 +1194,92 @@ def _extract_config_embedding(
     # Structure: [(sim, source, center_idx, chunk_text), ...]
     selected_chunks: list[tuple[float, str, int, str]] = []
 
+    # Track picks per file for diminishing returns AND selected embeddings for diversity
+    picks_per_file: dict[str, int] = dict.fromkeys(file_candidates, 0)
+    # selected_embeddings_per_file: {source: [embedding1, embedding2, ...]}
+    selected_embeddings_per_file: dict[str, list[np.ndarray]] = {
+        source: [] for source in file_candidates
+    }
+
     # First: give each file its base allocation
     for source, candidates in file_candidates.items():
-        for sim, center_idx, chunk_text, _file_lines in candidates[:base_per_file]:
+        for sim, center_idx, chunk_text, _file_lines, embedding in candidates[
+            :base_per_file
+        ]:
             selected_chunks.append((sim, source, center_idx, chunk_text))
+            picks_per_file[source] += 1
+            selected_embeddings_per_file[source].append(embedding)
 
-    # Second: if budget remains, fill with best remaining candidates across all files
+    # Second: if budget remains, fill with diminishing returns + diversity selection
     remaining_budget = max_lines - len(selected_chunks)
     if remaining_budget > 0:
-        # Collect all remaining candidates
-        overflow: list[tuple[float, str, int, str]] = []
+        # Parameters for diminishing returns and diversity
+        diminishing_alpha = 0.5  # Same as symbol selection
+        diversity_weight = 0.3  # How much to penalize similar chunks
+
+        # Build priority queue with adjusted scores
+        # Structure: [(-adjusted_score, sim, source, center_idx, chunk_text, embedding)]
+        import heapq
+
+        pq: list[tuple[float, float, str, int, str, np.ndarray]] = []
+
         for source, candidates in file_candidates.items():
-            for sim, center_idx, chunk_text, _file_lines in candidates[base_per_file:]:
-                overflow.append((sim, source, center_idx, chunk_text))
-        # Sort by similarity and take best
-        overflow.sort(reverse=True, key=lambda x: x[0])
-        selected_chunks.extend(overflow[:remaining_budget])
+            for sim, center_idx, chunk_text, _file_lines, embedding in candidates[
+                base_per_file:
+            ]:
+                # Compute initial adjusted score
+                picks = picks_per_file[source]
+                marginal = sim / (1 + diminishing_alpha * picks)
+
+                # Compute diversity penalty (max similarity to already-selected from same file)
+                diversity_penalty = 0.0
+                if selected_embeddings_per_file[source]:
+                    selected_embs = np.array(selected_embeddings_per_file[source])
+                    # embedding is already normalized, selected_embs are normalized
+                    chunk_sims = np.dot(selected_embs, embedding)
+                    diversity_penalty = float(np.max(chunk_sims))
+
+                # Adjusted score: diminishing returns * diversity discount
+                adjusted = marginal * (1 - diversity_weight * diversity_penalty)
+                heapq.heappush(
+                    pq, (-adjusted, sim, source, center_idx, chunk_text, embedding)
+                )
+
+        # Greedy selection with recomputation after each pick
+        while len(selected_chunks) < max_lines and pq:
+            neg_adj, sim, source, center_idx, chunk_text, embedding = heapq.heappop(pq)
+
+            # Add to selected
+            selected_chunks.append((sim, source, center_idx, chunk_text))
+            picks_per_file[source] += 1
+            selected_embeddings_per_file[source].append(embedding)
+
+            # Recompute scores for remaining candidates from the SAME file
+            # (their diversity penalty has changed)
+            new_pq: list[tuple[float, float, str, int, str, np.ndarray]] = []
+            while pq:
+                neg_adj2, sim2, source2, center_idx2, chunk_text2, emb2 = heapq.heappop(
+                    pq
+                )
+                if source2 == source:
+                    # Recompute adjusted score for this candidate
+                    picks = picks_per_file[source2]
+                    marginal = sim2 / (1 + diminishing_alpha * picks)
+                    selected_embs = np.array(selected_embeddings_per_file[source2])
+                    chunk_sims = np.dot(selected_embs, emb2)
+                    diversity_penalty = float(np.max(chunk_sims))
+                    adjusted = marginal * (1 - diversity_weight * diversity_penalty)
+                    new_pq.append(
+                        (-adjusted, sim2, source2, center_idx2, chunk_text2, emb2)
+                    )
+                else:
+                    # Keep original score (unchanged)
+                    new_pq.append(
+                        (neg_adj2, sim2, source2, center_idx2, chunk_text2, emb2)
+                    )
+            # Rebuild heap
+            heapq.heapify(new_pq)
+            pq = new_pq
 
     # === PASS 3: Format output, grouping by file ===
     from collections import defaultdict

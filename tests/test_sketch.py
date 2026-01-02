@@ -2384,6 +2384,85 @@ gem "puma"
         not _has_sentence_transformers(),
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
+    def test_embedding_mode_multi_file_overflow(self, tmp_path: Path) -> None:
+        """Embedding mode handles overflow with multiple files (diversity mechanism)."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create multiple config files to trigger multi-file overflow handling
+        # Package.json with lots of content
+        (tmp_path / "package.json").write_text("""{
+  "name": "multi-file-test",
+  "version": "2.0.0",
+  "description": "Testing multi-file config extraction with many dependencies",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.0.0",
+    "lodash": "^4.0.0",
+    "axios": "^1.0.0",
+    "pg": "^8.0.0",
+    "redis": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "eslint": "^8.0.0"
+  }
+}""")
+
+        # Pyproject.toml as second config file
+        (tmp_path / "pyproject.toml").write_text("""[project]
+name = "multi-file-test"
+version = "2.0.0"
+description = "Testing multi-file extraction with Python config"
+dependencies = [
+    "flask>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "redis>=4.0.0",
+    "celery>=5.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0"
+]
+""")
+
+        # Docker Compose as third config file
+        (tmp_path / "docker-compose.yml").write_text("""version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://localhost:5432/mydb
+      - REDIS_URL=redis://localhost:6379
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: secret
+  redis:
+    image: redis:7
+""")
+
+        # Extract with embedding mode - should handle multi-file overflow
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Should include content from multiple files
+        assert len(result) > 0
+        # Should have file headers for multiple sources
+        lines = result.split("\n")
+        file_headers = [ln for ln in lines if ln.startswith("[") and ln.endswith("]")]
+        # At least 2 files should be represented
+        assert len(file_headers) >= 2, (
+            f"Expected at least 2 file headers, got {len(file_headers)}: {file_headers}"
+        )
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_hybrid_mode_combines_both(self, tmp_path: Path) -> None:
         """Hybrid mode uses heuristics first, then embeddings for remaining."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
