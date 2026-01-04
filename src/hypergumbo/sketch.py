@@ -55,57 +55,77 @@ class ConfigExtractionMode(Enum):
     HYBRID = "hybrid"
 
 
-# Dual-probe system for embedding-based config extraction:
+# Probe system for embedding-based config extraction:
 # 1. ANSWER_PATTERNS: Example config lines that contain factual metadata
 # 2. BIG_PICTURE_QUESTIONS: Open-ended questions for architectural context
 #
-# A line is relevant if it matches EITHER probe well, ensuring both
-# factual metadata and high-level insights are captured.
+# Similarity is computed as top-k mean across all probes (k=3). This requires
+# multiple probes to "agree" on relevance, reducing sensitivity to spurious
+# single-probe matches while preserving signal for underrepresented languages.
 
-# Example answer patterns - what config metadata LOOKS LIKE
+# Conceptual answer patterns - what config metadata IS (not syntax examples)
+# The embedding model generalizes these concepts across language syntaxes.
 ANSWER_PATTERNS = [
-    # Version and edition
-    'version = "1.0.0"',
-    'version: "2.3.4"',
-    '"version": "1.2.3"',
-    'edition = "2021"',
-    'edition = "2024"',
-    'rust-version = "1.70.0"',
+    # Project identity
+    "project name declaration",
+    "package name",
+    "module name",
+    "application name",
 
-    # Names and identifiers
-    'name = "myproject"',
-    '"name": "my-package"',
-    'name: my_project',
-    'app: :myapp',
-    'module github.com/user/repo',
+    # Versioning
+    "version number",
+    "semantic version",
+    "edition or language version",
+    "minimum required version",
 
-    # License
-    'license = "MIT"',
-    '"license": "Apache-2.0"',
-    'license: MIT',
+    # Dependencies
+    "dependency declaration",
+    "package dependency",
+    "library dependency",
+    "dev dependency",
+    "build dependency",
+    "optional dependency",
 
-    # Language versions
-    'python = "^3.10"',
-    '"node": ">=18"',
-    'ruby ">= 3.2.0"',
-    'elixir: "~> 1.14"',
-    'go 1.21',
+    # Licensing
+    "license identifier",
+    "SPDX license expression",
+    "open source license",
 
-    # Dependencies declarations
-    '"dependencies": {',
-    '[dependencies]',
-    '[dev-dependencies]',
-    'dependencies:',
-    'gem "rails"',
-    'clap = { version = "4.0" }',
-    '"react": "^18.0.0"',
+    # Build configuration
+    "build system configuration",
+    "build target",
+    "compilation settings",
+    "entry point",
+    "main module",
+    "script definition",
+    "command definition",
 
-    # Build and runtime config
-    '"scripts": {',
-    '"main": "index.js"',
-    '"type": "module"',
-    'entry_points = {',
-    '[build-system]',
+    # Runtime configuration
+    "environment variable",
+    "configuration option",
+    "feature flag",
+    "runtime setting",
+
+    # Repository and authorship
+    "repository URL",
+    "homepage URL",
+    "author name",
+    "maintainer",
+    "contributors list",
+
+    # Documentation
+    "project description",
+    "readme file",
+
+    # Discovery
+    "package keywords",
+    "package categories",
+    "package tags",
+
+    # Exports and binaries
+    "binary executable",
+    "library exports",
+    "public API",
 ]
 
 # Open-ended questions for big-picture/architectural context
@@ -327,6 +347,22 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     "dart": ["pubspec.yaml"],
     # Julia
     "julia": ["Project.toml", "Manifest.toml"],
+    # Nix
+    "nix": ["flake.nix", "flake.lock", "default.nix", "shell.nix"],
+    # Elm
+    "elm": ["elm.json"],
+    # PureScript
+    "purescript": ["spago.dhall", "packages.dhall"],
+    # Crystal
+    "crystal": ["shard.yml", "shard.lock"],
+    # Lua
+    "lua": ["*.rockspec", ".luacheckrc"],
+    # R
+    "r": ["DESCRIPTION", "renv.lock", "NAMESPACE"],
+    # Perl
+    "perl": ["cpanfile", "Makefile.PL", "Build.PL", "META.json"],
+    # HCL/Terraform
+    "hcl": ["*.tf", "terraform.tfvars", "*.tfvars"],
     # Common/fallback
     "_common": ["Makefile", "Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
 }
@@ -1172,18 +1208,29 @@ def _extract_config_embedding(
         chunk_embeddings = model.encode(chunk_texts, convert_to_numpy=True)
         _vlog(f"  Encoded {len(chunk_texts)} chunks in {_time.time() - _t0:.1f}s")
 
-        # Normalize chunks and compute max similarity to ANY pattern in both probes
+        # Normalize chunks and compute similarity to all probes
         _t1 = _time.time()
         chunk_norms = np.linalg.norm(chunk_embeddings, axis=1, keepdims=True)
         normalized_chunks = chunk_embeddings / (chunk_norms + 1e-8)
         # Shape: (num_chunks, num_answer_patterns)
         answer_sim_matrix = np.dot(normalized_chunks, normalized_answer_patterns.T)
-        max_answer_similarities = np.max(answer_sim_matrix, axis=1)
         # Shape: (num_chunks, num_question_patterns)
         question_sim_matrix = np.dot(normalized_chunks, normalized_question_patterns.T)
-        max_question_similarities = np.max(question_sim_matrix, axis=1)
-        # Take max of both probes
-        similarities = np.maximum(max_answer_similarities, max_question_similarities)
+        # Combine into single matrix: (num_chunks, num_all_probes)
+        combined_sim_matrix = np.concatenate(
+            [answer_sim_matrix, question_sim_matrix], axis=1
+        )
+        # Top-k mean: require k probes to "agree" rather than one spurious match
+        # This softens max-pooling sensitivity while preserving signal
+        top_k = 3
+        num_probes = combined_sim_matrix.shape[1]
+        if num_probes >= top_k:
+            # Partition to get top-k values (more efficient than full sort)
+            top_k_values = np.partition(combined_sim_matrix, -top_k, axis=1)[:, -top_k:]
+            similarities = np.mean(top_k_values, axis=1)
+        else:
+            # Fallback if fewer probes than k (shouldn't happen in practice)
+            similarities = np.mean(combined_sim_matrix, axis=1)  # pragma: no cover
 
         # Apply penalty for LICENSE/COPYING files - their verbose content is
         # semantically similar to many probes but has low information density.
