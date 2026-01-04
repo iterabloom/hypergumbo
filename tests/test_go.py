@@ -702,3 +702,196 @@ func main() {
         assert len(routes) >= 1
         assert routes[0].name == "handlers.GetAPI"
 
+
+class TestGoSignatureExtraction:
+    """Tests for extracting function signatures from Go code."""
+
+    def test_extracts_simple_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with simple parameter types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func add(x int, y int) int {
+    return x + y
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x int, y int) int"
+
+    def test_extracts_signature_with_multiple_returns(self, tmp_path: Path) -> None:
+        """Extracts signature with multiple return types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func divide(a int, b int) (int, error) {
+    return a / b, nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(a int, b int) (int, error)"
+
+    def test_extracts_signature_with_shared_types(self, tmp_path: Path) -> None:
+        """Extracts signature where parameters share types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func sum(a, b, c int) int {
+    return a + b + c
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(a, b, c int) int"
+
+    def test_extracts_signature_with_no_params(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no parameters."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func getAnswer() int {
+    return 42
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "() int"
+
+    def test_extracts_signature_with_no_return(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no return type."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func printHello(name string) {
+    println("Hello, " + name)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(name string)"
+
+    def test_extracts_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature for method with receiver."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+type Counter struct {
+    value int
+}
+
+func (c *Counter) Add(amount int) {
+    c.value += amount
+}
+
+func (c Counter) Get() int {
+    return c.value
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        sigs = {s.name.split(".")[-1]: s.signature for s in methods}
+
+        assert sigs.get("Add") == "(amount int)"
+        assert sigs.get("Get") == "() int"
+
+    def test_extracts_signature_with_complex_types(self, tmp_path: Path) -> None:
+        """Extracts signature with complex types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func process(items []string) map[string]int {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "[]string" in sig
+        assert "map[string]int" in sig
+
+    def test_signature_truncated_if_too_long(self, tmp_path: Path) -> None:
+        """Long signatures are truncated with ellipsis."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func veryLongFunction(firstParam string, secondParam string, thirdParam map[string]interface{}, fourthParam []string) (map[string]interface{}, error) {
+    return nil, nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert len(sig) <= 60
+        assert sig.endswith("…")
+
+    def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
+        """Symbol.to_dict() includes the signature field."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func greet(name string) string {
+    return "Hello, " + name
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        as_dict = funcs[0].to_dict()
+        assert "signature" in as_dict
+        assert as_dict["signature"] == "(name string) string"

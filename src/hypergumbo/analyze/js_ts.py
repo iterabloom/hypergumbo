@@ -265,6 +265,91 @@ def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
+    """Find child by field name."""
+    return node.child_by_field_name(field_name)
+
+
+def _extract_jsts_signature(
+    node: "tree_sitter.Node", source: bytes, max_len: int = 60
+) -> Optional[str]:
+    """Extract function signature from a JS/TS function node.
+
+    Returns a signature string like "(x: number, y: string): boolean" for TS
+    or "(x, y)" for JS. None if extraction fails.
+
+    Args:
+        node: A tree-sitter function_declaration, arrow_function, or method node.
+        source: Source bytes of the file.
+        max_len: Maximum length of signature (truncated with ellipsis if longer).
+    """
+    # Find parameters - node type depends on function type
+    params_node = None
+    return_type_node = None
+
+    if node.type == "function_declaration":
+        params_node = _find_child_by_field(node, "parameters")
+        return_type_node = _find_child_by_field(node, "return_type")
+    elif node.type == "arrow_function":
+        # Arrow functions: (params) => body or param => body
+        params_node = _find_child_by_field(node, "parameters")
+        if not params_node:  # pragma: no cover
+            # Single parameter without parens: x => x
+            params_node = _find_child_by_field(node, "parameter")
+        return_type_node = _find_child_by_field(node, "return_type")
+    elif node.type in ("method_definition", "function"):
+        params_node = _find_child_by_field(node, "parameters")
+        return_type_node = _find_child_by_field(node, "return_type")
+    else:
+        return None  # pragma: no cover
+
+    if not params_node:
+        return None  # pragma: no cover
+
+    # Build parameter list
+    param_strs: list[str] = []
+    for child in params_node.children:
+        if child.type in ("required_parameter", "optional_parameter"):
+            # TypeScript: name: type or name?: type
+            param_text = _node_text(child, source)
+            param_strs.append(param_text)
+        elif child.type == "identifier":
+            # JavaScript: just the name
+            param_strs.append(_node_text(child, source))
+        elif child.type == "assignment_pattern":
+            # Default parameter: x = 5
+            pattern_text = _node_text(child, source)
+            # Simplify to show ... for default value
+            if "=" in pattern_text:
+                parts = pattern_text.split("=", 1)
+                param_strs.append(f"{parts[0].strip()} = ...")
+            else:
+                param_strs.append(pattern_text)  # pragma: no cover
+        elif child.type == "rest_pattern":
+            # Rest parameter: ...args
+            param_strs.append(_node_text(child, source))
+
+    # Handle single parameter arrow functions (x => x without parens)
+    if node.type == "arrow_function" and not param_strs and params_node.type == "identifier":  # pragma: no cover
+        param_strs.append(_node_text(params_node, source))
+
+    sig = "(" + ", ".join(param_strs) + ")"
+
+    # Add return type for TypeScript
+    if return_type_node:
+        # Return type includes the ": Type" or just "Type"
+        ret_text = _node_text(return_type_node, source)
+        if not ret_text.startswith(":"):
+            ret_text = f": {ret_text}"
+        sig += ret_text
+
+    # Truncate if too long
+    if len(sig) > max_len:
+        sig = sig[: max_len - 1] + "…"
+
+    return sig
+
+
 def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Find route path from a .route('/path') call in a chained expression.
 
@@ -598,6 +683,8 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                # Extract function signature
+                signature = _extract_jsts_signature(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                     name=name,
@@ -607,6 +694,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 
@@ -641,6 +729,8 @@ def _extract_symbols(
                             start_col=value_node.start_point[1],
                             end_col=value_node.end_point[1],
                         )
+                        # Extract arrow function signature
+                        signature = _extract_jsts_signature(value_node, source)
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -650,6 +740,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=signature,
                         )
                         symbols.append(symbol)
 
@@ -780,6 +871,9 @@ def _extract_symbols(
                 stable_id = http_method if http_method else None
                 meta = {"route_path": route_path} if route_path else None
 
+                # Extract method signature
+                signature = _extract_jsts_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, kind, lang),
                     name=full_name,
@@ -791,6 +885,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     meta=meta,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 
@@ -806,6 +901,8 @@ def _extract_symbols(
                             start_col=child.start_point[1],
                             end_col=child.end_point[1],
                         )
+                        # Extract function signature
+                        signature = _extract_jsts_signature(child, source)
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -815,6 +912,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=signature,
                         )
                         symbols.append(symbol)
                         return  # Don't recurse - we handled the function_declaration
