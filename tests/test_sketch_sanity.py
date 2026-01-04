@@ -498,3 +498,92 @@ class Calculator:
         # At least one of these should appear
         assert has_param_type or has_return_arrow, \
             f"No function signatures found in Python sketch. Sketch excerpt: {sketch[:2000]}"
+
+    def test_go_functions_have_signatures(self, tmp_path: Path) -> None:
+        """Go functions in Key Symbols should show signatures."""
+        repo = make_stylized_repo(tmp_path, {
+            "main.go": '''
+package main
+
+func main() {
+    result := add(1, 2)
+    println(result)
+}
+
+func add(x int, y int) int {
+    return x + y
+}
+
+func divide(a int, b int) (int, error) {
+    return a / b, nil
+}
+
+type Calculator struct {
+    value int
+}
+
+func (c *Calculator) Add(amount int) {
+    c.value += amount
+}
+
+func (c Calculator) Get() int {
+    return c.value
+}
+''',
+        })
+        sketch = generate_sketch(repo, max_tokens=8000)
+
+        # Key Symbols section should be present
+        assert "## Key Symbols" in sketch, \
+            "Key Symbols section missing for Go repo with functions"
+
+        # At least some signatures should be visible
+        # Look for Go signature patterns: (x int), int, (int, error)
+        has_param_type = " int" in sketch and "(" in sketch
+        has_error_return = "error" in sketch
+
+        # At least one of these should appear
+        assert has_param_type or has_error_return, \
+            f"No function signatures found in Go sketch. Sketch excerpt: {sketch[:2000]}"
+
+    def test_typescript_functions_have_signatures(self, tmp_path: Path) -> None:
+        """TypeScript functions in Key Symbols should show signatures."""
+        repo = make_stylized_repo(tmp_path, {
+            "src/main.ts": '''
+function greet(name: string): string {
+    return "Hello, " + name;
+}
+
+function add(x: number, y: number): number {
+    return x + y;
+}
+
+const multiply = (a: number, b: number): number => a * b;
+
+class Calculator {
+    private value: number = 0;
+
+    add(amount: number): number {
+        this.value += amount;
+        return this.value;
+    }
+
+    get(): number {
+        return this.value;
+    }
+}
+''',
+        })
+        sketch = generate_sketch(repo, max_tokens=8000)
+
+        # Key Symbols section should be present
+        assert "## Key Symbols" in sketch, \
+            "Key Symbols section missing for TypeScript repo with functions"
+
+        # At least some signatures should be visible
+        # Look for TS signature patterns: : string, : number
+        has_param_type = ": string" in sketch or ": number" in sketch
+
+        # At least one of these should appear
+        assert has_param_type, \
+            f"No function signatures found in TypeScript sketch. Sketch excerpt: {sketch[:2000]}"
