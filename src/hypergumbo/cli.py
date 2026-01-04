@@ -818,9 +818,44 @@ def cmd_build_grammars(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    # Main parser with comprehensive help
+    main_description = """\
+Generate codebase summaries for AI assistants and coding agents.
+
+Quick start:
+  hypergumbo .              Generate Markdown sketch (paste into ChatGPT/Claude)
+  hypergumbo . -t 4000      Limit output to ~4000 tokens
+  hypergumbo run .          Full JSON analysis for tooling
+
+Workflow:
+  Most users only need 'sketch' (the default). For deeper analysis:
+  1. hypergumbo run .       → creates hypergumbo.results.json
+  2. hypergumbo search X    → find symbols matching "X"
+  3. hypergumbo explain X   → show callers/callees of symbol "X"
+  4. hypergumbo slice       → extract subgraph from entry point"""
+
+    main_epilog = """\
+Examples:
+  hypergumbo ~/myproject                    # Sketch with auto token budget
+  hypergumbo ~/myproject -t 8000            # Sketch sized for 8k context
+  hypergumbo . -t 4000 -x                   # Exclude test files
+  hypergumbo run . --compact                # LLM-friendly JSON output
+  hypergumbo slice --entry main --reverse   # Find what calls main()
+  hypergumbo routes                         # List API endpoints
+
+Token budget guidelines (for sketch):
+  1000    Brief overview (structure only)
+  4000    Good balance for most LLMs
+  8000    Detailed with many symbols
+  16000   Comprehensive (large codebases)
+
+For more help on a command: hypergumbo <command> --help"""
+
     p = argparse.ArgumentParser(
         prog="hypergumbo",
-        description="Generate behavior maps and sketches for AI coding agents.",
+        description=main_description,
+        epilog=main_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
         "--version",
@@ -832,9 +867,29 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command")
 
     # hypergumbo [path] [-t tokens] (default sketch mode)
+    sketch_epilog = """\
+Examples:
+  hypergumbo sketch .                   # Current directory, auto budget
+  hypergumbo sketch ~/project -t 4000   # 4000-token limit
+  hypergumbo sketch . -t 1000 -x        # Brief overview, no tests
+  hypergumbo . -t 8000                  # Shorthand (sketch is default)
+
+Token budget guidelines:
+  1000    Structure only (files, folders)
+  4000    Good balance for most LLMs
+  8000    Includes more symbols and docs
+  16000   Comprehensive (large context windows)
+
+Output is Markdown, printed to stdout. Pipe to a file or clipboard:
+  hypergumbo . -t 4000 > summary.md
+  hypergumbo . -t 4000 | pbcopy         # macOS clipboard
+  hypergumbo . -t 4000 | xclip -sel c   # Linux clipboard"""
+
     p_sketch = sub.add_parser(
         "sketch",
         help="Generate token-budgeted Markdown sketch (default mode)",
+        epilog=sketch_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_sketch.add_argument(
         "path",
@@ -930,7 +985,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.set_defaults(func=cmd_init)
 
     # hypergumbo run
-    p_run = sub.add_parser("run", help="Run analyzer capsule on a repo")
+    run_epilog = """\
+Examples:
+  hypergumbo run .                      # Full analysis → hypergumbo.results.json
+  hypergumbo run . --out analysis.json  # Custom output file
+  hypergumbo run . --compact            # LLM-friendly: top symbols + summary
+  hypergumbo run . --first-party-only   # Exclude vendored/external code
+  hypergumbo run . -x                   # Exclude test files
+
+After running, use search/explain/slice to query the results:
+  hypergumbo search "parse"             # Find symbols containing "parse"
+  hypergumbo explain "main"             # Show callers/callees of main
+  hypergumbo slice --entry main         # Extract subgraph from main()
+
+Output files:
+  - hypergumbo.results.json             # Full behavior map
+  - hypergumbo.results.4k.json          # Tiered outputs (auto-generated)
+  - hypergumbo.results.16k.json
+  - hypergumbo.results.64k.json"""
+
+    p_run = sub.add_parser(
+        "run",
+        help="Run full analysis and save behavior map to JSON",
+        epilog=run_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_run.add_argument(
         "path",
         nargs="?",
@@ -1002,7 +1081,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
-    p_slice = sub.add_parser("slice", help="Produce a reduced behavior slice")
+    slice_epilog = """\
+Examples:
+  hypergumbo slice --entry main              # Forward slice from main()
+  hypergumbo slice --entry main --reverse    # What calls main()?
+  hypergumbo slice --entry "UserService"     # Slice from a class
+  hypergumbo slice --list-entries            # Show detected entry points
+  hypergumbo slice --entry auto              # Auto-detect entry point
+
+Use cases:
+  - Understand what code main() depends on (forward slice)
+  - Find all callers of a function (reverse slice)
+  - Extract a focused subgraph for debugging or review
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_slice = sub.add_parser(
+        "slice",
+        help="Extract subgraph from an entry point",
+        epilog=slice_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_slice.add_argument(
         "path",
         nargs="?",
@@ -1081,7 +1180,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_slice.set_defaults(func=cmd_slice)
 
     # hypergumbo search
-    p_search = sub.add_parser("search", help="Search for symbols by name")
+    search_epilog = """\
+Examples:
+  hypergumbo search "parse"               # Find symbols containing "parse"
+  hypergumbo search "User" --kind class   # Find classes with "User"
+  hypergumbo search "test" --limit 50     # Show more results
+  hypergumbo search "handle" --language python
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_search = sub.add_parser(
+        "search",
+        help="Find symbols by name pattern",
+        epilog=search_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_search.add_argument(
         "pattern",
         help="Pattern to search for (case-insensitive substring match)",
@@ -1115,7 +1228,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.set_defaults(func=cmd_search)
 
     # hypergumbo routes
-    p_routes = sub.add_parser("routes", help="Display API routes/endpoints")
+    routes_epilog = """\
+Examples:
+  hypergumbo routes                       # Show all detected endpoints
+  hypergumbo routes --language python     # Filter by language
+
+Detects: Flask routes, FastAPI endpoints, Express routes, Django URLs, etc.
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_routes = sub.add_parser(
+        "routes",
+        help="List detected API routes and endpoints",
+        epilog=routes_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_routes.add_argument(
         "--path",
         default=".",
@@ -1134,7 +1261,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_routes.set_defaults(func=cmd_routes)
 
     # hypergumbo explain
-    p_explain = sub.add_parser("explain", help="Explain a symbol (callers, callees)")
+    explain_epilog = """\
+Examples:
+  hypergumbo explain "main"               # Show what main calls and is called by
+  hypergumbo explain "UserService"        # Explain a class
+  hypergumbo explain "parse_config"       # Explain a specific function
+
+Shows: Symbol location, callers (what calls it), callees (what it calls).
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_explain = sub.add_parser(
+        "explain",
+        help="Show callers and callees of a symbol",
+        epilog=explain_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_explain.add_argument(
         "symbol",
         help="Symbol name to explain (case-insensitive)",
@@ -1152,7 +1294,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_explain.set_defaults(func=cmd_explain)
 
     # hypergumbo catalog
-    p_catalog = sub.add_parser("catalog", help="[stub] Show available passes/packs")
+    catalog_epilog = """\
+Examples:
+  hypergumbo catalog                      # List built-in analyzers
+  hypergumbo catalog --show-all           # Include optional analyzers
+
+Shows which languages and frameworks hypergumbo can analyze."""
+
+    p_catalog = sub.add_parser(
+        "catalog",
+        help="List available language analyzers",
+        epilog=catalog_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_catalog.add_argument(
         "--show-all",
         action="store_true",
