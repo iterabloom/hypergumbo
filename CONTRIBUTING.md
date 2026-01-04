@@ -26,7 +26,7 @@ If you prefer manual control without installing CLI tools like `tea`:
 2. **Push via AGit:**
    ```bash
    # Replace 'feature-branch' with your actual branch name
-   git push origin HEAD:refs/for/main/feature-branch \
+   git push origin HEAD:refs/for/dev/feature-branch \
      -o title="feat: description" \
      -o description="Extended details..."
    ```
@@ -44,11 +44,13 @@ The `scripts/auto-pr` script automates the entire PR lifecycle: push, CI polling
 
 ### What it does
 
-1. **Push** — Pushes your branch using Forgejo's AGit workflow (`refs/for/main/<branch>`)
+1. **Push** — Pushes your branch using Forgejo's AGit workflow (`refs/for/dev/<branch>`)
 2. **Create PR** — The push automatically creates a PR on Codeberg
 3. **Poll CI** — Waits for CI status checks to complete (polls every 10 seconds)
 4. **Merge** — Automatically merges when CI passes
-5. **Cleanup** — Switches back to `main`, pulls, and deletes the local feature branch
+5. **Cleanup** — Switches back to `dev`, pulls, and deletes the local feature branch
+
+If the remote is unavailable (503 errors, network issues), the PR is **queued locally** and can be pushed later with `./scripts/auto-pr flush`.
 
 ### Requirements
 
@@ -66,8 +68,8 @@ FORGEJO_TOKEN=your_token_here
 ```
 
 **Prerequisites:**
-- Must be on a feature branch (not `main`)
-- Branch must have commits ahead of `main`
+- Must be on a feature branch (not `main` or `dev`)
+- Branch must have commits ahead of `dev`
 - `python3`, `curl`, and `git` must be available
 
 ### Usage
@@ -81,6 +83,11 @@ FORGEJO_TOKEN=your_token_here
 
 # Custom title and description
 ./scripts/auto-pr "feat: add new feature" "Detailed description here"
+
+# Queue management (when remote is unavailable)
+./scripts/auto-pr list    # Show queued PRs
+./scripts/auto-pr flush   # Push queued PRs when remote is back
+./scripts/auto-pr --help  # Show all options
 ```
 
 ### The PR_PENDING Gate (for AI agents)
@@ -97,17 +104,33 @@ The file is automatically removed when the PR is merged.
 ### Workflow Example
 
 ```bash
-# 1. Make changes on main
-git add . && git commit -s -m "feat: my change"
+# 1. Start from dev
+git checkout dev && git pull
 
-# 2. Create a feature branch (auto-pr requires this)
+# 2. Create a feature branch
 git checkout -b my-feature
 
-# 3. Run auto-pr
+# 3. Make changes and commit
+git add . && git commit -s -m "feat: my change"
+
+# 4. Run auto-pr
 ./scripts/auto-pr
 
-# 4. Script handles everything, you end up back on main with changes merged
+# 5. Script handles everything, you end up back on dev with changes merged
 ```
+
+### Offline Resilience (vPR Queue)
+
+When Codeberg is unavailable, `auto-pr` automatically:
+1. Retries up to 3 times with 10-second delays
+2. If still failing, queues as a **vPR (virtual PR)** in `.git/PR_QUEUE`
+3. Exits cleanly so you can continue working
+
+**vPR workflow:**
+- vPRs form a linear chain (each branches from the previous)
+- To add more changes: `git checkout -b new-branch $(./scripts/auto-pr status | grep tip | awk '{print $3}')`
+- When Codeberg is back: `./scripts/auto-pr flush`
+- Flush pushes ALL vPRs as a **single atomic PR** (individual commits preserved)
 
 ### Troubleshooting
 
@@ -118,13 +141,14 @@ git checkout -b my-feature
 | `Could not find open PR` | API timing issue | Wait and retry, or check Codeberg UI |
 | `CI Failed` | Tests/linting failed | Fix issues, amend commit, re-run |
 | `Merge failed` | Conflicts or permissions | Check PR on Codeberg for details |
+| `PR queued locally` | Remote unavailable | Run `./scripts/auto-pr flush` when remote is back |
 
 ### How AGit Works
 
 This script uses Forgejo's AGit flow, which creates PRs via specially-formatted push refs:
 
 ```bash
-git push origin HEAD:refs/for/main/<branch-name> -o title="..." -o description="..."
+git push origin HEAD:refs/for/dev/<branch-name> -o title="..." -o description="..."
 ```
 
 This is different from GitHub's flow where you push a branch and then create a PR separately. With AGit, the push *is* the PR creation.

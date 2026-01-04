@@ -36,14 +36,18 @@ Run these checks before starting any new feature or task:
 # 1. Ensure no auto-pr is in flight (manual PRs don't create this file)
 test -f .git/PR_PENDING && echo "STOP: auto-pr awaiting merge" && exit 1
 
-# 2. Sync with dev and main
+# 2. Flush any queued PRs if remote is available
+./scripts/auto-pr list  # Check if any PRs are queued
+./scripts/auto-pr flush # Push them if remote is back
+
+# 3. Sync with dev and main
 git checkout main && git pull origin main
 git checkout dev && git pull origin dev
 
-# 3. Check current progress
+# 4. Check current progress
 cat STATUS.md
 
-# 4. Create feature branch
+# 5. Create feature branch
 git checkout -b <author>/feat/<short-name>
 ```
 
@@ -83,6 +87,19 @@ git commit -s -m "feat: description"
   - Before starting new work: `test -f .git/PR_PENDING && echo "WAIT"`
   - If file exists, wait for `auto-pr` to complete before starting unrelated work.
   - Manual PRs do not create this gate; use `./scripts/ci-debug status` to check CI.
+- **vPR Queue (offline resilience):**
+  - When remote is unavailable, `auto-pr` queues as a vPR (virtual PR) in `.git/PR_QUEUE`.
+  - vPRs form a linear chain: each new vPR branches from the previous one.
+  - Flush pushes ALL vPRs as a single atomic PR (no race conditions with other contributors).
+  - Commands:
+    - `./scripts/auto-pr list` — Show queued vPRs
+    - `./scripts/auto-pr status` — Show queue status and next steps
+    - `./scripts/auto-pr flush` — Push all vPRs as single PR
+  - To add more changes while queue is non-empty:
+    ```bash
+    tip=$(./scripts/auto-pr status | grep "Queue tip" | awk '{print $3}')
+    git checkout -b author/feat/next-change "$tip"
+    ```
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
