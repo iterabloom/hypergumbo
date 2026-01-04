@@ -450,3 +450,56 @@ class TestBashShebangHandling:
         files = list(find_bash_files(tmp_path))
 
         assert len(files) == 4
+
+
+class TestBashSignatureExtraction:
+    """Tests for Bash function signature extraction."""
+
+    def test_function_signature_is_empty_parens(self, tmp_path: Path) -> None:
+        """Bash functions always have () signature (no formal parameters)."""
+        from hypergumbo.analyze.bash import analyze_bash
+
+        bash_file = tmp_path / "funcs.sh"
+        bash_file.write_text("""#!/bin/bash
+
+function greet() {
+    echo "Hello, $1!"
+}
+""")
+        result = analyze_bash(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "greet"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_posix_function_signature(self, tmp_path: Path) -> None:
+        """POSIX-style functions also have () signature."""
+        from hypergumbo.analyze.bash import analyze_bash
+
+        bash_file = tmp_path / "funcs.sh"
+        bash_file.write_text("""#!/bin/bash
+
+say_hello() {
+    echo "hello"
+}
+""")
+        result = analyze_bash(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "say_hello"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_multiple_functions_all_have_signatures(self, tmp_path: Path) -> None:
+        """All extracted functions have signatures."""
+        from hypergumbo.analyze.bash import analyze_bash
+
+        bash_file = tmp_path / "utils.sh"
+        bash_file.write_text("""#!/bin/bash
+
+function one() { echo 1; }
+function two() { echo 2; }
+three() { echo 3; }
+""")
+        result = analyze_bash(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 3
+        for func in funcs:
+            assert func.signature == "()"

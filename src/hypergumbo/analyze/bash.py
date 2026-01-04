@@ -190,6 +190,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
 
+                # Bash functions don't have formal parameters - they use $1, $2, etc.
+                # Signature is always "()" since there's no parameter declaration syntax
                 symbol = Symbol(
                     id=symbol_id,
                     name=func_name,
@@ -204,6 +206,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature="()",
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

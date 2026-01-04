@@ -135,6 +135,50 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None  # pragma: no cover
 
 
+def _extract_sql_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a CREATE FUNCTION node.
+
+    Returns signature in format: (param_name TYPE, ...) RETURNS return_type
+    SQL functions have typed parameters.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    # Find function_arguments (parameter list)
+    func_args = _find_child_by_type(node, "function_arguments")
+    if func_args:
+        for child in func_args.children:
+            if child.type == "function_argument":
+                # Extract parameter text (name TYPE)
+                param_text = _node_text(child, source).strip()
+                params.append(param_text)
+
+    # Find return type (after RETURNS keyword)
+    found_returns = False
+    for child in node.children:
+        if child.type == "keyword_returns":
+            found_returns = True
+        elif found_returns and child.type not in ("keyword_returns",):
+            # This should be the return type (decimal, int, varchar, etc.)
+            if child.type in ("decimal", "int", "varchar", "text", "boolean",
+                              "float", "double", "bigint", "smallint", "real",
+                              "numeric", "char", "timestamp", "date", "time",
+                              "identifier", "type_identifier"):
+                return_type = _node_text(child, source)
+                break
+            # Also check for complex types
+            if child.type not in ("function_body", "function_language"):
+                return_type = _node_text(child, source)
+                break
+
+    params_str = ", ".join(params) if params else ""
+    signature = f"({params_str})"
+    if return_type:
+        signature += f" RETURNS {return_type}"
+
+    return signature
+
+
 def _extract_trigger_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract trigger name from a CREATE TRIGGER node."""
     # First object_reference is typically the trigger name
@@ -316,6 +360,7 @@ def _process_sql_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=_extract_sql_signature(node, source),
             )
             symbols.append(sym)
             symbol_registry[name.lower()] = (symbol_id, "function")

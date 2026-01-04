@@ -246,3 +246,56 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_sql_tree_sitter_available()
     assert isinstance(result, bool)
+
+
+class TestSQLSignatureExtraction:
+    """Tests for SQL function signature extraction."""
+
+    def test_function_with_params(self, tmp_path):
+        """Extract signature for function with parameters."""
+        sql_file = tmp_path / "funcs.sql"
+        sql_file.write_text("""
+CREATE FUNCTION calculate_total(price DECIMAL, qty INT) RETURNS DECIMAL
+AS $$
+BEGIN
+    RETURN price * qty;
+END;
+$$ LANGUAGE plpgsql;
+""")
+        result = analyze_sql_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "calculate_total"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(price DECIMAL, qty INT) RETURNS DECIMAL"
+
+    def test_function_no_params(self, tmp_path):
+        """Extract signature for function with no parameters."""
+        sql_file = tmp_path / "funcs.sql"
+        sql_file.write_text("""
+CREATE FUNCTION get_current_timestamp() RETURNS timestamp
+AS $$
+BEGIN
+    RETURN now();
+END;
+$$ LANGUAGE plpgsql;
+""")
+        result = analyze_sql_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "get_current_timestamp"]
+        assert len(funcs) == 1
+        assert "RETURNS" in funcs[0].signature
+        assert "()" in funcs[0].signature
+
+    def test_function_single_param(self, tmp_path):
+        """Extract signature for function with single parameter."""
+        sql_file = tmp_path / "funcs.sql"
+        sql_file.write_text("""
+CREATE FUNCTION double_it(x INT) RETURNS INT
+AS $$
+BEGIN
+    RETURN x * 2;
+END;
+$$ LANGUAGE plpgsql;
+""")
+        result = analyze_sql_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double_it"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x INT) RETURNS INT"
