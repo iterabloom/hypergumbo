@@ -122,6 +122,64 @@ class FileAnalysis:
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
 
 
+def _extract_rust_signature(
+    node: "tree_sitter.Node", source: bytes, max_len: int = 60
+) -> Optional[str]:
+    """Extract function signature from a Rust function_item node.
+
+    Returns a signature string like "(x: i32, y: String) -> bool" or None
+    if extraction fails.
+
+    Args:
+        node: A tree-sitter function_item node.
+        source: Source bytes of the file.
+        max_len: Maximum length of signature (truncated with ellipsis if longer).
+    """
+    if node.type != "function_item":
+        return None  # pragma: no cover
+
+    params_node = _find_child_by_field(node, "parameters")
+    if not params_node:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    param_strs: list[str] = []
+    for child in params_node.children:
+        if child.type == "parameter":
+            # Each parameter has pattern and optional type
+            pattern_node = _find_child_by_field(child, "pattern")
+            type_node = _find_child_by_field(child, "type")
+
+            if pattern_node and type_node:
+                param_name = _node_text(pattern_node, source)
+                param_type = _node_text(type_node, source)
+                param_strs.append(f"{param_name}: {param_type}")
+            elif pattern_node:  # pragma: no cover
+                # No type annotation (rare in Rust)
+                param_strs.append(_node_text(pattern_node, source))
+        elif child.type == "self_parameter":
+            # Handle &self, &mut self, self, etc.
+            self_text = _node_text(child, source)
+            param_strs.append(self_text)
+
+    sig = "(" + ", ".join(param_strs) + ")"
+
+    # Extract return type if present
+    return_type_node = _find_child_by_field(node, "return_type")
+    if return_type_node:
+        ret_type = _node_text(return_type_node, source)
+        # Remove the leading "-> " if tree-sitter includes it
+        if ret_type.startswith("-> "):  # pragma: no cover
+            ret_type = ret_type[3:]
+        sig += f" -> {ret_type}"
+
+    # Truncate if too long
+    if len(sig) > max_len:
+        sig = sig[: max_len - 1] + "…"
+
+    return sig
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -155,6 +213,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract function signature
+                signature = _extract_rust_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -169,6 +230,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

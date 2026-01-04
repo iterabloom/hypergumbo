@@ -3368,7 +3368,11 @@ def generate_sketch(
 
         # Extract docstrings and signatures for Python symbols
         docstrings = _extract_python_docstrings(repo_root, symbols)
-        signatures = _extract_python_signatures(repo_root, symbols)
+        # Start with signatures from Symbol.signature field (Rust, Go, TS, etc.)
+        signatures = {s.id: s.signature for s in symbols if s.signature}
+        # Add Python signatures (extracted via AST, not from Symbol.signature)
+        python_sigs = _extract_python_signatures(repo_root, symbols)
+        signatures.update(python_sigs)
 
         symbols_section = _format_symbols(
             symbols,
