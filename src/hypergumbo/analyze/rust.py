@@ -123,7 +123,7 @@ class FileAnalysis:
 
 
 def _extract_rust_signature(
-    node: "tree_sitter.Node", source: bytes, max_len: int = 60
+    node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
     """Extract function signature from a Rust function_item node.
 
@@ -133,7 +133,6 @@ def _extract_rust_signature(
     Args:
         node: A tree-sitter function_item node.
         source: Source bytes of the file.
-        max_len: Maximum length of signature (truncated with ellipsis if longer).
     """
     if node.type != "function_item":
         return None  # pragma: no cover
@@ -172,10 +171,6 @@ def _extract_rust_signature(
         if ret_type.startswith("-> "):  # pragma: no cover
             ret_type = ret_type[3:]
         sig += f" -> {ret_type}"
-
-    # Truncate if too long
-    if len(sig) > max_len:
-        sig = sig[: max_len - 1] + "…"
 
     return sig
 

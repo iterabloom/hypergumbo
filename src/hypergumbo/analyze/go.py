@@ -121,7 +121,7 @@ class FileAnalysis:
 
 
 def _extract_go_signature(
-    node: "tree_sitter.Node", source: bytes, max_len: int = 60
+    node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
     """Extract function signature from a Go function/method declaration.
 
@@ -131,7 +131,6 @@ def _extract_go_signature(
     Args:
         node: A tree-sitter function_declaration or method_declaration node.
         source: Source bytes of the file.
-        max_len: Maximum length of signature (truncated with ellipsis if longer).
     """
     if node.type not in ("function_declaration", "method_declaration"):
         return None  # pragma: no cover
@@ -171,10 +170,6 @@ def _extract_go_signature(
     if result_node:
         ret_text = _node_text(result_node, source)
         sig += f" {ret_text}"
-
-    # Truncate if too long
-    if len(sig) > max_len:
-        sig = sig[: max_len - 1] + "…"
 
     return sig
 

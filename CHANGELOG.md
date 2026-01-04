@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Function signature extraction for Rust, Go, and TypeScript/JavaScript
+  - Rust: Handles `&self`, `&mut self`, return types (e.g., `(x: i32) -> bool`)
+  - Go: Handles multiple returns, named returns, parameter grouping (e.g., `(x int, y string) error`)
+  - TypeScript/JavaScript: Handles typed parameters, optional params, rest params, arrow functions
+  - New `signature` field on Symbol IR populated during analysis
+- C and C++ function signature extraction
+  - C: Handles pointer params, pointer returns (e.g., `(int x, char* name) int`)
+  - C++: Handles reference params, qualified types (e.g., `(const std::string& name) int`)
+- Signature sanity tests: verify function signatures appear in sketch Key Symbols section
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files

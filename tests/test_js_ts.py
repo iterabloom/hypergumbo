@@ -3038,26 +3038,6 @@ function sum(...numbers) {
         assert sig is not None
         assert "...numbers" in sig
 
-    def test_signature_truncated_if_too_long(self, tmp_path: Path) -> None:
-        """Long signatures are truncated with ellipsis."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
-
-        ts_file = tmp_path / "main.ts"
-        ts_file.write_text("""
-function veryLongFunction(firstParam: string, secondParam: number, thirdParam: Array<string>, fourthParam: Record<string, number>): Map<string, number> {
-    return new Map();
-}
-""")
-
-        result = analyze_javascript(tmp_path)
-
-        funcs = [s for s in result.symbols if s.kind == "function"]
-        assert len(funcs) == 1
-        sig = funcs[0].signature
-        assert sig is not None
-        assert len(sig) <= 60
-        assert sig.endswith("…")
-
     def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
         """Symbol.to_dict() includes the signature field."""
         from hypergumbo.analyze.js_ts import analyze_javascript

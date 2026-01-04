@@ -447,3 +447,87 @@ void create() {
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # create should instantiate Widget
         assert len(instantiate_edges) >= 1
+
+
+class TestCppSignatureExtraction:
+    """Tests for C++ function signature extraction."""
+
+    def test_basic_function_signature(self, tmp_path: Path) -> None:
+        """Basic function with parameters extracts signature."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "math.cpp"
+        cpp_file.write_text("int add(int x, int y) { return x + y; }")
+
+        result = analyze_cpp(tmp_path)
+
+        add_sym = next((s for s in result.symbols if s.name == "add"), None)
+        assert add_sym is not None
+        assert add_sym.signature == "(int x, int y) int"
+
+    def test_void_function_signature(self, tmp_path: Path) -> None:
+        """Void return type function extracts signature without return type."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "util.cpp"
+        cpp_file.write_text("void process(int count) { /* work */ }")
+
+        result = analyze_cpp(tmp_path)
+
+        process_sym = next((s for s in result.symbols if s.name == "process"), None)
+        assert process_sym is not None
+        assert process_sym.signature == "(int count)"
+
+    def test_reference_parameter_signature(self, tmp_path: Path) -> None:
+        """Reference parameters appear in signature."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "str.cpp"
+        cpp_file.write_text("int size(const std::string& str) { return 0; }")
+
+        result = analyze_cpp(tmp_path)
+
+        size_sym = next((s for s in result.symbols if s.name == "size"), None)
+        assert size_sym is not None
+        assert "const std::string& str" in size_sym.signature
+        assert size_sym.signature.endswith("int")
+
+    def test_class_method_signature(self, tmp_path: Path) -> None:
+        """Class method has signature extracted."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "class.cpp"
+        cpp_file.write_text("void MyClass::process(int value) { /* impl */ }")
+
+        result = analyze_cpp(tmp_path)
+
+        method_sym = next((s for s in result.symbols if "process" in s.name), None)
+        assert method_sym is not None
+        assert method_sym.signature == "(int value)"
+
+    def test_empty_params_signature(self, tmp_path: Path) -> None:
+        """Function with no parameters has empty parens."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "main.cpp"
+        cpp_file.write_text("int main() { return 0; }")
+
+        result = analyze_cpp(tmp_path)
+
+        main_sym = next((s for s in result.symbols if s.name == "main"), None)
+        assert main_sym is not None
+        assert main_sym.signature == "() int"
+
+    def test_qualified_return_type(self, tmp_path: Path) -> None:
+        """Qualified return type (std::string) appears in signature."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "str.cpp"
+        cpp_file.write_text("std::string getName() { return \"\"; }")
+
+        result = analyze_cpp(tmp_path)
+
+        get_sym = next((s for s in result.symbols if s.name == "getName"), None)
+        assert get_sym is not None
+        assert "std::string" in get_sym.signature
+

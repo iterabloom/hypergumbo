@@ -108,13 +108,11 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Signature extraction | [x] | Extracts function signatures for Rust functions/methods (e.g., `(x: i32, y: String) -> bool`) |
 | Self parameters | [x] | Handles `&self`, `&mut self`, `self` receiver patterns |
 | Return types | [x] | Displays return type arrows (e.g., `-> Result<T, E>`) |
-| Truncation | [x] | Long signatures truncated at 60 chars with ellipsis |
 | **Go Function Signatures** | | |
 | Signature extraction | [x] | Extracts function signatures for Go functions/methods (e.g., `(x int, y string) error`) |
 | Multiple returns | [x] | Handles Go multiple return values (e.g., `(int, error)`) |
 | Named returns | [x] | Supports named return values (e.g., `(result int, err error)`) |
 | Parameter grouping | [x] | Collapses same-type params (e.g., `a, b int`) |
-| Truncation | [x] | Long signatures truncated at 60 chars with ellipsis |
 | **TypeScript/JavaScript Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for TS/JS functions (e.g., `(x: number, y: string): boolean`) |
 | Type annotations | [x] | Displays TypeScript type annotations |
@@ -122,7 +120,6 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Default values | [x] | Shows defaults as ellipsis (e.g., `count = ...`) |
 | Rest parameters | [x] | Handles `...args` spread syntax |
 | Arrow functions | [x] | Extracts signatures from arrow function expressions |
-| Truncation | [x] | Long signatures truncated at 60 chars with ellipsis |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |
