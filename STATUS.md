@@ -183,6 +183,9 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Void handling | [x] | Omits void return types for cleaner display |
 | **Elm Function Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for Elm functions (e.g., `(x, y)`) |
+| **R Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for R functions (e.g., `(x, y)`) |
+| Default values | [x] | Handles default values (e.g., `greeting = ...`) |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |

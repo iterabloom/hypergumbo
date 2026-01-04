@@ -99,6 +99,47 @@ def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
+    """Find first child of given type."""
+    for child in node.children:
+        if child.type == type_name:
+            return child
+    return None  # pragma: no cover - defensive fallback
+
+
+def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from an R function_definition node.
+
+    Returns signature in format: (param1, param2, ...)
+    R is dynamically typed so no type annotations.
+    Handles default values (shown as = ...).
+    """
+    params_node = _find_child_by_type(func_def, "parameters")
+    if params_node is None:  # pragma: no cover - function() always has params node
+        return "()"
+
+    params: list[str] = []
+    for child in params_node.children:
+        if child.type == "parameter":
+            # Parameter may have name and default value
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                param_name = _node_text(name_node, source)
+                # Check for default value (has more than just identifier)
+                has_default = len([c for c in child.children if c.type not in ("identifier", "=", ",")]) > 0
+                if has_default:
+                    params.append(f"{param_name} = ...")
+                else:
+                    params.append(param_name)
+        elif child.type == "identifier":  # pragma: no cover - wrapped in parameter node
+            # Simple parameter (no default)
+            params.append(_node_text(child, source))  # pragma: no cover
+        elif child.type == "dots":  # pragma: no cover - R's ... varargs
+            params.append("...")
+
+    return f"({', '.join(params)})"
+
+
 def _process_r_tree(
     node: "tree_sitter.Node",
     source: bytes,
@@ -157,6 +198,7 @@ def _process_r_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=_extract_r_signature(right_node, source),
             )
             symbols.append(sym)
             function_registry[func_name] = symbol_id
