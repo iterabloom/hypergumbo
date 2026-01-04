@@ -102,6 +102,91 @@ def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return _find_identifier_in_children(node, source)
 
 
+def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract type text from a type node, handling generics and arrays."""
+    return _node_text(node, source)
+
+
+def _extract_java_signature(
+    node: "tree_sitter.Node", source: bytes, is_constructor: bool = False
+) -> Optional[str]:
+    """Extract function signature from a Java method or constructor declaration.
+
+    Returns signature like:
+    - "(int a, int b) int" for regular methods
+    - "(String message)" for void methods (no return type shown)
+    - "(String name, int age)" for constructors (no return type)
+
+    Args:
+        node: The method_declaration or constructor_declaration node.
+        source: The source code bytes.
+        is_constructor: True if this is a constructor (no return type).
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params_node = None
+    return_type = None
+
+    # Find formal_parameters and return type
+    for child in node.children:
+        if child.type == "formal_parameters":
+            params_node = child
+        # Return type appears before the identifier for methods
+        # Types we care about: void_type, type_identifier, generic_type, array_type, and primitives
+        elif child.type in ("void_type", "type_identifier", "generic_type", "array_type",
+                            "integral_type", "floating_point_type", "boolean_type"):
+            # Only capture if we haven't found params yet (return type comes before name)
+            if params_node is None:
+                return_type = _extract_type_text(child, source)
+
+    if params_node is None:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    params: list[str] = []
+    for child in params_node.children:
+        if child.type == "formal_parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type in ("type_identifier", "generic_type", "array_type",
+                                      "integral_type", "floating_point_type", "boolean_type"):
+                    param_type = _extract_type_text(subchild, source)
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+                elif subchild.type == "dimensions":
+                    # Array notation after variable name: String[] args
+                    if param_type:
+                        param_type += _node_text(subchild, source)
+            if param_type and param_name:
+                params.append(f"{param_type} {param_name}")
+        elif child.type == "spread_parameter":
+            # Varargs: String... args
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                    param_type = _extract_type_text(subchild, source)
+                elif subchild.type == "variable_declarator":
+                    for vchild in subchild.children:
+                        if vchild.type == "identifier":
+                            param_name = _node_text(vchild, source)
+                elif subchild.type == "identifier":  # pragma: no cover
+                    param_name = _node_text(subchild, source)  # pragma: no cover
+            if param_type and param_name:
+                params.append(f"{param_type}... {param_name}")
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    # Add return type for methods (not constructors), but omit void
+    if not is_constructor and return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
 def _has_native_modifier(node: "tree_sitter.Node", source: bytes) -> bool:
     """Check if a method declaration has the 'native' modifier."""
     for child in node.children:
@@ -474,6 +559,9 @@ def _extract_symbols(
                         meta["http_method"] = http_method
                         stable_id = http_method
 
+                # Extract signature
+                signature = _extract_java_signature(node, source, is_constructor=False)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -485,6 +573,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     stable_id=stable_id,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 
@@ -499,6 +588,9 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                # Extract signature (constructors have no return type)
+                signature = _extract_java_signature(node, source, is_constructor=True)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "constructor"),
                     name=full_name,
@@ -508,6 +600,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 

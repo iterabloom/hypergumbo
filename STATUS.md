@@ -120,6 +120,20 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Default values | [x] | Shows defaults as ellipsis (e.g., `count = ...`) |
 | Rest parameters | [x] | Handles `...args` spread syntax |
 | Arrow functions | [x] | Extracts signatures from arrow function expressions |
+| **C Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for C functions (e.g., `(int x, char* name) int`) |
+| Pointer types | [x] | Handles pointer params and returns (e.g., `char*`, `int**`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **C++ Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for C++ functions (e.g., `(const std::string& name) int`) |
+| Reference types | [x] | Handles reference params (e.g., `const T&`) |
+| Qualified types | [x] | Handles `std::string`, `::global::Type` |
+| **Java Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Java methods (e.g., `(String name, int age) User`) |
+| Constructor signatures | [x] | Handles constructors (no return type) |
+| Generic types | [x] | Handles `List<String>`, `Map<K, V>` |
+| Array types | [x] | Handles `String[]`, both before and after param name |
+| Varargs | [x] | Handles `Object... args` spread syntax |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |
