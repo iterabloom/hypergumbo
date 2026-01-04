@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 276ad752c3b7
+  commit: e44bd00ba59f
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -14,8 +14,8 @@ GENERATION METADATA (for drift detection):
 
 hypergumbo analyzed its own source code and found:
 - **87** Python modules (54 analyzers, 13 linkers)
-- **1210** symbols (functions, classes, methods)
-- **4779** edges (calls, imports, instantiates)
+- **1214** symbols (functions, classes, methods)
+- **4799** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 90 files · ~38,933 LOC
+Python (100%) · 90 files · ~39,097 LOC
 
 ## Structure
 
@@ -98,8 +98,8 @@ Python (100%) · 90 files · ~38,933 LOC
 - `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
 
 ### `hypergumbo/analyze/dart.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 - `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 
 ### `hypergumbo/analyze/go.py`
 - `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
@@ -142,7 +142,7 @@ Python (100%) · 90 files · ~38,933 LOC
 ### `hypergumbo/analyze/agda.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 
-*… and 1103 more symbols across 66 other files*
+*… and 1107 more symbols across 66 other files*
 
 ## All Files
 
@@ -181,7 +181,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1210 Symbols + 4779 Edges
+│  analyzers  │────▶│     IR      │  1214 Symbols + 4799 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼

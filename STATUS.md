@@ -223,6 +223,20 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | **Wolfram Function Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for Wolfram function patterns (e.g., `[x_, y_]`) |
 | Pattern matching | [x] | Handles Wolfram's pattern-matching argument syntax |
+| **Haskell Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Haskell functions (e.g., `:: Int -> Int -> Int`) |
+| Two-pass resolution | [x] | Collects type signatures first, then associates with function definitions |
+| **Dart Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Dart functions (e.g., `(int x, int y) int`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Optional/named params | [x] | Handles optional and named parameters with defaults |
+| **Lean Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Lean definitions (e.g., `(n : Nat) : Nat`) |
+| Theorem support | [x] | Handles theorem/lemma declarations with proof types |
+| **Agda Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Agda functions (e.g., `: Nat -> Nat`) |
+| Postulate support | [x] | Handles postulate declarations |
+| Constructor support | [x] | Extracts signatures for data constructors |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |

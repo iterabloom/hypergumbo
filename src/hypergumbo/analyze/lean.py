@@ -135,6 +135,62 @@ def _get_identifier_text(node: "tree_sitter.Node", source: bytes) -> str:
     return ""  # pragma: no cover
 
 
+def _extract_lean_signature(
+    decl_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function/theorem signature from a Lean declaration node.
+
+    Lean declarations look like:
+        def double (x : Nat) : Nat := ...
+        theorem add_comm (a b : Nat) : a + b = b + a := ...
+
+    The node contains:
+    - identifier (name)
+    - binders (parameters like (x : Nat))
+    - : followed by return type
+    - := followed by body
+
+    Returns signature like "(x : Nat) : Nat".
+    """
+    parts: list[str] = []
+    found_name = False
+    found_return_colon = False
+
+    for child in decl_node.children:
+        # Skip the keyword (def, theorem, etc.) and name
+        if child.type in ("def", "theorem", "lemma", "abbrev"):
+            continue
+        if child.type == "identifier" and not found_name:
+            found_name = True
+            continue
+
+        # Collect binders (parameters)
+        if child.type == "binders":
+            binders_text = _node_text(child, source).strip()
+            if binders_text:
+                parts.append(binders_text)
+
+        # Collect return type after :
+        if child.type == ":":
+            found_return_colon = True
+            parts.append(":")
+            continue
+
+        # Stop at := (start of body)
+        if child.type == ":=":
+            break
+
+        # Collect the return type expression
+        if found_return_colon and child.type not in (":=", "tactics"):
+            type_text = _node_text(child, source).strip()
+            if type_text:
+                parts.append(type_text)
+
+    if parts:
+        return " ".join(parts)
+    return None
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -159,6 +215,7 @@ def _extract_symbols_from_file(
         name: str,
         kind: str,
         meta: dict | None = None,
+        signature: Optional[str] = None,
     ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:  # pragma: no cover - defensive
@@ -183,6 +240,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         )
         if meta:  # pragma: no cover - meta rarely used
             sym.meta = meta  # pragma: no cover
@@ -198,7 +256,8 @@ def _extract_symbols_from_file(
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
-                            add_symbol(child, name, "function")
+                            sig = _extract_lean_signature(child, source)
+                            add_symbol(child, name, "function", signature=sig)
 
                 elif child.type == "theorem":
                     # theorem name ...
@@ -206,7 +265,8 @@ def _extract_symbols_from_file(
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
-                            add_symbol(child, name, "theorem")
+                            sig = _extract_lean_signature(child, source)
+                            add_symbol(child, name, "theorem", signature=sig)
 
                 elif child.type == "lemma":  # pragma: no cover - similar to theorem
                     # lemma name ...
@@ -214,7 +274,8 @@ def _extract_symbols_from_file(
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
-                            add_symbol(child, name, "theorem", {"is_lemma": True})
+                            sig = _extract_lean_signature(child, source)
+                            add_symbol(child, name, "theorem", {"is_lemma": True}, signature=sig)
 
                 elif child.type == "structure":
                     # structure name where ...
@@ -254,7 +315,8 @@ def _extract_symbols_from_file(
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
-                            add_symbol(child, name, "function", {"is_abbrev": True})
+                            sig = _extract_lean_signature(child, source)
+                            add_symbol(child, name, "function", {"is_abbrev": True}, signature=sig)
 
         # Recurse into children
         for child in node.children:

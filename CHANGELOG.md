@@ -60,6 +60,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CUDA function/kernel signature extraction (e.g., `(int *a, int *b) int`)
 - GraphQL operation signature extraction for query/mutation variable definitions
 - Wolfram function signature extraction (e.g., `[x_, y_]` for pattern args)
+- Haskell function signature extraction (e.g., `:: Int -> Int -> Int` for type signatures)
+- Dart function signature extraction (e.g., `(int x, int y) int` for typed functions)
+- Lean function signature extraction (e.g., `(n : Nat) : Nat` for def/theorem)
+- Agda function signature extraction (e.g., `: Nat -> Nat` for type signatures)
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files
