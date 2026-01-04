@@ -128,6 +128,54 @@ def _detect_entry_point(node: "tree_sitter.Node", source: bytes) -> Optional[str
     return None
 
 
+def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
+    """Find first child of given type."""
+    for child in node.children:
+        if child.type == type_name:
+            return child
+    return None  # pragma: no cover - defensive
+
+
+def _extract_wgsl_signature(func_decl: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a WGSL function_declaration node.
+
+    Returns signature in format: (x: type, y: type) -> ReturnType
+    WGSL is Rust-like with typed parameters.
+    """
+    # Find parameter list
+    params: list[str] = []
+    param_list = _find_child_by_type(func_decl, "parameter_list")
+
+    if param_list:
+        for child in param_list.children:
+            if child.type == "parameter":
+                # Extract param text (name: type)
+                param_text = _node_text(child, source).strip()
+                # Remove attributes like @builtin(vertex_index)
+                if "@" not in param_text:
+                    params.append(param_text)
+                else:  # pragma: no cover - attribute parameters
+                    # Extract just name: type part after attributes
+                    parts = param_text.split(")")
+                    if len(parts) > 1:
+                        params.append(parts[-1].strip())
+
+    # Find return type from function_return_type_declaration
+    return_type: Optional[str] = None
+    return_decl = _find_child_by_type(func_decl, "function_return_type_declaration")
+    if return_decl:
+        type_decl = _find_child_by_type(return_decl, "type_declaration")
+        if type_decl:
+            return_type = _node_text(type_decl, source)
+
+    params_str = ", ".join(params) if params else ""
+    signature = f"({params_str})"
+    if return_type:
+        signature += f" -> {return_type}"
+
+    return signature
+
+
 def _detect_binding(node: "tree_sitter.Node", source: bytes) -> Optional[dict]:
     """Detect WGSL binding attributes (@group/@binding).
 
@@ -216,6 +264,7 @@ def _process_wgsl_tree(
                 ),
                 origin=PASS_ID,
                 meta=meta,
+                signature=_extract_wgsl_signature(node, source),
             )
             symbols.append(sym)
             function_registry[func_name.lower()] = symbol_id

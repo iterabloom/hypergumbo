@@ -266,3 +266,46 @@ fn main() -> @builtin(position) vec4<f32> {
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
     assert main_fn.stable_id == "vertex"  # Has @vertex attribute
+
+
+class TestWGSLSignatureExtraction:
+    """Tests for WGSL function signature extraction."""
+
+    def test_function_with_params(self, tmp_path):
+        """Extract signature for function with parameters."""
+        wgsl_file = tmp_path / "shader.wgsl"
+        wgsl_file.write_text("""
+fn calculate(x: f32, y: f32) -> f32 {
+    return x + y;
+}
+""")
+        result = analyze_wgsl_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "calculate"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x: f32, y: f32) -> f32"
+
+    def test_no_return_type(self, tmp_path):
+        """Extract signature for function with no return type."""
+        wgsl_file = tmp_path / "shader.wgsl"
+        wgsl_file.write_text("""
+fn doSomething(value: i32) {
+    var x = value;
+}
+""")
+        result = analyze_wgsl_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "doSomething"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(value: i32)"
+
+    def test_vec_types(self, tmp_path):
+        """Extract signature with vector types."""
+        wgsl_file = tmp_path / "shader.wgsl"
+        wgsl_file.write_text("""
+fn computeNormal(p1: vec3<f32>, p2: vec3<f32>) -> vec3<f32> {
+    return normalize(p2 - p1);
+}
+""")
+        result = analyze_wgsl_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "computeNormal"]
+        assert len(funcs) == 1
+        assert "vec3<f32>" in funcs[0].signature

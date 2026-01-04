@@ -105,6 +105,49 @@ def _get_type_identifier(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover
 
 
+def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
+    """Find first child of given type."""
+    for child in node.children:
+        if child.type == type_name:
+            return child
+    return None  # pragma: no cover - defensive
+
+
+def _extract_glsl_signature(func_def: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a GLSL function_definition node.
+
+    Returns signature in format: (type param1, type param2) return_type
+    GLSL is C-like with typed parameters.
+    """
+    # Find function declarator (contains name and params)
+    func_decl = _find_child_by_type(func_def, "function_declarator")
+    if func_decl is None:  # pragma: no cover - always has declarator
+        return None
+
+    # Find parameter list
+    params: list[str] = []
+    param_list = _find_child_by_type(func_decl, "parameter_list")
+    if param_list:
+        for child in param_list.children:
+            if child.type == "parameter_declaration":
+                param_text = _node_text(child, source).strip()
+                params.append(param_text)
+
+    # Get return type (primitive_type or type_identifier before function_declarator)
+    return_type: Optional[str] = None
+    for child in func_def.children:
+        if child.type in ("primitive_type", "type_identifier"):
+            return_type = _node_text(child, source)
+            break
+
+    params_str = ", ".join(params) if params else ""
+    signature = f"({params_str})"
+    if return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
 def _process_glsl_tree(
     node: "tree_sitter.Node",
     source: bytes,
@@ -156,6 +199,7 @@ def _process_glsl_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=_extract_glsl_signature(node, source),
             )
             symbols.append(sym)
             function_registry[func_name.lower()] = symbol_id
