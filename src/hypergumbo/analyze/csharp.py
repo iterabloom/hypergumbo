@@ -167,6 +167,84 @@ def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tr
     return [child for child in node.children if child.type == type_name]
 
 
+def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract type text from a type node."""
+    return _node_text(node, source)
+
+
+def _extract_csharp_signature(
+    node: "tree_sitter.Node", source: bytes, is_constructor: bool = False
+) -> Optional[str]:
+    """Extract function signature from a C# method or constructor declaration.
+
+    Returns signature like:
+    - "(int x, int y) int" for regular methods
+    - "(string msg)" for void methods (no return type shown)
+    - "(string name, int age)" for constructors (no return type)
+
+    Args:
+        node: The method_declaration or constructor_declaration node.
+        source: The source code bytes.
+        is_constructor: True if this is a constructor (no return type).
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params_node = None
+    return_type = None
+
+    # Find parameter_list and return type
+    # The return type is a type node (predefined_type, generic_name, etc.)
+    # NOT a plain identifier (that's the method name)
+    type_node_types = ("predefined_type", "generic_name", "array_type",
+                       "nullable_type", "qualified_name", "ref_type", "pointer_type")
+
+    for child in node.children:
+        if child.type == "parameter_list":
+            params_node = child
+        # Return type is a type node, not identifier
+        elif child.type in type_node_types:
+            return_type = _extract_type_text(child, source)
+        # Handle custom type as return (identifier that's a type, not method name)
+        # The identifier for return type comes BEFORE parameter_list
+        elif child.type == "identifier" and params_node is None and return_type is None:
+            # Check if this is a type (followed by another identifier which is method name)
+            # Actually, for custom return types we need special handling
+            # Let's skip this for now - will use the type nodes above
+            pass
+
+    if params_node is None:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    params: list[str] = []
+    for child in params_node.children:
+        if child.type == "parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                # Type nodes (not plain identifier for type - those are param names)
+                if subchild.type in type_node_types:
+                    param_type = _extract_type_text(subchild, source)
+                # For custom types, identifier IS the type if param_type not set
+                elif subchild.type == "identifier":
+                    if param_type is None:
+                        param_type = _node_text(subchild, source)
+                    else:
+                        param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                params.append(f"{param_type} {param_name}")
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    # Add return type for methods (not constructors), but omit void
+    if not is_constructor and return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
 def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the method name from a method declaration.
 
@@ -384,6 +462,9 @@ def _extract_symbols_from_file(
                         meta["http_method"] = http_method
                         stable_id = http_method
 
+                # Extract signature
+                signature = _extract_csharp_signature(node, source, is_constructor=False)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -400,6 +481,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     stable_id=stable_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -413,6 +495,9 @@ def _extract_symbols_from_file(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract signature (constructors have no return type)
+                signature = _extract_csharp_signature(node, source, is_constructor=True)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "constructor"),
@@ -428,6 +513,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol

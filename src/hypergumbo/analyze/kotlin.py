@@ -100,6 +100,54 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_kotlin_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Kotlin function declaration.
+
+    Returns signature like:
+    - "(x: Int, y: Int): Int" for regular functions
+    - "(message: String)" for Unit (void) functions
+
+    Args:
+        node: The function_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type = None
+    found_params = False
+
+    # Iterate through children to find parameters and return type
+    for child in node.children:
+        if child.type == "function_value_parameters":
+            found_params = True
+            for subchild in child.children:
+                if subchild.type == "parameter":
+                    param_name = None
+                    param_type = None
+                    for pc in subchild.children:
+                        if pc.type == "identifier" and param_name is None:
+                            param_name = _node_text(pc, source)
+                        elif pc.type in ("user_type", "nullable_type", "function_type"):
+                            param_type = _node_text(pc, source)
+                    if param_name and param_type:
+                        params.append(f"{param_name}: {param_type}")
+        # Return type comes after function_value_parameters and before function_body
+        elif found_params and child.type in ("user_type", "nullable_type", "function_type"):
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "Unit":
+        signature += f": {return_type}"
+
+    return signature
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -144,6 +192,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract signature
+                signature = _extract_kotlin_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -158,6 +209,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

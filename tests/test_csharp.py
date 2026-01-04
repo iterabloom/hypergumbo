@@ -634,3 +634,94 @@ public class ItemsController : ControllerBase
         assert len(methods) == 5
         http_methods = {m.stable_id for m in methods}
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+
+class TestCSharpSignatureExtraction:
+    """Tests for C# function signature extraction."""
+
+    def test_basic_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a basic method."""
+        (tmp_path / "Calculator.cs").write_text("""
+public class Calculator {
+    public int Add(int a, int b) {
+        return a + b;
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "Add" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(int a, int b) int"
+
+    def test_void_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from void method."""
+        (tmp_path / "Logger.cs").write_text("""
+public class Logger {
+    public void Log(string message) {
+        Console.WriteLine(message);
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "Log" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(string message)"
+
+    def test_no_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method with no parameters."""
+        (tmp_path / "Counter.cs").write_text("""
+public class Counter {
+    public int GetCount() {
+        return 0;
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "GetCount" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "() int"
+
+    def test_generic_type_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with generic types."""
+        (tmp_path / "Container.cs").write_text("""
+public class Container {
+    public List<string> GetItems(Dictionary<string, int> config) {
+        return null;
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "GetItems" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(Dictionary<string, int> config) List<string>"
+
+    def test_constructor_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from constructor."""
+        (tmp_path / "Person.cs").write_text("""
+public class Person {
+    public Person(string name, int age) {
+        _name = name;
+        _age = age;
+    }
+    private string _name;
+    private int _age;
+}
+""")
+        result = analyze_csharp(tmp_path)
+        constructors = [s for s in result.symbols if s.kind == "constructor"]
+        assert len(constructors) == 1
+        assert constructors[0].signature == "(string name, int age)"
+
+    def test_array_type_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with array types."""
+        (tmp_path / "Processor.cs").write_text("""
+public class Processor {
+    public byte[] Process(string[] inputs) {
+        return null;
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "Process" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(string[] inputs) byte[]"

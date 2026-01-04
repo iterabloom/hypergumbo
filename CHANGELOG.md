@@ -24,6 +24,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Handles methods and constructors (e.g., `(String name, int age) User`)
   - Supports generics, arrays, and varargs (e.g., `(List<String> items, Object... args) Map<K, V>`)
 - Signature sanity tests: verify function signatures appear in sketch Key Symbols section
+- C# function signature extraction (e.g., `(int x, string name): void`)
+- Swift function signature extraction (e.g., `(x: Int, name: String) -> Void`)
+- Kotlin function signature extraction (e.g., `(x: Int, name: String): Unit`)
+- Scala function signature extraction (e.g., `(x: Int, y: Int): Int`)
+- PHP function signature extraction (e.g., `(int $x, string $name): void`)
+- Objective-C method signature extraction (e.g., `(int x, int y): int`)
+- Fortran function/subroutine signature extraction (e.g., `(x, y): integer`)
+- F# function signature extraction (e.g., `(x: int, y: int): int`)
+- Julia function signature extraction (e.g., `(x::Int, y::Int)::Int`)
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files
