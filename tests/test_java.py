@@ -1019,3 +1019,181 @@ public class ResourceController {
         assert len(methods) == 5
         http_methods = {m.stable_id for m in methods}
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+
+class TestJavaSignatureExtraction:
+    """Tests for Java function signature extraction."""
+
+    def test_basic_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a basic method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Calculator.java"
+        java_file.write_text("""
+public class Calculator {
+    public int add(int a, int b) {
+        return a + b;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(int a, int b) int"
+
+    def test_void_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from void method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Logger.java"
+        java_file.write_text("""
+public class Logger {
+    public void log(String message) {
+        System.out.println(message);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "log" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String message)"
+
+    def test_no_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method with no parameters."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Counter.java"
+        java_file.write_text("""
+public class Counter {
+    public int getCount() {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "() int"
+
+    def test_generic_type_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with generic types."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Container.java"
+        java_file.write_text("""
+public class Container {
+    public List<String> getItems(Map<String, Integer> config) {
+        return null;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getItems" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(Map<String, Integer> config) List<String>"
+
+    def test_constructor_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from constructor."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Person.java"
+        java_file.write_text("""
+public class Person {
+    private String name;
+    private int age;
+
+    public Person(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        constructors = [s for s in result.symbols if s.kind == "constructor"]
+        assert len(constructors) == 1
+        constructor = constructors[0]
+
+        # Constructors have no return type
+        assert constructor.signature == "(String name, int age)"
+
+    def test_array_type_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with array types."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Processor.java"
+        java_file.write_text("""
+public class Processor {
+    public byte[] process(String[] inputs) {
+        return null;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "process" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String[] inputs) byte[]"
+
+    def test_varargs_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with varargs parameters."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Formatter.java"
+        java_file.write_text("""
+public class Formatter {
+    public String format(String pattern, Object... args) {
+        return null;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "format" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String pattern, Object... args) String"
+
+    def test_array_notation_after_name(self, tmp_path: Path) -> None:
+        """Extracts signature with array notation after variable name (C-style)."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Legacy.java"
+        # C-style array declaration: String args[]
+        java_file.write_text("""
+public class Legacy {
+    public void process(String args[]) {
+        return;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "process" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String[] args)"

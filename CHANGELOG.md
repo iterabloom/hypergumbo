@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - C and C++ function signature extraction
   - C: Handles pointer params, pointer returns (e.g., `(int x, char* name) int`)
   - C++: Handles reference params, qualified types (e.g., `(const std::string& name) int`)
+- Java function signature extraction
+  - Handles methods and constructors (e.g., `(String name, int age) User`)
+  - Supports generics, arrays, and varargs (e.g., `(List<String> items, Object... args) Map<K, V>`)
 - Signature sanity tests: verify function signatures appear in sketch Key Symbols section
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
