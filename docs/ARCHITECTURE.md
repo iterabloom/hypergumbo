@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e7e1b35be1be
+  commit: ddf67a087f1a
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -14,8 +14,8 @@ GENERATION METADATA (for drift detection):
 
 hypergumbo analyzed its own source code and found:
 - **87** Python modules (54 analyzers, 13 linkers)
-- **1158** symbols (functions, classes, methods)
-- **4508** edges (calls, imports, instantiates)
+- **1199** symbols (functions, classes, methods)
+- **4741** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 90 files · ~36,149 LOC
+Python (100%) · 90 files · ~38,568 LOC
 
 ## Structure
 
@@ -31,7 +31,7 @@ Python (100%) · 90 files · ~36,149 LOC
 
 ## Domain Vocabulary
 
-*Key terms: line, symbol, symbols, sitter, files, source, edges, edge, analysis, find, pragma, cover*
+*Key terms: line, symbol, symbols, source, sitter, files, edges, pragma, cover, find, edge, analysis*
 
 ## Source Files
 
@@ -70,6 +70,103 @@ Python (100%) · 90 files · ~36,149 LOC
 ## Entry Points
 
 - `main` (CLI main) — `hypergumbo/cli.py`
+
+## Key Symbols
+
+*★ = centrality ≥ 50% of max*
+
+### `hypergumbo/ir.py`
+- `Span` (class) ★ — Source code location with line and column info.
+- `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
+
+### `hypergumbo/discovery.py`
+- `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
+
+### `hypergumbo/entrypoints.py`
+- `Entrypoint` (class) — A detected entrypoint in the codebase.
+- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+
+### `hypergumbo/analyze/julia.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/js_ts.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/rust.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
+
+### `hypergumbo/analyze/dart.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/go.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
+
+### `hypergumbo/analyze/cpp.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/catalog.py`
+- `Pass` (class) — An analysis pass that can be applied to source code.
+
+### `hypergumbo/analyze/fsharp.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+
+### `hypergumbo/analyze/ruby.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/erlang.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+
+### `hypergumbo/analyze/java.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/zig.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find the first child node of a specific type.
+
+### `hypergumbo/analyze/sql.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/groovy.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/csharp.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/analyze/elm.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+
+### `hypergumbo/analyze/agda.py`
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+
+*… and 1092 more symbols across 66 other files*
+
+## All Files
+
+- `hypergumbo/__init__.py`
+- `hypergumbo/__main__.py`
+- `hypergumbo/analyze/__init__.py`
+- `hypergumbo/analyze/agda.py`
+- `hypergumbo/analyze/bash.py`
+- `hypergumbo/analyze/c.py`
+- `hypergumbo/analyze/clojure.py`
+- `hypergumbo/analyze/cmake.py`
+- `hypergumbo/analyze/cobol.py`
+- `hypergumbo/analyze/cpp.py`
+- `hypergumbo/analyze/csharp.py`
+- `hypergumbo/analyze/css.py`
+- `hypergumbo/analyze/cuda.py`
+- `hypergumbo/analyze/dart.py`
+- `hypergumbo/analyze/dockerfile.py`
+- `hypergumbo/analyze/elixir.py`
+- `hypergumbo/analyze/elm.py`
+- `hypergumbo/analyze/erlang.py`
+- `hypergumbo/analyze/fortran.py`
+- `hypergumbo/analyze/fsharp.py`
+- ... and 70 more files
 ```
 
 ## Data Flow
@@ -84,7 +181,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1158 Symbols + 4508 Edges
+│  analyzers  │────▶│     IR      │  1199 Symbols + 4741 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -112,8 +209,9 @@ These symbols have the highest in-degree (most referenced by other symbols):
 | `Edge` | class | 93 | ir.py |
 | `AnalysisRun` | class | 67 | ir.py |
 | `Pass` | class | 33 | catalog.py |
+| `_find_child_by_type` | function | 29 | julia.py |
 | `Entrypoint` | class | 29 | entrypoints.py |
-| `_get_filename` | function | 24 | entrypoints.py |
+| `_node_text` | function | 27 | js_ts.py |
 
 ## Module Reference
 
