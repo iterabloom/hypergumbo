@@ -393,3 +393,108 @@ CMD ["python", "main.py"]
         })
         sketch = generate_sketch(repo, max_tokens=2000)
         assert "dockerfile" in sketch.lower() or "Dockerfile" in sketch
+
+
+class TestFunctionSignaturesShown:
+    """Sanity: function signatures should be shown in Key Symbols section.
+
+    When we have working analyzers that extract signatures, the Key Symbols
+    section should display those signatures (parameter types, return types).
+    This is forgiving - we only check that SOME signatures appear for
+    languages where we extract them.
+    """
+
+    def test_rust_functions_have_signatures(self, tmp_path: Path) -> None:
+        """Rust functions in Key Symbols should show signatures."""
+        repo = make_stylized_repo(tmp_path, {
+            "src/main.rs": '''
+fn main() {
+    let result = add(1, 2);
+    println!("{}", result);
+}
+
+fn add(x: i32, y: i32) -> i32 {
+    x + y
+}
+
+fn process(data: Vec<String>) -> Option<String> {
+    data.first().cloned()
+}
+
+struct Calculator {
+    value: i32,
+}
+
+impl Calculator {
+    fn new(initial: i32) -> Self {
+        Calculator { value: initial }
+    }
+
+    fn add(&mut self, amount: i32) {
+        self.value += amount;
+    }
+
+    fn get(&self) -> i32 {
+        self.value
+    }
+}
+''',
+        })
+        # Use larger budget to ensure Key Symbols section appears
+        sketch = generate_sketch(repo, max_tokens=8000)
+
+        # Key Symbols section should be present
+        assert "## Key Symbols" in sketch, \
+            "Key Symbols section missing for Rust repo with functions"
+
+        # At least some signatures should be visible
+        # Look for signature patterns: (param: Type) or -> ReturnType
+        has_param_type = ": i32" in sketch or ": Vec" in sketch or ": String" in sketch
+        has_return_arrow = "-> i32" in sketch or "-> Self" in sketch or "-> Option" in sketch
+        has_self_param = "&self" in sketch or "&mut self" in sketch
+
+        # At least one of these should appear in a function-rich Rust repo
+        assert has_param_type or has_return_arrow or has_self_param, \
+            f"No function signatures found in Rust sketch. Expected parameter types, return types, or &self. Sketch excerpt: {sketch[:2000]}"
+
+    def test_python_functions_have_signatures(self, tmp_path: Path) -> None:
+        """Python functions in Key Symbols should show signatures."""
+        repo = make_stylized_repo(tmp_path, {
+            "src/main.py": '''
+def greet(name: str) -> str:
+    """Return a greeting."""
+    return f"Hello, {name}!"
+
+def add_numbers(x: int, y: int) -> int:
+    """Add two numbers."""
+    return x + y
+
+def process_data(items: list[str], limit: int = 10) -> dict[str, int]:
+    """Process a list of items."""
+    return {item: len(item) for item in items[:limit]}
+
+class Calculator:
+    """A simple calculator."""
+
+    def __init__(self, initial: int = 0) -> None:
+        self.value = initial
+
+    def add(self, amount: int) -> int:
+        """Add amount to value."""
+        self.value += amount
+        return self.value
+''',
+        })
+        sketch = generate_sketch(repo, max_tokens=8000)
+
+        # Key Symbols section should be present
+        assert "## Key Symbols" in sketch, \
+            "Key Symbols section missing for Python repo with functions"
+
+        # At least some signatures should be visible
+        has_param_type = ": str" in sketch or ": int" in sketch or ": list" in sketch
+        has_return_arrow = "-> str" in sketch or "-> int" in sketch or "-> dict" in sketch
+
+        # At least one of these should appear
+        assert has_param_type or has_return_arrow, \
+            f"No function signatures found in Python sketch. Sketch excerpt: {sketch[:2000]}"
