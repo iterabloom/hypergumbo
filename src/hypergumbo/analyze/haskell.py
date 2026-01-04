@@ -135,6 +135,40 @@ def _get_module_name(import_node: "tree_sitter.Node", source: bytes) -> str:
     return ""  # pragma: no cover
 
 
+def _extract_haskell_signature(
+    sig_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract type signature from a Haskell signature node.
+
+    Haskell type signatures look like:
+        add :: Int -> Int -> Int
+
+    The signature node contains:
+    - variable (function name)
+    - :: token
+    - function/type (the type expression)
+
+    Returns the type part like ":: Int -> Int -> Int".
+    """
+    # Find the :: token and everything after it
+    found_colons = False
+    type_parts: list[str] = []
+
+    for child in sig_node.children:
+        if child.type == "::":
+            found_colons = True
+            type_parts.append("::")
+        elif found_colons:
+            # Collect the type expression
+            type_text = _node_text(child, source).strip()
+            if type_text:
+                type_parts.append(type_text)
+
+    if type_parts:
+        return " ".join(type_parts)
+    return None  # pragma: no cover - defensive, called only when signature exists
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -152,7 +186,30 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
 
-    def add_symbol(node: "tree_sitter.Node", name: str, kind: str) -> None:
+    # First pass: collect type signatures
+    type_signatures: dict[str, str] = {}
+
+    def collect_signatures(node: "tree_sitter.Node") -> None:
+        """Collect type signatures from signature nodes."""
+        if node.type == "signature":
+            # Get function name from variable child
+            var_node = _find_child_by_type(node, "variable")
+            if var_node:
+                name = _node_text(var_node, source)
+                sig = _extract_haskell_signature(node, source)
+                if sig:
+                    type_signatures[name] = sig
+        for child in node.children:
+            collect_signatures(child)
+
+    collect_signatures(tree.root_node)
+
+    def add_symbol(
+        node: "tree_sitter.Node",
+        name: str,
+        kind: str,
+        signature: Optional[str] = None,
+    ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:
             return  # pragma: no cover - skip empty/duplicate names
@@ -176,6 +233,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         ))
 
     def walk(node: "tree_sitter.Node") -> None:
@@ -183,13 +241,16 @@ def _extract_symbols_from_file(
             # Function with pattern matching
             name = _get_function_name(node, source)
             if name:
-                add_symbol(node, name, "function")
+                # Look up type signature
+                sig = type_signatures.get(name)
+                add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "bind":
             # Simple binding (like main = ...)
             name = _get_function_name(node, source)
             if name:
-                add_symbol(node, name, "function")
+                sig = type_signatures.get(name)
+                add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "data_type":
             # Data type definition

@@ -158,6 +158,28 @@ def _is_type_signature(rhs_node: "tree_sitter.Node", source: bytes) -> bool:
     return text.startswith(":")
 
 
+def _extract_agda_signature(
+    rhs_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract type signature from an Agda function rhs node.
+
+    Agda type signatures look like:
+        double : Nat -> Nat
+        add : Nat -> Nat -> Nat
+
+    The rhs node contains:
+    - : token
+    - expr (the type expression like "Nat -> Nat")
+
+    Returns signature like ": Nat -> Nat".
+    """
+    # The rhs node text already starts with ":"
+    sig_text = _node_text(rhs_node, source).strip()
+    if sig_text.startswith(":"):
+        return sig_text
+    return None  # pragma: no cover - defensive, called only for type signatures
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -180,6 +202,7 @@ def _extract_symbols_from_file(
         name: str,
         kind: str,
         meta: dict | None = None,
+        signature: Optional[str] = None,
     ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:
@@ -204,6 +227,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         )
         if meta:
             sym.meta = meta
@@ -231,7 +255,8 @@ def _extract_symbols_from_file(
                 if _is_type_signature(rhs, source):
                     name = _get_function_name_from_lhs(lhs, source)
                     if name:
-                        add_symbol(node, name, "function")
+                        sig = _extract_agda_signature(rhs, source)
+                        add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "data":
             # Data type definition
@@ -248,7 +273,8 @@ def _extract_symbols_from_file(
                     if inner_lhs and inner_rhs and _is_type_signature(inner_rhs, source):
                         ctor_name = _get_function_name_from_lhs(inner_lhs, source)
                         if ctor_name:
-                            add_symbol(child, ctor_name, "function", {"is_constructor": True})
+                            sig = _extract_agda_signature(inner_rhs, source)
+                            add_symbol(child, ctor_name, "function", {"is_constructor": True}, signature=sig)
 
         elif node.type == "record":
             # Record type definition
@@ -266,7 +292,8 @@ def _extract_symbols_from_file(
                     if inner_lhs and inner_rhs and _is_type_signature(inner_rhs, source):
                         name = _get_function_name_from_lhs(inner_lhs, source)
                         if name:
-                            add_symbol(child, name, "function", {"is_postulate": True})
+                            sig = _extract_agda_signature(inner_rhs, source)
+                            add_symbol(child, name, "function", {"is_postulate": True}, signature=sig)
 
         # Recurse into children
         for child in node.children:

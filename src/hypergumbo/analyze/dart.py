@@ -163,6 +163,48 @@ def _get_combined_span(
     return start_line, end_line, start_col, end_col
 
 
+def _extract_dart_signature(
+    func_sig_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Dart function_signature node.
+
+    Dart function signatures look like:
+        int add(int x, int y)
+        String greet(String name, {bool loud = false})
+        void main()
+
+    Returns signature like "(int x, int y) int" or "(String name, {bool loud = ...}) String".
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    for child in func_sig_node.children:
+        if child.type == "type_identifier":
+            # Return type comes before function name
+            if return_type is None:
+                return_type = _node_text(child, source).strip()
+        elif child.type == "formal_parameter_list":
+            # Extract parameters
+            for param_child in child.children:
+                if param_child.type == "formal_parameter":
+                    param_text = _node_text(param_child, source).strip()
+                    if param_text:
+                        params.append(param_text)
+                elif param_child.type == "optional_formal_parameters":
+                    # Handle optional/named parameters
+                    opt_text = _node_text(param_child, source).strip()
+                    if opt_text:
+                        # Replace default values with ...
+                        import re
+                        opt_text = re.sub(r'\s*=\s*[^,}\]]+', ' = ...', opt_text)
+                        params.append(opt_text)
+
+    sig = "(" + ", ".join(params) + ")"
+    if return_type and return_type != "void":
+        sig += f" {return_type}"
+    return sig
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -180,6 +222,7 @@ def _extract_symbols_from_file(
         name: str,
         kind: str,
         prefix: Optional[str] = None,
+        signature: Optional[str] = None,
     ) -> Symbol:
         """Create a Symbol with given span."""
         full_name = f"{prefix}.{name}" if prefix else name
@@ -199,6 +242,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         )
 
     def walk(node: "tree_sitter.Node", class_name: Optional[str] = None) -> None:
@@ -298,7 +342,8 @@ def _extract_symbols_from_file(
                     name = _node_text(name_node, source)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name))
+                    sig = _extract_dart_signature(func_sig, source)
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name, signature=sig))
             return
 
         # Top-level function_signature (not inside method_signature)
@@ -309,7 +354,8 @@ def _extract_symbols_from_file(
                 # Find the function_body sibling
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name))
+                sig = _extract_dart_signature(node, source)
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig))
             return
 
         # Constructor signature at top level of class body (rare but possible)
