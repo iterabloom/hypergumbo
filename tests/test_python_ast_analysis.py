@@ -1648,3 +1648,215 @@ def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
     assert methods["MyClass.__init__"]["cyclomatic_complexity"] == 1
     assert methods["MyClass.process"]["lines_of_code"] == 4
     assert methods["MyClass.process"]["cyclomatic_complexity"] == 2  # 1 base + 1 if
+
+
+# ============================================================================
+# Function Signature Extraction Tests
+# ============================================================================
+
+
+class TestPythonSignatureExtraction:
+    """Tests for Python function signature extraction in the analyzer."""
+
+    def test_simple_function_signature(self, tmp_path: Path) -> None:
+        """Extract signature for simple function with typed args and return."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def add(x: int, y: int) -> int:\n"
+            "    return x + y\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: int, y: int) -> int"
+
+    def test_signature_with_defaults(self, tmp_path: Path) -> None:
+        """Extract signature for function with default values."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def greet(name: str, greeting: str = 'hello') -> str:\n"
+            "    return f'{greeting}, {name}'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(name: str, greeting: str=…) -> str"
+
+    def test_signature_with_varargs(self, tmp_path: Path) -> None:
+        """Extract signature for function with *args."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def many(first: int, *rest) -> list:\n"
+            "    return [first] + list(rest)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(first: int, *rest) -> list"
+
+    def test_signature_with_kwargs(self, tmp_path: Path) -> None:
+        """Extract signature for function with **kwargs."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def options(**kwargs) -> dict:\n"
+            "    return kwargs\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(**kwargs) -> dict"
+
+    def test_signature_with_kwonly_args(self, tmp_path: Path) -> None:
+        """Extract signature for function with keyword-only args."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def kw_only(*, key: str, value: int = 0) -> None:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        # Note: the bare * is not captured as vararg, but kwonly args follow
+        assert funcs[0]["signature"] == "(key: str, value: int=…) -> None"
+
+    def test_signature_with_posonly_args(self, tmp_path: Path) -> None:
+        """Extract signature for function with positional-only args (PEP 570)."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def pos_only(x: int, y: int, /) -> int:\n"
+            "    return x + y\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: int, y: int) -> int"
+
+    def test_signature_subscript_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with subscript type (List[int], Dict[str, int])."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "from typing import List, Dict\n"
+            "def process(items: List[int]) -> Dict[str, int]:\n"
+            "    return {str(x): x for x in items}\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(items: List[int]) -> Dict[str, int]"
+
+    def test_signature_union_type(self, tmp_path: Path) -> None:
+        """Extract signature with union type (X | Y)."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def maybe(x: int | str) -> int | None:\n"
+            "    return int(x) if isinstance(x, str) else x\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: int | str) -> int | None"
+
+    def test_signature_attribute_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with attribute type (typing.Optional)."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "import typing\n"
+            "def opt(x: typing.Optional[int]) -> typing.Optional[str]:\n"
+            "    return str(x) if x is not None else None\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: typing.Optional[int]) -> typing.Optional[str]"
+
+    def test_signature_truncated_for_long_signature(self, tmp_path: Path) -> None:
+        """Long signatures should be truncated."""
+        py_file = tmp_path / "test.py"
+        # Create a function with many parameters
+        py_file.write_text(
+            "def long_func(param_one: str, param_two: str, param_three: str, "
+            "param_four: str, param_five: str, param_six: str, param_seven: str) -> str:\n"
+            "    return 'x'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0]["signature"]
+        # Signature should be truncated to max_len (60 by default) + ellipsis
+        assert len(sig) <= 60
+        assert sig.endswith("…")
+
+    def test_signature_constant_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with constant type like Literal['a', 'b']."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "from typing import Literal\n"
+            "def mode(m: Literal['read', 'write']) -> None:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        # Literal is subscript with tuple of constants
+        assert "Literal" in funcs[0]["signature"]
+
+    def test_signature_tuple_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with tuple type Dict[str, int] uses tuple for key types."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "from typing import Tuple\n"
+            "def coords() -> Tuple[int, int]:\n"
+            "    return (0, 0)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "() -> Tuple[int, int]"

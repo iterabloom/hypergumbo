@@ -282,3 +282,89 @@ def test_module(tmp_path):
     # Module is a function
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 1
+
+
+class TestNixSignatureExtraction:
+    """Tests for Nix function signature extraction."""
+
+    def test_simple_lambda(self, tmp_path):
+        """Extract signature for simple lambda function."""
+        nix_file = tmp_path / "test.nix"
+        nix_file.write_text("""
+{
+  double = x: x * 2;
+}
+""")
+        result = analyze_nix_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x)"
+
+    def test_curried_function(self, tmp_path):
+        """Extract signature for curried (multi-arg) function."""
+        nix_file = tmp_path / "test.nix"
+        nix_file.write_text("""
+{
+  add = x: y: x + y;
+}
+""")
+        result = analyze_nix_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_formals_pattern(self, tmp_path):
+        """Extract signature for attrset pattern (formals)."""
+        nix_file = tmp_path / "test.nix"
+        nix_file.write_text("""
+{
+  greet = { name, greeting }: greeting + ", " + name;
+}
+""")
+        result = analyze_nix_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "greet"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "{ name, greeting }"
+
+    def test_formals_with_defaults(self, tmp_path):
+        """Extract signature for formals with default values."""
+        nix_file = tmp_path / "test.nix"
+        nix_file.write_text("""
+{
+  addThree = { a, b, c ? 0 }: a + b + c;
+}
+""")
+        result = analyze_nix_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "addThree"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "{ a, b, c }"
+
+    def test_overlay_signature(self, tmp_path):
+        """Extract signature for overlay (top-level curried function)."""
+        nix_file = tmp_path / "overlay.nix"
+        nix_file.write_text("""
+final: prev: {
+  myPackage = prev.hello;
+}
+""")
+        result = analyze_nix_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "overlay"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(final, prev)"
+
+    def test_module_signature(self, tmp_path):
+        """Extract signature for NixOS module (formals with ellipsis)."""
+        nix_file = tmp_path / "module.nix"
+        nix_file.write_text("""
+{ config, lib, pkgs, ... }:
+{
+  config = {};
+}
+""")
+        result = analyze_nix_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "module"]
+        assert len(funcs) == 1
+        # Should extract the named formals (... is not captured as a name)
+        assert "config" in funcs[0].signature
+        assert "lib" in funcs[0].signature
+        assert "pkgs" in funcs[0].signature

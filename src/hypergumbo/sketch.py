@@ -3366,13 +3366,10 @@ def generate_sketch(
         budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
         max_symbols = max(10, budget_for_symbols // tokens_per_symbol)
 
-        # Extract docstrings and signatures for Python symbols
+        # Extract docstrings for Python symbols
         docstrings = _extract_python_docstrings(repo_root, symbols)
-        # Start with signatures from Symbol.signature field (Rust, Go, TS, etc.)
+        # Get signatures from Symbol.signature field (now includes all languages)
         signatures = {s.id: s.signature for s in symbols if s.signature}
-        # Add Python signatures (extracted via AST, not from Symbol.signature)
-        python_sigs = _extract_python_signatures(repo_root, symbols)
-        signatures.update(python_sigs)
 
         symbols_section = _format_symbols(
             symbols,

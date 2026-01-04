@@ -197,6 +197,14 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Return type | [x] | Displays return type after RETURNS keyword |
 | **Bash Function Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for Bash functions (always `()` since Bash uses positional args) |
+| **CMake Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for CMake functions/macros (e.g., `(ARG1, ARG2, ARG3)`) |
+| Function/macro support | [x] | Handles both `function()` and `macro()` commands |
+| **Nix Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Nix functions (lambdas and formals) |
+| Simple lambdas | [x] | Curried params (e.g., `(x, y)` for `x: y: body`) |
+| Formals patterns | [x] | Attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`) |
+| Top-level functions | [x] | Uses file basename for module/overlay functions |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |

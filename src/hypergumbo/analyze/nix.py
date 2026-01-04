@@ -109,6 +109,62 @@ def _is_function_body(node: "tree_sitter.Node") -> bool:
     return node.type == "function_expression"
 
 
+def _extract_nix_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a Nix function_expression node.
+
+    Nix has two function styles:
+    - Simple lambda: x: y: body -> (x, y)
+    - Formals (attrset pattern): { a, b, c ? 0 }: body -> { a, b, c }
+
+    Returns signature string or None.
+    """
+    if node.type != "function_expression":
+        return None  # pragma: no cover
+
+    params: list[str] = []
+    has_formals = False
+    current = node
+
+    # Walk through potentially curried functions
+    while current and current.type == "function_expression":
+        for child in current.children:
+            if child.type == "formals":
+                # Attrset pattern: { a, b, c ? 0 }
+                has_formals = True
+                for formal_child in child.children:
+                    if formal_child.type == "formal":
+                        # Get the identifier from the formal
+                        for fc in formal_child.children:
+                            if fc.type == "identifier":
+                                params.append(_node_text(fc, source))
+                                break
+                # Don't recurse into body for formals style
+                break
+            elif child.type == "identifier":
+                # Simple lambda: x: body
+                params.append(_node_text(child, source))
+
+        # Check if body is another function_expression (curried)
+        body = None
+        for child in current.children:
+            if child.type == "function_expression":
+                body = child
+                break
+            elif child.type not in ("identifier", "formals", ":"):
+                # Found actual body, stop
+                break
+
+        if has_formals or body is None:
+            break
+        current = body
+
+    if has_formals:
+        return "{ " + ", ".join(params) + " }"
+    elif params:
+        return "(" + ", ".join(params) + ")"
+    return "()"  # pragma: no cover - edge case
+
+
 def _is_derivation_call(node: "tree_sitter.Node", source: bytes) -> bool:
     """Check if node is a derivation-creating call."""
     if node.type != "apply_expression":
@@ -220,6 +276,11 @@ def _process_nix_tree(
 
             symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, kind)
 
+            # Extract signature for functions
+            signature = None
+            if kind == "function" and value_node:
+                signature = _extract_nix_signature(value_node, source)
+
             sym = Symbol(
                 id=symbol_id,
                 stable_id=None,
@@ -237,6 +298,7 @@ def _process_nix_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=signature,
             )
             symbols.append(sym)
 
@@ -287,6 +349,7 @@ def _process_nix_tree(
                 end_col=node.end_point[1],
             ),
             origin=PASS_ID,
+            signature=_extract_nix_signature(node, source),
         )
         symbols.append(sym)
 

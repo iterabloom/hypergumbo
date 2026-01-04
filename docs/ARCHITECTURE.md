@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ddf67a087f1a
+  commit: 563055f5b3eb
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -14,8 +14,8 @@ GENERATION METADATA (for drift detection):
 
 hypergumbo analyzed its own source code and found:
 - **87** Python modules (54 analyzers, 13 linkers)
-- **1199** symbols (functions, classes, methods)
-- **4741** edges (calls, imports, instantiates)
+- **1204** symbols (functions, classes, methods)
+- **4760** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 90 files · ~38,568 LOC
+Python (100%) · 90 files · ~38,718 LOC
 
 ## Structure
 
@@ -142,7 +142,7 @@ Python (100%) · 90 files · ~38,568 LOC
 ### `hypergumbo/analyze/agda.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 
-*… and 1092 more symbols across 66 other files*
+*… and 1097 more symbols across 66 other files*
 
 ## All Files
 
@@ -181,7 +181,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1199 Symbols + 4741 Edges
+│  analyzers  │────▶│     IR      │  1204 Symbols + 4760 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
