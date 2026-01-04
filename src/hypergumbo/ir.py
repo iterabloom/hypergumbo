@@ -178,6 +178,8 @@ class Symbol:
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
         lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
+        signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
+            Only populated for callable symbols (functions, methods). None for classes, etc.
     """
 
     id: str
@@ -199,6 +201,7 @@ class Symbol:
     supply_chain_reason: str = ""
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
+    signature: Optional[str] = None
 
     # Keep line/end_line for backwards compatibility during transition
     @property
@@ -234,6 +237,7 @@ class Symbol:
             },
             "cyclomatic_complexity": self.cyclomatic_complexity,
             "lines_of_code": self.lines_of_code,
+            "signature": self.signature,
         }
 
 
