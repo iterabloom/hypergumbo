@@ -94,6 +94,47 @@ def _get_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None  # pragma: no cover
 
 
+def _extract_graphql_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract signature from a GraphQL operation or field definition.
+
+    Operations: query Name($arg1: Type1!, $arg2: Type2) -> ($arg1: Type1!, $arg2: Type2)
+    Fields: field(arg1: Type1, arg2: Type2): ReturnType -> (arg1: Type1, arg2: Type2): ReturnType
+
+    Returns signature string or None.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    for child in node.children:
+        if child.type == "variable_definitions":
+            # Operation variable definitions: ($arg: Type)
+            for var_child in child.children:
+                if var_child.type == "variable_definition":
+                    var_text = _node_text(var_child, source).strip()
+                    if var_text:
+                        params.append(var_text)
+        elif child.type == "arguments_definition":  # pragma: no cover - field args
+            # Field argument definitions: (arg: Type)
+            for arg_child in child.children:  # pragma: no cover
+                if arg_child.type == "input_value_definition":  # pragma: no cover
+                    arg_text = _node_text(arg_child, source).strip()  # pragma: no cover
+                    if arg_text:  # pragma: no cover
+                        params.append(arg_text)  # pragma: no cover
+        elif child.type == "type":  # pragma: no cover - field return type
+            # Return type for fields
+            return_type = _node_text(child, source).strip()  # pragma: no cover
+
+    if not params and not return_type:
+        return None
+
+    sig = "(" + ", ".join(params) + ")" if params else "()"  # pragma: no cover - empty params rare
+    if return_type:  # pragma: no cover - field return type
+        sig += f": {return_type}"  # pragma: no cover
+    return sig
+
+
 def _process_graphql_tree(
     node: "tree_sitter.Node",
     source: bytes,
@@ -225,6 +266,9 @@ def _process_graphql_tree(
 
             symbol_id = _make_symbol_id(rel_path, start_line, end_line, op_name, op_type)
 
+            # Extract signature (variable definitions)
+            signature = _extract_graphql_signature(node, source)
+
             sym = Symbol(
                 id=symbol_id,
                 stable_id=None,
@@ -242,6 +286,7 @@ def _process_graphql_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=signature,
             )
             symbols.append(sym)
 

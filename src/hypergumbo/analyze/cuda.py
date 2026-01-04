@@ -108,6 +108,39 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None  # pragma: no cover
 
 
+def _extract_cuda_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a CUDA function definition.
+
+    CUDA uses C/C++ syntax: return_type function_name(type1 param1, type2 param2)
+    Returns signature like "(int x, float* data) int".
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    # Find function_declarator for parameters
+    declarator = _find_child_by_type(node, "function_declarator")
+    if declarator:
+        # Find parameter_list within declarator
+        for child in declarator.children:
+            if child.type == "parameter_list":
+                for param_child in child.children:
+                    if param_child.type == "parameter_declaration":
+                        param_text = _node_text(param_child, source).strip()
+                        if param_text:
+                            params.append(param_text)
+
+    # Find return type (primitive_type, type_identifier, etc.)
+    for child in node.children:
+        if child.type in ("primitive_type", "type_identifier", "sized_type_specifier"):
+            return_type = _node_text(child, source).strip()
+            break
+
+    sig = "(" + ", ".join(params) + ")"
+    if return_type and return_type != "void":
+        sig += f" {return_type}"
+    return sig
+
+
 def _get_cuda_attributes(node: "tree_sitter.Node") -> tuple[bool, bool, bool]:
     """Check for __global__, __device__, __host__ attributes.
 
@@ -173,6 +206,9 @@ def _process_cuda_tree(
             end_line = node.end_point[0] + 1
             symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, kind)
 
+            # Extract signature
+            signature = _extract_cuda_signature(node, source)
+
             sym = Symbol(
                 id=symbol_id,
                 stable_id=None,
@@ -190,6 +226,7 @@ def _process_cuda_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=signature,
                 meta={"is_kernel": is_global} if is_global else None,
             )
             symbols.append(sym)

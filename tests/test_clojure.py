@@ -375,3 +375,60 @@ class TestClojureAnalyzer:
 
         assert result.skipped is True
         assert "tree-sitter-language-pack" in result.skip_reason
+
+
+class TestClojureSignatureExtraction:
+    """Tests for Clojure function signature extraction."""
+
+    def test_simple_params(self, tmp_path: Path) -> None:
+        """Extract signature from simple defn with params."""
+        make_clj_file(
+            tmp_path,
+            "core.clj",
+            "(defn add [x y] (+ x y))",
+        )
+        result = analyze_clojure(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "[x, y]"
+
+    def test_no_params(self, tmp_path: Path) -> None:
+        """Extract signature from defn with no params."""
+        make_clj_file(
+            tmp_path,
+            "core.clj",
+            "(defn no-args [] 42)",
+        )
+        result = analyze_clojure(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "no-args"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "[]"
+
+    def test_rest_params(self, tmp_path: Path) -> None:
+        """Extract signature from defn with rest params (& rest)."""
+        make_clj_file(
+            tmp_path,
+            "core.clj",
+            "(defn variadic [first & rest] (cons first rest))",
+        )
+        result = analyze_clojure(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "variadic"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "[first, &, rest]"
+
+    def test_docstring_before_params(self, tmp_path: Path) -> None:
+        """Extract signature with docstring before params."""
+        make_clj_file(
+            tmp_path,
+            "core.clj",
+            '''
+(defn documented
+  "A documented function."
+  [x]
+  x)
+''',
+        )
+        result = analyze_clojure(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "documented"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "[x]"

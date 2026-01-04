@@ -120,6 +120,48 @@ def _find_child_by_type(
     return None  # pragma: no cover - defensive
 
 
+def _extract_wolfram_signature(
+    call_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Wolfram function call pattern.
+
+    Wolfram function definitions use pattern matching:
+    f[x_, y_] := body -> [x_, y_]
+    f[x_Integer, y_List] := body -> [x_Integer, y_List]
+
+    Returns signature string like "[x_, y_]" or None.
+    """
+    # Find the argument list within the call
+    params: list[str] = []
+
+    # Look for pattern arguments in the call's children
+    in_brackets = False
+    for child in call_node.children:
+        if child.type == "[":
+            in_brackets = True
+            continue
+        if child.type == "]":
+            break
+        if not in_brackets:
+            continue
+
+        # Skip commas
+        if child.type == ",":  # pragma: no cover - separator
+            continue  # pragma: no cover
+
+        # Collect pattern arguments (pattern, blank, etc.)
+        if child.type in ("pattern", "blank", "blank_sequence", "blank_null_sequence",
+                          "pattern_blank", "pattern_blank_sequence", "pattern_blank_null_sequence",
+                          "symbol"):
+            param_text = _node_text(child, source).strip()
+            if param_text:
+                params.append(param_text)
+
+    if params:
+        return "[" + ", ".join(params) + "]"
+    return "[]"
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -140,6 +182,7 @@ def _extract_symbols_from_file(
         name: str,
         kind: str,
         meta: dict | None = None,
+        signature: Optional[str] = None,
     ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:  # pragma: no cover - defensive
@@ -164,6 +207,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         )
         if meta:  # pragma: no cover - meta rarely used
             sym.meta = meta  # pragma: no cover
@@ -198,7 +242,9 @@ def _extract_symbols_from_file(
                         if func_name_node:
                             func_name = _node_text(func_name_node, source).strip()
                             if func_name:
-                                add_symbol(node, func_name, "function")
+                                # Extract signature from the call pattern
+                                signature = _extract_wolfram_signature(left_node, source)
+                                add_symbol(node, func_name, "function", signature=signature)
                     elif left_node.type == "symbol":  # pragma: no cover - simple pattern
                         # Could be a simple pattern like f := ...
                         sym_name = _node_text(left_node, source).strip()  # pragma: no cover

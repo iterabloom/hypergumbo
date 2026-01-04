@@ -275,3 +275,37 @@ class TestOCamlAnalyzeFallback:
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "ocaml-v1"
+
+
+class TestOCamlSignatureExtraction:
+    """Tests for OCaml function signature extraction."""
+
+    def test_simple_function_signature(self, tmp_path: Path) -> None:
+        """Extract signature from simple let binding with params."""
+        from hypergumbo.analyze.ocaml import analyze_ocaml
+
+        make_ocaml_file(tmp_path, "main.ml", "let add x y = x + y")
+        result = analyze_ocaml(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_single_param(self, tmp_path: Path) -> None:
+        """Extract signature from function with single param."""
+        from hypergumbo.analyze.ocaml import analyze_ocaml
+
+        make_ocaml_file(tmp_path, "main.ml", "let double x = x * 2")
+        result = analyze_ocaml(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x)"
+
+    def test_no_params_value(self, tmp_path: Path) -> None:
+        """Value binding (no params) should have no signature."""
+        from hypergumbo.analyze.ocaml import analyze_ocaml
+
+        make_ocaml_file(tmp_path, "main.ml", "let x = 42")
+        result = analyze_ocaml(tmp_path)
+        vals = [s for s in result.symbols if s.kind == "function" and s.name == "x"]
+        assert len(vals) == 1
+        assert vals[0].signature is None  # No params = value, not function

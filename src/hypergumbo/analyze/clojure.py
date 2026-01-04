@@ -133,6 +133,40 @@ def _get_sym_name(node: "tree_sitter.Node", source: bytes) -> str:
     return _node_text(node, source)  # pragma: no cover - fallback for unusual nodes
 
 
+def _extract_clojure_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Clojure defn form.
+
+    Clojure functions use vector syntax for parameters:
+    (defn name [param1 param2] body) -> [param1, param2]
+    (defn name [x y & rest] body) -> [x, y, & rest]
+
+    Returns signature string like "[x, y]" or None if not found.
+    """
+    # Find the vector literal (vec_lit) containing parameters
+    # It should be after the function name
+    children = [c for c in node.children if c.type not in ("(", ")")]
+    if len(children) < 3:
+        return None  # pragma: no cover - malformed defn
+
+    # children[0] = defn/defn-, children[1] = name, children[2+] = docstring/params/body
+    for i in range(2, len(children)):
+        child = children[i]
+        if child.type == "vec_lit":
+            # Extract parameter names from vector
+            params: list[str] = []
+            for vec_child in child.children:
+                if vec_child.type == "sym_lit":
+                    param_name = _get_sym_name(vec_child, source)
+                    params.append(param_name)
+            if params:
+                return "[" + ", ".join(params) + "]"
+            return "[]"
+
+    return None  # pragma: no cover - no params found
+
+
 def _is_def_form(sym_name: str) -> tuple[str, str] | None:
     """Check if a symbol name is a def-like form.
 
@@ -220,6 +254,12 @@ def _extract_symbols_from_file(
                             end_col=node.end_point[1],
                         )
                         sym_id = _make_symbol_id(file_path, start_line, end_line, def_name, kind)
+
+                        # Extract signature for functions
+                        signature = None
+                        if kind == "function":
+                            signature = _extract_clojure_signature(node, source)
+
                         symbols.append(Symbol(
                             id=sym_id,
                             name=def_name,
@@ -229,6 +269,7 @@ def _extract_symbols_from_file(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            signature=signature,
                             meta={"visibility": visibility} if visibility == "private" else None,
                         ))
 
