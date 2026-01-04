@@ -2548,6 +2548,186 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Zig analysis failed or tree-sitter not available
 
+    if "nix" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.nix import analyze_nix_files  # pragma: no cover
+            result = analyze_nix_files(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Nix analysis failed or tree-sitter-nix not available
+
+    if "elixir" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.elixir import analyze_elixir  # pragma: no cover
+            result = analyze_elixir(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Elixir analysis failed or tree-sitter not available
+
+    if "erlang" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.erlang import analyze_erlang  # pragma: no cover
+            result = analyze_erlang(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Erlang analysis failed or tree-sitter not available
+
+    if "elm" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.elm import analyze_elm  # pragma: no cover
+            result = analyze_elm(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Elm analysis failed or tree-sitter not available
+
+    if "fsharp" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.fsharp import analyze_fsharp  # pragma: no cover
+            result = analyze_fsharp(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # F# analysis failed or tree-sitter not available
+
+    if "fortran" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.fortran import analyze_fortran  # pragma: no cover
+            result = analyze_fortran(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Fortran analysis failed or tree-sitter not available
+
+    if "groovy" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.groovy import analyze_groovy  # pragma: no cover
+            result = analyze_groovy(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Groovy analysis failed or tree-sitter not available
+
+    if "julia" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.julia import analyze_julia  # pragma: no cover
+            result = analyze_julia(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Julia analysis failed or tree-sitter not available
+
+    if "objective-c" in profile.languages or "objc" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.objc import analyze_objc  # pragma: no cover
+            result = analyze_objc(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Objective-C analysis failed or tree-sitter not available
+
+    if "perl" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.perl import analyze_perl  # pragma: no cover
+            result = analyze_perl(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Perl analysis failed or tree-sitter not available
+
+    if "r" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.r_lang import analyze_r  # pragma: no cover
+            result = analyze_r(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # R analysis failed or tree-sitter not available
+
+    if "bash" in profile.languages or "shell" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.bash import analyze_bash  # pragma: no cover
+            result = analyze_bash(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Bash analysis failed or tree-sitter not available
+
+    if "sql" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.sql import analyze_sql  # pragma: no cover
+            result = analyze_sql(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # SQL analysis failed or tree-sitter not available
+
+    if "dockerfile" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.dockerfile import analyze_dockerfile  # pragma: no cover
+            result = analyze_dockerfile(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Dockerfile analysis failed or tree-sitter not available
+
+    if "hcl" in profile.languages or "terraform" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.hcl import analyze_hcl  # pragma: no cover
+            result = analyze_hcl(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # HCL/Terraform analysis failed or tree-sitter not available
+
+    if "vhdl" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.vhdl import analyze_vhdl  # pragma: no cover
+            result = analyze_vhdl(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # VHDL analysis failed or tree-sitter not available
+
+    if "verilog" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.verilog import analyze_verilog  # pragma: no cover
+            result = analyze_verilog(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Verilog analysis failed or tree-sitter not available
+
+    if "clojure" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.clojure import analyze_clojure  # pragma: no cover
+            result = analyze_clojure(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Clojure analysis failed or tree-sitter not available
+
+    if "dart" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.dart import analyze_dart  # pragma: no cover
+            result = analyze_dart(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Dart analysis failed or tree-sitter not available
+
+    if "cobol" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.cobol import analyze_cobol  # pragma: no cover
+            result = analyze_cobol(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # COBOL analysis failed or tree-sitter not available
+
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files
@@ -2762,10 +2942,52 @@ def _format_symbols(
     if entrypoint_files is None:
         entrypoint_files = set()
 
-    # Filter to functions and classes, exclude test files and derived artifacts
+    # Filter to meaningful symbol kinds, exclude test files and derived artifacts
+    # Include OOP kinds (function, class, method) plus language-specific equivalents:
+    # - Nix: binding, derivation, input (core abstractions)
+    # - Terraform/HCL: resource, data, module, variable, output, provider, local
+    # - Elixir/Erlang: module, macro, record, type
+    # - Elm/F#: module, type, port, record, union, value
+    # - SQL: table, view, procedure, trigger
+    # - Dockerfile: stage
+    # - Lean: theorem, structure, inductive, instance
+    # - Agda: data (algebraic data types)
+    # - Fortran/COBOL: program, subroutine
+    # - VHDL: entity, architecture, component
+    # - Other: struct, enum, trait, interface, protocol, object
+    KEY_SYMBOL_KINDS = frozenset({
+        # OOP languages
+        "function", "class", "method", "constructor",
+        # Structs and data types
+        "struct", "structure", "enum", "type", "record", "union", "abstract",
+        # Interfaces and traits
+        "interface", "trait", "protocol",
+        # Modules and namespaces
+        "module", "object", "namespace", "instance",
+        # Nix
+        "binding", "derivation", "input",
+        # Terraform/HCL
+        "resource", "data", "variable", "output", "provider", "local",
+        # Elixir/Erlang
+        "macro",
+        # Elm
+        "port",
+        # SQL
+        "table", "view", "procedure", "trigger",
+        # Dockerfile
+        "stage",
+        # F#
+        "value",
+        # Lean (theorem prover)
+        "theorem", "inductive",
+        # Fortran/COBOL
+        "program", "subroutine",
+        # VHDL (hardware design)
+        "entity", "architecture", "component",
+    })
     key_symbols = [
         s for s in symbols
-        if s.kind in ("function", "class", "method")
+        if s.kind in KEY_SYMBOL_KINDS
         and not _is_test_path(s.path)
         and "test_" not in s.name  # Exclude test functions
         and s.supply_chain_tier != 4  # Exclude derived artifacts (bundles, etc.)
