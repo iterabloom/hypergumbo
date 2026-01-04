@@ -120,6 +120,65 @@ class FileAnalysis:
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
 
 
+def _extract_go_signature(
+    node: "tree_sitter.Node", source: bytes, max_len: int = 60
+) -> Optional[str]:
+    """Extract function signature from a Go function/method declaration.
+
+    Returns a signature string like "(x int, y string) error" or "(a, b int) (int, error)"
+    for Go functions. None if extraction fails.
+
+    Args:
+        node: A tree-sitter function_declaration or method_declaration node.
+        source: Source bytes of the file.
+        max_len: Maximum length of signature (truncated with ellipsis if longer).
+    """
+    if node.type not in ("function_declaration", "method_declaration"):
+        return None  # pragma: no cover
+
+    params_node = _find_child_by_field(node, "parameters")
+    if not params_node:
+        return None  # pragma: no cover
+
+    # Extract parameters from parameter_list
+    param_strs: list[str] = []
+    for child in params_node.children:
+        if child.type == "parameter_declaration":
+            # Go parameters: can have multiple names sharing a type
+            # e.g., "a, b int" or "x string"
+            names: list[str] = []
+            type_str = ""
+            for param_child in child.children:
+                if param_child.type == "identifier":
+                    names.append(_node_text(param_child, source))
+                elif param_child.type in ("type_identifier", "pointer_type",
+                                          "slice_type", "map_type", "array_type",
+                                          "interface_type", "struct_type",
+                                          "function_type", "channel_type",
+                                          "qualified_type"):
+                    type_str = _node_text(param_child, source)
+
+            if names and type_str:
+                param_strs.append(f"{', '.join(names)} {type_str}")
+            elif type_str:  # pragma: no cover
+                # Unnamed parameter (rare but valid in Go interfaces)
+                param_strs.append(type_str)
+
+    sig = "(" + ", ".join(param_strs) + ")"
+
+    # Extract return type(s) from result field
+    result_node = _find_child_by_field(node, "result")
+    if result_node:
+        ret_text = _node_text(result_node, source)
+        sig += f" {ret_text}"
+
+    # Truncate if too long
+    if len(sig) > max_len:
+        sig = sig[: max_len - 1] + "…"
+
+    return sig
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -143,6 +202,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract function signature
+                signature = _extract_go_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, func_name, "function"),
                     name=func_name,
@@ -157,6 +219,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -189,6 +252,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract method signature
+                signature = _extract_go_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -203,6 +269,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol

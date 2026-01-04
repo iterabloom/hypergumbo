@@ -2917,3 +2917,163 @@ class TestReexportResolution:
         assert helper_id in call_dsts, \
             f"Call edge should point to real helper {helper_id}, got {call_dsts}"
 
+
+class TestJsTsSignatureExtraction:
+    """Tests for extracting function signatures from JavaScript/TypeScript code."""
+
+    def test_extracts_js_function_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from JavaScript function declarations."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+function add(x, y) {
+    return x + y;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_extracts_ts_function_signature_with_types(self, tmp_path: Path) -> None:
+        """Extracts signature from TypeScript function with type annotations."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+function add(x: number, y: number): number {
+    return x + y;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "x: number" in sig
+        assert "y: number" in sig
+        assert ": number" in sig  # return type
+
+    def test_extracts_arrow_function_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from arrow functions."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+const add = (x: number, y: number): number => x + y;
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "x: number" in sig
+        assert "y: number" in sig
+
+    def test_extracts_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from class methods."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+class Calculator {
+    add(x: number, y: number): number {
+        return x + y;
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        sig = methods[0].signature
+        assert sig is not None
+        assert "x: number" in sig
+
+    def test_extracts_signature_with_default_params(self, tmp_path: Path) -> None:
+        """Extracts signature with default parameters (shows ...)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+function greet(name, greeting = "Hello") {
+    return greeting + ", " + name;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "name" in sig
+        # Default value should be shown as ...
+        assert "greeting = ..." in sig
+
+    def test_extracts_signature_with_rest_params(self, tmp_path: Path) -> None:
+        """Extracts signature with rest parameters."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+function sum(...numbers) {
+    return numbers.reduce((a, b) => a + b, 0);
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "...numbers" in sig
+
+    def test_signature_truncated_if_too_long(self, tmp_path: Path) -> None:
+        """Long signatures are truncated with ellipsis."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+function veryLongFunction(firstParam: string, secondParam: number, thirdParam: Array<string>, fourthParam: Record<string, number>): Map<string, number> {
+    return new Map();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert len(sig) <= 60
+        assert sig.endswith("…")
+
+    def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
+        """Symbol.to_dict() includes the signature field."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+function greet(name: string): string {
+    return "Hello, " + name;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        as_dict = funcs[0].to_dict()
+        assert "signature" in as_dict
+        assert "name: string" in as_dict["signature"]
