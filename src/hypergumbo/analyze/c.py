@@ -104,6 +104,77 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _find_function_declarator(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """Find the function_declarator node within a function definition or declaration."""
+    for child in node.children:
+        if child.type == "function_declarator":
+            return child
+        elif child.type == "pointer_declarator":
+            # Pointer return type: int* func()
+            for subchild in child.children:
+                if subchild.type == "function_declarator":
+                    return subchild
+    return None  # pragma: no cover
+
+
+def _extract_c_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a C function definition or declaration.
+
+    Returns signature like "(int x, char* name) int" or "(void) void".
+    """
+    if node.type not in ("function_definition", "declaration"):
+        return None  # pragma: no cover
+
+    # Find function_declarator
+    func_decl = _find_function_declarator(node)
+    if not func_decl:
+        return None  # pragma: no cover
+
+    # Find parameter_list
+    param_list = None
+    for child in func_decl.children:
+        if child.type == "parameter_list":
+            param_list = child
+            break
+
+    if not param_list:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    param_strs: list[str] = []
+    for child in param_list.children:
+        if child.type == "parameter_declaration":
+            # Get full text of parameter and clean it
+            param_text = _node_text(child, source).strip()
+            param_strs.append(param_text)
+
+    # Build signature with parameters
+    sig = "(" + ", ".join(param_strs) + ")"
+
+    # Extract return type (before the function_declarator)
+    return_type_parts: list[str] = []
+    for child in node.children:
+        if child.type in ("function_declarator", "pointer_declarator"):
+            break
+        if child.type in ("primitive_type", "type_identifier", "sized_type_specifier",
+                          "storage_class_specifier", "type_qualifier"):
+            return_type_parts.append(_node_text(child, source))
+
+    if return_type_parts:
+        return_type = " ".join(return_type_parts)
+        # Add pointer indicator if function_declarator is wrapped in pointer_declarator
+        for child in node.children:
+            if child.type == "pointer_declarator":
+                return_type += "*"
+                break
+        if return_type and return_type != "void":
+            sig += f" {return_type}"
+
+    return sig
+
+
 def _get_c_parser() -> Optional["tree_sitter.Parser"]:
     """Get tree-sitter parser for C."""
     try:
@@ -147,6 +218,7 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                signature = _extract_c_signature(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
                     name=name,
@@ -156,6 +228,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 
@@ -172,6 +245,7 @@ def _extract_symbols(
                             start_col=node.start_point[1],
                             end_col=node.end_point[1],
                         )
+                        signature = _extract_c_signature(node, source)
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
                             name=name,
@@ -181,6 +255,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=signature,
                         )
                         symbols.append(symbol)
 

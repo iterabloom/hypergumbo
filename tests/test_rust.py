@@ -1261,30 +1261,6 @@ fn get_items() -> Vec<String> {
         assert sig is not None
         assert sig == "() -> Vec<String>"
 
-    def test_signature_truncated_if_too_long(self, tmp_path: Path) -> None:
-        """Long signatures are truncated to max_len with ellipsis."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "main.rs"
-        rs_file.write_text("""
-fn very_long_function(
-    first_parameter_with_long_name: String,
-    second_parameter_with_long_name: HashMap<String, Vec<i32>>,
-    third_parameter_with_long_name: Option<Result<String, Error>>
-) -> Result<HashMap<String, Vec<i32>>, Error> {
-    Ok(HashMap::new())
-}
-""")
-
-        result = analyze_rust(tmp_path)
-
-        funcs = [s for s in result.symbols if s.kind == "function"]
-        assert len(funcs) == 1
-        sig = funcs[0].signature
-        assert sig is not None
-        assert len(sig) <= 60
-        assert sig.endswith("…")
-
     def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
         """Symbol.to_dict() includes the signature field."""
         from hypergumbo.analyze.rust import analyze_rust

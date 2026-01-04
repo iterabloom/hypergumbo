@@ -852,28 +852,6 @@ func process(items []string) map[string]int {
         assert "[]string" in sig
         assert "map[string]int" in sig
 
-    def test_signature_truncated_if_too_long(self, tmp_path: Path) -> None:
-        """Long signatures are truncated with ellipsis."""
-        from hypergumbo.analyze.go import analyze_go
-
-        go_file = tmp_path / "main.go"
-        go_file.write_text("""
-package main
-
-func veryLongFunction(firstParam string, secondParam string, thirdParam map[string]interface{}, fourthParam []string) (map[string]interface{}, error) {
-    return nil, nil
-}
-""")
-
-        result = analyze_go(tmp_path)
-
-        funcs = [s for s in result.symbols if s.kind == "function"]
-        assert len(funcs) == 1
-        sig = funcs[0].signature
-        assert sig is not None
-        assert len(sig) <= 60
-        assert sig.endswith("…")
-
     def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
         """Symbol.to_dict() includes the signature field."""
         from hypergumbo.analyze.go import analyze_go

@@ -96,6 +96,56 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_cpp_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a C++ function definition or declaration.
+
+    Returns signature like "(int x, std::string& name) int" or "(void)".
+    """
+    if node.type not in ("function_definition", "declaration"):
+        return None  # pragma: no cover
+
+    # Find function_declarator
+    declarator = _find_child_by_type(node, "function_declarator")
+    if not declarator:
+        return None  # pragma: no cover
+
+    # Find parameter_list
+    param_list = _find_child_by_type(declarator, "parameter_list")
+    if not param_list:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    param_strs: list[str] = []
+    for child in param_list.children:
+        if child.type == "parameter_declaration":
+            param_text = _node_text(child, source).strip()
+            param_strs.append(param_text)
+
+    # Build signature with parameters
+    sig = "(" + ", ".join(param_strs) + ")"
+
+    # Extract return type (collect nodes before function_declarator)
+    return_type_parts: list[str] = []
+    for child in node.children:
+        if child.type == "function_declarator":
+            break
+        if child.type in (
+            "primitive_type", "type_identifier", "qualified_identifier",
+            "sized_type_specifier", "template_type", "auto",
+            "storage_class_specifier", "type_qualifier",
+        ):
+            return_type_parts.append(_node_text(child, source))
+
+    if return_type_parts:
+        return_type = " ".join(return_type_parts)
+        if return_type and return_type != "void":
+            sig += f" {return_type}"
+
+    return sig
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -236,6 +286,7 @@ def _extract_symbols_from_file(
                 name, kind = result
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+                signature = _extract_cpp_signature(node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, kind),
@@ -251,6 +302,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 # Store by both full name and short name

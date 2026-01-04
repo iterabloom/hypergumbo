@@ -271,7 +271,7 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
 
 
 def _extract_jsts_signature(
-    node: "tree_sitter.Node", source: bytes, max_len: int = 60
+    node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
     """Extract function signature from a JS/TS function node.
 
@@ -281,7 +281,6 @@ def _extract_jsts_signature(
     Args:
         node: A tree-sitter function_declaration, arrow_function, or method node.
         source: Source bytes of the file.
-        max_len: Maximum length of signature (truncated with ellipsis if longer).
     """
     # Find parameters - node type depends on function type
     params_node = None
@@ -342,10 +341,6 @@ def _extract_jsts_signature(
         if not ret_text.startswith(":"):
             ret_text = f": {ret_text}"
         sig += ret_text
-
-    # Truncate if too long
-    if len(sig) > max_len:
-        sig = sig[: max_len - 1] + "…"
 
     return sig
 
