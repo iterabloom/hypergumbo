@@ -477,3 +477,49 @@ class TestObjCInstantiationEdges:
         # At minimum should have some edges (may be calls instead)
         all_edges = result.edges
         assert len(all_edges) >= 0  # Just verify we can analyze
+
+
+class TestObjCSignatureExtraction:
+    """Tests for Objective-C method signature extraction."""
+
+    def test_basic_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a basic method."""
+        from hypergumbo.analyze.objc import analyze_objc
+
+        (tmp_path / "Calculator.h").write_text("""
+@interface Calculator : NSObject
+- (int)addX:(int)x y:(int)y;
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "addXy" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(int x, int y): int"
+
+    def test_void_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from void method (omits void)."""
+        from hypergumbo.analyze.objc import analyze_objc
+
+        (tmp_path / "Logger.h").write_text("""
+@interface Logger : NSObject
+- (void)logMessage:(NSString *)message;
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "logMessage" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(NSString* message)"
+
+    def test_no_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method with no parameters."""
+        from hypergumbo.analyze.objc import analyze_objc
+
+        (tmp_path / "Counter.h").write_text("""
+@interface Counter : NSObject
+- (NSString *)getName;
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "getName" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(): NSString*"

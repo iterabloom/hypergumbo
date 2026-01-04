@@ -325,3 +325,64 @@ class TestLuaAnalyzeFallback:
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "lua-v1"
+
+
+class TestLuaSignatureExtraction:
+    """Tests for Lua function signature extraction."""
+
+    def test_positional_params(self, tmp_path: Path) -> None:
+        """Extracts signature with positional parameters."""
+        from hypergumbo.analyze.lua import analyze_lua
+
+        make_lua_file(
+            tmp_path,
+            "calc.lua",
+            """
+function add(x, y)
+    return x + y
+end
+""",
+        )
+        result = analyze_lua(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_no_params_function(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no parameters."""
+        from hypergumbo.analyze.lua import analyze_lua
+
+        make_lua_file(
+            tmp_path,
+            "simple.lua",
+            """
+function answer()
+    return 42
+end
+""",
+        )
+        result = analyze_lua(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "answer"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method-style functions."""
+        from hypergumbo.analyze.lua import analyze_lua
+
+        make_lua_file(
+            tmp_path,
+            "player.lua",
+            """
+Player = {}
+
+function Player:move(dx, dy)
+    self.x = self.x + dx
+    self.y = self.y + dy
+end
+""",
+        )
+        result = analyze_lua(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "move" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(dx, dy)"

@@ -102,6 +102,59 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None
 
 
+def _extract_php_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a PHP function or method declaration.
+
+    Returns signature like:
+    - "(int $x, int $y): int" for typed functions
+    - "(string $msg)" for void functions
+
+    Args:
+        node: The function_definition or method_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type = None
+    found_params = False
+
+    # Iterate through children to find parameters and return type
+    for child in node.children:
+        if child.type == "formal_parameters":
+            found_params = True
+            for subchild in child.children:
+                if subchild.type == "simple_parameter":
+                    param_type = None
+                    param_name = None
+                    for pc in subchild.children:
+                        if pc.type in ("primitive_type", "named_type", "nullable_type",
+                                        "optional_type", "union_type"):
+                            param_type = _node_text(pc, source)
+                        elif pc.type == "variable_name":
+                            param_name = _node_text(pc, source)
+                    if param_name:
+                        if param_type:
+                            params.append(f"{param_type} {param_name}")
+                        else:
+                            params.append(param_name)
+        # Return type comes after formal_parameters
+        elif found_params and child.type in ("primitive_type", "named_type", "nullable_type",
+                                              "optional_type", "union_type"):
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "void":
+        signature += f": {return_type}"
+
+    return signature
+
+
 def _detect_laravel_route(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[str | None, str | None]:
@@ -228,6 +281,7 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                signature = _extract_php_signature(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
                     name=name,
@@ -237,6 +291,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 
@@ -279,6 +334,7 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 full_name = f"{current_class.name}.{name}" if current_class else name
+                signature = _extract_php_signature(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -288,6 +344,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 symbols.append(symbol)
 

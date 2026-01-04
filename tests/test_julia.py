@@ -424,3 +424,47 @@ const VERSION = "1.0.0"
         const_names = [s.name for s in consts]
         assert "PI" in const_names
         assert "VERSION" in const_names
+
+
+class TestJuliaSignatureExtraction:
+    """Tests for Julia function signature extraction."""
+
+    def test_typed_function_with_return_type(self, tmp_path: Path) -> None:
+        """Extracts signature from function with typed params and return type."""
+        from hypergumbo.analyze.julia import analyze_julia
+
+        (tmp_path / "Calculator.jl").write_text("""
+function add(x::Int, y::Int)::Int
+    return x + y
+end
+""")
+        result = analyze_julia(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x::Int, y::Int)::Int"
+
+    def test_typed_function_no_return_type(self, tmp_path: Path) -> None:
+        """Extracts signature from function without return type."""
+        from hypergumbo.analyze.julia import analyze_julia
+
+        (tmp_path / "Logger.jl").write_text("""
+function log(message::String)
+    println(message)
+end
+""")
+        result = analyze_julia(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "log"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(message::String)"
+
+    def test_short_form_function(self, tmp_path: Path) -> None:
+        """Extracts signature from short-form function."""
+        from hypergumbo.analyze.julia import analyze_julia
+
+        (tmp_path / "Math.jl").write_text("""
+double(x) = x * 2
+""")
+        result = analyze_julia(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x)"

@@ -760,3 +760,55 @@ Route::get('/hello', function () {
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 1
         assert routes[0].meta.get("route_path") == "/hello"
+
+
+class TestPHPSignatureExtraction:
+    """Tests for PHP function signature extraction."""
+
+    def test_typed_method_with_return_type(self, tmp_path: Path) -> None:
+        """Extracts signature from method with typed params and return type."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Calculator.php").write_text("""<?php
+class Calculator {
+    public function add(int $x, int $y): int {
+        return $x + $y;
+    }
+}
+?>""")
+        result = analyze_php(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(int $x, int $y): int"
+
+    def test_void_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from void method (omits void return type)."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Logger.php").write_text("""<?php
+class Logger {
+    public function log(string $message): void {
+        echo $message;
+    }
+}
+?>""")
+        result = analyze_php(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "log" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(string $message)"
+
+    def test_no_type_hints_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method without type hints."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Utils.php").write_text("""<?php
+class Utils {
+    public function process($data) {
+        return $data;
+    }
+}
+?>""")
+        result = analyze_php(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "process" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "($data)"

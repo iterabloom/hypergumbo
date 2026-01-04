@@ -291,3 +291,53 @@ end program main
     assert "function" in kinds
     assert "subroutine" in kinds
     assert "program" in kinds
+
+
+class TestFortranSignatureExtraction:
+    """Tests for Fortran function/subroutine signature extraction."""
+
+    def test_function_with_result_signature(self, tmp_path):
+        """Extracts signature from a function with result variable."""
+        from hypergumbo.analyze.fortran import analyze_fortran_files
+
+        (tmp_path / "calculator.f90").write_text("""
+function add(x, y) result(z)
+    integer, intent(in) :: x, y
+    integer :: z
+    z = x + y
+end function add
+""")
+        result = analyze_fortran_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y): integer"
+
+    def test_subroutine_signature(self, tmp_path):
+        """Extracts signature from subroutine (no return type)."""
+        from hypergumbo.analyze.fortran import analyze_fortran_files
+
+        (tmp_path / "logger.f90").write_text("""
+subroutine log_message(message)
+    character(len=*), intent(in) :: message
+    print *, message
+end subroutine log_message
+""")
+        result = analyze_fortran_files(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subroutine" and s.name == "log_message"]
+        assert len(subs) == 1
+        assert subs[0].signature == "(message)"
+
+    def test_function_no_params_signature(self, tmp_path):
+        """Extracts signature from a function with no parameters."""
+        from hypergumbo.analyze.fortran import analyze_fortran_files
+
+        (tmp_path / "getter.f90").write_text("""
+function get_zero() result(z)
+    integer :: z
+    z = 0
+end function get_zero
+""")
+        result = analyze_fortran_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "get_zero"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(): integer"

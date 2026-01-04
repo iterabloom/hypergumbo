@@ -120,6 +120,76 @@ def _get_statement_name(node: "tree_sitter.Node", source: bytes, stmt_type: str)
     return None
 
 
+def _extract_fortran_signature(
+    node: "tree_sitter.Node", source: bytes, is_function: bool = True
+) -> Optional[str]:
+    """Extract function/subroutine signature from a Fortran function/subroutine node.
+
+    Returns signature like:
+    - "(x, y): integer" for functions with known return type
+    - "(message)" for subroutines (no return type)
+
+    Note: Fortran declares parameter types separately, so we collect parameter names
+    from the function/subroutine statement and try to find their types from
+    variable declarations.
+
+    Args:
+        node: The function or subroutine node.
+        source: The source code bytes.
+        is_function: True for functions, False for subroutines.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    param_names: list[str] = []
+    result_var: Optional[str] = None
+    param_types: dict[str, str] = {}
+
+    # First pass: collect parameter names and result variable from statement
+    stmt_type = "function_statement" if is_function else "subroutine_statement"
+    for child in node.children:
+        if child.type == stmt_type:
+            for grandchild in child.children:
+                if grandchild.type == "parameters":
+                    for param_child in grandchild.children:
+                        if param_child.type == "identifier":
+                            param_names.append(_node_text(param_child, source).lower())
+                elif grandchild.type == "function_result":
+                    for result_child in grandchild.children:
+                        if result_child.type == "identifier":
+                            result_var = _node_text(result_child, source).lower()
+
+    # Second pass: collect type declarations
+    for child in node.children:
+        if child.type == "variable_declaration":
+            var_type: Optional[str] = None
+            var_names: list[str] = []
+
+            for decl_child in child.children:
+                if decl_child.type == "intrinsic_type":
+                    for type_child in decl_child.children:
+                        if type_child.type in ("integer", "real", "character", "logical",
+                                               "double", "complex"):
+                            var_type = type_child.type
+                            break
+                elif decl_child.type == "identifier":
+                    var_names.append(_node_text(decl_child, source).lower())
+
+            if var_type and var_names:
+                for vn in var_names:
+                    param_types[vn] = var_type
+
+    # Build the signature
+    params_str = ", ".join(param_names)
+    signature = f"({params_str})"
+
+    # For functions, try to get the return type from the result variable
+    if is_function and result_var and result_var in param_types:
+        signature += f": {param_types[result_var]}"
+
+    return signature
+
+
 def _process_fortran_tree(
     node: "tree_sitter.Node",
     source: bytes,
@@ -226,6 +296,9 @@ def _process_fortran_tree(
             end_line = node.end_point[0] + 1
             symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
 
+            # Extract signature
+            signature = _extract_fortran_signature(node, source, is_function=True)
+
             sym = Symbol(
                 id=symbol_id,
                 stable_id=None,
@@ -243,6 +316,7 @@ def _process_fortran_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=signature,
             )
             symbols.append(sym)
             symbol_registry[name] = symbol_id
@@ -259,6 +333,9 @@ def _process_fortran_tree(
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
             symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "subroutine")
+
+            # Extract signature
+            signature = _extract_fortran_signature(node, source, is_function=False)
 
             sym = Symbol(
                 id=symbol_id,
@@ -277,6 +354,7 @@ def _process_fortran_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=signature,
             )
             symbols.append(sym)
             symbol_registry[name] = symbol_id

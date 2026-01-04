@@ -113,6 +113,28 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_lua_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a function_declaration.
+
+    Returns signature in format: (param1, param2, ...)
+    Lua is dynamically typed, so no type annotations.
+    """
+    params_node = _find_child_by_type(node, "parameters")
+    if params_node is None:  # pragma: no cover - defensive
+        return "()"
+
+    params: list[str] = []
+    for child in params_node.children:
+        if child.type == "identifier":
+            params.append(_node_text(child, source))
+        elif child.type == "spread":  # pragma: no cover - rare varargs
+            params.append("...")
+
+    return f"({', '.join(params)})"
+
+
 def _get_function_name(
     node: "tree_sitter.Node",
     source: bytes,
@@ -181,6 +203,7 @@ def _extract_symbols_from_file(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    signature=_extract_lua_signature(node, source),
                 ))
 
         # Recurse into children

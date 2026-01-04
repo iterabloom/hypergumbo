@@ -281,3 +281,49 @@ let quadruple x =
 
         assert result.skipped is True
         assert "tree-sitter-language-pack" in result.skip_reason
+
+
+class TestFsharpSignatureExtraction:
+    """Tests for F# function signature extraction."""
+
+    def test_typed_params_with_return_type(self, tmp_path: Path) -> None:
+        """Extracts signature from function with typed params and return type."""
+        make_fsharp_file(
+            tmp_path,
+            "Calculator.fs",
+            """
+let add (x: int) (y: int): int = x + y
+""",
+        )
+        result = analyze_fsharp(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x: int, y: int): int"
+
+    def test_typed_params_no_return_type(self, tmp_path: Path) -> None:
+        """Extracts signature from function without explicit return type."""
+        make_fsharp_file(
+            tmp_path,
+            "Logger.fs",
+            """
+let log (message: string) = printfn "%s" message
+""",
+        )
+        result = analyze_fsharp(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "log"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(message: string)"
+
+    def test_unit_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from function with unit parameter."""
+        make_fsharp_file(
+            tmp_path,
+            "Counter.fs",
+            """
+let getCount () = 0
+""",
+        )
+        result = analyze_fsharp(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "getCount"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"

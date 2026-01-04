@@ -95,6 +95,56 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_scala_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Scala function definition.
+
+    Returns signature like:
+    - "(x: Int, y: Int): Int" for regular functions
+    - "(message: String)" for Unit functions (Unit omitted)
+
+    Args:
+        node: The function_definition or function_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type = None
+    found_params = False
+
+    # Iterate through children to find parameters and return type
+    for child in node.children:
+        if child.type == "parameters":
+            found_params = True
+            for subchild in child.children:
+                if subchild.type == "parameter":
+                    param_name = None
+                    param_type = None
+                    for pc in subchild.children:
+                        if pc.type == "identifier" and param_name is None:
+                            param_name = _node_text(pc, source)
+                        elif pc.type in ("type_identifier", "generic_type", "tuple_type",
+                                         "function_type", "infix_type"):
+                            param_type = _node_text(pc, source)
+                    if param_name and param_type:
+                        params.append(f"{param_name}: {param_type}")
+        # Return type is a type_identifier that comes after parameters
+        elif found_params and child.type in ("type_identifier", "generic_type",
+                                              "tuple_type", "function_type", "infix_type"):
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "Unit":
+        signature += f": {return_type}"
+
+    return signature
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -137,6 +187,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract signature
+                signature = _extract_scala_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -151,6 +204,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -170,6 +224,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract signature
+                signature = _extract_scala_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -184,6 +241,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

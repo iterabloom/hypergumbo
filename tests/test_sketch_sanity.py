@@ -587,3 +587,82 @@ class Calculator {
         # At least one of these should appear
         assert has_param_type, \
             f"No function signatures found in TypeScript sketch. Sketch excerpt: {sketch[:2000]}"
+
+    def test_csharp_functions_have_signatures(self, tmp_path: Path) -> None:
+        """C# functions in Key Symbols should show signatures."""
+        repo = make_stylized_repo(tmp_path, {
+            "src/Calculator.cs": '''
+using System;
+
+namespace MyApp
+{
+    public class Calculator
+    {
+        public int Add(int x, int y)
+        {
+            return x + y;
+        }
+
+        public string Format(string template, int value)
+        {
+            return string.Format(template, value);
+        }
+
+        public Calculator(int initial)
+        {
+            _value = initial;
+        }
+
+        private int _value;
+    }
+}
+''',
+        })
+        sketch = generate_sketch(repo, max_tokens=8000)
+
+        # Key Symbols section should be present
+        assert "## Key Symbols" in sketch, \
+            "Key Symbols section missing for C# repo with methods"
+
+        # At least some signatures should be visible
+        has_param_type = ": int" in sketch or ": string" in sketch or "int " in sketch or "string " in sketch
+        has_csharp_types = "int x" in sketch or "string template" in sketch
+
+        assert has_param_type or has_csharp_types, \
+            f"No function signatures found in C# sketch. Sketch excerpt: {sketch[:2000]}"
+
+    def test_swift_functions_have_signatures(self, tmp_path: Path) -> None:
+        """Swift functions in Key Symbols should show signatures."""
+        repo = make_stylized_repo(tmp_path, {
+            "Sources/Calculator.swift": '''
+import Foundation
+
+class Calculator {
+    func add(x: Int, y: Int) -> Int {
+        return x + y
+    }
+
+    func format(template: String, value: Int) -> String {
+        return String(format: template, value)
+    }
+
+    init(initial: Int) {
+        self.value = initial
+    }
+
+    private var value: Int
+}
+''',
+        })
+        sketch = generate_sketch(repo, max_tokens=8000)
+
+        # Key Symbols section should be present
+        assert "## Key Symbols" in sketch, \
+            "Key Symbols section missing for Swift repo with methods"
+
+        # At least some signatures should be visible
+        has_param_type = ": Int" in sketch or ": String" in sketch
+        has_return_arrow = "-> Int" in sketch or "-> String" in sketch
+
+        assert has_param_type or has_return_arrow, \
+            f"No function signatures found in Swift sketch. Sketch excerpt: {sketch[:2000]}"

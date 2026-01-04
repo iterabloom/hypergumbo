@@ -132,6 +132,70 @@ def _extract_long_identifier(node: "tree_sitter.Node", source: bytes) -> str:
     return ".".join(parts)
 
 
+def _extract_fsharp_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from an F# function_or_value_defn node.
+
+    Returns signature like:
+    - "(x: int, y: int): int" for functions with return type
+    - "(message: string)" for functions without explicit return type
+    - "(): int" for unit parameter functions
+
+    Args:
+        node: The function_or_value_defn node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+    found_func_decl = False
+
+    for child in node.children:
+        if child.type == "function_declaration_left":
+            found_func_decl = True
+            # Look for argument_patterns
+            for grandchild in child.children:
+                if grandchild.type == "argument_patterns":
+                    for arg_child in grandchild.children:
+                        if arg_child.type == "typed_pattern":
+                            # Pattern: identifier_pattern : simple_type
+                            param_name = None
+                            param_type = None
+                            for pattern_child in arg_child.children:
+                                if pattern_child.type == "identifier_pattern":
+                                    id_node = _find_child_by_type(pattern_child, "long_identifier_or_op")
+                                    if id_node:
+                                        name_node = _find_child_by_type(id_node, "identifier")
+                                        if name_node:
+                                            param_name = _node_text(name_node, source)
+                                    else:  # pragma: no cover - defensive fallback
+                                        # May be a direct identifier
+                                        param_name = _node_text(pattern_child, source)
+                                elif pattern_child.type == "simple_type":
+                                    param_type = _node_text(pattern_child, source)
+                            if param_name and param_type:
+                                params.append(f"{param_name}: {param_type}")
+                        elif arg_child.type == "const":
+                            # Check for unit ()
+                            unit_node = _find_child_by_type(arg_child, "unit")
+                            if unit_node:
+                                pass  # unit means no params, just skip
+        elif found_func_decl and child.type == "simple_type":
+            # Return type annotation after function_declaration_left
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type:
+        signature += f": {return_type}"
+
+    return signature
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -196,6 +260,10 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     )
                     sym_id = _make_symbol_id(file_path, start_line, end_line, func_name, "function")
+
+                    # Extract signature
+                    signature = _extract_fsharp_signature(node, source)
+
                     symbols.append(Symbol(
                         id=sym_id,
                         name=func_name,
@@ -205,6 +273,7 @@ def _extract_symbols_from_file(
                         span=span,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        signature=signature,
                     ))
             else:
                 # Check for value_declaration_left (values without params)

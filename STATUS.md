@@ -134,6 +134,55 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Generic types | [x] | Handles `List<String>`, `Map<K, V>` |
 | Array types | [x] | Handles `String[]`, both before and after param name |
 | Varargs | [x] | Handles `Object... args` spread syntax |
+| **C# Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for C# methods (e.g., `(int x, string name): void`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **Swift Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Swift functions (e.g., `(x: Int, name: String) -> Void`) |
+| External/internal params | [x] | Handles Swift's external/internal param naming (e.g., `_ x` becomes just `x`) |
+| **Kotlin Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Kotlin functions (e.g., `(x: Int, name: String): String`) |
+| Unit handling | [x] | Omits Unit return types for cleaner display |
+| **Scala Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Scala methods (e.g., `(x: Int, y: Int): Int`) |
+| Unit handling | [x] | Omits Unit return types for cleaner display |
+| **PHP Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for PHP methods (e.g., `(int $x, string $name): void`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **Objective-C Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Objective-C methods (e.g., `(int x, int y): int`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **Fortran Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Fortran functions/subroutines (e.g., `(x, y): integer`) |
+| Subroutine handling | [x] | Subroutines show params without return type |
+| **F# Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for F# functions (e.g., `(x: int, y: int): int`) |
+| Unit handling | [x] | Handles unit parameter patterns |
+| **Julia Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Julia functions (e.g., `(x::Int, y::Int)::Int`) |
+| Short-form functions | [x] | Handles short-form `f(x) = expr` syntax |
+| **Zig Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Zig functions (e.g., `(x: i32, y: i32) i32`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **Ruby Method Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Ruby methods (e.g., `(param, optional = ..., &block)`) |
+| Keyword parameters | [x] | Handles keyword args with `:` suffix |
+| **Elixir Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Elixir functions (e.g., `(param1, param2)`) |
+| Pattern matching | [x] | Handles pattern-matched parameters |
+| **Erlang Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Erlang functions (e.g., `(Param1, Param2)`) |
+| Pattern matching | [x] | Handles Erlang pattern-matched parameters |
+| **Perl Subroutine Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Perl subs (e.g., `()` for traditional subs) |
+| **Lua Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Lua functions (e.g., `(x, y)`) |
+| Method syntax | [x] | Handles method-style `Table:method` definitions |
+| **Groovy Method Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Groovy methods (e.g., `(String name, int age)`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **Elm Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Elm functions (e.g., `(x, y)`) |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |

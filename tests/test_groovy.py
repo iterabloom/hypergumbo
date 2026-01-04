@@ -530,3 +530,65 @@ class TestGroovyParserFailure:
 
         # Should still process the valid file
         assert result.run is not None
+
+
+class TestGroovySignatureExtraction:
+    """Tests for Groovy method signature extraction.
+
+    Note: Groovy's tree-sitter grammar uses dynamic parameter types,
+    so we only capture parameter names in most cases.
+    """
+
+    def test_params_extraction(self, tmp_path: Path) -> None:
+        """Extracts signature with parameter names."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Calculator.groovy").write_text("""
+class Calculator {
+    int add(int x, int y) {
+        return x + y
+    }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
+        assert len(methods) == 1
+        # Groovy's grammar has limited type info, but captures params
+        assert methods[0].signature is not None
+        assert "x" in methods[0].signature
+        assert "y" in methods[0].signature
+
+    def test_void_return_type_omitted(self, tmp_path: Path) -> None:
+        """Void return type is omitted from signature."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Logger.groovy").write_text("""
+class Logger {
+    void log(String message) {
+        println message
+    }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "log" in s.name]
+        assert len(methods) == 1
+        # Should have message param, no return type (void is omitted)
+        assert "message" in methods[0].signature
+        assert "void" not in methods[0].signature
+
+    def test_no_params_function(self, tmp_path: Path) -> None:
+        """Extracts signature for method with no parameters."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Counter.groovy").write_text("""
+class Counter {
+    int getCount() {
+        return 0
+    }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
+        assert len(methods) == 1
+        # Empty params
+        assert methods[0].signature == "()"

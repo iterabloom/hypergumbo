@@ -96,6 +96,66 @@ def _make_file_id(path: str) -> str:
     return f"objc:{path}:1-1:file:file"
 
 
+def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract type name from a type_name node, handling pointers."""
+    parts: list[str] = []
+    for child in node.children:
+        if child.type in ("primitive_type", "type_identifier"):
+            parts.append(_node_text(child, source))
+        elif child.type == "abstract_pointer_declarator":
+            parts.append("*")
+    return "".join(parts)
+
+
+def _extract_objc_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract method signature from an Objective-C method declaration/definition.
+
+    Returns signature like:
+    - "(int x, int y): int" for methods with return type
+    - "(NSString* message)" for void methods (void omitted)
+    - "(): NSString*" for no-params methods with return type
+
+    Args:
+        node: The method_declaration or method_definition node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    for child in node.children:
+        if child.type == "method_type":
+            # This is the return type
+            type_name_node = _find_child_by_type(child, "type_name")
+            if type_name_node:
+                return_type = _extract_type_name(type_name_node, source)
+        elif child.type == "method_parameter":
+            # Extract parameter type and name
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type == "method_type":
+                    type_name_node = _find_child_by_type(subchild, "type_name")
+                    if type_name_node:
+                        param_type = _extract_type_name(type_name_node, source)
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                params.append(f"{param_type} {param_name}")
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "void":
+        signature += f": {return_type}"
+
+    return signature
+
+
 @dataclass
 class ObjCAnalysisResult:
     """Result of analyzing Objective-C files."""
@@ -272,6 +332,9 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, full_name, "method")
 
+                # Extract signature
+                signature = _extract_objc_signature(node, source)
+
                 symbol = Symbol(
                     id=symbol_id,
                     name=full_name,
@@ -286,6 +349,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.methods_by_name[method_name] = symbol

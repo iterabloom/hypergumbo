@@ -122,6 +122,61 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _extract_elixir_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from def/defp/defmacro call.
+
+    Returns signature in format: (param1, param2, keyword: default)
+    Elixir is dynamically typed, so no type annotations are included.
+    """
+    args = _find_child_by_type(node, "arguments")
+    if args is None:  # pragma: no cover - defensive
+        return "()"
+
+    for child in args.children:
+        if child.type == "call":
+            # def foo(a, b) - parameters are in the arguments of the inner call
+            inner_args = _find_child_by_type(child, "arguments")
+            if inner_args is None:  # pragma: no cover - rare
+                return "()"
+
+            params: list[str] = []
+            for param in inner_args.children:
+                if param.type == "identifier":
+                    # Simple positional parameter
+                    params.append(_node_text(param, source))
+                elif param.type == "binary_operator":  # pragma: no cover - default vals
+                    # Default value: param \\ default
+                    left = None
+                    for pc in param.children:
+                        if pc.type == "identifier":
+                            left = _node_text(pc, source)
+                            break
+                    if left:
+                        params.append(f"{left} \\\\ ...")
+                elif param.type == "keywords":
+                    # Keyword arguments
+                    for kw_pair in param.children:
+                        if kw_pair.type == "pair":
+                            key_node = None
+                            for pc in kw_pair.children:
+                                if pc.type == "keyword":
+                                    key_node = pc
+                                    break
+                            if key_node:
+                                key_text = _node_text(key_node, source).rstrip(":")
+                                params.append(f"{key_text}: ...")
+
+            return f"({', '.join(params)})"
+
+        elif child.type == "identifier":
+            # Simple case: def foo, do: :ok (no parameters)
+            return "()"
+
+    return "()"  # pragma: no cover - defensive
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -218,6 +273,7 @@ def _extract_symbols_from_file(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=_extract_elixir_signature(node, source),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[func_name] = symbol  # Store by short name for local calls
@@ -245,6 +301,7 @@ def _extract_symbols_from_file(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=_extract_elixir_signature(node, source),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[macro_name] = symbol

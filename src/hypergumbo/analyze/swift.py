@@ -101,6 +101,55 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_swift_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Swift function declaration.
+
+    Returns signature like:
+    - "(x: Int, y: Int) -> Int" for regular functions
+    - "(message: String)" for void functions (no return type shown)
+
+    Args:
+        node: The function_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type = None
+    found_closing_paren = False
+
+    # Iterate through children to find parameters and return type
+    for child in node.children:
+        if child.type == "parameter":
+            param_name = None
+            param_type = None
+            for subchild in child.children:
+                if subchild.type == "simple_identifier" and param_name is None:
+                    param_name = _node_text(subchild, source)
+                elif subchild.type in ("user_type", "array_type", "dictionary_type",
+                                        "optional_type", "tuple_type", "function_type"):
+                    param_type = _node_text(subchild, source)
+            if param_name and param_type:
+                params.append(f"{param_name}: {param_type}")
+        elif child.type == ")":
+            found_closing_paren = True
+        # Return type comes after ) and before function_body
+        elif found_closing_paren and child.type in ("user_type", "array_type", "dictionary_type",
+                                                      "optional_type", "tuple_type", "function_type"):
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type:
+        signature += f" -> {return_type}"
+
+    return signature
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -145,6 +194,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract signature
+                signature = _extract_swift_signature(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -159,6 +211,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
