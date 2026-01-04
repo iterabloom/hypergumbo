@@ -192,6 +192,11 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | **WGSL Shader Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for WGSL functions (e.g., `(x: f32, y: f32) -> f32`) |
 | Return type | [x] | Displays return type with `->` arrow syntax |
+| **SQL Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for SQL functions (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`) |
+| Return type | [x] | Displays return type after RETURNS keyword |
+| **Bash Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Bash functions (always `()` since Bash uses positional args) |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |

@@ -44,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - R function signature extraction (e.g., `(x, y)`, `(name, greeting = ...)`)
 - GLSL shader function signature extraction (e.g., `(float x, float y) float`)
 - WGSL shader function signature extraction (e.g., `(x: f32, y: f32) -> f32`)
+- SQL function signature extraction (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`)
+- Bash function signature extraction (always `()` since Bash uses positional args $1, $2)
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files
