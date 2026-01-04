@@ -160,3 +160,25 @@ class TestWolframAnalyzerWhenUnavailable:
         assert "tree-sitter-wolfram" in result.skip_reason
         assert len(result.symbols) == 0
         assert len(result.edges) == 0
+
+
+class TestWolframSignatureExtraction:
+    """Tests for Wolfram function signature extraction."""
+
+    def test_function_with_pattern_args(self, tmp_path: Path) -> None:
+        """Extract signature from function with pattern arguments."""
+        make_wolfram_file(tmp_path, "Example.wl", "f[x_, y_] := x + y")
+        result = analyze_wolfram(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "f"]
+        assert len(funcs) == 1
+        assert funcs[0].signature is not None
+        # Signature should contain the pattern arguments
+        assert "x_" in funcs[0].signature or "[" in funcs[0].signature
+
+    def test_function_single_arg(self, tmp_path: Path) -> None:
+        """Extract signature from function with single argument."""
+        make_wolfram_file(tmp_path, "Example.wl", "double[x_] := 2*x")
+        result = analyze_wolfram(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].signature is not None

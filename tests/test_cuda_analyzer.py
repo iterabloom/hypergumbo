@@ -226,3 +226,49 @@ __global__ void sharedMem() {
     kernels = [s for s in result.symbols if s.kind == "kernel"]
     assert len(kernels) >= 1
     # Shared memory usage could be tracked in meta
+
+
+class TestCudaSignatureExtraction:
+    """Tests for CUDA function signature extraction."""
+
+    def test_kernel_signature(self, tmp_path):
+        """Extract signature from kernel function."""
+        cuda_file = tmp_path / "kernel.cu"
+        cuda_file.write_text("""
+__global__ void addKernel(int *a, int *b, int *c) {
+    int i = threadIdx.x;
+    c[i] = a[i] + b[i];
+}
+""")
+        result = analyze_cuda_files(tmp_path)
+        kernels = [s for s in result.symbols if s.kind == "kernel" and s.name == "addKernel"]
+        assert len(kernels) == 1
+        assert kernels[0].signature is not None
+        assert "int *a" in kernels[0].signature or "int * a" in kernels[0].signature
+
+    def test_device_function_signature(self, tmp_path):
+        """Extract signature from device function."""
+        cuda_file = tmp_path / "device.cu"
+        cuda_file.write_text("""
+__device__ float square(float x) {
+    return x * x;
+}
+""")
+        result = analyze_cuda_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "device_function" and s.name == "square"]
+        assert len(funcs) == 1
+        assert funcs[0].signature is not None
+        assert "float x" in funcs[0].signature
+        assert "float" in funcs[0].signature  # Return type
+
+    def test_function_no_params(self, tmp_path):
+        """Extract signature from function with no params."""
+        cuda_file = tmp_path / "empty.cu"
+        cuda_file.write_text("""
+__global__ void emptyKernel() {
+}
+""")
+        result = analyze_cuda_files(tmp_path)
+        kernels = [s for s in result.symbols if s.kind == "kernel" and s.name == "emptyKernel"]
+        assert len(kernels) == 1
+        assert kernels[0].signature == "()"

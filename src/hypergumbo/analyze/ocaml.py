@@ -146,6 +146,52 @@ def _get_open_module_path(node: "tree_sitter.Node", source: bytes) -> str:
     return ""  # pragma: no cover
 
 
+def _extract_ocaml_signature(
+    let_binding: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from an OCaml let binding.
+
+    OCaml function syntax: let name param1 param2 = body
+    Returns signature string like "(param1, param2)" or None.
+    """
+    params: list[str] = []
+    found_name = False
+
+    for child in let_binding.children:
+        if child.type == "value_name" and not found_name:
+            found_name = True
+            continue
+        if not found_name:  # pragma: no cover - value_name is always first
+            continue  # pragma: no cover
+
+        # Stop at = sign (start of function body)
+        if child.type == "=":
+            break
+
+        # Collect parameter nodes
+        if child.type == "parameter":
+            # Extract the value_pattern from inside the parameter
+            param_text = _node_text(child, source).strip()
+            if param_text:
+                params.append(param_text)
+        elif child.type == "parenthesized_pattern":  # pragma: no cover - rare pattern
+            # Pattern like (x, y) or (x : int)
+            params.append(_node_text(child, source))  # pragma: no cover
+        elif child.type == "typed_pattern":  # pragma: no cover - rare pattern
+            # Pattern like (x : int)
+            params.append(_node_text(child, source))  # pragma: no cover
+        elif child.type == "unit_pattern":  # pragma: no cover - rare pattern
+            # Pattern like ()
+            params.append("()")  # pragma: no cover
+        elif child.type == "wildcard_pattern":  # pragma: no cover - rare pattern
+            # Pattern like _
+            params.append("_")  # pragma: no cover
+
+    if params:
+        return "(" + ", ".join(params) + ")"
+    return None  # No params = value, not function
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -162,7 +208,12 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
 
-    def add_symbol(node: "tree_sitter.Node", name: str, kind: str) -> None:
+    def add_symbol(
+        node: "tree_sitter.Node",
+        name: str,
+        kind: str,
+        signature: Optional[str] = None,
+    ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:
             return  # pragma: no cover - skip empty/duplicate names
@@ -186,6 +237,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         ))
 
     def walk(node: "tree_sitter.Node") -> None:
@@ -195,7 +247,9 @@ def _extract_symbols_from_file(
             if let_binding:
                 name = _get_let_binding_name(let_binding, source)
                 if name:
-                    add_symbol(node, name, "function")
+                    # Extract signature
+                    signature = _extract_ocaml_signature(let_binding, source)
+                    add_symbol(node, name, "function", signature=signature)
 
         elif node.type == "type_definition":
             # Type definition

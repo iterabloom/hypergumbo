@@ -102,6 +102,33 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_solidity_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Solidity function definition.
+
+    Solidity syntax: function name(type1 param1, type2 param2) returns (type3)
+    Returns signature like "(address to, uint256 amount) returns (bool)".
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    for child in node.children:
+        # Parameters are direct children with type "parameter"
+        if child.type == "parameter":
+            param_text = _node_text(child, source).strip()
+            if param_text:
+                params.append(param_text)
+        elif child.type == "return_type_definition":
+            # Return type definition: returns (type)
+            return_type = _node_text(child, source).strip()
+
+    sig = "(" + ", ".join(params) + ")"
+    if return_type:
+        sig += f" {return_type}"
+    return sig
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -125,7 +152,13 @@ def _extract_symbols_from_file(
 
     analysis = FileAnalysis()
 
-    def add_symbol(name: str, kind: str, node: "tree_sitter.Node", prefix: str = "") -> Symbol:
+    def add_symbol(
+        name: str,
+        kind: str,
+        node: "tree_sitter.Node",
+        prefix: str = "",
+        signature: Optional[str] = None,
+    ) -> Symbol:
         """Helper to create and register a symbol."""
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -145,6 +178,7 @@ def _extract_symbols_from_file(
             ),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            signature=signature,
         )
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
@@ -188,7 +222,8 @@ def _extract_symbols_from_file(
             name_node = _find_child_by_field(node, "name")
             if name_node:
                 func_name = _node_text(name_node, source)
-                add_symbol(func_name, "function", node, current_contract)
+                signature = _extract_solidity_signature(node, source)
+                add_symbol(func_name, "function", node, current_contract, signature=signature)
 
         # Constructor definition
         elif node.type == "constructor_definition":

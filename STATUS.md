@@ -205,6 +205,24 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Simple lambdas | [x] | Curried params (e.g., `(x, y)` for `x: y: body`) |
 | Formals patterns | [x] | Attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`) |
 | Top-level functions | [x] | Uses file basename for module/overlay functions |
+| **Clojure Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Clojure defn forms (e.g., `[x, y]`) |
+| Vector params | [x] | Handles Clojure vector syntax for parameters |
+| **OCaml Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for OCaml let bindings (e.g., `(x, y)`) |
+| Multi-param functions | [x] | Handles curried parameter style |
+| **Solidity Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Solidity functions (e.g., `(address to, uint256 amount) returns (bool)`) |
+| Return types | [x] | Displays return type definition |
+| **CUDA Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for CUDA kernels/functions (e.g., `(int *a, int *b) int`) |
+| Return types | [x] | Displays non-void return types |
+| **GraphQL Operation Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for query/mutation variable definitions (e.g., `($id: ID!)`) |
+| Variable definitions | [x] | Handles typed GraphQL variables |
+| **Wolfram Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Wolfram function patterns (e.g., `[x_, y_]`) |
+| Pattern matching | [x] | Handles Wolfram's pattern-matching argument syntax |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |
