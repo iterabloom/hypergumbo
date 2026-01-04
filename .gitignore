@@ -30,3 +30,8 @@ AUTONOMOUS_MODE.txt
 .coverage
 .coverage.*
 htmlcov/
+
+# Node (bats testing)
+node_modules/
+package.json
+package-lock.json
