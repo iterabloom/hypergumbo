@@ -300,3 +300,57 @@ void main() {
     assert "calculateAttenuation" in names
     assert "calculateLighting" in names
     assert "main" in names
+
+
+class TestGLSLSignatureExtraction:
+    """Tests for GLSL function signature extraction."""
+
+    def test_function_with_params(self, tmp_path):
+        """Extract signature for function with parameters."""
+        glsl_file = tmp_path / "shader.frag"
+        glsl_file.write_text("""
+#version 330 core
+
+float calculate(float x, float y) {
+    return x + y;
+}
+
+void main() {}
+""")
+        result = analyze_glsl_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "calculate"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(float x, float y) float"
+
+    def test_void_main(self, tmp_path):
+        """Extract signature for void main()."""
+        glsl_file = tmp_path / "shader.vert"
+        glsl_file.write_text("""
+#version 330 core
+
+void main() {
+    gl_Position = vec4(0.0);
+}
+""")
+        result = analyze_glsl_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "main"]
+        assert len(funcs) == 1
+        # void return type is omitted
+        assert funcs[0].signature == "()"
+
+    def test_vec_return_type(self, tmp_path):
+        """Extract signature for function returning vec type."""
+        glsl_file = tmp_path / "shader.frag"
+        glsl_file.write_text("""
+#version 330 core
+
+vec3 computeNormal(vec3 p1, vec3 p2, vec3 p3) {
+    return normalize(cross(p2 - p1, p3 - p1));
+}
+
+void main() {}
+""")
+        result = analyze_glsl_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "computeNormal"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(vec3 p1, vec3 p2, vec3 p3) vec3"

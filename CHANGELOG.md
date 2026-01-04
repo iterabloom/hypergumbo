@@ -42,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Groovy method signature extraction (e.g., `(String name, int age)`)
 - Elm function signature extraction (e.g., `(x, y)`)
 - R function signature extraction (e.g., `(x, y)`, `(name, greeting = ...)`)
+- GLSL shader function signature extraction (e.g., `(float x, float y) float`)
+- WGSL shader function signature extraction (e.g., `(x: f32, y: f32) -> f32`)
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files
