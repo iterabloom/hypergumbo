@@ -3295,9 +3295,9 @@ def generate_sketch(
     tokens_per_file = 12
 
     # Estimate tokens per entry point or symbol item with docstring/signature
-    # Typical line: "- `func(x: int) -> str` (function) — Description. — `path.py`"
-    # is ~70-100 chars = ~18-25 tokens. Use conservative estimate.
-    tokens_per_item = 20
+    # Typical line: "- `func(x: int, y: List[str]) -> Dict[str, Any]` (method) — Does X."
+    # is ~100-150 chars = ~25-38 tokens. Use realistic estimate based on qwix data.
+    tokens_per_symbol = 35
 
     # Section 4: Source files (if we have budget >= 50 tokens remaining)
     if remaining_tokens > 50 and source_files:
@@ -3347,7 +3347,7 @@ def generate_sketch(
 
             # Entry points are high value, give them space
             budget_for_eps = remaining_tokens // 3
-            max_eps = max(5, budget_for_eps // tokens_per_item)
+            max_eps = max(5, budget_for_eps // tokens_per_symbol)
 
             ep_section = _format_entrypoints(
                 entrypoints, symbols, repo_root, max_entries=max_eps
@@ -3364,7 +3364,7 @@ def generate_sketch(
     if remaining_tokens > 200 and symbols:
         # Use most of remaining budget for symbols
         budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
-        max_symbols = max(10, budget_for_symbols // tokens_per_item)
+        max_symbols = max(10, budget_for_symbols // tokens_per_symbol)
 
         # Extract docstrings and signatures for Python symbols
         docstrings = _extract_python_docstrings(repo_root, symbols)
@@ -3391,7 +3391,7 @@ def generate_sketch(
     # Section 7: All files (if we still have budget after everything else)
     if remaining_tokens > 50:
         budget_for_files = remaining_tokens - 10
-        max_all_files = max(1, budget_for_files // tokens_per_item)
+        max_all_files = max(1, budget_for_files // tokens_per_file)
 
         all_files_section = _format_all_files(repo_root, max_files=max_all_files)
         if all_files_section:
