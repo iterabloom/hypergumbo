@@ -118,6 +118,28 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None  # pragma: no cover
 
 
+def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function/macro signature from function_command or macro_command.
+
+    CMake functions are defined as: function(name ARG1 ARG2 ...)
+    Returns signature in format: (ARG1, ARG2, ...)
+    """
+    params: list[str] = []
+    found_name = False
+
+    for child in node.children:
+        if child.type == "argument_list":
+            for arg in child.children:
+                if arg.type == "argument":
+                    if not found_name:
+                        # First argument is the function name, skip it
+                        found_name = True
+                    else:
+                        params.append(_node_text(arg, source))
+
+    return f"({', '.join(params)})"
+
+
 def _process_cmake_tree(
     node: "tree_sitter.Node",
     source: bytes,
@@ -341,6 +363,7 @@ def _process_cmake_tree(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
+                        signature=_extract_cmake_signature(child, source),
                     )
                     symbols.append(sym)
                     target_registry[func_name.lower()] = symbol_id
@@ -373,6 +396,7 @@ def _process_cmake_tree(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
+                        signature=_extract_cmake_signature(child, source),
                     )
                     symbols.append(sym)
                     target_registry[macro_name.lower()] = symbol_id

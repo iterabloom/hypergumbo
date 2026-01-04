@@ -46,6 +46,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WGSL shader function signature extraction (e.g., `(x: f32, y: f32) -> f32`)
 - SQL function signature extraction (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`)
 - Bash function signature extraction (always `()` since Bash uses positional args $1, $2)
+- CMake function/macro signature extraction (e.g., `(ARG1, ARG2, ARG3)`)
+- Nix function signature extraction
+  - Simple lambdas: curried params (e.g., `(x, y)` for `x: y: body`)
+  - Formals: attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`)
+  - Top-level functions (modules/overlays) use file basename as function name
+- Python signature extraction moved from sketch.py to analyzer for consistency
+  - Signatures now populated during AST analysis (same as other languages)
+  - Supports all Python annotation types: Name, Subscript, BinOp (unions), Attribute
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files

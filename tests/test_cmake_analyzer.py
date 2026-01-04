@@ -321,3 +321,59 @@ add_subdirectory(examples)
     # Check for link edges
     link_edges = [e for e in result.edges if e.edge_type == "links"]
     assert len(link_edges) >= 3  # network->core, app->network, app->core, plus external
+
+
+class TestCMakeSignatureExtraction:
+    """Tests for CMake function/macro signature extraction."""
+
+    def test_function_with_params(self, tmp_path):
+        """Extract signature for function with parameters."""
+        cmake_file = tmp_path / "CMakeLists.txt"
+        cmake_file.write_text("""
+function(my_helper ARG1 ARG2 ARG3)
+    message(STATUS "${ARG1}")
+endfunction()
+""")
+        result = analyze_cmake_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "my_helper"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(ARG1, ARG2, ARG3)"
+
+    def test_function_no_params(self, tmp_path):
+        """Extract signature for function with no parameters."""
+        cmake_file = tmp_path / "CMakeLists.txt"
+        cmake_file.write_text("""
+function(no_params_func)
+    message(STATUS "No params")
+endfunction()
+""")
+        result = analyze_cmake_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "no_params_func"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_macro_with_params(self, tmp_path):
+        """Extract signature for macro with parameters."""
+        cmake_file = tmp_path / "CMakeLists.txt"
+        cmake_file.write_text("""
+macro(my_macro X Y)
+    set(${X} ${Y})
+endmacro()
+""")
+        result = analyze_cmake_files(tmp_path)
+        macros = [s for s in result.symbols if s.kind == "macro" and s.name == "my_macro"]
+        assert len(macros) == 1
+        assert macros[0].signature == "(X, Y)"
+
+    def test_macro_single_param(self, tmp_path):
+        """Extract signature for macro with single parameter."""
+        cmake_file = tmp_path / "CMakeLists.txt"
+        cmake_file.write_text("""
+macro(single_arg_macro ARG)
+    message("${ARG}")
+endmacro()
+""")
+        result = analyze_cmake_files(tmp_path)
+        macros = [s for s in result.symbols if s.kind == "macro" and s.name == "single_arg_macro"]
+        assert len(macros) == 1
+        assert macros[0].signature == "(ARG)"

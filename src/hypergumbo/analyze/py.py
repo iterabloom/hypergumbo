@@ -85,6 +85,102 @@ DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 ROUTER_CONSTRUCTORS = {"APIRouter", "Blueprint"}
 
 
+def _format_annotation(node: ast.expr) -> str:
+    """Format a type annotation node to a readable string."""
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Constant):
+        return repr(node.value)
+    elif isinstance(node, ast.Subscript):
+        # e.g., List[int], Dict[str, int]
+        base = _format_annotation(node.value)
+        slice_val = _format_annotation(node.slice)
+        return f"{base}[{slice_val}]"
+    elif isinstance(node, ast.Tuple):
+        # e.g., (int, str) for Dict keys
+        elts = [_format_annotation(e) for e in node.elts]
+        return ", ".join(elts)
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        # Union types: X | Y
+        left = _format_annotation(node.left)
+        right = _format_annotation(node.right)
+        return f"{left} | {right}"
+    elif isinstance(node, ast.Attribute):
+        # e.g., typing.Optional
+        value = _format_annotation(node.value)
+        return f"{value}.{node.attr}"
+    else:
+        return ""  # pragma: no cover - defensive fallback for unknown AST types
+
+
+def _format_arg(arg: ast.arg) -> str:
+    """Format a single function argument."""
+    result = arg.arg
+    if arg.annotation:
+        ann = _format_annotation(arg.annotation)
+        if ann:
+            result += f": {ann}"
+    return result
+
+
+def _format_function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, max_len: int = 60) -> str:
+    """Format a function signature from AST node.
+
+    Args:
+        node: AST FunctionDef or AsyncFunctionDef node.
+        max_len: Maximum length of signature (default 60).
+
+    Returns:
+        Formatted signature string like "(x: int, y: str) -> bool".
+    """
+    args = node.args
+    all_args: list[str] = []
+
+    # Positional-only args (before /)
+    for arg in args.posonlyargs:
+        all_args.append(_format_arg(arg))
+
+    # Regular args
+    for i, arg in enumerate(args.args):
+        arg_str = _format_arg(arg)
+        # Check for default value
+        num_defaults = len(args.defaults)
+        num_args = len(args.args)
+        default_idx = i - (num_args - num_defaults)
+        if 0 <= default_idx < num_defaults:
+            arg_str += "=…"
+        all_args.append(arg_str)
+
+    # *args
+    if args.vararg:
+        all_args.append(f"*{args.vararg.arg}")
+
+    # Keyword-only args
+    for i, arg in enumerate(args.kwonlyargs):
+        arg_str = _format_arg(arg)
+        if i < len(args.kw_defaults) and args.kw_defaults[i] is not None:
+            arg_str += "=…"
+        all_args.append(arg_str)
+
+    # **kwargs
+    if args.kwarg:
+        all_args.append(f"**{args.kwarg.arg}")
+
+    sig = "(" + ", ".join(all_args) + ")"
+
+    # Add return type annotation if present
+    if node.returns:
+        ret_type = _format_annotation(node.returns)
+        if ret_type:
+            sig += f" -> {ret_type}"
+
+    # Truncate if too long
+    if len(sig) > max_len:
+        sig = sig[:max_len - 1] + "…"
+
+    return sig
+
+
 def _extract_router_prefixes(tree: ast.Module) -> dict[str, str]:
     """Extract router variable names and their prefixes.
 
@@ -747,6 +843,7 @@ def _extract_file_analysis(
                         shape_id=_compute_shape_id(item),
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         lines_of_code=_compute_lines_of_code(item),
+                        signature=_format_function_signature(item),
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
@@ -790,6 +887,7 @@ def _extract_file_analysis(
                     meta=meta,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
+                    signature=_format_function_signature(node),
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
