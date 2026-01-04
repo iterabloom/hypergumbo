@@ -124,6 +124,36 @@ def _find_children_by_type(
     return [child for child in node.children if child.type == type_name]
 
 
+def _extract_perl_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract subroutine signature from a subroutine_declaration_statement.
+
+    Perl 5.20+ supports subroutine signatures:
+        sub foo($x, $y) { ... }
+
+    Traditional Perl uses @_ unpacking which we can't easily extract.
+
+    Returns signature in format: ($param1, $param2) or () if no params found.
+    """
+    # Look for signature_params or param_list child (Perl 5.20+ signatures)
+    for child in node.children:
+        if child.type in ("signature", "signature_params"):  # pragma: no cover - rare
+            # Extract the full signature text
+            sig_text = _node_text(child, source).strip()
+            return sig_text
+
+    # Check for prototype (old style) - e.g., sub foo($) { }
+    # This is after bareword and before block
+    for child in node.children:
+        if child.type == "prototype":  # pragma: no cover - rare syntax
+            proto_text = _node_text(child, source).strip()
+            return proto_text
+
+    # No explicit signature found
+    return "()"
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -196,6 +226,7 @@ def _extract_symbols_from_file(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    signature=_extract_perl_signature(node, source),
                 ))
 
         # Recurse into children

@@ -316,3 +316,41 @@ sub main {
         helper_sym = next(s for s in result.symbols if s.name == "helper")
         edge_pairs = [(e.src, e.dst) for e in call_edges]
         assert (main_sym.id, helper_sym.id) in edge_pairs
+
+
+class TestPerlSignatureExtraction:
+    """Tests for Perl subroutine signature extraction."""
+
+    def test_traditional_sub_no_signature(self, tmp_path: Path) -> None:
+        """Traditional subs without signatures get empty ()."""
+        make_perl_file(
+            tmp_path,
+            "calc.pl",
+            """
+sub add {
+    my ($x, $y) = @_;
+    return $x + $y;
+}
+""",
+        )
+        result = analyze_perl(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "add" in s.name]
+        assert len(funcs) == 1
+        # Traditional Perl subs don't have signatures in the declaration
+        assert funcs[0].signature == "()"
+
+    def test_no_params_function(self, tmp_path: Path) -> None:
+        """Function with no parameters gets ()."""
+        make_perl_file(
+            tmp_path,
+            "simple.pl",
+            """
+sub answer {
+    return 42;
+}
+""",
+        )
+        result = analyze_perl(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "answer" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"

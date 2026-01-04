@@ -33,6 +33,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fortran function/subroutine signature extraction (e.g., `(x, y): integer`)
 - F# function signature extraction (e.g., `(x: int, y: int): int`)
 - Julia function signature extraction (e.g., `(x::Int, y::Int)::Int`)
+- Zig function signature extraction (e.g., `(x: i32, y: i32) i32`)
+- Ruby method signature extraction (e.g., `(param, optional = ..., &block)`)
+- Elixir function signature extraction (e.g., `(param1, param2)`)
+- Erlang function signature extraction (e.g., `(Param1, Param2)`)
+- Perl subroutine signature extraction (e.g., `()` for traditional subs)
+- Lua function signature extraction (e.g., `(x, y)`)
+- Groovy method signature extraction (e.g., `(String name, int age)`)
+- Elm function signature extraction (e.g., `(x, y)`)
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files

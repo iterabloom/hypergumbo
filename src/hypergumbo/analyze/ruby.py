@@ -101,6 +101,74 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_ruby_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract method signature from a method node.
+
+    Returns signature in format: (param, param2 = ..., keyword:, &block)
+    Ruby is dynamically typed, so no type annotations are included.
+    """
+    params: list[str] = []
+
+    # Find parameters node
+    params_node = _find_child_by_field(node, "parameters")
+    if params_node is None:
+        return "()"
+
+    for child in params_node.children:
+        if child.type == "identifier":
+            # Simple positional parameter
+            params.append(_node_text(child, source))
+        elif child.type == "optional_parameter":
+            # Parameter with default value: name = value
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                param_name = _node_text(name_node, source)
+                params.append(f"{param_name} = ...")
+        elif child.type == "keyword_parameter":
+            # Keyword parameter: name: or name: value
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                param_name = _node_text(name_node, source)
+                # Check if it has a default value (look for value node after identifier)
+                has_value = False
+                for pc in child.children:
+                    # Skip the identifier and punctuation - look for an actual value
+                    if pc.type not in ("identifier", ":"):
+                        has_value = True
+                        break
+                if has_value:
+                    params.append(f"{param_name}: ...")
+                else:
+                    params.append(f"{param_name}:")
+        elif child.type == "splat_parameter":
+            # *args
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                param_name = _node_text(name_node, source)
+                params.append(f"*{param_name}")
+            else:
+                params.append("*")  # pragma: no cover - bare splat
+        elif child.type == "hash_splat_parameter":
+            # **kwargs
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                param_name = _node_text(name_node, source)
+                params.append(f"**{param_name}")
+            else:
+                params.append("**")  # pragma: no cover - bare hash splat
+        elif child.type == "block_parameter":
+            # &block
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                param_name = _node_text(name_node, source)
+                params.append(f"&{param_name}")
+
+    params_str = ", ".join(params)
+    return f"({params_str})"
+
+
 def _detect_rails_route(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[str | None, str | None, str | None]:
@@ -237,6 +305,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=_extract_ruby_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol

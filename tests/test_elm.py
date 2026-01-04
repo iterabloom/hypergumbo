@@ -275,3 +275,75 @@ quadruple x =
 
         assert result.skipped is True
         assert "tree-sitter-language-pack" in result.skip_reason
+
+
+class TestElmSignatureExtraction:
+    """Tests for Elm function signature extraction."""
+
+    def test_function_with_parameters(self, tmp_path: Path) -> None:
+        """Extract signature for function with parameters."""
+        make_elm_file(
+            tmp_path,
+            "Math.elm",
+            """
+module Math exposing (add)
+
+add x y =
+    x + y
+""",
+        )
+        result = analyze_elm(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_function_no_parameters(self, tmp_path: Path) -> None:
+        """Extract signature for function with no parameters."""
+        make_elm_file(
+            tmp_path,
+            "Constants.elm",
+            """
+module Constants exposing (answer)
+
+answer =
+    42
+""",
+        )
+        result = analyze_elm(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "answer"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_function_single_parameter(self, tmp_path: Path) -> None:
+        """Extract signature for function with single parameter."""
+        make_elm_file(
+            tmp_path,
+            "Greet.elm",
+            """
+module Greet exposing (hello)
+
+hello name =
+    "Hello, " ++ name
+""",
+        )
+        result = analyze_elm(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "hello"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(name)"
+
+    def test_function_many_parameters(self, tmp_path: Path) -> None:
+        """Extract signature for function with many parameters."""
+        make_elm_file(
+            tmp_path,
+            "Utils.elm",
+            """
+module Utils exposing (combine)
+
+combine a b c d =
+    a ++ b ++ c ++ d
+""",
+        )
+        result = analyze_elm(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "combine"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(a, b, c, d)"

@@ -123,6 +123,35 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None  # pragma: no cover - defensive fallback
 
 
+def _extract_elm_signature(
+    decl_left: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a function_declaration_left node.
+
+    Returns signature in format: (param1, param2)
+    Elm function parameters follow the function name.
+    """
+    params: list[str] = []
+
+    # Skip the first child (function name) and collect parameters
+    found_name = False
+    for child in decl_left.children:
+        if child.type == "lower_case_identifier":
+            if not found_name:
+                found_name = True
+                continue
+            # Additional lower_case_identifiers are parameters
+            params.append(_node_text(child, source))  # pragma: no cover - params are lower_pattern
+        elif child.type == "pattern":  # pragma: no cover - complex patterns
+            # Pattern matching in parameters
+            params.append(_node_text(child, source))
+        elif child.type == "lower_pattern":
+            # Simple parameter pattern
+            params.append(_node_text(child, source))
+
+    return f"({', '.join(params)})"
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -194,6 +223,7 @@ def _extract_symbols_from_file(
                         span=span,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        signature=_extract_elm_signature(decl_left, source),
                     ))
 
         # Type alias

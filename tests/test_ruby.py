@@ -555,3 +555,78 @@ end
         # resources creates a route entry
         resources = [s for s in result.symbols if s.kind == "route" and "users" in s.name]
         assert len(resources) >= 1
+
+
+class TestRubySignatureExtraction:
+    """Tests for Ruby method signature extraction."""
+
+    def test_positional_params(self, tmp_path: Path) -> None:
+        """Extracts signature with positional parameters."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "calc.rb").write_text("""
+def add(x, y)
+  x + y
+end
+""")
+        result = analyze_ruby(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and s.name == "add"]
+        assert len(methods) == 1
+        assert methods[0].signature == "(x, y)"
+
+    def test_optional_params(self, tmp_path: Path) -> None:
+        """Extracts signature with optional parameters (default values)."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "greeter.rb").write_text("""
+def greet(name, greeting = "Hello")
+  puts "#{greeting}, #{name}!"
+end
+""")
+        result = analyze_ruby(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and s.name == "greet"]
+        assert len(methods) == 1
+        assert methods[0].signature == "(name, greeting = ...)"
+
+    def test_keyword_params(self, tmp_path: Path) -> None:
+        """Extracts signature with keyword parameters."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "server.rb").write_text("""
+def configure(host:, port: 8080)
+  @host = host
+  @port = port
+end
+""")
+        result = analyze_ruby(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and s.name == "configure"]
+        assert len(methods) == 1
+        assert methods[0].signature == "(host:, port: ...)"
+
+    def test_splat_and_block_params(self, tmp_path: Path) -> None:
+        """Extracts signature with splat and block parameters."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "handler.rb").write_text("""
+def process(*args, **kwargs, &block)
+  block.call(*args, **kwargs)
+end
+""")
+        result = analyze_ruby(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and s.name == "process"]
+        assert len(methods) == 1
+        assert methods[0].signature == "(*args, **kwargs, &block)"
+
+    def test_no_params(self, tmp_path: Path) -> None:
+        """Extracts signature for method with no parameters."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "simple.rb").write_text("""
+def answer
+  42
+end
+""")
+        result = analyze_ruby(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and s.name == "answer"]
+        assert len(methods) == 1
+        assert methods[0].signature == "()"

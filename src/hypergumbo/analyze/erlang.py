@@ -125,6 +125,30 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None  # pragma: no cover - defensive fallback
 
 
+def _extract_erlang_signature(
+    clause: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a function_clause node.
+
+    Returns signature in format: (Param1, Param2, {tuple, param})
+    Erlang uses pattern matching, so params can be complex patterns.
+    """
+    args = _find_child_by_type(clause, "expr_args")
+    if args is None:  # pragma: no cover - defensive for malformed AST
+        return "()"
+
+    params: list[str] = []
+    for child in args.children:
+        if child.type in ("(", ")", ","):
+            continue
+        # Extract the parameter text directly
+        param_text = _node_text(child, source).strip()
+        if param_text:
+            params.append(param_text)
+
+    return f"({', '.join(params)})"
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -211,6 +235,7 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"arity": arity, "base_name": func_name},
+                        signature=_extract_erlang_signature(clause, source),
                     ))
 
         # Record definition

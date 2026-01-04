@@ -110,6 +110,48 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_groovy_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract method signature from a method_declaration or function_definition node.
+
+    Returns signature in format: (Type param, Type param2): ReturnType
+    Omits void return types.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    # Look for formal_parameters node
+    for child in node.children:
+        if child.type == "formal_parameters":
+            for param in child.children:
+                if param.type == "formal_parameter":
+                    param_type = None
+                    param_name = None
+                    for pc in param.children:
+                        if pc.type in ("type_identifier", "primitive_type",
+                                       "array_type", "generic_type"):
+                            param_type = _node_text(pc, source)
+                        elif pc.type == "identifier":
+                            param_name = _node_text(pc, source)
+                    if param_type and param_name:
+                        params.append(f"{param_type} {param_name}")
+                    elif param_name:  # pragma: no cover - dynamic typing
+                        params.append(param_name)
+        elif child.type in ("type_identifier", "primitive_type", "void_type",
+                            "array_type", "generic_type"):
+            # Return type appears before the method name
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "void":
+        signature += f": {return_type}"
+
+    return signature
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -295,6 +337,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=_extract_groovy_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -323,6 +366,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=_extract_groovy_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

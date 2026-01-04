@@ -334,3 +334,61 @@ fib(N) -> fib(N-1) + fib(N-2).
 
         assert result.skipped is True
         assert "tree-sitter-language-pack" in result.skip_reason
+
+
+class TestErlangSignatureExtraction:
+    """Tests for Erlang function signature extraction."""
+
+    def test_positional_params(self, tmp_path: Path) -> None:
+        """Extracts signature with positional parameters."""
+        make_erl_file(
+            tmp_path,
+            "calc.erl",
+            """
+-module(calc).
+-export([add/2]).
+
+add(X, Y) ->
+    X + Y.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "add" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(X, Y)"
+
+    def test_no_params_function(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no parameters."""
+        make_erl_file(
+            tmp_path,
+            "simple.erl",
+            """
+-module(simple).
+-export([answer/0]).
+
+answer() ->
+    42.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "answer" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_pattern_matching_params(self, tmp_path: Path) -> None:
+        """Extracts signature with pattern matching in parameters."""
+        make_erl_file(
+            tmp_path,
+            "pattern.erl",
+            """
+-module(pattern).
+-export([greet/1]).
+
+greet({name, Name}) ->
+    io:format("Hello ~s~n", [Name]).
+""",
+        )
+        result = analyze_erlang(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "greet" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "({name, Name})"
