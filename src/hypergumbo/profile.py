@@ -92,6 +92,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "capnp": ["*.capnp"],
     "powershell": ["*.ps1", "*.psm1", "*.psd1"],
     "gdscript": ["*.gd"],
+    "starlark": ["BUILD", "BUILD.bazel", "BUCK", "*.bzl"],
 }
 
 # Framework detection patterns

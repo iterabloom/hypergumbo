@@ -2912,6 +2912,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # GDScript analysis failed or tree-sitter not available
 
+    if "starlark" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.starlark import analyze_starlark  # pragma: no cover
+            result = analyze_starlark(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Starlark analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover
