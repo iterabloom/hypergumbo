@@ -3603,7 +3603,7 @@ def _format_symbols(
             remaining_scores = [centrality.get(s.id, 0) for s in remaining_syms]
             if remaining_scores:
                 top_score = max(remaining_scores)
-                lines.append(f"  *… +{remaining_in_file} more (top score: {top_score:.2f})*")
+                lines.append(f"  (... +{remaining_in_file} more, top score: {top_score:.2f})")
 
         lines.append("")  # Blank line between files
 
@@ -3612,7 +3612,7 @@ def _format_symbols(
     total_candidates = len(key_symbols)
     unselected = total_candidates - total_selected
     if unselected > 0:
-        lines.append(f"*… and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files*")
+        lines.append(f"(... and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files)")
 
     # Summary of deduplicated utility functions (show top duplicates)
     if function_occurrence_count:
@@ -3622,9 +3622,19 @@ def _format_symbols(
             key=lambda x: -x[1]
         )[:5]
         if sorted_dupes:
-            dupe_parts = [f"`{name}` x{count}" for name, count in sorted_dupes]
             lines.append("")
-            lines.append(f"*Utility functions (shown once): {', '.join(dupe_parts)}*")
+            lines.append("The following symbols, for brevity shown only once above, would have appeared multiple times:")
+            for i, (name, count) in enumerate(sorted_dupes):
+                omitted = count - 1  # count includes the one shown
+                if i == 0:
+                    # First: full format
+                    lines.append(f"- `{name}` - we omitted {omitted} appearances of `{name}`")
+                elif i == 1:
+                    # Second: medium format
+                    lines.append(f"- `{name}` - we omitted {omitted} appearances")
+                else:
+                    # Third+: short format
+                    lines.append(f"- `{name}` - {omitted} omitted")
 
     return "\n".join(lines)
 

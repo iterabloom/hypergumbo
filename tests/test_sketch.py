@@ -866,8 +866,8 @@ class TestFormatSymbols:
 
         result = _format_symbols(symbols, [], repo_root, max_symbols=5)
 
-        # New format: "… and X more symbols across Y other files"
-        assert "… and 15 more symbols" in result
+        # New format: "(... and X more symbols across Y other files)"
+        assert "... and 15 more symbols" in result
 
     def test_max_symbols_breaks_across_files(self) -> None:
         """Max symbols limit causes balanced selection across files."""
@@ -892,7 +892,7 @@ class TestFormatSymbols:
         result = _format_symbols(symbols, [], repo_root, max_symbols=15)
 
         # Should show remaining count with new format
-        assert "… and 35 more symbols" in result
+        assert "... and 35 more symbols" in result
         # Should show symbols from multiple files (coverage-first policy)
         assert "file_0.py" in result
         assert "file_1.py" in result
@@ -1104,16 +1104,18 @@ class TestFormatSymbols:
 
         # _node_text should appear only ONCE as a symbol definition (deduplicated)
         # It will also appear in the utility function summary at the bottom
-        # Count occurrences of "_node_text`" followed by space/kind (symbol definition)
-        # vs appearing in the summary ("`_node_text` xN")
+        # Count symbol definitions (have "(function)" or "(method)" kind marker)
+        # Exclude summary lines which have "omitted" in them
         symbol_lines = [line for line in result.split('\n') if '`_node_text`' in line]
-        # Filter to symbol definitions (lines starting with "- `")
-        symbol_def_lines = [line for line in symbol_lines if line.strip().startswith('- `')]
+        symbol_def_lines = [
+            line for line in symbol_lines
+            if line.strip().startswith('- `') and 'omitted' not in line
+        ]
         assert len(symbol_def_lines) == 1, f"Expected 1 _node_text symbol def, got {len(symbol_def_lines)}"
 
         # Should also show in utility function summary
-        assert "Utility functions (shown once)" in result
-        assert "`_node_text` x3" in result  # Appeared 3 times total
+        assert "shown only once above" in result
+        assert "we omitted 2 appearances of `_node_text`" in result  # 3 total - 1 shown = 2 omitted
 
     def test_deduplication_preserves_unique_functions(self) -> None:
         """Deduplication doesn't affect functions with unique names."""
@@ -1188,10 +1190,41 @@ class TestFormatSymbols:
 
         result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
 
-        # Should have summary showing _helper appeared 3 times
-        assert "Utility functions (shown once)" in result
+        # Should have summary showing _helper appeared 3 times (2 omitted)
+        assert "shown only once above" in result
         assert "`_helper`" in result
-        assert "x3" in result  # Appeared 3 times
+        assert "2 omitted" in result or "we omitted 2 appearances" in result  # 3 total - 1 shown
+
+    def test_deduplication_progressive_format(self) -> None:
+        """Utility function summary uses progressive shortening format."""
+        repo_root = Path("/fake/repo")
+        # Create symbols with 3 different utility function names, each appearing 3 times
+        symbols = []
+        for util_name in ["_helper", "_format", "_parse"]:
+            for file_name in ["rust", "go", "java"]:
+                symbols.append(
+                    Symbol(id=f"{file_name}_{util_name}", name=util_name, kind="function",
+                           language="python", path=f"/fake/repo/analyze/{file_name}.py",
+                           span=Span(60, 1, 65, 1))
+                )
+                symbols.append(
+                    Symbol(id=f"analyze_{file_name}", name=f"analyze_{file_name}", kind="function",
+                           language="python", path=f"/fake/repo/analyze/{file_name}.py",
+                           span=Span(1, 1, 50, 1))
+                )
+
+        edges = [
+            Edge.create(src=f"analyze_{f}", dst=f"{f}_{u}", edge_type="calls", line=10, confidence=1.0)
+            for u in ["_helper", "_format", "_parse"]
+            for f in ["rust", "go", "java"]
+        ]
+
+        result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
+
+        # First: full format "we omitted X appearances of `name`"
+        assert "we omitted" in result and "appearances of" in result
+        # Third+: short format "X omitted"
+        assert "2 omitted" in result  # Short format for third+ item
 
 
 class TestGenerateSketchWithBudget:
