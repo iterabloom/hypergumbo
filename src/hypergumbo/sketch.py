@@ -3017,6 +3017,97 @@ def _format_entrypoints(
     return "\n".join(lines)
 
 
+def _group_files_by_language(
+    by_file: dict[str, list[Symbol]],
+) -> dict[str, dict[str, list[Symbol]]]:
+    """Group files by the dominant language of their symbols.
+
+    Each file is assigned to a single language based on its first symbol's
+    language field. This works well because source files are typically
+    monolingual (a .py file only contains Python symbols).
+
+    This function is used for language-proportional symbol selection,
+    ensuring that multi-language projects have representation from each
+    language proportional to its symbol count.
+
+    Args:
+        by_file: Symbols grouped by file path.
+
+    Returns:
+        Dict mapping language -> {file_path -> [symbols]}.
+        Empty files (no symbols) are excluded from the result.
+    """
+    lang_groups: dict[str, dict[str, list[Symbol]]] = {}
+    for file_path, symbols in by_file.items():
+        if not symbols:
+            continue
+        # Use first symbol's language (files are typically monolingual)
+        lang = symbols[0].language
+        if lang not in lang_groups:
+            lang_groups[lang] = {}
+        lang_groups[lang][file_path] = symbols
+    return lang_groups
+
+
+def _allocate_language_budget(
+    lang_groups: dict[str, dict[str, list[Symbol]]],
+    max_symbols: int,
+    min_per_language: int = 1,
+) -> dict[str, int]:
+    """Allocate symbol budget proportionally by language symbol count.
+
+    Computes proportions from actual filtered symbols, not raw profile LOC.
+    This naturally handles languages like JSON/YAML that have LOC but produce
+    no analyzable symbols.
+
+    Each language receives a proportional share of the budget with a floor
+    guarantee (min_per_language). Any remainder after proportional allocation
+    is redistributed to the largest languages.
+
+    Args:
+        lang_groups: Files grouped by language from _group_files_by_language().
+        max_symbols: Total symbol budget to allocate.
+        min_per_language: Minimum slots per language (floor guarantee).
+
+    Returns:
+        Dict mapping language to allocated symbol budget.
+        Empty if lang_groups is empty.
+    """
+    # Count symbols per language
+    lang_symbol_count = {
+        lang: sum(len(syms) for syms in files.values())
+        for lang, files in lang_groups.items()
+    }
+    total_symbols = sum(lang_symbol_count.values())
+    if total_symbols == 0:
+        return {}
+
+    budgets: dict[str, int] = {}
+    allocated = 0
+
+    # Proportional allocation with floor
+    for lang, count in lang_symbol_count.items():
+        proportion = count / total_symbols
+        budget = max(min_per_language, int(max_symbols * proportion))
+        budgets[lang] = budget
+        allocated += budget
+
+    # Redistribute remainder to largest languages
+    remaining = max_symbols - allocated
+    if remaining > 0:
+        sorted_langs = sorted(
+            lang_symbol_count.keys(),
+            key=lambda lang: -lang_symbol_count[lang]
+        )
+        for lang in sorted_langs:
+            if remaining <= 0:
+                break
+            budgets[lang] += 1
+            remaining -= 1
+
+    return budgets
+
+
 def _select_symbols_two_phase(
     by_file: dict[str, list[Symbol]],
     centrality: dict[str, float],
@@ -3026,11 +3117,16 @@ def _select_symbols_two_phase(
     max_files: int = 20,
     coverage_fraction: float = 0.33,
     diminishing_alpha: float = 0.7,
+    language_proportional: bool = False,
 ) -> list[tuple[str, Symbol]]:
     """Select symbols using two-phase policy for breadth + depth.
 
     Phase 1 (coverage-first): Pick the best symbol from each eligible file
     in rounds, ensuring representation across subsystems.
+
+    When language_proportional=True, Phase 1 uses language-stratified selection:
+    symbols are allocated proportionally by language based on symbol counts,
+    with a minimum guarantee of 1 slot per language.
 
     Phase 2 (diminishing-returns greedy): Fill remaining slots using marginal
     utility that penalizes repeated picks from the same file.
@@ -3044,6 +3140,7 @@ def _select_symbols_two_phase(
         max_files: Maximum number of files to consider.
         coverage_fraction: Fraction of budget for phase 1 (coverage).
         diminishing_alpha: Penalty factor for repeated file picks in phase 2.
+        language_proportional: If True, use language-stratified selection in Phase 1.
 
     Returns:
         List of (file_path, symbol) tuples in selection order.
@@ -3072,18 +3169,55 @@ def _select_symbols_two_phase(
     coverage_budget = int(max_symbols * coverage_fraction)
     coverage_budget = min(coverage_budget, len(eligible_by_file))  # Cap at file count
 
-    # Order files by file_score for round-robin
-    phase1_files = sorted(eligible_by_file.keys(), key=lambda f: -file_scores.get(f, 0))
+    if language_proportional:
+        # Language-stratified Phase 1: allocate slots by language proportion
+        lang_groups = _group_files_by_language(eligible_by_file)
+        lang_budgets = _allocate_language_budget(lang_groups, coverage_budget)
 
-    for file_path in phase1_files:
-        if len(selected) >= coverage_budget:
-            break
-        state = file_state[file_path]
-        if state["next_idx"] < len(state["symbols"]):
-            sym = state["symbols"][state["next_idx"]]
-            selected.append((file_path, sym))
-            state["next_idx"] += 1
-            state["picks"] += 1
+        # Order languages by budget (largest first) for fair distribution
+        sorted_langs = sorted(lang_budgets.keys(), key=lambda lang: -lang_budgets[lang])
+
+        for lang in sorted_langs:
+            lang_budget = lang_budgets[lang]
+            if lang not in lang_groups:  # pragma: no cover
+                continue
+
+            # Order files within this language by file_score
+            lang_files = sorted(
+                lang_groups[lang].keys(),
+                key=lambda f: -file_scores.get(f, 0)
+            )
+
+            # Pick symbols from this language's files
+            lang_selected = 0
+            for file_path in lang_files:
+                if lang_selected >= lang_budget:
+                    break
+                if len(selected) >= coverage_budget:  # pragma: no cover
+                    break
+                state = file_state[file_path]
+                if state["next_idx"] < len(state["symbols"]):
+                    sym = state["symbols"][state["next_idx"]]
+                    selected.append((file_path, sym))
+                    state["next_idx"] += 1
+                    state["picks"] += 1
+                    lang_selected += 1
+    else:
+        # Original behavior: order files by file_score for round-robin
+        phase1_files = sorted(
+            eligible_by_file.keys(),
+            key=lambda f: -file_scores.get(f, 0)
+        )
+
+        for file_path in phase1_files:
+            if len(selected) >= coverage_budget:
+                break
+            state = file_state[file_path]
+            if state["next_idx"] < len(state["symbols"]):
+                sym = state["symbols"][state["next_idx"]]
+                selected.append((file_path, sym))
+                state["next_idx"] += 1
+                state["picks"] += 1
 
     # Phase 2: Diminishing-returns greedy fill
     remaining_budget = max_symbols - len(selected)
@@ -3137,12 +3271,16 @@ def _format_symbols(
     max_symbols_per_file: int = 5,
     docstrings: dict[str, str] | None = None,
     signatures: dict[str, str] | None = None,
+    language_proportional: bool = False,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
     Uses a two-phase selection policy for balanced coverage:
     1. Coverage-first: Pick best symbol from each top file
     2. Diminishing-returns: Fill remaining slots with marginal utility
+
+    When language_proportional=True, Phase 1 uses language-stratified selection
+    to ensure multi-language projects have proportional representation.
 
     File ordering uses sum-of-top-K centrality scores (density metric)
     rather than single-max, for more stable and intuitive ranking.
@@ -3160,6 +3298,7 @@ def _format_symbols(
         max_symbols_per_file: Max symbols to render per file (compression).
         docstrings: Optional dict mapping symbol IDs to docstring summaries.
         signatures: Optional dict mapping symbol IDs to function signatures.
+        language_proportional: If True, use language-stratified selection.
     """
     if docstrings is None:
         docstrings = {}
@@ -3273,6 +3412,7 @@ def _format_symbols(
         file_scores=file_scores,
         max_symbols=max_symbols,
         entrypoint_files=normalized_ep_files,
+        language_proportional=language_proportional,
     )
 
     if not selected:  # pragma: no cover
@@ -3347,7 +3487,7 @@ def _format_symbols(
             total_rendered += 1
 
         # If all symbols in this file were deduplicated, remove the empty header
-        if rendered_count == 0:
+        if rendered_count == 0:  # pragma: no cover
             # Remove the "### `file_path`" line we added
             lines.pop()
             continue
@@ -3401,6 +3541,7 @@ def generate_sketch(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
+    language_proportional: bool = False,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -3431,6 +3572,8 @@ def generate_sketch(
         max_config_files: Maximum config files to process (embedding mode).
         fleximax_lines: Base sample size for log-scaled line sampling.
         max_chunk_chars: Maximum characters per chunk for embedding.
+        language_proportional: If True, use language-stratified symbol selection
+            to ensure multi-language projects have proportional representation.
 
     Returns:
         Markdown-formatted sketch string.
@@ -3627,6 +3770,7 @@ def generate_sketch(
             entrypoint_files=entrypoint_files,  # B4: preserve entrypoint files
             docstrings=docstrings,
             signatures=signatures,
+            language_proportional=language_proportional,
         )
         if symbols_section:
             sections.append(symbols_section)

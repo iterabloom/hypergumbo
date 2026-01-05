@@ -3114,3 +3114,289 @@ class TestFormatTestSummary:
         # Should suggest maven or gradle test
         assert "mvn test" in result or "gradle test" in result or "jacoco" in result
 
+
+class TestGroupFilesByLanguage:
+    """Tests for language-based file grouping."""
+
+    def test_single_language(self) -> None:
+        """All files grouped under one language."""
+        from hypergumbo.sketch import _group_files_by_language
+
+        sym1 = Symbol(
+            id="s1", name="foo", kind="function", language="python",
+            path="src/a.py", span=Span(1, 5, 0, 0)
+        )
+        sym2 = Symbol(
+            id="s2", name="bar", kind="function", language="python",
+            path="src/b.py", span=Span(1, 5, 0, 0)
+        )
+        by_file = {"src/a.py": [sym1], "src/b.py": [sym2]}
+        result = _group_files_by_language(by_file)
+
+        assert len(result) == 1
+        assert "python" in result
+        assert "src/a.py" in result["python"]
+        assert "src/b.py" in result["python"]
+
+    def test_multi_language(self) -> None:
+        """Files separated by dominant language."""
+        from hypergumbo.sketch import _group_files_by_language
+
+        py_sym = Symbol(
+            id="s1", name="foo", kind="function", language="python",
+            path="src/main.py", span=Span(1, 5, 0, 0)
+        )
+        kt_sym = Symbol(
+            id="s2", name="Bar", kind="class", language="kotlin",
+            path="src/Bar.kt", span=Span(1, 10, 0, 0)
+        )
+        by_file = {"src/main.py": [py_sym], "src/Bar.kt": [kt_sym]}
+        result = _group_files_by_language(by_file)
+
+        assert len(result) == 2
+        assert "python" in result
+        assert "kotlin" in result
+        assert "src/main.py" in result["python"]
+        assert "src/Bar.kt" in result["kotlin"]
+
+    def test_empty_files_skipped(self) -> None:
+        """Files with no symbols are excluded."""
+        from hypergumbo.sketch import _group_files_by_language
+
+        sym = Symbol(
+            id="s1", name="foo", kind="function", language="python",
+            path="src/a.py", span=Span(1, 5, 0, 0)
+        )
+        # Include file with no symbols
+        by_file = {"src/a.py": [sym], "src/empty.py": []}
+        result = _group_files_by_language(by_file)
+
+        assert len(result) == 1
+        assert "python" in result
+        assert "src/empty.py" not in result["python"]
+
+
+class TestAllocateLanguageBudget:
+    """Tests for proportional language budget allocation."""
+
+    def test_proportional_allocation(self) -> None:
+        """Budget split matches symbol proportions."""
+        from hypergumbo.sketch import _allocate_language_budget
+
+        # 60% kotlin (6 symbols), 40% python (4 symbols) -> budget 10
+        kt_syms = [
+            Symbol(id=f"kt{i}", name=f"f{i}", kind="function", language="kotlin",
+                   path=f"src/K{i}.kt", span=Span(1, 5, 0, 0))
+            for i in range(6)
+        ]
+        py_syms = [
+            Symbol(id=f"py{i}", name=f"f{i}", kind="function", language="python",
+                   path=f"src/p{i}.py", span=Span(1, 5, 0, 0))
+            for i in range(4)
+        ]
+        lang_groups = {
+            "kotlin": {"src/K0.kt": kt_syms[:3], "src/K1.kt": kt_syms[3:]},
+            "python": {"src/p0.py": py_syms[:2], "src/p1.py": py_syms[2:]},
+        }
+        result = _allocate_language_budget(lang_groups, max_symbols=10)
+
+        # Kotlin should get ~6, Python ~4
+        assert result["kotlin"] >= 5  # At least 50% for majority
+        assert result["python"] >= 3  # Proportional representation
+        assert result["kotlin"] + result["python"] <= 10
+
+    def test_minimum_guarantee(self) -> None:
+        """Each language gets at least 1 slot."""
+        from hypergumbo.sketch import _allocate_language_budget
+
+        # 90% kotlin (9 symbols), 10% python (1 symbol)
+        kt_syms = [
+            Symbol(id=f"kt{i}", name=f"f{i}", kind="function", language="kotlin",
+                   path="src/K.kt", span=Span(1, 5, 0, 0))
+            for i in range(9)
+        ]
+        py_sym = Symbol(
+            id="py0", name="f0", kind="function", language="python",
+            path="src/p.py", span=Span(1, 5, 0, 0)
+        )
+        lang_groups = {
+            "kotlin": {"src/K.kt": kt_syms},
+            "python": {"src/p.py": [py_sym]},
+        }
+        result = _allocate_language_budget(lang_groups, max_symbols=10, min_per_language=1)
+
+        # Python should still get at least 1 despite only 10% of symbols
+        assert result["python"] >= 1
+        assert result["kotlin"] >= 1
+
+    def test_remainder_redistribution(self) -> None:
+        """Leftover slots go to largest languages."""
+        from hypergumbo.sketch import _allocate_language_budget
+
+        # 3 languages with odd proportions
+        kt_syms = [
+            Symbol(id=f"kt{i}", name=f"f{i}", kind="function", language="kotlin",
+                   path="src/K.kt", span=Span(1, 5, 0, 0))
+            for i in range(5)
+        ]
+        py_syms = [
+            Symbol(id=f"py{i}", name=f"f{i}", kind="function", language="python",
+                   path="src/p.py", span=Span(1, 5, 0, 0))
+            for i in range(3)
+        ]
+        go_syms = [
+            Symbol(id=f"go{i}", name=f"f{i}", kind="function", language="go",
+                   path="src/m.go", span=Span(1, 5, 0, 0))
+            for i in range(2)
+        ]
+        lang_groups = {
+            "kotlin": {"src/K.kt": kt_syms},
+            "python": {"src/p.py": py_syms},
+            "go": {"src/m.go": go_syms},
+        }
+        # Budget 10, 10 total symbols: proportional would give 5+3+2=10 exact
+        result = _allocate_language_budget(lang_groups, max_symbols=10)
+
+        total = sum(result.values())
+        assert total == 10  # All slots allocated
+
+    def test_empty_returns_empty(self) -> None:
+        """No symbols → no budget."""
+        from hypergumbo.sketch import _allocate_language_budget
+
+        lang_groups: dict = {}
+        result = _allocate_language_budget(lang_groups, max_symbols=10)
+
+        assert result == {}
+
+
+class TestLanguageProportionalSelection:
+    """Integration tests for language-proportional symbol selection."""
+
+    def test_language_proportional_selection(self, tmp_path: Path) -> None:
+        """Multi-language project sketch reflects language proportions."""
+        from hypergumbo.sketch import _select_symbols_two_phase
+        from hypergumbo.ranking import compute_centrality, group_symbols_by_file
+
+        # Create 60% Kotlin (6 symbols), 40% Python (4 symbols)
+        kt_syms = [
+            Symbol(id=f"kt{i}", name=f"KotlinFn{i}", kind="function", language="kotlin",
+                   path=f"src/K{i}.kt", span=Span(1, 5, 0, 0))
+            for i in range(6)
+        ]
+        py_syms = [
+            Symbol(id=f"py{i}", name=f"python_fn_{i}", kind="function", language="python",
+                   path=f"src/p{i}.py", span=Span(1, 5, 0, 0))
+            for i in range(4)
+        ]
+        all_symbols = kt_syms + py_syms
+
+        # Create mock edges (some cross-language calls)
+        edges = [
+            Edge(id="e1", src="kt0", dst="kt1", edge_type="call", line=1),
+            Edge(id="e2", src="kt1", dst="kt2", edge_type="call", line=2),
+            Edge(id="e3", src="py0", dst="py1", edge_type="call", line=1),
+        ]
+
+        # Group symbols by file
+        by_file = group_symbols_by_file(all_symbols)
+
+        # Compute centrality
+        centrality = compute_centrality(all_symbols, edges)
+
+        # Compute file scores (sum of top-K)
+        file_scores = {}
+        for file_path, syms in by_file.items():
+            scores = sorted([centrality.get(s.id, 0) for s in syms], reverse=True)[:3]
+            file_scores[file_path] = sum(scores)
+
+        # Select with language_proportional=True
+        selected = _select_symbols_two_phase(
+            by_file=by_file,
+            centrality=centrality,
+            file_scores=file_scores,
+            max_symbols=10,
+            entrypoint_files=set(),
+            language_proportional=True,
+        )
+
+        # Count selected symbols by language
+        lang_counts: dict[str, int] = {}
+        for _file_path, sym in selected:
+            lang = sym.language
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+        # Kotlin should get ~60% of Phase 1 budget, Python ~40%
+        # With coverage_fraction=0.33, Phase 1 gets ~3 slots
+        # Then Phase 2 fills the rest
+        assert "kotlin" in lang_counts
+        assert "python" in lang_counts
+        # Both languages should be represented
+        assert lang_counts["kotlin"] >= 1
+        assert lang_counts["python"] >= 1
+
+    def test_language_proportional_off_by_default(self, tmp_path: Path) -> None:
+        """Default behavior unchanged when flag not set."""
+        from hypergumbo.sketch import _select_symbols_two_phase
+        from hypergumbo.ranking import group_symbols_by_file, compute_centrality
+
+        # Create symbols
+        syms = [
+            Symbol(id=f"s{i}", name=f"fn{i}", kind="function", language="python",
+                   path=f"src/f{i}.py", span=Span(1, 5, 0, 0))
+            for i in range(5)
+        ]
+        by_file = group_symbols_by_file(syms)
+        centrality = compute_centrality(syms, [])
+        file_scores = dict.fromkeys(by_file.keys(), 1.0)
+
+        # Select without language_proportional (default False)
+        selected = _select_symbols_two_phase(
+            by_file=by_file,
+            centrality=centrality,
+            file_scores=file_scores,
+            max_symbols=5,
+            entrypoint_files=set(),
+        )
+
+        # Should work without errors
+        assert len(selected) > 0
+
+    def test_single_language_unaffected(self, tmp_path: Path) -> None:
+        """Single-language projects work identically with flag on or off."""
+        from hypergumbo.sketch import _select_symbols_two_phase
+        from hypergumbo.ranking import group_symbols_by_file, compute_centrality
+
+        # Create single-language symbols
+        syms = [
+            Symbol(id=f"s{i}", name=f"fn{i}", kind="function", language="python",
+                   path=f"src/f{i}.py", span=Span(1, 5, 0, 0))
+            for i in range(5)
+        ]
+        by_file = group_symbols_by_file(syms)
+        centrality = compute_centrality(syms, [])
+        file_scores = dict.fromkeys(by_file.keys(), 1.0)
+
+        # Select with language_proportional=True
+        selected_with = _select_symbols_two_phase(
+            by_file=by_file,
+            centrality=centrality,
+            file_scores=file_scores,
+            max_symbols=5,
+            entrypoint_files=set(),
+            language_proportional=True,
+        )
+
+        # Select without language_proportional
+        selected_without = _select_symbols_two_phase(
+            by_file=by_file,
+            centrality=centrality,
+            file_scores=file_scores,
+            max_symbols=5,
+            entrypoint_files=set(),
+            language_proportional=False,
+        )
+
+        # Should have same number of results
+        assert len(selected_with) == len(selected_without)
+
