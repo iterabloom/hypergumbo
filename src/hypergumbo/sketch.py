@@ -2957,6 +2957,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # D analysis failed or tree-sitter not available
 
+    if "nim" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.nim import analyze_nim  # pragma: no cover
+            result = analyze_nim(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Nim analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover
