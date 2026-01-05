@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-01-05 16:00
+
+#### Refactoring
+- **Analyzer registry consolidation**: Replaced 65+ individual analyzer imports in cli.py with a single `all_analyzers.py` registry. Reduced `cli.py` from 2590 to 1705 lines (-885 lines, 34% reduction).
+- **Shared base classes**: Created `analyze/base.py` with shared `AnalysisResult`, `FileAnalysis`, and tree-sitter helper functions (`node_text`, `find_child_by_type`, `find_child_by_field`, `is_grammar_available`, `make_symbol_id`).
+- **Go analyzer migration**: Refactored Go analyzer to use shared base classes as pilot, demonstrating the pattern for other analyzers.
+- **Lazy loading for testability**: ANALYZERS list uses lazy module imports via `get_func()` to enable test patching at the source module level.
+
 ### 2026-01-05 09:00
 
 #### Analysis Passes

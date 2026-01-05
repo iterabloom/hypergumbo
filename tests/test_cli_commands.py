@@ -105,7 +105,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_result):
+    with patch("hypergumbo.analyze.js_ts.analyze_javascript", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -148,8 +148,8 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_js_result), \
-         patch("hypergumbo.cli.analyze_php", return_value=mock_php_result):
+    with patch("hypergumbo.analyze.js_ts.analyze_javascript", return_value=mock_js_result), \
+         patch("hypergumbo.analyze.php.analyze_php", return_value=mock_php_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -182,7 +182,7 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_php", return_value=mock_result):
+    with patch("hypergumbo.analyze.php.analyze_php", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -215,7 +215,7 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_c", return_value=mock_result):
+    with patch("hypergumbo.analyze.c.analyze_c", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -248,7 +248,7 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_java", return_value=mock_result):
+    with patch("hypergumbo.analyze.java.analyze_java", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -281,7 +281,7 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_elixir", return_value=mock_result):
+    with patch("hypergumbo.analyze.elixir.analyze_elixir", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -314,7 +314,7 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_rust", return_value=mock_result):
+    with patch("hypergumbo.analyze.rust.analyze_rust", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -347,7 +347,7 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_go", return_value=mock_result):
+    with patch("hypergumbo.analyze.go.analyze_go", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -380,7 +380,7 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_ruby", return_value=mock_result):
+    with patch("hypergumbo.analyze.ruby.analyze_ruby", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -413,7 +413,7 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_kotlin", return_value=mock_result):
+    with patch("hypergumbo.analyze.kotlin.analyze_kotlin", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -446,7 +446,7 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_swift", return_value=mock_result):
+    with patch("hypergumbo.analyze.swift.analyze_swift", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -479,7 +479,7 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_scala", return_value=mock_result):
+    with patch("hypergumbo.analyze.scala.analyze_scala", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -512,7 +512,7 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_lua", return_value=mock_result):
+    with patch("hypergumbo.analyze.lua.analyze_lua", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -545,7 +545,7 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_haskell", return_value=mock_result):
+    with patch("hypergumbo.analyze.haskell.analyze_haskell", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -578,7 +578,7 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_ocaml", return_value=mock_result):
+    with patch("hypergumbo.analyze.ocaml.analyze_ocaml", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
