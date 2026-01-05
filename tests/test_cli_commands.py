@@ -1344,7 +1344,7 @@ def test_cmd_catalog_shows_suggestions(capsys, tmp_path, monkeypatch) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "Suggested for current directory:" in out
+    assert "Suggested for current repo:" in out
     assert "python-ast-v1" in out
 
 
