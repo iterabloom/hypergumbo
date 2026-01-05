@@ -2921,6 +2921,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Starlark analysis failed or tree-sitter not available
 
+    if "fish" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.fish import analyze_fish  # pragma: no cover
+            result = analyze_fish(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Fish analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover
