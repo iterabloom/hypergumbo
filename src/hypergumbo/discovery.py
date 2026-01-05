@@ -32,10 +32,23 @@ DEFAULT_EXCLUDES = [
     ".cache",
     "*.egg-info",
     # Coverage and test reports
-    "htmlcov",
-    "coverage",
-    ".coverage",
-    "coverage.xml",
+    "htmlcov",  # Python (pytest-cov)
+    "coverage",  # Generic (Ruby, JS)
+    ".coverage",  # Python coverage.py
+    "coverage.xml",  # Python, generic (Cobertura format)
+    ".nyc_output",  # JavaScript (nyc/Istanbul)
+    "lcov-report",  # JavaScript/C++ (LCOV HTML)
+    "lcov.info",  # JavaScript/C++ (LCOV data)
+    ".c8_output",  # JavaScript (c8)
+    "coverage.out",  # Go
+    "cover.out",  # Go (alternate name)
+    "cover.html",  # Go (HTML report)
+    "tarpaulin-report",  # Rust (cargo-tarpaulin)
+    "TestResults",  # .NET (dotnet test)
+    "coverlet",  # .NET (Coverlet)
+    "gcov-reports",  # C/C++ (gcov)
+    "jest-coverage",  # JavaScript (Jest)
+    ".jest",  # JavaScript (Jest cache)
     # Documentation output
     "site",  # mkdocs
     "_site",  # Jekyll

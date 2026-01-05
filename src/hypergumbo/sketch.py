@@ -30,7 +30,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
-from .discovery import find_files, DEFAULT_EXCLUDES
+from .discovery import find_files, is_excluded, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol
 from .entrypoints import detect_entrypoints, Entrypoint
@@ -2384,6 +2384,132 @@ def _format_all_files(
     return "\n".join(lines)
 
 
+# Test file patterns by language/framework
+TEST_FILE_PATTERNS = [
+    # Python
+    "test_*.py",
+    "*_test.py",
+    "tests.py",
+    # JavaScript/TypeScript
+    "*.test.js",
+    "*.test.ts",
+    "*.test.jsx",
+    "*.test.tsx",
+    "*.spec.js",
+    "*.spec.ts",
+    "*.spec.jsx",
+    "*.spec.tsx",
+    "__tests__/*.js",
+    "__tests__/*.ts",
+    # Go
+    "*_test.go",
+    # Rust
+    # Rust tests are in src files with #[test], harder to detect statically
+    # Java
+    "*Test.java",
+    "*Tests.java",
+    # Ruby
+    "*_spec.rb",
+    "test_*.rb",
+    # Shell
+    "*.bats",
+]
+
+# Test framework detection: (import/require pattern, framework name)
+TEST_FRAMEWORK_PATTERNS = [
+    # Python
+    (r"import pytest|from pytest", "pytest"),
+    (r"import unittest|from unittest", "unittest"),
+    (r"from hypothesis import", "hypothesis"),
+    # JavaScript
+    (r"from ['\"]jest['\"]|require\(['\"]jest['\"]", "jest"),
+    (r"from ['\"]vitest['\"]|import.*vitest", "vitest"),
+    (r"from ['\"]mocha['\"]|require\(['\"]mocha['\"]", "mocha"),
+    (r"import.*@testing-library", "testing-library"),
+    # Go (built-in testing package)
+    (r'import.*"testing"', "go test"),
+    # Ruby
+    (r"require ['\"]rspec['\"]|RSpec\.describe", "rspec"),
+    (r"require ['\"]minitest['\"]", "minitest"),
+    # Rust
+    (r"#\[cfg\(test\)\]|#\[test\]", "cargo test"),
+    # Java
+    (r"import org\.junit", "junit"),
+    (r"import org\.testng", "testng"),
+]
+
+
+def _detect_test_summary(repo_root: Path) -> Optional[str]:
+    """Detect test files and frameworks, return a summary string.
+
+    This is a static analysis - it detects test files by naming conventions
+    and test frameworks by import patterns. It does NOT measure coverage
+    (which requires execution).
+
+    Args:
+        repo_root: Path to the repository root.
+
+    Returns:
+        A summary string like "103 test files · pytest, hypothesis"
+        or None if no tests detected.
+    """
+    import re
+
+    test_files: list[Path] = []
+    frameworks_found: set[str] = set()
+
+    # Find test files by pattern
+    for pattern in TEST_FILE_PATTERNS:
+        for f in repo_root.rglob(pattern):
+            if f.is_file() and not is_excluded(f, repo_root):
+                test_files.append(f)
+
+    # Deduplicate (same file might match multiple patterns)
+    test_files = list(set(test_files))
+
+    if not test_files:
+        return None
+
+    # Sample test files to detect frameworks (don't read all of them)
+    sample_size = min(20, len(test_files))
+    sample_files = test_files[:sample_size]
+
+    for test_file in sample_files:
+        try:
+            content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
+            for pattern, framework in TEST_FRAMEWORK_PATTERNS:
+                if re.search(pattern, content):
+                    frameworks_found.add(framework)
+        except OSError:  # pragma: no cover
+            continue
+
+    # Build summary
+    file_count = len(test_files)
+    file_word = "file" if file_count == 1 else "files"
+
+    if frameworks_found:
+        framework_str = ", ".join(sorted(frameworks_found))
+        return f"{file_count} test {file_word} · {framework_str}"
+    else:
+        return f"{file_count} test {file_word}"
+
+
+def _format_test_summary(repo_root: Path) -> str:
+    """Format test summary as a Markdown section.
+
+    Args:
+        repo_root: Path to the repository root.
+
+    Returns:
+        Markdown section string, or empty string if no tests.
+    """
+    summary = _detect_test_summary(repo_root)
+    if not summary:
+        return ""
+
+    return f"## Tests\n\n{summary}\n\n*Coverage requires execution; see pytest --cov*"
+
+
 def _run_analysis(
     repo_root: Path, profile: RepoProfile, exclude_tests: bool = False
 ) -> tuple[list[Symbol], list]:
@@ -3248,6 +3374,11 @@ def generate_sketch(
     frameworks = _format_frameworks(profile)
     if frameworks:
         sections.append(frameworks)
+
+    # Section 3.25: Tests (static summary - count and frameworks)
+    test_summary_section = _format_test_summary(repo_root)
+    if test_summary_section:
+        sections.append(test_summary_section)
 
     # Section 3.5: Configuration (extracted metadata from config files)
     # This section is high value for answering project metadata questions
