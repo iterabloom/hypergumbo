@@ -1,0 +1,23 @@
+name: Mirror Release from Codeberg
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            This release was automatically mirrored from [Codeberg](https://codeberg.org/iterabloom/hypergumbo).
+
+            For the canonical release, see: https://codeberg.org/iterabloom/hypergumbo/releases/tag/${{ github.ref_name }}
