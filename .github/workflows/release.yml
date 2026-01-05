@@ -47,12 +47,34 @@ jobs:
           pip install --upgrade pip
           pip install -e .[dev]
 
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Build source-only grammars (while memory is fresh)
+        run: |
+          # Build grammars BEFORE trying sentence-transformers since
+          # torch/cuBLAS can fragment memory and cause OOM during builds
+          ./scripts/build-source-grammars
+
+      - name: Try installing sentence-transformers (optional)
+        run: |
+          echo "Attempting to install sentence-transformers..."
+          if timeout 300 pip install sentence-transformers 2>&1; then
+            echo "sentence-transformers installed successfully"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::sentence-transformers install failed (expected on small runners)"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+        continue-on-error: true
+
+      - name: Contingency reinstall (if sentence-transformers failed)
+        if: always() && env.EMBEDDINGS_AVAILABLE != 'true'
+        run: |
+          echo "Reinstalling clean [dev] dependencies..."
+          pip cache purge 2>/dev/null || true
+          pip uninstall -y sentence-transformers torch transformers huggingface_hub safetensors 2>/dev/null || true
+          pip install -e .[dev] --force-reinstall
 
       - name: Run tests with coverage
         run: |
-          # Show missing lines to help debug coverage gaps
           pytest --cov=src --cov-report=term-missing --cov-fail-under=100
 
   # ─────────────────────────────────────────────────────────────
@@ -118,8 +140,17 @@ jobs:
           pip install --upgrade pip
           pip install -e .[dev]
 
-      - name: Build source-only grammars
+      - name: Build source-only grammars (while memory is fresh)
         run: ./scripts/build-source-grammars
+
+      - name: Try installing sentence-transformers (optional)
+        run: |
+          if timeout 300 pip install sentence-transformers 2>&1; then
+            echo "sentence-transformers installed successfully"
+          else
+            echo "::warning::sentence-transformers install failed (expected on small runners)"
+          fi
+        continue-on-error: true
 
       - name: Install jq
         run: |
