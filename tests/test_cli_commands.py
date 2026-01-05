@@ -1313,10 +1313,9 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     assert "Use a full node ID" in err
 
 
-def test_cmd_catalog_show_all(capsys) -> None:
-    """Catalog with --show-all shows all passes including extras."""
+def test_cmd_catalog_shows_all_passes(capsys) -> None:
+    """Catalog shows all passes including extras by default."""
     args = FakeArgs()
-    args.show_all = True
 
     result = cmd_catalog(args)
 
@@ -1326,24 +1325,27 @@ def test_cmd_catalog_show_all(capsys) -> None:
     assert "Available Passes:" in out
     assert "python-ast-v1" in out
     assert "html-pattern-v1" in out
-    assert "javascript-ts-v1" in out  # extra included with --show-all
+    assert "javascript-ts-v1" in out  # extras now shown by default
     assert "Available Packs:" in out
 
 
-def test_cmd_catalog_default(capsys) -> None:
-    """Catalog without --show-all shows only core passes."""
+def test_cmd_catalog_shows_suggestions(capsys, tmp_path, monkeypatch) -> None:
+    """Catalog shows suggested passes based on current directory."""
+    # Create Python file in temp directory
+    (tmp_path / "main.py").write_text("print('hello')")
+
+    # Change to temp directory
+    monkeypatch.chdir(tmp_path)
+
     args = FakeArgs()
-    args.show_all = False
 
     result = cmd_catalog(args)
 
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "Available Passes:" in out
+    assert "Suggested for current directory:" in out
     assert "python-ast-v1" in out
-    assert "javascript-ts-v1" not in out  # extras hidden by default
-    assert "Use --show-all" in out  # hint about extras
 
 
 def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:

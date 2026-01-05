@@ -179,3 +179,181 @@ class TestIsAvailable:
         p = Pass("unknown-v1", "Unknown analyzer", "extra", "hypergumbo[unknown]")
         # Unknown dependency type defaults to not available
         assert is_available(p) is False
+
+
+class TestCatalogCompleteness:
+    """Tests to verify catalog includes all analyzers."""
+
+    def test_catalog_includes_all_language_analyzers(self) -> None:
+        """Catalog includes passes for all languages in profile.py."""
+        from hypergumbo.catalog import get_default_catalog
+
+        catalog = get_default_catalog()
+        pass_ids = {p.id for p in catalog.passes}
+
+        # Map languages to their expected pass ID patterns
+        # Some languages share analyzers (e.g., cpp uses c-ts-v1)
+        language_to_pass_pattern = {
+            "python": "python-ast-v1",
+            "javascript": "javascript-ts-v1",
+            "typescript": "javascript-ts-v1",  # shares with JS
+            "vue": "javascript-ts-v1",  # shares with JS
+            "html": "html-pattern-v1",
+            "rust": "rust-ts-v1",
+            "go": "go-ts-v1",
+            "java": "java-ts-v1",
+            "c": "c-ts-v1",
+            "cpp": "cpp-ts-v1",
+            "ruby": "ruby-ts-v1",
+            "php": "php-ts-v1",
+            "swift": "swift-ts-v1",
+            "kotlin": "kotlin-ts-v1",
+            "scala": "scala-ts-v1",
+            "elixir": "elixir-ts-v1",
+            "lua": "lua-ts-v1",
+            "clojure": "clojure-ts-v1",
+            "erlang": "erlang-ts-v1",
+            "elm": "elm-ts-v1",
+            "haskell": "haskell-ts-v1",
+            "agda": "agda-v1",
+            "lean": "lean-v1",
+            "wolfram": "wolfram-v1",
+            "ocaml": "ocaml-ts-v1",
+            "solidity": "solidity-ts-v1",
+            "csharp": "csharp-ts-v1",
+            "fortran": "fortran-v1",
+            "glsl": "glsl-v1",
+            "nix": "nix-v1",
+            "cuda": "cuda-v1",
+            "cmake": "cmake-v1",
+            "dockerfile": "dockerfile-v1",
+            "sql": "sql-v1",
+            "verilog": "verilog-v1",
+            "vhdl": "vhdl-v1",
+            "graphql": "graphql-v1",
+            "zig": "zig-ts-v1",
+            "groovy": "groovy-ts-v1",
+            "julia": "julia-ts-v1",
+            "objc": "objc-ts-v1",
+            "hcl": "hcl-ts-v1",
+            "dart": "dart-ts-v1",
+            "cobol": "cobol-v1",
+            "latex": "latex-v1",
+            "fsharp": "fsharp-ts-v1",
+            "perl": "perl-ts-v1",
+            "proto": "proto-v1",
+            "thrift": "thrift-v1",
+            "capnp": "capnp-v1",
+            "powershell": "powershell-v1",
+            "gdscript": "gdscript-v1",
+            "starlark": "starlark-v1",
+            "fish": "fish-v1",
+            "hlsl": "hlsl-v1",
+            "ada": "ada-v1",
+            "d": "d-v1",
+            "nim": "nim-v1",
+            "shell": "bash-v1",
+            # These are config/data formats - optional
+            "json": "json-config-v1",
+            "yaml": "yaml-ansible-v1",
+            "css": "css-v1",
+            "toml": "toml-v1",
+            # markdown is doc-only, no analyzer
+        }
+
+        # Check all mapped languages have their pass in catalog
+        for lang, expected_pass in language_to_pass_pattern.items():
+            assert expected_pass in pass_ids, f"Missing pass {expected_pass} for language {lang}"
+
+    def test_catalog_has_at_least_60_passes(self) -> None:
+        """Catalog should have at least 60 passes (sanity check)."""
+        catalog = get_default_catalog()
+        assert len(catalog.passes) >= 60, f"Only {len(catalog.passes)} passes in catalog"
+
+
+class TestSuggestedPasses:
+    """Tests for language-based pass suggestions."""
+
+    def test_suggest_passes_for_python_project(self, tmp_path) -> None:
+        """Suggests Python pass for Python project."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        (tmp_path / "main.py").write_text("print('hello')")
+        suggested = suggest_passes_for_directory(tmp_path)
+
+        assert any("python" in p.id for p in suggested)
+
+    def test_suggest_passes_for_javascript_project(self, tmp_path) -> None:
+        """Suggests JS pass for JavaScript project."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        (tmp_path / "app.js").write_text("console.log('hello');")
+        suggested = suggest_passes_for_directory(tmp_path)
+
+        assert any("javascript" in p.id for p in suggested)
+
+    def test_suggest_passes_for_multi_language_project(self, tmp_path) -> None:
+        """Suggests multiple passes for multi-language project."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        (tmp_path / "main.py").write_text("import os")
+        (tmp_path / "lib.rs").write_text("fn main() {}")
+        suggested = suggest_passes_for_directory(tmp_path)
+
+        pass_ids = [p.id for p in suggested]
+        assert any("python" in pid for pid in pass_ids)
+        assert any("rust" in pid for pid in pass_ids)
+
+    def test_suggest_passes_empty_directory(self, tmp_path) -> None:
+        """Returns empty list for directory with no source files."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        suggested = suggest_passes_for_directory(tmp_path)
+        assert suggested == []
+
+    def test_suggest_passes_excludes_config_by_default(self, tmp_path) -> None:
+        """Config-only projects don't suggest passes."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        (tmp_path / "config.json").write_text("{}")
+        (tmp_path / "README.md").write_text("# Docs")
+        suggested = suggest_passes_for_directory(tmp_path)
+
+        # JSON and markdown don't trigger suggestions by default
+        # (they're config/doc files, not main language)
+        assert len(suggested) == 0
+
+    def test_suggest_passes_nonexistent_directory(self, tmp_path) -> None:
+        """Returns empty list for non-existent directory."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        nonexistent = tmp_path / "does_not_exist"
+        suggested = suggest_passes_for_directory(nonexistent)
+        assert suggested == []
+
+    def test_suggest_passes_dockerfile(self, tmp_path) -> None:
+        """Detects Dockerfile by exact filename match."""
+        from hypergumbo.catalog import suggest_passes_for_directory
+
+        (tmp_path / "Dockerfile").write_text("FROM python:3.12")
+        suggested = suggest_passes_for_directory(tmp_path)
+
+        assert any("dockerfile" in p.id for p in suggested)
+
+
+class TestCatalogMethods:
+    """Tests for Catalog methods."""
+
+    def test_get_extra_passes(self) -> None:
+        """Can filter to extra passes only."""
+        catalog = Catalog(
+            passes=[
+                Pass("python-ast-v1", "Python AST", "core"),
+                Pass("javascript-ts-v1", "JS/TS", "extra", "tree-sitter-language-pack"),
+                Pass("rust-ts-v1", "Rust", "extra", "tree-sitter-language-pack"),
+            ],
+            packs=[],
+        )
+        extras = catalog.get_extra_passes()
+        assert len(extras) == 2
+        assert all(p.availability == "extra" for p in extras)

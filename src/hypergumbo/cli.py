@@ -103,7 +103,7 @@ from .analyze.hlsl import analyze_hlsl
 from .analyze.ada import analyze_ada
 from .analyze.d_lang import analyze_d
 from .analyze.nim import analyze_nim
-from .catalog import get_default_catalog, is_available
+from .catalog import get_default_catalog, is_available, suggest_passes_for_directory
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
 from .linkers.graphql_resolver import link_graphql_resolvers
@@ -785,34 +785,40 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
 
 def cmd_catalog(args: argparse.Namespace) -> int:
-    """Display available passes and packs."""
+    """Display available passes and packs.
+
+    Shows:
+    1. Suggested passes based on current directory (if any source files found)
+    2. All available passes (core and extra)
+    3. Available packs
+    """
     catalog = get_default_catalog()
+    cwd = Path.cwd()
 
-    # Filter passes based on --show-all
-    if args.show_all:
-        passes = catalog.passes
-    else:
-        passes = catalog.get_core_passes()
+    # Show suggested passes based on current directory
+    suggested = suggest_passes_for_directory(cwd)
+    if suggested:
+        print("Suggested for current directory:")
+        for p in suggested:
+            avail = is_available(p)
+            status = "" if avail else " [not installed]"
+            print(f"  - {p.id}: {p.description}{status}")
+        print()
 
+    # Show all passes (default behavior now)
     print("Available Passes:")
-    for p in passes:
+    for p in catalog.passes:
         avail = is_available(p)
         status = "" if avail else " [not installed]"
         if p.availability == "core":
             print(f"  - {p.id} (core): {p.description}{status}")
         else:
-            print(f"  - {p.id} (extra: {p.requires}): {p.description}{status}")
+            print(f"  - {p.id} (extra): {p.description}{status}")
 
     print()
     print("Available Packs:")
     for pack in catalog.packs:
         print(f"  - {pack.id}: {pack.description}")
-
-    if not args.show_all:
-        extras = catalog.get_extra_passes()
-        if extras:
-            print()
-            print(f"Use --show-all to see {len(extras)} additional extra(s)")
 
     return 0
 
@@ -1352,21 +1358,16 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
     # hypergumbo catalog
     catalog_epilog = """\
 Examples:
-  hypergumbo catalog                      # List built-in analyzers
-  hypergumbo catalog --show-all           # Include optional analyzers
+  hypergumbo catalog                      # List all analyzers
 
-Shows which languages and frameworks hypergumbo can analyze."""
+Shows which languages and frameworks hypergumbo can analyze.
+The output begins with passes suggested for your current directory."""
 
     p_catalog = sub.add_parser(
         "catalog",
         help="List available language analyzers",
         epilog=catalog_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p_catalog.add_argument(
-        "--show-all",
-        action="store_true",
-        help="Include extras that require optional dependencies",
     )
     p_catalog.set_defaults(func=cmd_catalog)
 
