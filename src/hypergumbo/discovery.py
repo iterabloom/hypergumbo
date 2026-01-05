@@ -5,19 +5,42 @@ from typing import Iterator
 
 # Default exclude patterns (gitignore-style)
 DEFAULT_EXCLUDES = [
+    # Dependency directories
     "node_modules",
-    "vendor",  # PHP dependencies (Composer)
+    "vendor",  # PHP (Composer), Go
     "venv",
     ".venv",
+    "env",
+    ".eggs",
+    # Build output
     "dist",
     "build",
+    "_build",  # Sphinx docs
+    "out",
+    "target",  # Rust, Maven
+    # VCS and IDE
     ".git",
+    ".svn",
+    ".hg",
+    # Caches
     "__pycache__",
     ".pytest_cache",
     ".mypy_cache",
+    ".ruff_cache",
     ".tox",
+    ".nox",
+    ".cache",
     "*.egg-info",
-    # Hypergumbo output artifacts - exclude to prevent sketch/analysis pollution
+    # Coverage and test reports
+    "htmlcov",
+    "coverage",
+    ".coverage",
+    "coverage.xml",
+    # Documentation output
+    "site",  # mkdocs
+    "_site",  # Jekyll
+    "public",  # Hugo (common but may have false positives)
+    # Hypergumbo output artifacts
     ".hypergumbo",
     "hypergumbo.results.json",
     # Lock files - generated, inflate LOC counts
