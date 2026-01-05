@@ -382,6 +382,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Elm | [x] tree-sitter | module, function, type, port | calls, imports | Detects Elm code: module declarations, value/function declarations, type aliases, custom types (union types), port declarations (JS interop). Import edges from import clauses. Two-pass cross-file resolution. For functional web frontend development. Optional: `pip install tree-sitter-language-pack` |
 | F# | [x] tree-sitter | module, function, value, record, union | calls, imports | Detects F# code: modules (including nested), functions (`let`), values, record types, discriminated unions, `open` statements. Two-pass cross-file resolution. For .NET functional-first development. Optional: `pip install tree-sitter-language-pack` |
 | Perl | [x] tree-sitter | module, function | calls, imports | Detects Perl code: packages (`package`), subroutines (`sub`), `use` statements, `require` expressions. Method calls via arrow operator (`$obj->method`). Two-pass cross-file resolution with qualified names. For legacy systems and text processing. Optional: `pip install tree-sitter-language-pack` |
+| Proto | [x] tree-sitter | service, rpc, message, enum | imports, contains | Detects Protocol Buffers: services (gRPC), RPC methods with request/response types, messages, enums, imports. RPC signatures show request/response types including streaming. Complements gRPC linker for full stack tracing. Optional: `pip install tree-sitter-language-pack` |
 
 ## Supply Chain Classification (§8.6)
 
