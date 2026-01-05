@@ -93,7 +93,7 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Sum-of-top-K file scoring | [x] | Files ranked by sum of top-3 symbol scores (density metric) rather than single-max centrality |
 | Per-file render compression | [x] | Max 5 symbols per file with "… +N more (top score: X.XX)" overflow summary |
 | Entrypoint file preservation | [x] | Entry points and their containing files prioritized in Key Symbols section |
-| Language-proportional selection | [x] | `--language-proportional` flag enables proportional symbol allocation by language for multi-language projects (off by default) |
+| Language-proportional selection | [x] | Proportional symbol allocation by language for multi-language projects (enabled by default; disable with `--no-language-proportional`) |
 | Deterministic output | [x] | Sorted iteration over SOURCE_DIRS ensures reproducible output across runs |
 | **Project Description** | | |
 | README extraction | [x] | Extracts first descriptive paragraph from README.md/rst/txt, skips badges/images/HTML |

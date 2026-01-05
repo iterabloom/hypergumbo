@@ -3117,7 +3117,7 @@ def _select_symbols_two_phase(
     max_files: int = 20,
     coverage_fraction: float = 0.33,
     diminishing_alpha: float = 0.7,
-    language_proportional: bool = False,
+    language_proportional: bool = True,
 ) -> list[tuple[str, Symbol]]:
     """Select symbols using two-phase policy for breadth + depth.
 
@@ -3271,7 +3271,7 @@ def _format_symbols(
     max_symbols_per_file: int = 5,
     docstrings: dict[str, str] | None = None,
     signatures: dict[str, str] | None = None,
-    language_proportional: bool = False,
+    language_proportional: bool = True,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
@@ -3541,7 +3541,7 @@ def generate_sketch(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
-    language_proportional: bool = False,
+    language_proportional: bool = True,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 

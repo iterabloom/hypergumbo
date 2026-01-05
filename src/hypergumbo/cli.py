@@ -995,12 +995,12 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         help="Maximum characters per chunk for embedding (default: 800)",
     )
     p_sketch.add_argument(
-        "--language-proportional",
-        action="store_true",
+        "--no-language-proportional",
+        action="store_false",
         dest="language_proportional",
-        help="Enable language-proportional symbol selection for multi-language projects",
+        help="Disable language-proportional symbol selection (enabled by default)",
     )
-    p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
+    p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo init
     p_init = sub.add_parser("init", help="Initialize a hypergumbo capsule")
