@@ -3335,8 +3335,8 @@ class TestLanguageProportionalSelection:
         assert lang_counts["kotlin"] >= 1
         assert lang_counts["python"] >= 1
 
-    def test_language_proportional_off_by_default(self, tmp_path: Path) -> None:
-        """Default behavior unchanged when flag not set."""
+    def test_language_proportional_on_by_default(self, tmp_path: Path) -> None:
+        """Default behavior uses language-proportional selection."""
         from hypergumbo.sketch import _select_symbols_two_phase
         from hypergumbo.ranking import group_symbols_by_file, compute_centrality
 
@@ -3350,7 +3350,7 @@ class TestLanguageProportionalSelection:
         centrality = compute_centrality(syms, [])
         file_scores = dict.fromkeys(by_file.keys(), 1.0)
 
-        # Select without language_proportional (default False)
+        # Select with default (language_proportional=True)
         selected = _select_symbols_two_phase(
             by_file=by_file,
             centrality=centrality,
