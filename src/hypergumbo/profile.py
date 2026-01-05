@@ -97,6 +97,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "hlsl": ["*.hlsl", "*.hlsli", "*.fx"],
     "ada": ["*.ads", "*.adb", "*.ada"],
     "d": ["*.d", "*.di"],
+    "nim": ["*.nim", "*.nims", "*.nimble"],
 }
 
 # Framework detection patterns

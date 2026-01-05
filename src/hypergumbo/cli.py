@@ -102,6 +102,7 @@ from .analyze.fish import analyze_fish
 from .analyze.hlsl import analyze_hlsl
 from .analyze.ada import analyze_ada
 from .analyze.d_lang import analyze_d
+from .analyze.nim import analyze_nim
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2321,6 +2322,19 @@ def run_behavior_map(
             analysis_runs.append(d_result.run.to_dict())
             all_symbols.extend(d_result.symbols)
             all_edges.extend(d_result.edges)
+
+    # Run Nim analysis (optional, requires tree-sitter-language-pack)
+    nim_result = analyze_nim(repo_root)
+    if nim_result.run is not None:
+        if nim_result.skipped:  # pragma: no cover - nim installed
+            limits.skipped_passes.append({
+                "pass": nim_result.run.pass_id,
+                "reason": nim_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(nim_result.run.to_dict())
+            all_symbols.extend(nim_result.symbols)
+            all_edges.extend(nim_result.edges)
 
     # Run cross-language linkers
 
