@@ -4,211 +4,68 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 
 > **Note:** The spec file also contains "Spec B" which describes a multi-year roadmap. Spec B is not in scope for current development.
 
-## Legend
 
-- [x] Implemented and tested
-- [ ] Not yet implemented
-- [stub] CLI command exists but is a placeholder
+## 2026-01-05 09:00
 
-## Week 1: Foundation + IR Layer
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| HLSL | [x] tree-sitter | function, struct, variable | | Detects DirectX HLSL shaders: function definitions (vertex/pixel/compute shaders) with signatures, struct definitions (input/output structures), constant buffer declarations (cbuffer), resource declarations (Texture, Sampler, Buffer). Essential for DirectX game development. Complements GLSL/WGSL shader analyzers. Optional: `pip install tree-sitter-language-pack` |
+| Ada | [x] tree-sitter | package, function, procedure, type, constant | imports | Detects Ada safety-critical code: package specs/bodies, functions/procedures with signatures, record types, constants, with-clause imports. Ada is used in aerospace, defense, medical devices, and embedded systems. Optional: `pip install tree-sitter-language-pack` |
+| D | [x] tree-sitter | module, function, struct, class, interface | imports | Detects D systems programming code: module declarations, function definitions with signatures, struct/class/interface definitions, import statements. D is a modern C++ alternative combining low-level control with modern features. Optional: `pip install tree-sitter-language-pack` |
+| Nim | [x] tree-sitter | function, method, type | imports | Detects Nim code: proc/func/method definitions with signatures, type definitions (objects, enums), import statements. Nim combines Python-like syntax with systems programming power, compiling to C/C++/JavaScript. Optional: `pip install tree-sitter-language-pack` |
 
+## 2026-01-05 08:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| GDScript | [x] tree-sitter | function, variable, signal, class | calls, imports | Detects Godot game engine scripts: functions with signatures, class variables, signals, class_name and inner classes. Function signatures show typed/untyped parameters and return types. preload/load imports for scene/script references. For Godot game development. Optional: `pip install tree-sitter-language-pack` |
+| Starlark | [x] tree-sitter | function, target, variable | imports, depends_on | Detects Bazel/Buck build files: function definitions with signatures, build targets (py_binary, cc_library, etc.) with rule type in meta, variable assignments. Load statements create import edges. Target deps create dependency edges. For build system analysis. Optional: `pip install tree-sitter-language-pack` |
+| Fish | [x] tree-sitter | function, alias, variable | sources, calls | Detects Fish shell scripts: function definitions with argument signatures, alias declarations, global variable assignments (set -g/-gx/-U). Source statements create import edges. Function calls tracked within function bodies. Complements Bash analyzer for shell configuration. Optional: `pip install tree-sitter-language-pack` |
+
+## 2026-01-05 07:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Thrift | [x] tree-sitter | service, function, struct, enum, typedef, const | imports, contains | Detects Apache Thrift IDL: services, RPC functions with signatures, structs, enums, typedefs, constants, includes. Function signatures show parameters and return types. Complements Thrift-based microservices analysis. Optional: `pip install tree-sitter-language-pack` |
+| Cap'n Proto | [x] tree-sitter | struct, interface, method, enum, const | imports, contains | Detects Cap'n Proto IDL: structs, interfaces (RPC services), methods with signatures, enums, constants, imports. Method signatures show parameters and return types. Supports nested structs. Complements Proto/Thrift for microservices analysis. Optional: `pip install tree-sitter-language-pack` |
+| PowerShell | [x] tree-sitter | function, filter, workflow | calls, imports | Detects PowerShell scripts: functions with verb-noun naming, filters, workflows. Function signatures show parameters with types and defaults. Import-Module and using module imports. Command call edges. For Windows/Azure automation and DevOps. Optional: `pip install tree-sitter-language-pack` |
+
+## 2026-01-05 06:00
+
+### Sketch Generation (Default Mode)
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Schema definition (behavior_map view) | [x] | `schema.py` |
-| Internal IR classes (Symbol, Edge, AnalysisRun) | [x] | `ir.py` |
-| Profile module (language detection) | [x] | `profile.py` |
-| File discovery + exclude logic | [x] | `discovery.py` |
-| JSON writer (IR → views compilation) | [x] | `cli.py` |
-| ID generation (stable_id, shape_id) | [x] | `analyze/py.py` |
-| Pass interface and registry | [x] | `catalog.py` - Pass, Pack, Catalog classes |
-| Catalog system (catalog.json schema) | [x] | `catalog.py` - get_default_catalog() |
-| Capsule Plan (plan.json, validation) | [x] | `plan.py` - generate_plan(), validate_plan() |
+| Language-proportional selection | [x] | Proportional symbol allocation by language for multi-language projects (enabled by default; disable with `--no-language-proportional`) |
 
-## Week 2: Python Analyzer
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Proto | [x] tree-sitter | service, rpc, message, enum | imports, contains | Detects Protocol Buffers: services (gRPC), RPC methods with request/response types, messages, enums, imports. RPC signatures show request/response types including streaming. Complements gRPC linker for full stack tracing. Optional: `pip install tree-sitter-language-pack` |
 
+## 2026-01-05 03:00
+
+### Sketch Generation (Default Mode)
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Python AST parser → IR emission | [x] | `analyze/py.py` |
-| Function/class detection | [x] | |
-| Call edges (intra-file) | [x] | |
-| Import edges (cross-file) | [x] | `from X import Y` and `import X` emitted as `imports` edges |
-| Method call detection (self.method) | [x] | |
-| Evidence-type-based confidence | [x] | `meta.evidence_type` on edges |
-| Provenance tracking (AnalysisRun) | [x] | `analysis_runs[]` in output |
-
-## Week 3: JS/TS Analyzer (Optional)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Tree-sitter integration | [x] | `analyze/js_ts.py` |
-| JS/TS AST → IR emission | [x] | Functions, classes, methods, getters, setters |
-| TypeScript interface detection | [x] | `kind: "interface"` |
-| TypeScript type alias detection | [x] | `kind: "type"` |
-| TypeScript enum detection | [x] | `kind: "enum"` |
-| Arrow function detection | [x] | `const fn = () => {}` |
-| Call/import edges | [x] | ES6 imports, require(), function calls |
-| Fallback if tree-sitter unavailable | [x] | Returns skipped result with reason |
-
-## Week 4: Slicing + Entrypoints
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal; includes file-level imports |
-| Reverse slice (find callers) | [x] | `--reverse` flag on `hypergumbo slice` finds what calls X |
-| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron, Django, Express.js, NestJS, Spring Boot, Rails, Phoenix, Go (Gin/Echo/Fiber), Laravel, Rust (Actix-web/Axum/Rocket/Warp), ASP.NET Core, Sinatra, Ktor, Vapor, Plug, Hapi, Fastify, Koa, Grape, Tornado, Aiohttp, Slim, Micronaut, Flutter (runApp, widgets), GraphQL (Apollo Server, Yoga, Mercurius). Test files excluded via `_is_test_file()` helper. |
-| Feature generation with query specs | [x] | Stable feature IDs from query |
-| Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
-
-## Week 5: Capsule Initialization
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` + `capsule_plan.json` |
-| Template-based plan generation | [x] | `plan.py` - generates from profile + catalog |
-| LLM-assisted plan generation | [x] | `llm_assist.py` - OpenRouter, OpenAI, llm package backends. Interactive setup prompts if no API key configured. Keys stored in `~/.config/hypergumbo/config.json`. *Proof-of-concept; template-based generation currently produces equivalent results.* |
-| `hypergumbo catalog` command | [x] | Lists passes and packs |
-| `hypergumbo export-capsule` command | [x] | `export.py` - tarball with privacy redactions |
-
-## Sketch Generation (Default Mode)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Token-budgeted Markdown sketch | [x] | `sketch.py` - ~4 chars/token heuristic with ceiling division for conservative estimates |
-| Default CLI mode | [x] | `hypergumbo [path]` runs sketch |
-| Token limit flag | [x] | `-t N` / `--tokens N` |
-| Language breakdown | [x] | Sorted by LOC percentage |
-| Directory structure | [x] | Top-level dirs with type labels. Filters excluded dirs (node_modules, __pycache__, etc.) |
-| Framework detection | [x] | Via profile.py. **Python:** FastAPI, Flask, Django, Starlette, Quart, Sanic, Litestar, Falcon, Bottle, CherryPy, Pyramid, Tornado, Aiohttp, PyTorch, TensorFlow, Keras, JAX, Transformers, spaCy, NLTK, LangChain, LangGraph, LlamaIndex, Haystack, scikit-learn, XGBoost, LightGBM, CatBoost, Optuna, MLflow, WandB, Ray, vLLM, DeepSpeed, PaddlePaddle, OpenAI, Anthropic. **JavaScript/TypeScript:** React, Vue, Angular, Svelte, Solid, Qwik, Preact, Lit, Alpine, htmx, Ember, Next.js, Nuxt, Remix, Astro, Gatsby, SvelteKit, Express, NestJS, Fastify, Koa, Hapi, Adonis, Sails, Hono, Elysia, React Native, Expo, Ionic, Capacitor, NativeScript, Electron, Tauri, Hardhat, Web3.js, ethers.js, Wagmi, Viem. **Rust:** Axum, Actix-web, Rocket, Warp, Tide, Gotham, Poem, Salvo, Tokio, async-std, Serde, Clap, Tauri, Solana/Anchor, Substrate, CosmWasm, ethers-rs, Alloy, Foundry, REVM, Arkworks, Bellman, Halo2, Plonky2/3, SP1, RISC Zero, Jolt, Nova, HyperNova, Zcash, libp2p, curve25519/ed25519, secp256k1. **Go:** Gin, Echo, Fiber, Chi, Gorilla, Buffalo, Revel, Beego, Iris. **PHP:** Laravel, Symfony, CodeIgniter, CakePHP, Yii, Phalcon, Slim. **Java/Kotlin:** Spring Boot, Micronaut, Quarkus, Dropwizard, Vert.x, Javalin, Helidon, Spark, Ktor, Jetpack Compose. **Swift:** Vapor, Kitura, Perfect, SwiftUI. **Scala:** Play, Akka HTTP, http4s, ZIO HTTP, Finatra. **Dart/Flutter:** Flutter SDK, flutter_bloc, Riverpod, Provider, GetX, MobX, Dio, Freezed, go_router, Flame. |
-| Section-boundary truncation | [x] | Preserves coherent sections when truncating |
-| Source file listings | [x] | Progressive expansion based on budget |
-| Entry points section | [x] | CLI, HTTP routes, Electron patterns |
-| Key symbols section | [x] | Functions/classes from static analysis |
 | Minimum Key Symbols guarantee | [x] | Always includes at least 5 symbols even with tight budget |
-| Graph centrality ranking | [x] | In-degree centrality orders symbols by importance |
-| Test file filtering | [x] | Excludes test files from centrality calculation |
 | Multi-language test detection | [x] | Detects Swift (Tests/, *Tests.swift), Go (*_test.go), Java/Kotlin (*Test.java/kt), Rust (*_test.rs) in addition to Python/JS patterns |
 | Framework-specific coverage hints | [x] | Test summary section suggests appropriate coverage tool (jest --coverage, go test -cover, mvn test jacoco:report, etc.) instead of always suggesting pytest |
-| **Symbol Selection** | | |
-| Two-phase selection policy | [x] | Coverage-first phase (33% budget) ensures broad file coverage, then diminishing-returns greedy fill maximizes marginal utility |
-| Sum-of-top-K file scoring | [x] | Files ranked by sum of top-3 symbol scores (density metric) rather than single-max centrality |
-| Per-file render compression | [x] | Max 5 symbols per file with "… +N more (top score: X.XX)" overflow summary |
-| Entrypoint file preservation | [x] | Entry points and their containing files prioritized in Key Symbols section |
-| Language-proportional selection | [x] | Proportional symbol allocation by language for multi-language projects (enabled by default; disable with `--no-language-proportional`) |
-| Deterministic output | [x] | Sorted iteration over SOURCE_DIRS ensures reproducible output across runs |
-| **Project Description** | | |
-| README extraction | [x] | Extracts first descriptive paragraph from README.md/rst/txt, skips badges/images/HTML |
-| Title subtitle fallback | [x] | Falls back to title subtitle (e.g., "Project: Description here") if no paragraph found |
-| **Python Docstrings** | | |
-| Docstring extraction | [x] | Extracts first-line docstrings for Python functions/classes in Key Symbols |
-| Symbol annotation | [x] | Displays docstring as `— Description` after symbol name |
-| **Python Function Signatures** | | |
-| Signature extraction | [x] | Extracts function signatures (parameters + return types) for Python functions/methods |
-| Type annotations | [x] | Displays typed parameters and return types (e.g., `func(x: int) -> str`) |
-| Complex types | [x] | Handles `List[T]`, `Dict[K,V]`, `Optional[T]`, `X | Y` unions |
-| Default values | [x] | Shows defaults as ellipsis (e.g., `config=…`) |
-| *args/**kwargs | [x] | Properly formats varargs (e.g., `(*args, **kwargs)`) |
-| Async functions | [x] | Extracts signatures from `async def` functions |
-| **Rust Function Signatures** | | |
-| Signature extraction | [x] | Extracts function signatures for Rust functions/methods (e.g., `(x: i32, y: String) -> bool`) |
-| Self parameters | [x] | Handles `&self`, `&mut self`, `self` receiver patterns |
-| Return types | [x] | Displays return type arrows (e.g., `-> Result<T, E>`) |
-| **Go Function Signatures** | | |
-| Signature extraction | [x] | Extracts function signatures for Go functions/methods (e.g., `(x int, y string) error`) |
-| Multiple returns | [x] | Handles Go multiple return values (e.g., `(int, error)`) |
-| Named returns | [x] | Supports named return values (e.g., `(result int, err error)`) |
-| Parameter grouping | [x] | Collapses same-type params (e.g., `a, b int`) |
-| **TypeScript/JavaScript Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for TS/JS functions (e.g., `(x: number, y: string): boolean`) |
-| Type annotations | [x] | Displays TypeScript type annotations |
-| Optional params | [x] | Shows optional parameters (e.g., `name?: string`) |
-| Default values | [x] | Shows defaults as ellipsis (e.g., `count = ...`) |
-| Rest parameters | [x] | Handles `...args` spread syntax |
-| Arrow functions | [x] | Extracts signatures from arrow function expressions |
-| **C Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for C functions (e.g., `(int x, char* name) int`) |
-| Pointer types | [x] | Handles pointer params and returns (e.g., `char*`, `int**`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **C++ Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for C++ functions (e.g., `(const std::string& name) int`) |
-| Reference types | [x] | Handles reference params (e.g., `const T&`) |
-| Qualified types | [x] | Handles `std::string`, `::global::Type` |
-| **Java Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Java methods (e.g., `(String name, int age) User`) |
-| Constructor signatures | [x] | Handles constructors (no return type) |
-| Generic types | [x] | Handles `List<String>`, `Map<K, V>` |
-| Array types | [x] | Handles `String[]`, both before and after param name |
-| Varargs | [x] | Handles `Object... args` spread syntax |
-| **C# Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for C# methods (e.g., `(int x, string name): void`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **Swift Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Swift functions (e.g., `(x: Int, name: String) -> Void`) |
-| External/internal params | [x] | Handles Swift's external/internal param naming (e.g., `_ x` becomes just `x`) |
-| **Kotlin Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Kotlin functions (e.g., `(x: Int, name: String): String`) |
-| Unit handling | [x] | Omits Unit return types for cleaner display |
-| **Scala Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Scala methods (e.g., `(x: Int, y: Int): Int`) |
-| Unit handling | [x] | Omits Unit return types for cleaner display |
-| **PHP Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for PHP methods (e.g., `(int $x, string $name): void`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **Objective-C Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Objective-C methods (e.g., `(int x, int y): int`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **Fortran Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Fortran functions/subroutines (e.g., `(x, y): integer`) |
-| Subroutine handling | [x] | Subroutines show params without return type |
-| **F# Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for F# functions (e.g., `(x: int, y: int): int`) |
-| Unit handling | [x] | Handles unit parameter patterns |
-| **Julia Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Julia functions (e.g., `(x::Int, y::Int)::Int`) |
-| Short-form functions | [x] | Handles short-form `f(x) = expr` syntax |
-| **Zig Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Zig functions (e.g., `(x: i32, y: i32) i32`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **Ruby Method Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Ruby methods (e.g., `(param, optional = ..., &block)`) |
-| Keyword parameters | [x] | Handles keyword args with `:` suffix |
-| **Elixir Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Elixir functions (e.g., `(param1, param2)`) |
-| Pattern matching | [x] | Handles pattern-matched parameters |
-| **Erlang Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Erlang functions (e.g., `(Param1, Param2)`) |
-| Pattern matching | [x] | Handles Erlang pattern-matched parameters |
-| **Perl Subroutine Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Perl subs (e.g., `()` for traditional subs) |
-| **Lua Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Lua functions (e.g., `(x, y)`) |
-| Method syntax | [x] | Handles method-style `Table:method` definitions |
-| **Groovy Method Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Groovy methods (e.g., `(String name, int age)`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **Elm Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Elm functions (e.g., `(x, y)`) |
-| **R Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for R functions (e.g., `(x, y)`) |
-| Default values | [x] | Handles default values (e.g., `greeting = ...`) |
-| **GLSL Shader Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for GLSL functions (e.g., `(float x, float y) float`) |
-| Void handling | [x] | Omits void return types for cleaner display |
-| **WGSL Shader Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for WGSL functions (e.g., `(x: f32, y: f32) -> f32`) |
-| Return type | [x] | Displays return type with `->` arrow syntax |
-| **SQL Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for SQL functions (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`) |
-| Return type | [x] | Displays return type after RETURNS keyword |
-| **Bash Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Bash functions (always `()` since Bash uses positional args) |
-| **CMake Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for CMake functions/macros (e.g., `(ARG1, ARG2, ARG3)`) |
-| Function/macro support | [x] | Handles both `function()` and `macro()` commands |
-| **Nix Function Signatures** | | |
-| Signature extraction | [x] | Extracts signatures for Nix functions (lambdas and formals) |
-| Simple lambdas | [x] | Curried params (e.g., `(x, y)` for `x: y: body`) |
-| Formals patterns | [x] | Attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`) |
-| Top-level functions | [x] | Uses file basename for module/overlay functions |
+
+## 2026-01-05 00:00
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| Dependency | [x] | depends_on_manifest | — | Links manifest dependencies (Cargo.toml, pyproject.toml) to code import statements. Matches package names to imports with naming convention handling (e.g., Rust hyphens → underscores). Enables traceability from code usage back to manifest declarations. |
+
+## 2026-01-04 15:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
 | **Clojure Function Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for Clojure defn forms (e.g., `[x, y]`) |
 | Vector params | [x] | Handles Clojure vector syntax for parameters |
@@ -232,7 +89,6 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Two-pass resolution | [x] | Collects type signatures first, then associates with function definitions |
 | **Dart Function Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for Dart functions (e.g., `(int x, int y) int`) |
-| Void handling | [x] | Omits void return types for cleaner display |
 | Optional/named params | [x] | Handles optional and named parameters with defaults |
 | **Lean Function Signatures** | | |
 | Signature extraction | [x] | Extracts signatures for Lean definitions (e.g., `(n : Nat) : Nat`) |
@@ -241,255 +97,224 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Signature extraction | [x] | Extracts signatures for Agda functions (e.g., `: Nat -> Nat`) |
 | Postulate support | [x] | Handles postulate declarations |
 | Constructor support | [x] | Extracts signatures for data constructors |
+
+## 2026-01-04 14:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **CMake Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for CMake functions/macros (e.g., `(ARG1, ARG2, ARG3)`) |
+| Function/macro support | [x] | Handles both `function()` and `macro()` commands |
+| **Nix Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Nix functions (lambdas and formals) |
+| Simple lambdas | [x] | Curried params (e.g., `(x, y)` for `x: y: body`) |
+| Formals patterns | [x] | Attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`) |
+| Top-level functions | [x] | Uses file basename for module/overlay functions |
+
+## 2026-01-04 13:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **SQL Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for SQL functions (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`) |
+| Return type | [x] | Displays return type after RETURNS keyword |
+| **Bash Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Bash functions (always `()` since Bash uses positional args) |
+
+## 2026-01-04 06:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Zig Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Zig functions (e.g., `(x: i32, y: i32) i32`) |
+| **Ruby Method Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Ruby methods (e.g., `(param, optional = ..., &block)`) |
+| Keyword parameters | [x] | Handles keyword args with `:` suffix |
+| **Elixir Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Elixir functions (e.g., `(param1, param2)`) |
+| Pattern matching | [x] | Handles pattern-matched parameters |
+| **Erlang Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Erlang functions (e.g., `(Param1, Param2)`) |
+| Pattern matching | [x] | Handles Erlang pattern-matched parameters |
+| **Perl Subroutine Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Perl subs (e.g., `()` for traditional subs) |
+| **Lua Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Lua functions (e.g., `(x, y)`) |
+| Method syntax | [x] | Handles method-style `Table:method` definitions |
+| **Groovy Method Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Groovy methods (e.g., `(String name, int age)`) |
+| **Elm Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Elm functions (e.g., `(x, y)`) |
+| **R Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for R functions (e.g., `(x, y)`) |
+| Default values | [x] | Handles default values (e.g., `greeting = ...`) |
+| **GLSL Shader Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for GLSL functions (e.g., `(float x, float y) float`) |
+| **WGSL Shader Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for WGSL functions (e.g., `(x: f32, y: f32) -> f32`) |
+| Return type | [x] | Displays return type with `->` arrow syntax |
+
+## 2026-01-04 05:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **C# Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for C# methods (e.g., `(int x, string name): void`) |
+| **Swift Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Swift functions (e.g., `(x: Int, name: String) -> Void`) |
+| External/internal params | [x] | Handles Swift's external/internal param naming (e.g., `_ x` becomes just `x`) |
+| **Kotlin Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Kotlin functions (e.g., `(x: Int, name: String): String`) |
+| Unit handling | [x] | Omits Unit return types for cleaner display |
+| **Scala Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Scala methods (e.g., `(x: Int, y: Int): Int`) |
+| Unit handling | [x] | Omits Unit return types for cleaner display |
+| **PHP Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for PHP methods (e.g., `(int $x, string $name): void`) |
+| **Objective-C Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Objective-C methods (e.g., `(int x, int y): int`) |
+| **Fortran Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Fortran functions/subroutines (e.g., `(x, y): integer`) |
+| Subroutine handling | [x] | Subroutines show params without return type |
+| **F# Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for F# functions (e.g., `(x: int, y: int): int`) |
+| Unit handling | [x] | Handles unit parameter patterns |
+| **Julia Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Julia functions (e.g., `(x::Int, y::Int)::Int`) |
+| Short-form functions | [x] | Handles short-form `f(x) = expr` syntax |
+
+## 2026-01-04 04:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **C Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for C functions (e.g., `(int x, char* name) int`) |
+| Pointer types | [x] | Handles pointer params and returns (e.g., `char*`, `int**`) |
+| Void handling | [x] | Omits void return types for cleaner display |
+| **C++ Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for C++ functions (e.g., `(const std::string& name) int`) |
+| Reference types | [x] | Handles reference params (e.g., `const T&`) |
+| Qualified types | [x] | Handles `std::string`, `::global::Type` |
+| **Java Function Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for Java methods (e.g., `(String name, int age) User`) |
+| Constructor signatures | [x] | Handles constructors (no return type) |
+| Generic types | [x] | Handles `List<String>`, `Map<K, V>` |
+| Array types | [x] | Handles `String[]`, both before and after param name |
+| Varargs | [x] | Handles `Object... args` spread syntax |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Void handling | [x] | Omits void return types for cleaner display |
+| Void handling | [x] | Omits void return types for cleaner display |
+
+## 2026-01-04 03:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Rust Function Signatures** | | |
+| Signature extraction | [x] | Extracts function signatures for Rust functions/methods (e.g., `(x: i32, y: String) -> bool`) |
+| Self parameters | [x] | Handles `&self`, `&mut self`, `self` receiver patterns |
+| Return types | [x] | Displays return type arrows (e.g., `-> Result<T, E>`) |
+| **Go Function Signatures** | | |
+| Signature extraction | [x] | Extracts function signatures for Go functions/methods (e.g., `(x int, y string) error`) |
+| Multiple returns | [x] | Handles Go multiple return values (e.g., `(int, error)`) |
+| Named returns | [x] | Supports named return values (e.g., `(result int, err error)`) |
+| Parameter grouping | [x] | Collapses same-type params (e.g., `a, b int`) |
+| **TypeScript/JavaScript Signatures** | | |
+| Signature extraction | [x] | Extracts signatures for TS/JS functions (e.g., `(x: number, y: string): boolean`) |
+| Type annotations | [x] | Displays TypeScript type annotations |
+| Optional params | [x] | Shows optional parameters (e.g., `name?: string`) |
+| Default values | [x] | Shows defaults as ellipsis (e.g., `count = ...`) |
+| Rest parameters | [x] | Handles `...args` spread syntax |
+| Arrow functions | [x] | Extracts signatures from arrow function expressions |
+
+## 2025-12-30 21:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Perl | [x] tree-sitter | module, function | calls, imports | Detects Perl code: packages (`package`), subroutines (`sub`), `use` statements, `require` expressions. Method calls via arrow operator (`$obj->method`). Two-pass cross-file resolution with qualified names. For legacy systems and text processing. Optional: `pip install tree-sitter-language-pack` |
+
+## 2025-12-30 15:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| F# | [x] tree-sitter | module, function, value, record, union | calls, imports | Detects F# code: modules (including nested), functions (`let`), values, record types, discriminated unions, `open` statements. Two-pass cross-file resolution. For .NET functional-first development. Optional: `pip install tree-sitter-language-pack` |
+
+## 2025-12-30 14:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Erlang | [x] tree-sitter | module, function, record, macro, type | calls, imports | Detects Erlang code: -module, fun_decl (functions with arity), -record, -define (macros), -type. Function calls (local and remote with module:function syntax), -behaviour and -import edges. Two-pass cross-file resolution. For BEAM VM distributed systems (RabbitMQ, CouchDB). Optional: `pip install tree-sitter-language-pack` |
+| Elm | [x] tree-sitter | module, function, type, port | calls, imports | Detects Elm code: module declarations, value/function declarations, type aliases, custom types (union types), port declarations (JS interop). Import edges from import clauses. Two-pass cross-file resolution. For functional web frontend development. Optional: `pip install tree-sitter-language-pack` |
+
+## 2025-12-30 05:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Clojure | [x] tree-sitter | module, function, variable, macro, protocol, record, multimethod | calls, imports | Detects Clojure code: ns (namespaces), defn/defn- (functions), def (variables), defmacro, defprotocol, defrecord, defmulti. Require/import edges from ns :require. Function call edges. Two-pass cross-file resolution. For JVM functional programming. Optional: `pip install tree-sitter-language-pack` |
+
+## 2025-12-30 02:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Project Description** | | |
+| README extraction | [x] | Extracts first descriptive paragraph from README.md/rst/txt, skips badges/images/HTML |
+| Title subtitle fallback | [x] | Falls back to title subtitle (e.g., "Project: Description here") if no paragraph found |
+| **Python Docstrings** | | |
+| Docstring extraction | [x] | Extracts first-line docstrings for Python functions/classes in Key Symbols |
+| Symbol annotation | [x] | Displays docstring as `— Description` after symbol name |
+| **Python Function Signatures** | | |
+| Signature extraction | [x] | Extracts function signatures (parameters + return types) for Python functions/methods |
+| Type annotations | [x] | Displays typed parameters and return types (e.g., `func(x: int) -> str`) |
+| Complex types | [x] | Handles `List[T]`, `Dict[K,V]`, `Optional[T]`, `X | Y` unions |
+| Default values | [x] | Shows defaults as ellipsis (e.g., `config=…`) |
+| *args/**kwargs | [x] | Properly formats varargs (e.g., `(*args, **kwargs)`) |
+| Async functions | [x] | Extracts signatures from `async def` functions |
 | **Domain Vocabulary** | | |
 | Vocabulary extraction | [x] | Extracts domain-specific terms from source code identifiers |
 | Term filtering | [x] | Filters out common programming terms and testing vocabulary |
 | Compound word splitting | [x] | Splits camelCase, PascalCase, and snake_case identifiers |
 | Format | [x] | Displays as "Key terms: term1, term2, ..." for quick domain understanding |
 
-## CLI Commands
+## 2025-12-29 22:00
 
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Directory structure | [x] | Top-level dirs with type labels. Filters excluded dirs (node_modules, __pycache__, etc.) |
+
+### CLI Commands
 | Command | Status | Description |
 |---------|--------|-------------|
-| `hypergumbo [path] [-t N] [-x]` | [x] | Default sketch mode with optional token budget |
-| `hypergumbo sketch [path] [-t N] [-x]` | [x] | Explicit sketch command |
-| `-x` / `--exclude-tests` | [x] | Skip test files during analysis (17% faster on large codebases) |
-| `hypergumbo --version` | [x] | Print version |
-| `hypergumbo init [path]` | [x] | Initialize capsule |
-| `hypergumbo run [path] [-x]` | [x] | Run analysis. Supports `-x/--exclude-tests` to filter test files |
-| `hypergumbo slice --entry X` | [x] | Produce reduced slice |
-| `hypergumbo catalog` | [x] | List passes/packs |
-| `hypergumbo export-capsule` | [x] | Export shareable capsule |
-| `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Django/DRF, Express.js, Koa, Fastify, NestJS, Rails, Axum, Actix-web, Rocket, Gin, Echo, Fiber). Shows HTTP methods, route paths, and handler functions |
-| `hypergumbo search <query>` | [x] | Search symbols by name pattern |
 | `hypergumbo explain <symbol>` | [x] | Show symbol details with callers/callees, complexity, LOC |
-| `hypergumbo build-grammars` | [x] | Build Lean/Wolfram grammars from source (tree-sitter) |
 | `-e/--exclude` | [x] | Custom exclude patterns for `sketch` and `run` (repeatable) |
 
-## Output Schema Compliance
-
+### Output Schema Compliance
 | Field | Status | Notes |
 |-------|--------|-------|
-| `schema_version` | [x] | |
-| `profile` (languages, frameworks) | [x] | |
-| `analysis_runs[]` | [x] | Provenance tracking |
 | `nodes[]` with span, stable_id, shape_id | [x] | Includes `cyclomatic_complexity` and `lines_of_code` for Python symbols |
-| `edges[]` with id, confidence, meta | [x] | |
-| `features[]` | [x] | Via slice command output |
-| `metrics` | [x] | `metrics.py` - counts, avg confidence, per-language |
-| `limits` | [x] | `limits.py` - failed files, skipped langs, known gaps |
 
-## Schema Validation Tests ("Spec Driven Development")
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Formal JSON Schema | [x] | `docs/schema.json` - JSON Schema Draft 2020-12 |
-| Auto-generated schema | [x] | `./scripts/generate-schema` - generates from Python dataclasses |
-| Schema CI check | [x] | `./scripts/generate-schema --check` - verifies schema is up-to-date |
-| **Validation Tests** | | |
-| Empty behavior map validates | [x] | `test_empty_behavior_map_validates` |
-| Real analysis output validates | [x] | `test_real_analysis_output_validates` |
-| Symbol with all fields validates | [x] | `test_symbol_with_all_fields_validates` |
-| Edge with all fields validates | [x] | `test_edge_with_all_fields_validates` |
-| AnalysisRun validates | [x] | `test_analysis_run_validates` |
-| Invalid edge type fails | [x] | `test_invalid_edge_type_fails_validation` |
-| Invalid symbol kind fails | [x] | `test_invalid_symbol_kind_fails_validation` |
-| **Schema Sync Tests** | | |
-| Schema matches generated | [x] | `test_schema_matches_generated` - runs `generate-schema --check` |
-| Schema version matches code | [x] | `test_schema_version_matches_code` - verifies `SCHEMA_VERSION` |
-| All edge types in schema | [x] | `test_all_edge_types_in_schema` - checks enum completeness |
-| All symbol kinds in schema | [x] | `test_all_symbol_kinds_in_schema` - checks enum completeness |
-
-*Philosophy: Tests are specifications. The JSON Schema is a formal spec that both implementation and tests verify.*
-
-## CI & Automation
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **CI Jobs** | | `.github/workflows/ci.yml` |
-| Ruff linting | [x] | `lint` job - pycodestyle, pyflakes, security rules |
-| Bandit security | [x] | `lint` job - security-focused static analysis |
-| pip-audit | [x] | `audit` job - dependency vulnerability scanning |
-| pytest | [x] | `pytest` job - full test suite |
-| verify-generated | [x] | Checks schema and architecture docs are fresh |
-| **Pre-commit Hooks** | | `.githooks/pre-commit` |
-| Ruff check | [x] | Fast linting before commit |
-| Bandit check | [x] | Security check before commit |
-| Schema freshness | [x] | `./scripts/generate-schema --check` |
-| **Auto-generation Scripts** | | |
-| generate-schema | [x] | Generates `docs/schema.json` from dataclasses |
-| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis. Features: generation metadata (commit SHA, versions) for drift detection, `tokenize.open()` for encoding safety, proper `.py` suffix removal, includes `__main__.py`, first non-empty docstring line, exact basename matching, manual maintenance note on Key Abstractions. Reads version from `pyproject.toml` (avoids repo vs installed version mismatch), uses `parts[0]` check for tighter module categorization, `--check` mode warns on commit SHA drift. |
-| **Edge Filtering Fix** | [x] | Import edges now properly included in `--first-party-only` and `--max-tier` output. Detects file-level edge sources by `:file:` pattern. |
-
-## Analysis Passes
-
+### Analysis Passes
 | Language | Parser | Symbols | Edges | Notes |
 |----------|--------|---------|-------|-------|
 | Python | [x] AST | function, class, method, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `self.method()`, `ClassName()` instantiation. Methods named with class prefix (`ClassName.methodName`). **Metrics:** `cyclomatic_complexity` (McCabe: decision points + 1) and `lines_of_code` computed per symbol. **src/ layout detection:** Automatically detects PEP 517/518 `src/` layout projects and adjusts module name derivation (e.g., `src/flask/app.py` → `flask.app` instead of `src.flask.app`) for correct cross-file import resolution. **Route detection:** FastAPI (`@app.get`, `@router.post`), Flask (`@app.route`, `@app.get`), Django REST Framework (`@api_view(['GET', 'POST'])`), Django CBV methods (get/post/put/patch/delete), and Django URL patterns (`path()`, `re_path()`, `url()`) set `stable_id` to HTTP method for `routes` command discovery. **Router prefix detection:** `APIRouter(prefix='/api/v1')` and `Blueprint(url_prefix='/api')` prefixes are combined with route paths. |
-| HTML | [x] regex | file | script_src | Script tag detection |
-| JavaScript | [x] tree-sitter | function, class, method, getter, setter, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) handlers set `stable_id` to HTTP method. **Express.js enhancements:** Wrapper patterns (`catchAsync(handler)`), external handlers (`userController.create`), and chained syntax (`router.route('/').get(handler)`) all detected. Optional: `pip install hypergumbo[javascript]` |
-| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) and NestJS decorators (`@Get()`, `@Post()`) set `stable_id` to HTTP method. **Express.js enhancements:** Wrapper patterns (`catchAsync(handler)`), external handlers (`userController.create`), and chained syntax (`router.route('/').get(handler)`) all detected. Optional: `pip install hypergumbo[javascript]` |
-| Svelte | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` blocks, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
-| PHP | [x] tree-sitter | function, class, method | calls, instantiates | Two-pass cross-file resolution. Detects `$this->method()`, `$obj->method()`, `ClassName::method()`, `new ClassName()`. Optional: `pip install hypergumbo[php]`. Excludes `vendor/` by default |
-| C | [x] tree-sitter | function, struct, enum, typedef | calls | Two-pass cross-file resolution. Detects function calls, JNI export patterns (`Java_ClassName_methodName`). Optional: `pip install hypergumbo[c]` |
-| Java | [x] tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `ClassName.method()`, inheritance, `new ClassName()`. Native method detection with `meta.is_native`. **Route detection:** Spring Boot (`@GetMapping`, `@PostMapping`, `@RequestMapping`) sets `stable_id` to HTTP method for `routes` command discovery. Optional: `pip install hypergumbo[java]` |
-| Vue | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` and `<script setup>` blocks from `.vue` SFCs, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
-| Elixir | [x] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[elixir]` |
-| Rust | [x] tree-sitter | function, struct, enum, trait, method, route | calls, imports | Detects `fn`, `struct`, `enum`, `trait`, `impl` blocks, `use` statements. **Route detection:** Axum `.route("/path", get(handler))` with method chaining, Actix-web/Rocket `#[get("/path")]` attribute macros (handles multi-param attributes). Route symbols have `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[rust]` |
-| Go | [x] tree-sitter | function, method, struct, interface, type, route | calls, imports | Detects `func`, methods with receivers, `type X struct/interface`, `import` statements. **Route detection:** Gin/Echo (`r.GET`, `e.POST`), Fiber (`app.Get`, `app.Post`) with lowercase methods. Route symbols have `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[go]` |
-| Ruby | [x] tree-sitter | method, class, module, route | calls, imports | Detects `def`, `class`, `module`, `require/require_relative`. **Route detection:** Rails DSL (`get '/path'`, `post '/path'`, `resources :name`) creates route symbols with `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ruby]` |
-| Kotlin | [x] tree-sitter | function, class, object, interface, method | calls, imports | Detects `fun`, `class`, `object`, `interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[kotlin]` |
-| Swift | [x] tree-sitter | function, class, struct, protocol, enum, method | calls, imports | Detects `func`, `class`, `struct`, `protocol`, `enum`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[swift]` |
-| Scala | [x] tree-sitter | function, class, object, trait, method | calls, imports | Detects `def`, `class`, `object`, `trait`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[scala]` |
-| Lua | [x] tree-sitter | function, method | calls, imports | Detects `function`, `local function`, method-style `Table:method()`, `require()` imports. Two-pass cross-file resolution. Optional: `pip install hypergumbo[lua]` |
-| Haskell | [x] tree-sitter | function, data, class, instance | calls, imports | Detects functions (with/without type signatures), data types, type classes, instances, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[haskell]` |
-| Agda | [x] tree-sitter | module, function, data, record | imports | Dependently typed proof assistant. Detects modules, functions (including theorems/lemmas), data types, records, postulates. Two-pass cross-file resolution. Tested on agda-stdlib (18,949 symbols) and PLFA (6,014 symbols). Optional: `pip install tree-sitter-agda` |
-| Lean | [x] tree-sitter | function, theorem, structure, inductive, class, instance | imports | Lean 4 theorem prover. Detects defs, theorems, lemmas, structures, inductive types, classes, instances. Two-pass cross-file resolution. Tested on Mathematics in Lean (379 symbols). Built from source via `scripts/build-source-grammars`. |
-| Wolfram | [x] tree-sitter | function, variable | calls, imports | Wolfram Language (Mathematica). Detects SetDelayed (:=) function definitions, Set (=) assignments, function calls, Get/Needs/Import statements. Two-pass cross-file resolution. Built from source via `scripts/build-source-grammars`. |
-| OCaml | [x] tree-sitter | function, type, module | calls, imports | Detects let bindings (functions), types, modules, `open` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ocaml]` |
-| Solidity | [x] tree-sitter | contract, interface, library, function, constructor, modifier, event | calls, imports | Ethereum smart contracts. Detects contracts, interfaces, libraries, functions, constructors, modifiers, events, and import statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-solidity` |
-| C# | [x] tree-sitter | class, interface, struct, enum, method, constructor, property | calls, imports, instantiates | Two-pass cross-file resolution. Detects method calls, `using` directives, `new ClassName()`. Optional: `pip install hypergumbo[csharp]` |
-| C++ | [x] tree-sitter | class, struct, enum, function, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects function/method calls, `#include` directives, `new ClassName()`. Handles qualified names (Namespace::Class::method). Optional: `pip install hypergumbo[cpp]` |
-| Zig | [x] tree-sitter | function, struct, enum, union, error_set, method, test | calls, imports | Detects `fn`, `struct`, `enum`, `union`, `error` sets, `test` blocks, `@import()` statements. Methods distinguished by `self` parameter. Two-pass cross-file resolution. Optional: `pip install tree-sitter-zig` |
-| Groovy | [x] tree-sitter | class, interface, enum, method, function | calls, imports | Detects classes, interfaces, enums, methods, top-level functions (`def`), import statements. Handles `.gradle` build files. Two-pass cross-file resolution. Optional: `pip install tree-sitter-groovy` |
-| Julia | [x] tree-sitter | module, function, struct, abstract, macro, const | calls, imports | Detects modules, functions (full and short-form), structs, abstract types, macros, constants, import/using statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-julia` |
-| Bash | [x] tree-sitter | function, export, alias | calls, sources | Detects functions (both `function name()` and `name()` styles), exported variables, aliases, source/dot statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-bash` |
-| Objective-C | [x] tree-sitter | class, protocol, method, property | calls, imports | Detects `@interface`, `@implementation`, `@protocol`, methods (`-`/`+`), properties. Message send call resolution `[receiver message]`. Two-pass cross-file resolution. Optional: `pip install tree-sitter-objc` |
-| HCL/Terraform | [x] tree-sitter | resource, data, variable, output, module, provider, local | depends_on, imports | Detects Terraform blocks, variable references, resource dependencies, module sources. Two-pass cross-file resolution. Optional: `pip install tree-sitter-hcl` |
-| YAML/Ansible | [x] tree-sitter | playbook, task, handler, variable | imports | Detects Ansible playbooks, tasks, handlers, variables from YAML files. Extracts `include_tasks`, `import_tasks`, `include_role`, `import_role` references. Two-pass cross-file resolution. Optional: `pip install tree-sitter-yaml` |
-| SQL | [x] tree-sitter | table, view, function, trigger, index, procedure | references | Detects CREATE TABLE, VIEW, FUNCTION, TRIGGER, INDEX statements. Foreign key REFERENCES edges. Two-pass cross-file resolution. Optional: `pip install tree-sitter-sql` |
-| Dockerfile | [x] tree-sitter | stage, exposed_port, env_var, build_arg | depends_on, base_image | Detects FROM stages, EXPOSE ports, ENV variables, ARG build args. Multi-stage build dependencies via COPY --from edges. Optional: `pip install tree-sitter-dockerfile` |
-| CUDA | [x] tree-sitter | kernel, device_function, host_device_function, function | calls, kernel_launch | Detects `__global__` kernels, `__device__` functions, `__host__ __device__` dual functions. Kernel launch edges for `<<<grid, block>>>` syntax. Optional: `pip install tree-sitter-cuda` |
-| Verilog | [x] tree-sitter | module, interface | instantiates | Detects Verilog/SystemVerilog modules, interfaces, module instantiations. Cross-file module resolution. Optional: `pip install tree-sitter-verilog` |
-| CMake | [x] tree-sitter | project, library, executable, function, macro, package, subdirectory | links | Detects CMake projects, add_library/add_executable targets, function/macro definitions, find_package, add_subdirectory. Target link dependencies. Optional: `pip install tree-sitter-cmake` |
-| Make | [x] tree-sitter | variable, target, pattern_rule, special_target, function, include | depends_on | Detects Makefiles: variables, targets, pattern rules, .PHONY, define blocks, include directives. Prerequisite dependencies. Optional: `pip install tree-sitter-make` |
-| VHDL | [x] tree-sitter | entity, architecture, package, component | implements | Detects VHDL hardware designs: entities, architectures, packages, component declarations. Architecture-entity relationships. Optional: `pip install tree-sitter-vhdl` |
-| GraphQL | [x] tree-sitter | type, input, interface, enum, scalar, union, directive, fragment, query, mutation, subscription | — | Detects GraphQL schema definitions: object types, input types, interfaces, enums, scalars, unions, directives, fragments, operations. API schema analysis. Optional: `pip install tree-sitter-graphql` |
-| Nix | [x] tree-sitter | function, binding, input, derivation | imports | Detects Nix expressions: named functions, let bindings, flake inputs, derivation calls. Import edges for `import` expressions. Optional: `pip install tree-sitter-nix` |
-| GLSL | [x] tree-sitter | function, struct, uniform, input, output | calls | Detects OpenGL shaders: functions, structs, uniform/in/out variables. Function call edges. Supports .vert, .frag, .glsl, .geom, .tesc, .tese, .comp files. Optional: `pip install tree-sitter-glsl` |
-| Fortran | [x] tree-sitter | module, program, function, subroutine, type | calls, imports | Detects Fortran code: modules, programs, functions, subroutines, derived types. Use statement imports, subroutine call edges. For scientific computing and HPC. Optional: `pip install tree-sitter-fortran` |
-| TOML | [x] tree-sitter | table, package, dependency, binary, test, example, benchmark, library, workspace, project | — | Detects TOML configuration files: Cargo.toml (dependencies, bins, tests, examples, benches, libs, workspaces), pyproject.toml (project metadata). For Rust and Python project analysis. Optional: `pip install tree-sitter-toml` |
-| CSS | [x] tree-sitter | import, variable, keyframes, media, font_face | imports | Detects CSS stylesheets: @import statements with import edges, CSS variables (--custom-props), @keyframes animations, @media queries, @font-face declarations. For frontend styling analysis. Optional: `pip install tree-sitter-css` |
-| WGSL | [x] tree-sitter | function, struct, uniform, storage | calls | Detects WebGPU shaders: entry points (@vertex, @fragment, @compute), structs, uniform/storage bindings with @group/@binding metadata. For WebGPU graphics and compute analysis. Optional: `pip install tree-sitter-language-pack` |
-| XML | [x] tree-sitter | module, dependency, activity, service, permission | depends_on | Maven pom.xml: projects, dependencies with groupId/artifactId/version. Android Manifest: activities, services, receivers, providers, permissions, intent-filters. For Java/Android analysis. Optional: `pip install tree-sitter-language-pack` |
-| JSON | [x] tree-sitter | package, dependency, devDependency, script, tsconfig, reference, composer_package | depends_on, references | package.json: npm dependencies, scripts. tsconfig.json: TypeScript project references. composer.json: PHP Composer dependencies. For Node.js/PHP analysis. Optional: `pip install tree-sitter-language-pack` |
-| R | [x] tree-sitter | function, import, source | calls | Detects R code: function definitions, library/require imports, source() file references. Function call edges. For data science and statistical computing. Optional: `pip install tree-sitter-language-pack` |
-| Dart | [x] tree-sitter | class, function, method, constructor, getter, setter, enum, mixin, extension | calls, imports | Detects Dart code: classes, functions, methods (including getters/setters), constructors, enums, mixins, extensions, import statements. For Flutter and Dart web/server development. Optional: `pip install tree-sitter-language-pack` |
-| COBOL | [x] tree-sitter | program, paragraph, section, data | calls (perform, call) | Detects COBOL programs: PROGRAM-ID declarations, paragraphs, sections in PROCEDURE DIVISION, data items in DATA DIVISION with level numbers. PERFORM edges for paragraph calls, CALL edges for external program calls. For mainframe and legacy systems. Optional: `pip install tree-sitter-language-pack` |
-| LaTeX | [x] tree-sitter | section, label, command, environment | references, includes, imports | Detects LaTeX documents: sections/chapters, labels, custom commands (\\newcommand), custom environments (\\newenvironment). Reference edges for \\ref/\\cite, include edges for \\input/\\include, import edges for \\usepackage. For academic and technical documentation. Optional: `pip install tree-sitter-language-pack` |
-| Clojure | [x] tree-sitter | module, function, variable, macro, protocol, record, multimethod | calls, imports | Detects Clojure code: ns (namespaces), defn/defn- (functions), def (variables), defmacro, defprotocol, defrecord, defmulti. Require/import edges from ns :require. Function call edges. Two-pass cross-file resolution. For JVM functional programming. Optional: `pip install tree-sitter-language-pack` |
-| Erlang | [x] tree-sitter | module, function, record, macro, type | calls, imports | Detects Erlang code: -module, fun_decl (functions with arity), -record, -define (macros), -type. Function calls (local and remote with module:function syntax), -behaviour and -import edges. Two-pass cross-file resolution. For BEAM VM distributed systems (RabbitMQ, CouchDB). Optional: `pip install tree-sitter-language-pack` |
-| Elm | [x] tree-sitter | module, function, type, port | calls, imports | Detects Elm code: module declarations, value/function declarations, type aliases, custom types (union types), port declarations (JS interop). Import edges from import clauses. Two-pass cross-file resolution. For functional web frontend development. Optional: `pip install tree-sitter-language-pack` |
-| F# | [x] tree-sitter | module, function, value, record, union | calls, imports | Detects F# code: modules (including nested), functions (`let`), values, record types, discriminated unions, `open` statements. Two-pass cross-file resolution. For .NET functional-first development. Optional: `pip install tree-sitter-language-pack` |
-| Perl | [x] tree-sitter | module, function | calls, imports | Detects Perl code: packages (`package`), subroutines (`sub`), `use` statements, `require` expressions. Method calls via arrow operator (`$obj->method`). Two-pass cross-file resolution with qualified names. For legacy systems and text processing. Optional: `pip install tree-sitter-language-pack` |
-| Proto | [x] tree-sitter | service, rpc, message, enum | imports, contains | Detects Protocol Buffers: services (gRPC), RPC methods with request/response types, messages, enums, imports. RPC signatures show request/response types including streaming. Complements gRPC linker for full stack tracing. Optional: `pip install tree-sitter-language-pack` |
-| Thrift | [x] tree-sitter | service, function, struct, enum, typedef, const | imports, contains | Detects Apache Thrift IDL: services, RPC functions with signatures, structs, enums, typedefs, constants, includes. Function signatures show parameters and return types. Complements Thrift-based microservices analysis. Optional: `pip install tree-sitter-language-pack` |
-| Cap'n Proto | [x] tree-sitter | struct, interface, method, enum, const | imports, contains | Detects Cap'n Proto IDL: structs, interfaces (RPC services), methods with signatures, enums, constants, imports. Method signatures show parameters and return types. Supports nested structs. Complements Proto/Thrift for microservices analysis. Optional: `pip install tree-sitter-language-pack` |
-| PowerShell | [x] tree-sitter | function, filter, workflow | calls, imports | Detects PowerShell scripts: functions with verb-noun naming, filters, workflows. Function signatures show parameters with types and defaults. Import-Module and using module imports. Command call edges. For Windows/Azure automation and DevOps. Optional: `pip install tree-sitter-language-pack` |
-| GDScript | [x] tree-sitter | function, variable, signal, class | calls, imports | Detects Godot game engine scripts: functions with signatures, class variables, signals, class_name and inner classes. Function signatures show typed/untyped parameters and return types. preload/load imports for scene/script references. For Godot game development. Optional: `pip install tree-sitter-language-pack` |
-| Starlark | [x] tree-sitter | function, target, variable | imports, depends_on | Detects Bazel/Buck build files: function definitions with signatures, build targets (py_binary, cc_library, etc.) with rule type in meta, variable assignments. Load statements create import edges. Target deps create dependency edges. For build system analysis. Optional: `pip install tree-sitter-language-pack` |
-| Fish | [x] tree-sitter | function, alias, variable | sources, calls | Detects Fish shell scripts: function definitions with argument signatures, alias declarations, global variable assignments (set -g/-gx/-U). Source statements create import edges. Function calls tracked within function bodies. Complements Bash analyzer for shell configuration. Optional: `pip install tree-sitter-language-pack` |
-| HLSL | [x] tree-sitter | function, struct, variable | | Detects DirectX HLSL shaders: function definitions (vertex/pixel/compute shaders) with signatures, struct definitions (input/output structures), constant buffer declarations (cbuffer), resource declarations (Texture, Sampler, Buffer). Essential for DirectX game development. Complements GLSL/WGSL shader analyzers. Optional: `pip install tree-sitter-language-pack` |
-| Ada | [x] tree-sitter | package, function, procedure, type, constant | imports | Detects Ada safety-critical code: package specs/bodies, functions/procedures with signatures, record types, constants, with-clause imports. Ada is used in aerospace, defense, medical devices, and embedded systems. Optional: `pip install tree-sitter-language-pack` |
-| D | [x] tree-sitter | module, function, struct, class, interface | imports | Detects D systems programming code: module declarations, function definitions with signatures, struct/class/interface definitions, import statements. D is a modern C++ alternative combining low-level control with modern features. Optional: `pip install tree-sitter-language-pack` |
-| Nim | [x] tree-sitter | function, method, type | imports | Detects Nim code: proc/func/method definitions with signatures, type definitions (objects, enums), import statements. Nim combines Python-like syntax with systems programming power, compiling to C/C++/JavaScript. Optional: `pip install tree-sitter-language-pack` |
 
-## Supply Chain Classification (§8.6)
+## 2025-12-29 11:00
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| `supply_chain.py` module | [x] | File classification by dependency position |
-| Tier 4 detection (derived artifacts) | [x] | Path patterns + content heuristics (minification, source maps) |
-| Tier 3 detection (external deps) | [x] | `node_modules/`, `vendor/`, etc. |
-| Tier 2 detection (internal deps) | [x] | Workspace/monorepo detection from manifests |
-| Tier 1 detection (first-party) | [x] | `src/`, `lib/`, `app/` patterns + default |
-| Symbol fields (`supply_chain_tier`, `supply_chain_reason`) | [x] | Added to `ir.py` Symbol class |
-| Node output (`supply_chain` object) | [x] | `tier`, `tier_name`, `reason` on each node |
-| `supply_chain_summary` in output | [x] | File/symbol counts per tier |
-| `by_supply_chain_tier` in metrics | [x] | Nodes/edges breakdown by tier |
-| CLI `--max-tier` flag | [x] | Filter analysis scope by tier (on `run` command) |
-| CLI `--first-party-only` flag | [x] | Shortcut for `--max-tier 1` (on `run` command) |
-| Tier-weighted sketch ranking | [x] | First-party symbols prioritized in Key Symbols (2x weight) |
-| CLI `--no-first-party-priority` flag | [x] | Disable tier weighting (on `sketch` command) |
-| Slice tier filtering | [x] | `--max-tier` stops BFS at tier boundary |
-| Capsule plan `supply_chain` config | [x] | `SupplyChainConfig` class with custom patterns for tiers |
-| `limits.supply_chain` logging | [x] | `SupplyChainLimits` tracks classification_failures and ambiguous_paths |
-
-## LLM-Friendly Output Modes
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **Compact Mode** | | |
-| `--compact` flag on `run` | [x] | Coverage-based truncation with bag-of-words summarization |
-| `--coverage` parameter | [x] | Target centrality coverage (0.0-1.0, default: 0.8) |
-| `nodes_summary` in output | [x] | Included count/coverage + omitted word frequencies, path patterns, kinds |
-| **Tiered Token-Based Output** | | |
-| Default tiered files | [x] | Automatically generates `.4k.json`, `.16k.json`, `.64k.json` alongside full output |
-| `--tiers` flag | [x] | Custom tier specs (e.g., `"2k,8k,32k"`) |
-| `--tiers none` | [x] | Disable tiered output generation |
-| `--tiers default` | [x] | Explicit default tiers (4k, 16k, 64k) |
-| Token estimation | [x] | ~4 chars/token approximation for JSON |
-| Centrality-based selection | [x] | Most important symbols selected first per budget |
-| Tiered view format | [x] | `view: "tiered"`, `tier_tokens`, `nodes_summary` with included/omitted |
-| Quality filtering | [x] | Excludes non-code kinds (dependency, devDependency, file, target, special_target, project, package, script, event_subscriber, class_selector, id_selector) and test/example paths |
-| Test path filtering | [x] | Excludes test files: `/tests/`, `_test.go`, `.spec.ts`, `/testFixtures/`, `/intTest/`, `Tests.java`, etc. |
-| Example path filtering | [x] | Excludes example/demo code: `/examples/`, `/demos/`, `/samples/`, `/playground/`, `/tutorial/` |
-| Name deduplication | [x] | Prevents duplicate symbol names in tiers (e.g., multiple `push` methods) |
-
-*Design: Full analysis always written to disk. Tiered files provide progressively larger views for LLMs with different context limits. Smaller tiers (4k) fit in most LLMs; larger tiers (64k) provide more detail for capable models.*
-
-*Tested on: Django, Rails, Spring Boot, Laravel, Vue, Gin, Actix-web, Express, FastAPI, Flask. Quality filtering effectively removes 50-70% of test code while preserving core API symbols.*
-
-## Re-export Resolution (§9.6)
-
-Tracks implementation of re-export resolution per language. See [spec §9.6](docs/hypergumbo-spec.md#96-known-analysis-limitations) for details.
-
-| Language | Re-export Pattern | Status | Notes |
-|----------|-------------------|--------|-------|
-| Python | `__init__.py`: `from .sub import x` | [x] | Aliases also supported |
-| JavaScript | `index.js`: `export { x } from './x'` | [x] | Global name matching handles this |
-| TypeScript | `index.ts`: `export { x } from './x'` | [x] | Same as JS |
-| Rust | `lib.rs`: `pub use mod::item` | [x] | Global name matching handles this |
-| Haskell | `module Foo (module Bar) where` | [x] | Global name matching handles this |
-| OCaml | `include` in signatures | [x] | Global name matching handles this |
-| Scala | `export` clauses (Scala 3) | [x] | Global name matching handles this |
-| Elixir | `defdelegate` | [x] | Global name matching handles this |
-| Dart | `export 'src/foo.dart'` | [x] | Global name matching handles this |
-| Zig | `pub usingnamespace` | [x] | Global name matching handles this |
-
-**Not affected:** Go, C, C++, Java, Kotlin, Swift, Ruby, PHP, Lua
-
-## Cross-Language Linkers
-
-Linkers run automatically as part of `hypergumbo run` after all language analyzers complete.
-
-| Linker | Status | Edge Type | Symbols | Description |
-|--------|--------|-----------|---------|-------------|
-| JNI | [x] | native_bridge | — | Links Java native methods to C JNI implementations. Parses `Java_Package_Class_Method` naming convention. Runs when both Java and C symbols are present. |
-| IPC | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`), Web Workers, and `postMessage` patterns. Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Channel stored in `edge.meta.channel` and `symbol.meta.channel`. |
-| WebSocket | [x] | websocket_message, websocket_connection | websocket_endpoint, file | Detects Socket.io (`socket.emit`, `socket.on`, `io.emit`), native WebSocket (`new WebSocket`, `ws.send`), Node.js ws package, Django Channels (`channel_layer.send`, `group_send`, `WebsocketConsumer`), and FastAPI/Starlette (`@app.websocket`, `websocket.receive_json`, `websocket.send_json`, `websocket.accept`) patterns. Creates file symbols enabling slice traversal across WebSocket boundaries. Event matching links senders to receivers. Cross-language linking between Python and JavaScript. |
-| IPC (Phoenix) | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Phoenix Channel patterns (`broadcast!`, `push`, `handle_in`) and LiveView patterns (`handle_event`, `push_event`). Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Event matching links senders to receivers. |
-| Swift/ObjC | [x] | imports | objc_bridge, selector_ref | Detects Swift/Objective-C interop: `@objc` annotations, NSObject subclasses, `#selector()` references, and `*-Bridging-Header.h` imports. Enables slice traversal across Apple platform language boundaries. |
-| gRPC | [x] | grpc_calls | grpc_service, grpc_servicer, grpc_stub, grpc_client, grpc_server | Detects gRPC/Protobuf patterns across Python, Go, Java, TypeScript. Parses `.proto` service definitions, servicer implementations, stub/client usage. Links clients to servers by service name. |
-| HTTP | [x] | http_calls | http_client | Links HTTP client calls to server route handlers across languages. Detects `fetch()`, `axios`, `requests`, `httpx`, and OpenAPI-generated TypeScript client (`__request()`) patterns. Matches URLs to route patterns (supports `:id`, `{id}`, `<id>` parameters). Router prefixes (FastAPI `APIRouter`, Flask `Blueprint`) are combined with route paths for accurate matching. Enables full-stack call graph traversal. |
-| GraphQL | [x] | graphql_calls | graphql_client | Links GraphQL client queries to schema definitions. Detects `gql` template literals (JS/TS), `gql()` function calls (Python). Extracts operation names and types (query, mutation, subscription). Enables full-stack GraphQL traversal. |
-| Message Queue | [x] | message_queue | mq_publisher, mq_subscriber | Links message queue publishers to subscribers across languages. Detects Kafka (`producer.send()`, `consumer.subscribe()`, `@KafkaListener`), RabbitMQ (`basic_publish()`, `basic_consume()`, `sendToQueue()`), AWS SQS (`send_message()`, `receive_message()`), and Redis Pub/Sub (`publish()`, `subscribe()`) patterns. Topic-based matching enables cross-language microservices graph traversal. |
-| GraphQL Resolver | [x] | resolver_implements, resolver_for_type | graphql_resolver | Links GraphQL resolver implementations to schema definitions. Detects JavaScript patterns (`Query: { users: () => ... }`), Python Ariadne (`@query.field("users")`), and Python Strawberry (`@strawberry.field`). Enables full-stack GraphQL traversal from client to resolver. |
-| Database Query | [x] | query_references | db_query | Links SQL queries in application code to table definitions in SQL schema files. Detects Python (`cursor.execute()`, `db.execute()`, `session.execute(text())`), JavaScript (`db.query()`, `pool.query()`, `knex()`), and Java (`statement.executeQuery()`, `@Query()`) patterns. Extracts table names from SELECT/INSERT/UPDATE/DELETE/JOIN clauses. Cross-language linking enables full-stack database understanding. |
-| Event Sourcing | [x] | event_publishes | event_publisher, event_subscriber | Links event publishers to subscribers across languages. Detects JavaScript EventEmitter (`emitter.emit()`, `emitter.on()`), DOM events (`addEventListener()`, `dispatchEvent()`), Django signals (`signal.send()`, `@receiver()`), Python event buses (`EventBus.publish()`, `EventBus.subscribe()`), and Spring events (`applicationEventPublisher.publishEvent()`, `@EventListener`). Topic/event name matching enables cross-language event tracing. |
-| Dependency | [x] | depends_on_manifest | — | Links manifest dependencies (Cargo.toml, pyproject.toml) to code import statements. Matches package names to imports with naming convention handling (e.g., Rust hyphens → underscores). Enables traceability from code usage back to manifest declarations. |
-
-## Test Infrastructure
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Test escape hatch removal | [x] | ADR 0002: Tests no longer skip when dependencies unavailable. All tree-sitter packages listed in `pyproject.toml`. |
-| CI debugging tools | [x] | `./scripts/ci-debug` for Forgejo Actions troubleshooting. Commands: `runs`, `status`, `analyze-deps`. |
-| Source-only grammar builds | [x] | `./scripts/build-source-grammars` builds tree-sitter-lean and tree-sitter-wolfram from source in CI. Adds ~30s to CI time. |
-| Pytest warning filters | [x] | `pyproject.toml` filters expected test warnings (tree-sitter unavailability from mocked tests, API deprecations). |
-
-## Release Pipeline
-
+### Release Pipeline
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Workflow** | | `.github/workflows/release.yml` |
@@ -523,6 +348,603 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | **Documentation** | | |
 | Release SOP | [x] | `docs/RELEASE_SOP.md` |
 
----
+## 2025-12-28 22:00
 
-*Last updated: 2026-01-05*
+### Week 5: Capsule Initialization
+| Feature | Status | Notes |
+|---------|--------|-------|
+| LLM-assisted plan generation | [x] | `llm_assist.py` - OpenRouter, OpenAI, llm package backends. Interactive setup prompts if no API key configured. Keys stored in `~/.config/hypergumbo/config.json`. *Proof-of-concept; template-based generation currently produces equivalent results.* |
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo build-grammars` | [x] | Build Lean/Wolfram grammars from source (tree-sitter) |
+
+### Test Infrastructure
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Pytest warning filters | [x] | `pyproject.toml` filters expected test warnings (tree-sitter unavailability from mocked tests, API deprecations). |
+
+## 2025-12-28 13:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Lean | [x] tree-sitter | function, theorem, structure, inductive, class, instance | imports | Lean 4 theorem prover. Detects defs, theorems, lemmas, structures, inductive types, classes, instances. Two-pass cross-file resolution. Tested on Mathematics in Lean (379 symbols). Built from source via `scripts/build-source-grammars`. |
+| Wolfram | [x] tree-sitter | function, variable | calls, imports | Wolfram Language (Mathematica). Detects SetDelayed (:=) function definitions, Set (=) assignments, function calls, Get/Needs/Import statements. Two-pass cross-file resolution. Built from source via `scripts/build-source-grammars`. |
+
+### Test Infrastructure
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Source-only grammar builds | [x] | `./scripts/build-source-grammars` builds tree-sitter-lean and tree-sitter-wolfram from source in CI. Adds ~30s to CI time. |
+
+## 2025-12-28 04:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Agda | [x] tree-sitter | module, function, data, record | imports | Dependently typed proof assistant. Detects modules, functions (including theorems/lemmas), data types, records, postulates. Two-pass cross-file resolution. Tested on agda-stdlib (18,949 symbols) and PLFA (6,014 symbols). Optional: `pip install tree-sitter-agda` |
+
+## 2025-12-28 03:00
+
+### LLM-Friendly Output Modes
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Quality filtering | [x] | Excludes non-code kinds (dependency, devDependency, file, target, special_target, project, package, script, event_subscriber, class_selector, id_selector) and test/example paths |
+| Test path filtering | [x] | Excludes test files: `/tests/`, `_test.go`, `.spec.ts`, `/testFixtures/`, `/intTest/`, `Tests.java`, etc. |
+| Example path filtering | [x] | Excludes example/demo code: `/examples/`, `/demos/`, `/samples/`, `/playground/`, `/tutorial/` |
+
+## 2025-12-28 02:00
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo run [path] [-x]` | [x] | Run analysis. Supports `-x/--exclude-tests` to filter test files |
+
+## 2025-12-28 01:00
+
+### LLM-Friendly Output Modes
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Name deduplication | [x] | Prevents duplicate symbol names in tiers (e.g., multiple `push` methods) |
+
+## 2025-12-28 00:00
+
+### LLM-Friendly Output Modes
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Compact Mode** | | |
+| `--compact` flag on `run` | [x] | Coverage-based truncation with bag-of-words summarization |
+| `--coverage` parameter | [x] | Target centrality coverage (0.0-1.0, default: 0.8) |
+| `nodes_summary` in output | [x] | Included count/coverage + omitted word frequencies, path patterns, kinds |
+| **Tiered Token-Based Output** | | |
+| Default tiered files | [x] | Automatically generates `.4k.json`, `.16k.json`, `.64k.json` alongside full output |
+| `--tiers` flag | [x] | Custom tier specs (e.g., `"2k,8k,32k"`) |
+| `--tiers none` | [x] | Disable tiered output generation |
+| `--tiers default` | [x] | Explicit default tiers (4k, 16k, 64k) |
+| Token estimation | [x] | ~4 chars/token approximation for JSON |
+| Centrality-based selection | [x] | Most important symbols selected first per budget |
+| Tiered view format | [x] | `view: "tiered"`, `tier_tokens`, `nodes_summary` with included/omitted |
+
+## 2025-12-27 16:00
+
+### Test Infrastructure
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Test escape hatch removal | [x] | ADR 0002: Tests no longer skip when dependencies unavailable. All tree-sitter packages listed in `pyproject.toml`. |
+| CI debugging tools | [x] | `./scripts/ci-debug` for Forgejo Actions troubleshooting. Commands: `runs`, `status`, `analyze-deps`. |
+
+## 2025-12-27 06:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| COBOL | [x] tree-sitter | program, paragraph, section, data | calls (perform, call) | Detects COBOL programs: PROGRAM-ID declarations, paragraphs, sections in PROCEDURE DIVISION, data items in DATA DIVISION with level numbers. PERFORM edges for paragraph calls, CALL edges for external program calls. For mainframe and legacy systems. Optional: `pip install tree-sitter-language-pack` |
+| LaTeX | [x] tree-sitter | section, label, command, environment | references, includes, imports | Detects LaTeX documents: sections/chapters, labels, custom commands (\\newcommand), custom environments (\\newenvironment). Reference edges for \\ref/\\cite, include edges for \\input/\\include, import edges for \\usepackage. For academic and technical documentation. Optional: `pip install tree-sitter-language-pack` |
+
+## 2025-12-27 05:00
+
+### Week 4: Slicing + Entrypoints
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Entrypoint detection heuristics | [x] | `entrypoints.py` - FastAPI, Flask, Click, Electron, Django, Express.js, NestJS, Spring Boot, Rails, Phoenix, Go (Gin/Echo/Fiber), Laravel, Rust (Actix-web/Axum/Rocket/Warp), ASP.NET Core, Sinatra, Ktor, Vapor, Plug, Hapi, Fastify, Koa, Grape, Tornado, Aiohttp, Slim, Micronaut, Flutter (runApp, widgets), GraphQL (Apollo Server, Yoga, Mercurius). Test files excluded via `_is_test_file()` helper. |
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Framework detection | [x] | Via profile.py. **Python:** FastAPI, Flask, Django, Starlette, Quart, Sanic, Litestar, Falcon, Bottle, CherryPy, Pyramid, Tornado, Aiohttp, PyTorch, TensorFlow, Keras, JAX, Transformers, spaCy, NLTK, LangChain, LangGraph, LlamaIndex, Haystack, scikit-learn, XGBoost, LightGBM, CatBoost, Optuna, MLflow, WandB, Ray, vLLM, DeepSpeed, PaddlePaddle, OpenAI, Anthropic. **JavaScript/TypeScript:** React, Vue, Angular, Svelte, Solid, Qwik, Preact, Lit, Alpine, htmx, Ember, Next.js, Nuxt, Remix, Astro, Gatsby, SvelteKit, Express, NestJS, Fastify, Koa, Hapi, Adonis, Sails, Hono, Elysia, React Native, Expo, Ionic, Capacitor, NativeScript, Electron, Tauri, Hardhat, Web3.js, ethers.js, Wagmi, Viem. **Rust:** Axum, Actix-web, Rocket, Warp, Tide, Gotham, Poem, Salvo, Tokio, async-std, Serde, Clap, Tauri, Solana/Anchor, Substrate, CosmWasm, ethers-rs, Alloy, Foundry, REVM, Arkworks, Bellman, Halo2, Plonky2/3, SP1, RISC Zero, Jolt, Nova, HyperNova, Zcash, libp2p, curve25519/ed25519, secp256k1. **Go:** Gin, Echo, Fiber, Chi, Gorilla, Buffalo, Revel, Beego, Iris. **PHP:** Laravel, Symfony, CodeIgniter, CakePHP, Yii, Phalcon, Slim. **Java/Kotlin:** Spring Boot, Micronaut, Quarkus, Dropwizard, Vert.x, Javalin, Helidon, Spark, Ktor, Jetpack Compose. **Swift:** Vapor, Kitura, Perfect, SwiftUI. **Scala:** Play, Akka HTTP, http4s, ZIO HTTP, Finatra. **Dart/Flutter:** Flutter SDK, flutter_bloc, Riverpod, Provider, GetX, MobX, Dio, Freezed, go_router, Flame. |
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Dart | [x] tree-sitter | class, function, method, constructor, getter, setter, enum, mixin, extension | calls, imports | Detects Dart code: classes, functions, methods (including getters/setters), constructors, enums, mixins, extensions, import statements. For Flutter and Dart web/server development. Optional: `pip install tree-sitter-language-pack` |
+
+### Re-export Resolution (§9.6)
+| Language | Re-export Pattern | Status | Notes |
+|----------|-------------------|--------|-------|
+| Dart | `export 'src/foo.dart'` | [x] | Global name matching handles this |
+
+## 2025-12-27 03:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| JavaScript | [x] tree-sitter | function, class, method, getter, setter, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) handlers set `stable_id` to HTTP method. **Express.js enhancements:** Wrapper patterns (`catchAsync(handler)`), external handlers (`userController.create`), and chained syntax (`router.route('/').get(handler)`) all detected. Optional: `pip install hypergumbo[javascript]` |
+| TypeScript | [x] tree-sitter | function, class, method, getter, setter, interface, type, enum, route | calls, imports, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `obj.method()`, `new ClassName()`. **Route detection:** Express.js, Koa, Fastify (`app.get`, `router.post`) and NestJS decorators (`@Get()`, `@Post()`) set `stable_id` to HTTP method. **Express.js enhancements:** Wrapper patterns (`catchAsync(handler)`), external handlers (`userController.create`), and chained syntax (`router.route('/').get(handler)`) all detected. Optional: `pip install hypergumbo[javascript]` |
+
+## 2025-12-27 00:00
+
+### Re-export Resolution (§9.6)
+| Language | Re-export Pattern | Status | Notes |
+|----------|-------------------|--------|-------|
+| Python | `__init__.py`: `from .sub import x` | [x] | Aliases also supported |
+| JavaScript | `index.js`: `export { x } from './x'` | [x] | Global name matching handles this |
+| TypeScript | `index.ts`: `export { x } from './x'` | [x] | Same as JS |
+| Rust | `lib.rs`: `pub use mod::item` | [x] | Global name matching handles this |
+| Haskell | `module Foo (module Bar) where` | [x] | Global name matching handles this |
+| OCaml | `include` in signatures | [x] | Global name matching handles this |
+| Scala | `export` clauses (Scala 3) | [x] | Global name matching handles this |
+| Elixir | `defdelegate` | [x] | Global name matching handles this |
+| Zig | `pub usingnamespace` | [x] | Global name matching handles this |
+
+## 2025-12-26 22:00
+
+### CI & Automation
+| Feature | Status | Notes |
+|---------|--------|-------|
+| generate-architecture | [x] | Generates `docs/ARCHITECTURE.md` via self-analysis. Features: generation metadata (commit SHA, versions) for drift detection, `tokenize.open()` for encoding safety, proper `.py` suffix removal, includes `__main__.py`, first non-empty docstring line, exact basename matching, manual maintenance note on Key Abstractions. Reads version from `pyproject.toml` (avoids repo vs installed version mismatch), uses `parts[0]` check for tighter module categorization, `--check` mode warns on commit SHA drift. |
+| **Edge Filtering Fix** | [x] | Import edges now properly included in `--first-party-only` and `--max-tier` output. Detects file-level edge sources by `:file:` pattern. |
+
+## 2025-12-26 21:00
+
+### CI & Automation
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **CI Jobs** | | `.github/workflows/ci.yml` |
+| Ruff linting | [x] | `lint` job - pycodestyle, pyflakes, security rules |
+| Bandit security | [x] | `lint` job - security-focused static analysis |
+| pip-audit | [x] | `audit` job - dependency vulnerability scanning |
+| pytest | [x] | `pytest` job - full test suite |
+| verify-generated | [x] | Checks schema and architecture docs are fresh |
+| **Pre-commit Hooks** | | `.githooks/pre-commit` |
+| Ruff check | [x] | Fast linting before commit |
+| Bandit check | [x] | Security check before commit |
+| Schema freshness | [x] | `./scripts/generate-schema --check` |
+| **Auto-generation Scripts** | | |
+| generate-schema | [x] | Generates `docs/schema.json` from dataclasses |
+
+## 2025-12-26 20:00
+
+### Schema Validation Tests ("Spec Driven Development")
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Formal JSON Schema | [x] | `docs/schema.json` - JSON Schema Draft 2020-12 |
+| Auto-generated schema | [x] | `./scripts/generate-schema` - generates from Python dataclasses |
+| Schema CI check | [x] | `./scripts/generate-schema --check` - verifies schema is up-to-date |
+| **Validation Tests** | | |
+| Empty behavior map validates | [x] | `test_empty_behavior_map_validates` |
+| Real analysis output validates | [x] | `test_real_analysis_output_validates` |
+| Symbol with all fields validates | [x] | `test_symbol_with_all_fields_validates` |
+| Edge with all fields validates | [x] | `test_edge_with_all_fields_validates` |
+| AnalysisRun validates | [x] | `test_analysis_run_validates` |
+| Invalid edge type fails | [x] | `test_invalid_edge_type_fails_validation` |
+| Invalid symbol kind fails | [x] | `test_invalid_symbol_kind_fails_validation` |
+| **Schema Sync Tests** | | |
+| Schema matches generated | [x] | `test_schema_matches_generated` - runs `generate-schema --check` |
+| Schema version matches code | [x] | `test_schema_version_matches_code` - verifies `SCHEMA_VERSION` |
+| All edge types in schema | [x] | `test_all_edge_types_in_schema` - checks enum completeness |
+| All symbol kinds in schema | [x] | `test_all_symbol_kinds_in_schema` - checks enum completeness |
+
+## 2025-12-26 19:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Token-budgeted Markdown sketch | [x] | `sketch.py` - ~4 chars/token heuristic with ceiling division for conservative estimates |
+| **Symbol Selection** | | |
+| Two-phase selection policy | [x] | Coverage-first phase (33% budget) ensures broad file coverage, then diminishing-returns greedy fill maximizes marginal utility |
+| Sum-of-top-K file scoring | [x] | Files ranked by sum of top-3 symbol scores (density metric) rather than single-max centrality |
+| Per-file render compression | [x] | Max 5 symbols per file with "… +N more (top score: X.XX)" overflow summary |
+| Entrypoint file preservation | [x] | Entry points and their containing files prioritized in Key Symbols section |
+| Deterministic output | [x] | Sorted iteration over SOURCE_DIRS ensures reproducible output across runs |
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| WebSocket | [x] | websocket_message, websocket_connection | websocket_endpoint, file | Detects Socket.io (`socket.emit`, `socket.on`, `io.emit`), native WebSocket (`new WebSocket`, `ws.send`), Node.js ws package, Django Channels (`channel_layer.send`, `group_send`, `WebsocketConsumer`), and FastAPI/Starlette (`@app.websocket`, `websocket.receive_json`, `websocket.send_json`, `websocket.accept`) patterns. Creates file symbols enabling slice traversal across WebSocket boundaries. Event matching links senders to receivers. Cross-language linking between Python and JavaScript. |
+
+## 2025-12-26 18:00
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| HTTP | [x] | http_calls | http_client | Links HTTP client calls to server route handlers across languages. Detects `fetch()`, `axios`, `requests`, `httpx`, and OpenAPI-generated TypeScript client (`__request()`) patterns. Matches URLs to route patterns (supports `:id`, `{id}`, `<id>` parameters). Router prefixes (FastAPI `APIRouter`, Flask `Blueprint`) are combined with route paths for accurate matching. Enables full-stack call graph traversal. |
+| Message Queue | [x] | message_queue | mq_publisher, mq_subscriber | Links message queue publishers to subscribers across languages. Detects Kafka (`producer.send()`, `consumer.subscribe()`, `@KafkaListener`), RabbitMQ (`basic_publish()`, `basic_consume()`, `sendToQueue()`), AWS SQS (`send_message()`, `receive_message()`), and Redis Pub/Sub (`publish()`, `subscribe()`) patterns. Topic-based matching enables cross-language microservices graph traversal. |
+| GraphQL Resolver | [x] | resolver_implements, resolver_for_type | graphql_resolver | Links GraphQL resolver implementations to schema definitions. Detects JavaScript patterns (`Query: { users: () => ... }`), Python Ariadne (`@query.field("users")`), and Python Strawberry (`@strawberry.field`). Enables full-stack GraphQL traversal from client to resolver. |
+| Database Query | [x] | query_references | db_query | Links SQL queries in application code to table definitions in SQL schema files. Detects Python (`cursor.execute()`, `db.execute()`, `session.execute(text())`), JavaScript (`db.query()`, `pool.query()`, `knex()`), and Java (`statement.executeQuery()`, `@Query()`) patterns. Extracts table names from SELECT/INSERT/UPDATE/DELETE/JOIN clauses. Cross-language linking enables full-stack database understanding. |
+| Event Sourcing | [x] | event_publishes | event_publisher, event_subscriber | Links event publishers to subscribers across languages. Detects JavaScript EventEmitter (`emitter.emit()`, `emitter.on()`), DOM events (`addEventListener()`, `dispatchEvent()`), Django signals (`signal.send()`, `@receiver()`), Python event buses (`EventBus.publish()`, `EventBus.subscribe()`), and Spring events (`applicationEventPublisher.publishEvent()`, `@EventListener`). Topic/event name matching enables cross-language event tracing. |
+
+## 2025-12-26 16:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Java | [x] tree-sitter | class, interface, enum, method, constructor | calls, extends, implements, instantiates | Two-pass cross-file resolution. Detects `this.method()`, `ClassName.method()`, inheritance, `new ClassName()`. Native method detection with `meta.is_native`. **Route detection:** Spring Boot (`@GetMapping`, `@PostMapping`, `@RequestMapping`) sets `stable_id` to HTTP method for `routes` command discovery. Optional: `pip install hypergumbo[java]` |
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| GraphQL | [x] | graphql_calls | graphql_client | Links GraphQL client queries to schema definitions. Detects `gql` template literals (JS/TS), `gql()` function calls (Python). Extracts operation names and types (query, mutation, subscription). Enables full-stack GraphQL traversal. |
+
+## 2025-12-26 15:00
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo routes` | [x] | Display API routes (FastAPI, Flask, Django/DRF, Express.js, Koa, Fastify, NestJS, Rails, Axum, Actix-web, Rocket, Gin, Echo, Fiber). Shows HTTP methods, route paths, and handler functions |
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Rust | [x] tree-sitter | function, struct, enum, trait, method, route | calls, imports | Detects `fn`, `struct`, `enum`, `trait`, `impl` blocks, `use` statements. **Route detection:** Axum `.route("/path", get(handler))` with method chaining, Actix-web/Rocket `#[get("/path")]` attribute macros (handles multi-param attributes). Route symbols have `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[rust]` |
+| Go | [x] tree-sitter | function, method, struct, interface, type, route | calls, imports | Detects `func`, methods with receivers, `type X struct/interface`, `import` statements. **Route detection:** Gin/Echo (`r.GET`, `e.POST`), Fiber (`app.Get`, `app.Post`) with lowercase methods. Route symbols have `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[go]` |
+
+## 2025-12-26 07:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| WGSL | [x] tree-sitter | function, struct, uniform, storage | calls | Detects WebGPU shaders: entry points (@vertex, @fragment, @compute), structs, uniform/storage bindings with @group/@binding metadata. For WebGPU graphics and compute analysis. Optional: `pip install tree-sitter-language-pack` |
+| XML | [x] tree-sitter | module, dependency, activity, service, permission | depends_on | Maven pom.xml: projects, dependencies with groupId/artifactId/version. Android Manifest: activities, services, receivers, providers, permissions, intent-filters. For Java/Android analysis. Optional: `pip install tree-sitter-language-pack` |
+| JSON | [x] tree-sitter | package, dependency, devDependency, script, tsconfig, reference, composer_package | depends_on, references | package.json: npm dependencies, scripts. tsconfig.json: TypeScript project references. composer.json: PHP Composer dependencies. For Node.js/PHP analysis. Optional: `pip install tree-sitter-language-pack` |
+| R | [x] tree-sitter | function, import, source | calls | Detects R code: function definitions, library/require imports, source() file references. Function call edges. For data science and statistical computing. Optional: `pip install tree-sitter-language-pack` |
+
+## 2025-12-26 06:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Ruby | [x] tree-sitter | method, class, module, route | calls, imports | Detects `def`, `class`, `module`, `require/require_relative`. **Route detection:** Rails DSL (`get '/path'`, `post '/path'`, `resources :name`) creates route symbols with `stable_id` = HTTP method. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ruby]` |
+
+## 2025-12-26 05:00
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo search <query>` | [x] | Search symbols by name pattern |
+
+## 2025-12-26 03:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| TOML | [x] tree-sitter | table, package, dependency, binary, test, example, benchmark, library, workspace, project | — | Detects TOML configuration files: Cargo.toml (dependencies, bins, tests, examples, benches, libs, workspaces), pyproject.toml (project metadata). For Rust and Python project analysis. Optional: `pip install tree-sitter-toml` |
+| CSS | [x] tree-sitter | import, variable, keyframes, media, font_face | imports | Detects CSS stylesheets: @import statements with import edges, CSS variables (--custom-props), @keyframes animations, @media queries, @font-face declarations. For frontend styling analysis. Optional: `pip install tree-sitter-css` |
+
+## 2025-12-26 01:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| VHDL | [x] tree-sitter | entity, architecture, package, component | implements | Detects VHDL hardware designs: entities, architectures, packages, component declarations. Architecture-entity relationships. Optional: `pip install tree-sitter-vhdl` |
+| GraphQL | [x] tree-sitter | type, input, interface, enum, scalar, union, directive, fragment, query, mutation, subscription | — | Detects GraphQL schema definitions: object types, input types, interfaces, enums, scalars, unions, directives, fragments, operations. API schema analysis. Optional: `pip install tree-sitter-graphql` |
+| Nix | [x] tree-sitter | function, binding, input, derivation | imports | Detects Nix expressions: named functions, let bindings, flake inputs, derivation calls. Import edges for `import` expressions. Optional: `pip install tree-sitter-nix` |
+| GLSL | [x] tree-sitter | function, struct, uniform, input, output | calls | Detects OpenGL shaders: functions, structs, uniform/in/out variables. Function call edges. Supports .vert, .frag, .glsl, .geom, .tesc, .tese, .comp files. Optional: `pip install tree-sitter-glsl` |
+| Fortran | [x] tree-sitter | module, program, function, subroutine, type | calls, imports | Detects Fortran code: modules, programs, functions, subroutines, derived types. Use statement imports, subroutine call edges. For scientific computing and HPC. Optional: `pip install tree-sitter-fortran` |
+
+## 2025-12-26 00:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| SQL | [x] tree-sitter | table, view, function, trigger, index, procedure | references | Detects CREATE TABLE, VIEW, FUNCTION, TRIGGER, INDEX statements. Foreign key REFERENCES edges. Two-pass cross-file resolution. Optional: `pip install tree-sitter-sql` |
+| Dockerfile | [x] tree-sitter | stage, exposed_port, env_var, build_arg | depends_on, base_image | Detects FROM stages, EXPOSE ports, ENV variables, ARG build args. Multi-stage build dependencies via COPY --from edges. Optional: `pip install tree-sitter-dockerfile` |
+| CUDA | [x] tree-sitter | kernel, device_function, host_device_function, function | calls, kernel_launch | Detects `__global__` kernels, `__device__` functions, `__host__ __device__` dual functions. Kernel launch edges for `<<<grid, block>>>` syntax. Optional: `pip install tree-sitter-cuda` |
+| Verilog | [x] tree-sitter | module, interface | instantiates | Detects Verilog/SystemVerilog modules, interfaces, module instantiations. Cross-file module resolution. Optional: `pip install tree-sitter-verilog` |
+| CMake | [x] tree-sitter | project, library, executable, function, macro, package, subdirectory | links | Detects CMake projects, add_library/add_executable targets, function/macro definitions, find_package, add_subdirectory. Target link dependencies. Optional: `pip install tree-sitter-cmake` |
+| Make | [x] tree-sitter | variable, target, pattern_rule, special_target, function, include | depends_on | Detects Makefiles: variables, targets, pattern rules, .PHONY, define blocks, include directives. Prerequisite dependencies. Optional: `pip install tree-sitter-make` |
+
+## 2025-12-25 23:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| YAML/Ansible | [x] tree-sitter | playbook, task, handler, variable | imports | Detects Ansible playbooks, tasks, handlers, variables from YAML files. Extracts `include_tasks`, `import_tasks`, `include_role`, `import_role` references. Two-pass cross-file resolution. Optional: `pip install tree-sitter-yaml` |
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| gRPC | [x] | grpc_calls | grpc_service, grpc_servicer, grpc_stub, grpc_client, grpc_server | Detects gRPC/Protobuf patterns across Python, Go, Java, TypeScript. Parses `.proto` service definitions, servicer implementations, stub/client usage. Links clients to servers by service name. |
+
+## 2025-12-25 22:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Bash | [x] tree-sitter | function, export, alias | calls, sources | Detects functions (both `function name()` and `name()` styles), exported variables, aliases, source/dot statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-bash` |
+| Objective-C | [x] tree-sitter | class, protocol, method, property | calls, imports | Detects `@interface`, `@implementation`, `@protocol`, methods (`-`/`+`), properties. Message send call resolution `[receiver message]`. Two-pass cross-file resolution. Optional: `pip install tree-sitter-objc` |
+| HCL/Terraform | [x] tree-sitter | resource, data, variable, output, module, provider, local | depends_on, imports | Detects Terraform blocks, variable references, resource dependencies, module sources. Two-pass cross-file resolution. Optional: `pip install tree-sitter-hcl` |
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| Swift/ObjC | [x] | imports | objc_bridge, selector_ref | Detects Swift/Objective-C interop: `@objc` annotations, NSObject subclasses, `#selector()` references, and `*-Bridging-Header.h` imports. Enables slice traversal across Apple platform language boundaries. |
+
+## 2025-12-25 21:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Groovy | [x] tree-sitter | class, interface, enum, method, function | calls, imports | Detects classes, interfaces, enums, methods, top-level functions (`def`), import statements. Handles `.gradle` build files. Two-pass cross-file resolution. Optional: `pip install tree-sitter-groovy` |
+| Julia | [x] tree-sitter | module, function, struct, abstract, macro, const | calls, imports | Detects modules, functions (full and short-form), structs, abstract types, macros, constants, import/using statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-julia` |
+
+## 2025-12-25 18:00
+
+### Supply Chain Classification (§8.6)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Capsule plan `supply_chain` config | [x] | `SupplyChainConfig` class with custom patterns for tiers |
+| `limits.supply_chain` logging | [x] | `SupplyChainLimits` tracks classification_failures and ambiguous_paths |
+
+## 2025-12-25 17:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Zig | [x] tree-sitter | function, struct, enum, union, error_set, method, test | calls, imports | Detects `fn`, `struct`, `enum`, `union`, `error` sets, `test` blocks, `@import()` statements. Methods distinguished by `self` parameter. Two-pass cross-file resolution. Optional: `pip install tree-sitter-zig` |
+
+### Supply Chain Classification (§8.6)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| CLI `--max-tier` flag | [x] | Filter analysis scope by tier (on `run` command) |
+| CLI `--first-party-only` flag | [x] | Shortcut for `--max-tier 1` (on `run` command) |
+| CLI `--no-first-party-priority` flag | [x] | Disable tier weighting (on `sketch` command) |
+| Slice tier filtering | [x] | `--max-tier` stops BFS at tier boundary |
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| IPC (Phoenix) | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Phoenix Channel patterns (`broadcast!`, `push`, `handle_in`) and LiveView patterns (`handle_event`, `push_event`). Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Event matching links senders to receivers. |
+
+## 2025-12-25 16:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Solidity | [x] tree-sitter | contract, interface, library, function, constructor, modifier, event | calls, imports | Ethereum smart contracts. Detects contracts, interfaces, libraries, functions, constructors, modifiers, events, and import statements. Two-pass cross-file resolution. Optional: `pip install tree-sitter-solidity` |
+| C# | [x] tree-sitter | class, interface, struct, enum, method, constructor, property | calls, imports, instantiates | Two-pass cross-file resolution. Detects method calls, `using` directives, `new ClassName()`. Optional: `pip install hypergumbo[csharp]` |
+| C++ | [x] tree-sitter | class, struct, enum, function, method | calls, imports, instantiates | Two-pass cross-file resolution. Detects function/method calls, `#include` directives, `new ClassName()`. Handles qualified names (Namespace::Class::method). Optional: `pip install hypergumbo[cpp]` |
+
+### Supply Chain Classification (§8.6)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `by_supply_chain_tier` in metrics | [x] | Nodes/edges breakdown by tier |
+
+## 2025-12-25 03:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| OCaml | [x] tree-sitter | function, type, module | calls, imports | Detects let bindings (functions), types, modules, `open` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[ocaml]` |
+
+## 2025-12-25 02:00
+
+### Week 4: Slicing + Entrypoints
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Reverse slice (find callers) | [x] | `--reverse` flag on `hypergumbo slice` finds what calls X |
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Scala | [x] tree-sitter | function, class, object, trait, method | calls, imports | Detects `def`, `class`, `object`, `trait`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[scala]` |
+| Lua | [x] tree-sitter | function, method | calls, imports | Detects `function`, `local function`, method-style `Table:method()`, `require()` imports. Two-pass cross-file resolution. Optional: `pip install hypergumbo[lua]` |
+| Haskell | [x] tree-sitter | function, data, class, instance | calls, imports | Detects functions (with/without type signatures), data types, type classes, instances, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[haskell]` |
+
+## 2025-12-25 01:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Kotlin | [x] tree-sitter | function, class, object, interface, method | calls, imports | Detects `fun`, `class`, `object`, `interface`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[kotlin]` |
+| Swift | [x] tree-sitter | function, class, struct, protocol, enum, method | calls, imports | Detects `func`, `class`, `struct`, `protocol`, `enum`, `import` statements. Two-pass cross-file resolution. Optional: `pip install hypergumbo[swift]` |
+
+## 2025-12-25 00:00
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo [path] [-t N] [-x]` | [x] | Default sketch mode with optional token budget |
+| `hypergumbo sketch [path] [-t N] [-x]` | [x] | Explicit sketch command |
+| `-x` / `--exclude-tests` | [x] | Skip test files during analysis (17% faster on large codebases) |
+
+## 2025-12-24 23:00
+
+### Supply Chain Classification (§8.6)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `supply_chain.py` module | [x] | File classification by dependency position |
+| Tier 4 detection (derived artifacts) | [x] | Path patterns + content heuristics (minification, source maps) |
+| Tier 3 detection (external deps) | [x] | `node_modules/`, `vendor/`, etc. |
+| Tier 2 detection (internal deps) | [x] | Workspace/monorepo detection from manifests |
+| Tier 1 detection (first-party) | [x] | `src/`, `lib/`, `app/` patterns + default |
+| Symbol fields (`supply_chain_tier`, `supply_chain_reason`) | [x] | Added to `ir.py` Symbol class |
+| Node output (`supply_chain` object) | [x] | `tier`, `tier_name`, `reason` on each node |
+| `supply_chain_summary` in output | [x] | File/symbol counts per tier |
+| Tier-weighted sketch ranking | [x] | First-party symbols prioritized in Key Symbols (2x weight) |
+
+## 2025-12-24 15:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Vue | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` and `<script setup>` blocks from `.vue` SFCs, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
+| Elixir | [x] tree-sitter | module, function, macro | calls, imports | Detects `def/defp`, `defmodule`, `use/import/alias`. Two-pass cross-file resolution. Optional: `pip install hypergumbo[elixir]` |
+
+## 2025-12-24 12:00
+
+### Cross-Language Linkers
+| Linker | Status | Edge Type | Symbols | Description |
+|--------|--------|-----------|---------|-------------|
+| JNI | [x] | native_bridge | — | Links Java native methods to C JNI implementations. Parses `Java_Package_Class_Method` naming convention. Runs when both Java and C symbols are present. |
+| IPC | [x] | message_send, message_receive | ipc_send, ipc_receive | Detects Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`), Web Workers, and `postMessage` patterns. Creates symbols for each endpoint enabling slice traversal across IPC boundaries. Channel stored in `edge.meta.channel` and `symbol.meta.channel`. |
+
+## 2025-12-24 10:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| C | [x] tree-sitter | function, struct, enum, typedef | calls | Two-pass cross-file resolution. Detects function calls, JNI export patterns (`Java_ClassName_methodName`). Optional: `pip install hypergumbo[c]` |
+
+## 2025-12-24 03:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| Svelte | [x] tree-sitter | function, class, method | calls, imports, instantiates | Extracts `<script>` blocks, adjusts line numbers. Two-pass cross-file resolution. Optional: `pip install hypergumbo[javascript]` |
+
+## 2025-12-24 02:00
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| PHP | [x] tree-sitter | function, class, method | calls, instantiates | Two-pass cross-file resolution. Detects `$this->method()`, `$obj->method()`, `ClassName::method()`, `new ClassName()`. Optional: `pip install hypergumbo[php]`. Excludes `vendor/` by default |
+
+## 2025-12-23 23:00
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Source file listings | [x] | Progressive expansion based on budget |
+| Entry points section | [x] | CLI, HTTP routes, Electron patterns |
+| Key symbols section | [x] | Functions/classes from static analysis |
+| Graph centrality ranking | [x] | In-degree centrality orders symbols by importance |
+| Test file filtering | [x] | Excludes test files from centrality calculation |
+
+## 2025-12-23 22:00
+
+### Week 2: Python Analyzer
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Import edges (cross-file) | [x] | `from X import Y` and `import X` emitted as `imports` edges |
+
+### Week 4: Slicing + Entrypoints
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Slice module (BFS/DFS on relationships) | [x] | `slice.py` with BFS traversal; includes file-level imports |
+
+### Sketch Generation (Default Mode)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Default CLI mode | [x] | `hypergumbo [path]` runs sketch |
+| Token limit flag | [x] | `-t N` / `--tokens N` |
+| Language breakdown | [x] | Sorted by LOC percentage |
+| Section-boundary truncation | [x] | Preserves coherent sections when truncating |
+
+## 2025-12-23 20:00
+
+### Week 3: JS/TS Analyzer (Optional)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| JS/TS AST → IR emission | [x] | Functions, classes, methods, getters, setters |
+| TypeScript interface detection | [x] | `kind: "interface"` |
+| TypeScript type alias detection | [x] | `kind: "type"` |
+| TypeScript enum detection | [x] | `kind: "enum"` |
+| Arrow function detection | [x] | `const fn = () => {}` |
+
+### Analysis Passes
+| Language | Parser | Symbols | Edges | Notes |
+|----------|--------|---------|-------|-------|
+| HTML | [x] regex | file | script_src | Script tag detection |
+
+## 2025-12-23 19:00
+
+### Week 3: JS/TS Analyzer (Optional)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Tree-sitter integration | [x] | `analyze/js_ts.py` |
+| Call/import edges | [x] | ES6 imports, require(), function calls |
+| Fallback if tree-sitter unavailable | [x] | Returns skipped result with reason |
+
+## 2025-12-23 18:00
+
+### Week 1: Foundation + IR Layer
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Pass interface and registry | [x] | `catalog.py` - Pass, Pack, Catalog classes |
+| Catalog system (catalog.json schema) | [x] | `catalog.py` - get_default_catalog() |
+| Capsule Plan (plan.json, validation) | [x] | `plan.py` - generate_plan(), validate_plan() |
+
+### Week 5: Capsule Initialization
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `hypergumbo init` command | [x] | Creates `.hypergumbo/capsule.json` + `capsule_plan.json` |
+| Template-based plan generation | [x] | `plan.py` - generates from profile + catalog |
+| `hypergumbo catalog` command | [x] | Lists passes and packs |
+| `hypergumbo export-capsule` command | [x] | `export.py` - tarball with privacy redactions |
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo catalog` | [x] | List passes/packs |
+| `hypergumbo export-capsule` | [x] | Export shareable capsule |
+
+### Output Schema Compliance
+| Field | Status | Notes |
+|-------|--------|-------|
+| `metrics` | [x] | `metrics.py` - counts, avg confidence, per-language |
+| `limits` | [x] | `limits.py` - failed files, skipped langs, known gaps |
+
+## 2025-12-23 17:00
+
+### Week 4: Slicing + Entrypoints
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Feature generation with query specs | [x] | Stable feature IDs from query |
+| Slice IDs and reproducibility | [x] | `sha256(json.dumps(query))` |
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo slice --entry X` | [x] | Produce reduced slice |
+
+### Output Schema Compliance
+| Field | Status | Notes |
+|-------|--------|-------|
+| `features[]` | [x] | Via slice command output |
+
+## 2025-12-23 15:00
+
+### Week 1: Foundation + IR Layer
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Schema definition (behavior_map view) | [x] | `schema.py` |
+| Internal IR classes (Symbol, Edge, AnalysisRun) | [x] | `ir.py` |
+| Profile module (language detection) | [x] | `profile.py` |
+| File discovery + exclude logic | [x] | `discovery.py` |
+| JSON writer (IR → views compilation) | [x] | `cli.py` |
+| ID generation (stable_id, shape_id) | [x] | `analyze/py.py` |
+
+### Week 2: Python Analyzer
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Python AST parser → IR emission | [x] | `analyze/py.py` |
+| Function/class detection | [x] | |
+| Call edges (intra-file) | [x] | |
+| Method call detection (self.method) | [x] | |
+| Evidence-type-based confidence | [x] | `meta.evidence_type` on edges |
+| Provenance tracking (AnalysisRun) | [x] | `analysis_runs[]` in output |
+
+### CLI Commands
+| Command | Status | Description |
+|---------|--------|-------------|
+| `hypergumbo --version` | [x] | Print version |
+| `hypergumbo init [path]` | [x] | Initialize capsule |
+
+### Output Schema Compliance
+| Field | Status | Notes |
+|-------|--------|-------|
+| `schema_version` | [x] | |
+| `profile` (languages, frameworks) | [x] | |
+| `analysis_runs[]` | [x] | Provenance tracking |
+| `edges[]` with id, confidence, meta | [x] | |
