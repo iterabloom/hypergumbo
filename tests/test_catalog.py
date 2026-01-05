@@ -274,70 +274,62 @@ class TestCatalogCompleteness:
 class TestSuggestedPasses:
     """Tests for language-based pass suggestions."""
 
-    def test_suggest_passes_for_python_project(self, tmp_path) -> None:
-        """Suggests Python pass for Python project."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+    def test_suggest_passes_for_python(self) -> None:
+        """Suggests Python pass for Python language."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
-        (tmp_path / "main.py").write_text("print('hello')")
-        suggested = suggest_passes_for_directory(tmp_path)
-
+        suggested = suggest_passes_for_languages({"python"})
         assert any("python" in p.id for p in suggested)
 
-    def test_suggest_passes_for_javascript_project(self, tmp_path) -> None:
-        """Suggests JS pass for JavaScript project."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+    def test_suggest_passes_for_javascript(self) -> None:
+        """Suggests JS pass for JavaScript language."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
-        (tmp_path / "app.js").write_text("console.log('hello');")
-        suggested = suggest_passes_for_directory(tmp_path)
-
+        suggested = suggest_passes_for_languages({"javascript"})
         assert any("javascript" in p.id for p in suggested)
 
-    def test_suggest_passes_for_multi_language_project(self, tmp_path) -> None:
-        """Suggests multiple passes for multi-language project."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+    def test_suggest_passes_for_multi_language(self) -> None:
+        """Suggests multiple passes for multiple languages."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
-        (tmp_path / "main.py").write_text("import os")
-        (tmp_path / "lib.rs").write_text("fn main() {}")
-        suggested = suggest_passes_for_directory(tmp_path)
-
+        suggested = suggest_passes_for_languages({"python", "rust"})
         pass_ids = [p.id for p in suggested]
         assert any("python" in pid for pid in pass_ids)
         assert any("rust" in pid for pid in pass_ids)
 
-    def test_suggest_passes_empty_directory(self, tmp_path) -> None:
-        """Returns empty list for directory with no source files."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+    def test_suggest_passes_empty_languages(self) -> None:
+        """Returns empty list for empty language set."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
-        suggested = suggest_passes_for_directory(tmp_path)
+        suggested = suggest_passes_for_languages(set())
         assert suggested == []
 
-    def test_suggest_passes_excludes_config_by_default(self, tmp_path) -> None:
-        """Config-only projects don't suggest passes."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+    def test_suggest_passes_excludes_config_languages(self) -> None:
+        """Config-only languages don't suggest passes."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
-        (tmp_path / "config.json").write_text("{}")
-        (tmp_path / "README.md").write_text("# Docs")
-        suggested = suggest_passes_for_directory(tmp_path)
-
-        # JSON and markdown don't trigger suggestions by default
-        # (they're config/doc files, not main language)
+        # JSON, YAML, and markdown are config/doc formats
+        suggested = suggest_passes_for_languages({"json", "yaml", "markdown"})
         assert len(suggested) == 0
 
-    def test_suggest_passes_nonexistent_directory(self, tmp_path) -> None:
-        """Returns empty list for non-existent directory."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+    def test_suggest_passes_filters_config_from_mixed(self) -> None:
+        """Config languages filtered from mixed set."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
-        nonexistent = tmp_path / "does_not_exist"
-        suggested = suggest_passes_for_directory(nonexistent)
-        assert suggested == []
+        # Mix of code and config languages
+        suggested = suggest_passes_for_languages({"python", "json", "yaml"})
+        pass_ids = [p.id for p in suggested]
 
-    def test_suggest_passes_dockerfile(self, tmp_path) -> None:
-        """Detects Dockerfile by exact filename match."""
-        from hypergumbo.catalog import suggest_passes_for_directory
+        # Python should be suggested
+        assert any("python" in pid for pid in pass_ids)
+        # But not JSON/YAML config analyzers
+        assert not any("json" in pid for pid in pass_ids)
 
-        (tmp_path / "Dockerfile").write_text("FROM python:3.12")
-        suggested = suggest_passes_for_directory(tmp_path)
+    def test_suggest_passes_for_dockerfile(self) -> None:
+        """Suggests Dockerfile pass."""
+        from hypergumbo.catalog import suggest_passes_for_languages
 
+        suggested = suggest_passes_for_languages({"dockerfile"})
         assert any("dockerfile" in p.id for p in suggested)
 
 
