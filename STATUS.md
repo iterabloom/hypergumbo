@@ -83,8 +83,11 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Source file listings | [x] | Progressive expansion based on budget |
 | Entry points section | [x] | CLI, HTTP routes, Electron patterns |
 | Key symbols section | [x] | Functions/classes from static analysis |
+| Minimum Key Symbols guarantee | [x] | Always includes at least 5 symbols even with tight budget |
 | Graph centrality ranking | [x] | In-degree centrality orders symbols by importance |
 | Test file filtering | [x] | Excludes test files from centrality calculation |
+| Multi-language test detection | [x] | Detects Swift (Tests/, *Tests.swift), Go (*_test.go), Java/Kotlin (*Test.java/kt), Rust (*_test.rs) in addition to Python/JS patterns |
+| Framework-specific coverage hints | [x] | Test summary section suggests appropriate coverage tool (jest --coverage, go test -cover, mvn test jacoco:report, etc.) instead of always suggesting pytest |
 | **Symbol Selection** | | |
 | Two-phase selection policy | [x] | Coverage-first phase (33% budget) ensures broad file coverage, then diminishing-returns greedy fill maximizes marginal utility |
 | Sum-of-top-K file scoring | [x] | Files ranked by sum of top-3 symbol scores (density metric) rather than single-max centrality |
@@ -462,6 +465,7 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | GraphQL Resolver | [x] | resolver_implements, resolver_for_type | graphql_resolver | Links GraphQL resolver implementations to schema definitions. Detects JavaScript patterns (`Query: { users: () => ... }`), Python Ariadne (`@query.field("users")`), and Python Strawberry (`@strawberry.field`). Enables full-stack GraphQL traversal from client to resolver. |
 | Database Query | [x] | query_references | db_query | Links SQL queries in application code to table definitions in SQL schema files. Detects Python (`cursor.execute()`, `db.execute()`, `session.execute(text())`), JavaScript (`db.query()`, `pool.query()`, `knex()`), and Java (`statement.executeQuery()`, `@Query()`) patterns. Extracts table names from SELECT/INSERT/UPDATE/DELETE/JOIN clauses. Cross-language linking enables full-stack database understanding. |
 | Event Sourcing | [x] | event_publishes | event_publisher, event_subscriber | Links event publishers to subscribers across languages. Detects JavaScript EventEmitter (`emitter.emit()`, `emitter.on()`), DOM events (`addEventListener()`, `dispatchEvent()`), Django signals (`signal.send()`, `@receiver()`), Python event buses (`EventBus.publish()`, `EventBus.subscribe()`), and Spring events (`applicationEventPublisher.publishEvent()`, `@EventListener`). Topic/event name matching enables cross-language event tracing. |
+| Dependency | [x] | depends_on_manifest | — | Links manifest dependencies (Cargo.toml, pyproject.toml) to code import statements. Matches package names to imports with naming convention handling (e.g., Rust hyphens → underscores). Enables traceability from code usage back to manifest declarations. |
 
 ## Test Infrastructure
 
@@ -509,4 +513,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-30*
+*Last updated: 2026-01-05*

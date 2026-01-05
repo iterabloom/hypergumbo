@@ -683,6 +683,51 @@ class TestIsTestPath:
         # These contain 'test' but are not actual test files
         assert _is_test_path("/tmp/pytest-of-user/pytest-1/test_something0/app.py") is False
 
+    def test_swift_tests_directory(self) -> None:
+        """Detects Swift Tests/ directory pattern (capital T, Xcode convention)."""
+        assert _is_test_path("/vapor/Tests/VaporTests/RouteTests.swift") is True
+        assert _is_test_path("Tests/AppTests/AppTests.swift") is True
+        assert _is_test_path("/project/Tests/MyTest.swift") is True
+
+    def test_swift_test_suffix(self) -> None:
+        """Detects *Tests.swift pattern (Swift test class naming convention)."""
+        assert _is_test_path("/src/RouteTests.swift") is True
+        assert _is_test_path("ApplicationTests.swift") is True
+        # But not files that just happen to contain "Test" in the middle
+        assert _is_test_path("/src/TestHelpers.swift") is False
+
+    def test_go_test_suffix(self) -> None:
+        """Detects *_test.go pattern (Go test convention)."""
+        assert _is_test_path("/server/main_test.go") is True
+        assert _is_test_path("handler_test.go") is True
+        assert _is_test_path("/pkg/service_test.go") is True
+
+    def test_java_test_directory(self) -> None:
+        """Detects src/test/ pattern (Maven/Gradle convention).
+
+        Note: src/test/ is matched by the generic /test/ pattern,
+        so this test verifies that Java/Kotlin convention works.
+        """
+        assert _is_test_path("/project/src/test/java/com/app/AppTest.java") is True
+        assert _is_test_path("src/test/kotlin/MainTest.kt") is True
+
+    def test_java_test_suffix(self) -> None:
+        """Detects *Test.java and *Test.kt patterns."""
+        assert _is_test_path("/src/main/UserServiceTest.java") is True
+        assert _is_test_path("ConfigTest.kt") is True
+        # But not TestConfig (prefix instead of suffix)
+        assert _is_test_path("/src/TestConfig.java") is False
+
+    def test_rust_tests_directory(self) -> None:
+        """Detects Rust tests/ directory pattern."""
+        # Same as Python tests/ but verify explicitly for Rust
+        assert _is_test_path("/crate/tests/integration.rs") is True
+
+    def test_rust_test_suffix(self) -> None:
+        """Detects *_test.rs pattern (Rust convention)."""
+        assert _is_test_path("/src/parser_test.rs") is True
+        assert _is_test_path("lib_test.rs") is True
+
 
 class TestComputeCentrality:
     """Tests for graph centrality computation."""
@@ -1205,6 +1250,74 @@ class TestGenerateSketchWithBudget:
         # Should include Key Symbols section with multiple files
         assert "## Key Symbols" in sketch
         assert "###" in sketch  # File headers
+
+    def test_minimum_key_symbols_guarantee(self, tmp_path: Path) -> None:
+        """Key Symbols section appears even with tight budget for large projects.
+
+        Issue: Some projects (qwix, marlin, guacamole-client) had 0 Key Symbols
+        at 1k budget because budget was exhausted before reaching symbols section.
+
+        The fix guarantees at least MIN_KEY_SYMBOLS (5) appear regardless of budget.
+        """
+        # Create a project that consumes budget with structure/config
+        # but still has analyzable Python code
+        for i in range(10):
+            d = tmp_path / f"src_{i}"
+            d.mkdir()
+            (d / f"module_{i}.py").write_text(
+                f"def core_function_{i}():\n"
+                f"    '''Important function {i}.'''\n"
+                f"    pass\n\n"
+                f"class CoreClass_{i}:\n"
+                f"    '''Core class {i}.'''\n"
+                f"    pass\n"
+            )
+
+        # Add config files that consume budget
+        (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
+        (tmp_path / "README.md").write_text("# Test Project\n\nA test project.\n")
+
+        # Even at 1k budget (which previously caused 0 Key Symbols),
+        # we should now get at least 5 symbols
+        sketch = generate_sketch(tmp_path, max_tokens=1000)
+
+        assert "## Key Symbols" in sketch, "Key Symbols section should always appear"
+        # Count the number of symbol entries (lines starting with "- `")
+        symbol_lines = [line for line in sketch.split("\n") if line.strip().startswith("- `")]
+        assert len(symbol_lines) >= 5, f"Expected at least 5 symbols, got {len(symbol_lines)}"
+
+    def test_key_symbols_with_very_tight_budget(self, tmp_path: Path) -> None:
+        """Key Symbols section appears even when remaining budget < 200 tokens.
+
+        This tests the budget-constrained path where we guarantee MIN_KEY_SYMBOLS.
+        """
+        # Create a project with lots of content that consumes budget
+        # Long README that will consume significant tokens
+        long_readme = "# Project\n\n" + ("This is a description. " * 100)
+        (tmp_path / "README.md").write_text(long_readme)
+
+        # Many directories to consume structure budget
+        for i in range(20):
+            d = tmp_path / f"pkg_{i}"
+            d.mkdir()
+            (d / "__init__.py").write_text("")
+
+        # But still include analyzable code
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "core.py").write_text(
+            "def main():\n    pass\n\n"
+            "def helper():\n    pass\n\n"
+            "class App:\n    pass\n\n"
+            "class Config:\n    pass\n\n"
+            "class Service:\n    pass\n"
+        )
+
+        # At 500 tokens, base sections consume most budget but symbols must appear
+        sketch = generate_sketch(tmp_path, max_tokens=500)
+
+        # Key Symbols must appear even with tight budget
+        assert "## Key Symbols" in sketch, "Key Symbols must appear even with tight budget"
 
 
 class TestCLISketch:
@@ -2862,67 +2975,72 @@ class TestDetectTestSummary:
     def test_no_test_files(self, tmp_path: Path) -> None:
         """Returns None when no test files exist."""
         (tmp_path / "main.py").write_text("print('hello')")
-        result = _detect_test_summary(tmp_path)
-        assert result is None
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is None
+        assert frameworks == set()
 
     def test_single_python_test_file(self, tmp_path: Path) -> None:
         """Detects a single Python test file."""
         (tmp_path / "test_example.py").write_text("def test_foo(): pass")
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "1 test file" in result  # Singular
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "1 test file" in summary  # Singular
 
     def test_multiple_python_test_files(self, tmp_path: Path) -> None:
         """Detects multiple Python test files."""
         (tmp_path / "test_foo.py").write_text("def test_foo(): pass")
         (tmp_path / "test_bar.py").write_text("def test_bar(): pass")
         (tmp_path / "baz_test.py").write_text("def test_baz(): pass")
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "3 test files" in result  # Plural
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "3 test files" in summary  # Plural
 
     def test_detects_pytest_framework(self, tmp_path: Path) -> None:
         """Detects pytest framework from imports."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "pytest" in result
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "pytest" in summary
+        assert "pytest" in frameworks
 
     def test_detects_unittest_framework(self, tmp_path: Path) -> None:
         """Detects unittest framework from imports."""
         (tmp_path / "test_example.py").write_text(
             "import unittest\n\nclass TestFoo(unittest.TestCase): pass"
         )
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "unittest" in result
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "unittest" in summary
+        assert "unittest" in frameworks
 
     def test_detects_multiple_frameworks(self, tmp_path: Path) -> None:
         """Detects multiple test frameworks."""
         (tmp_path / "test_a.py").write_text("import pytest\n\ndef test_a(): pass")
         (tmp_path / "test_b.py").write_text("import unittest\n\nclass TestB: pass")
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "pytest" in result
-        assert "unittest" in result
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "pytest" in summary
+        assert "unittest" in summary
+        assert frameworks == {"pytest", "unittest"}
 
     def test_javascript_test_files(self, tmp_path: Path) -> None:
         """Detects JavaScript/TypeScript test files."""
         (tmp_path / "app.spec.ts").write_text("describe('app', () => {})")
         (tmp_path / "utils.test.js").write_text("test('utils', () => {})")
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "2 test files" in result
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "2 test files" in summary
 
     def test_go_test_files(self, tmp_path: Path) -> None:
         """Detects Go test files."""
         (tmp_path / "main_test.go").write_text(
             'package main\nimport "testing"\nfunc TestFoo(t *testing.T) {}'
         )
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "1 test file" in result
-        assert "go test" in result
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "1 test file" in summary
+        assert "go test" in summary
+        assert "go test" in frameworks
 
     def test_excludes_node_modules(self, tmp_path: Path) -> None:
         """Test files in excluded directories are not counted."""
@@ -2930,15 +3048,15 @@ class TestDetectTestSummary:
         nm.mkdir(parents=True)
         (nm / "test.spec.js").write_text("test('foo', () => {})")
         # Only the excluded file, no test files in main tree
-        result = _detect_test_summary(tmp_path)
-        assert result is None
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is None
 
     def test_bats_test_files(self, tmp_path: Path) -> None:
         """Detects shell test files (.bats)."""
         (tmp_path / "test_cli.bats").write_text("@test 'example' { true; }")
-        result = _detect_test_summary(tmp_path)
-        assert result is not None
-        assert "1 test file" in result
+        summary, frameworks = _detect_test_summary(tmp_path)
+        assert summary is not None
+        assert "1 test file" in summary
 
 
 class TestFormatTestSummary:
@@ -2957,4 +3075,42 @@ class TestFormatTestSummary:
         assert result.startswith("## Tests\n")
         assert "pytest" in result
         assert "*Coverage requires execution" in result
+
+    def test_coverage_hint_matches_framework_jest(self, tmp_path: Path) -> None:
+        """Coverage hint should match detected framework (jest)."""
+        (tmp_path / "app.test.js").write_text("const { describe } = require('jest');\ntest('x', () => {});")
+        result = _format_test_summary(tmp_path)
+        # Should NOT suggest pytest for JS project
+        assert "pytest" not in result
+        # Should suggest appropriate JS coverage tool
+        assert "jest --coverage" in result or "npx" in result or "npm test" in result
+
+    def test_coverage_hint_matches_framework_vitest(self, tmp_path: Path) -> None:
+        """Coverage hint should match detected framework (vitest)."""
+        (tmp_path / "app.test.ts").write_text("import { describe } from 'vitest';\ntest('x', () => {});")
+        result = _format_test_summary(tmp_path)
+        # Should NOT suggest pytest for TS project
+        assert "pytest" not in result
+        # Should suggest vitest coverage
+        assert "vitest" in result
+
+    def test_coverage_hint_matches_framework_go(self, tmp_path: Path) -> None:
+        """Coverage hint should match detected framework (go test)."""
+        (tmp_path / "main_test.go").write_text('package main\nimport "testing"\nfunc TestX(t *testing.T) {}')
+        result = _format_test_summary(tmp_path)
+        # Should NOT suggest pytest for Go project
+        assert "pytest" not in result
+        # Should suggest go test -cover
+        assert "go test" in result
+
+    def test_coverage_hint_matches_framework_maven(self, tmp_path: Path) -> None:
+        """Coverage hint should match detected framework (JUnit/Maven)."""
+        tests = tmp_path / "src" / "test" / "java"
+        tests.mkdir(parents=True)
+        (tests / "AppTest.java").write_text("import org.junit.Test;\npublic class AppTest {}")
+        result = _format_test_summary(tmp_path)
+        # Should NOT suggest pytest for Java project
+        assert "pytest" not in result
+        # Should suggest maven or gradle test
+        assert "mvn test" in result or "gradle test" in result or "jacoco" in result
 

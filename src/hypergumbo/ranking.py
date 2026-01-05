@@ -336,7 +336,14 @@ def rank_files(
 def _is_test_path(path: str) -> bool:
     """Check if a path looks like a test file.
 
-    Matches common test patterns across Python, JavaScript, and TypeScript.
+    Matches common test patterns across many languages:
+    - Python: test_*.py, *_test.py, tests/, test/
+    - JavaScript/TypeScript: *.test.js, *.spec.ts, __tests__/
+    - Swift: Tests/, *Tests.swift (Xcode convention)
+    - Go: *_test.go
+    - Java/Kotlin: src/test/, *Test.java, *Test.kt
+    - Rust: tests/, *_test.rs
+
     Only matches actual test files, not directories that happen to contain 'test'.
     """
     import os
@@ -345,23 +352,45 @@ def _is_test_path(path: str) -> bool:
 
     filename = os.path.basename(path)
 
-    # Directory patterns (actual test directories, not temp dirs)
-    if "/test/" in path or "/tests/" in path or "/__tests__/" in path:
+    # Directory patterns (case-insensitive for Tests/ vs tests/)
+    # Note: Using lowercase comparison to catch both "tests/" and "Tests/"
+    # This also catches Java/Kotlin's src/test/ convention since it contains /test/
+    path_lower = path.lower()
+    if "/test/" in path_lower or "/tests/" in path_lower or "/__tests__/" in path_lower:
         return True
-    # Handle paths that start with test/ (no leading slash)
-    if path.startswith("test/") or path.startswith("tests/"):
+    # Handle paths that start with test/ or Tests/
+    if path_lower.startswith("test/") or path_lower.startswith("tests/"):
         return True
 
     # File name patterns: test_*.py, test_*.js, etc.
     if filename.startswith("test_"):
         return True
 
-    # Suffix patterns (.test.ts, .spec.js, _test.py, etc.)
+    # Python/JS/TS suffix patterns (.test.ts, .spec.js, _test.py, etc.)
     for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
         if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
             return True
         if filename.endswith(f"_test{ext}"):
             return True
+
+    # Go test files: *_test.go
+    if filename.endswith("_test.go"):
+        return True
+
+    # Rust test files: *_test.rs
+    if filename.endswith("_test.rs"):
+        return True
+
+    # Swift test files: *Tests.swift (Xcode convention - test class suffix)
+    # Match "RouteTests.swift" but not "TestHelpers.swift"
+    if filename.endswith("Tests.swift"):
+        return True
+
+    # Java/Kotlin test files: *Test.java, *Test.kt, *Tests.java, *Tests.kt
+    for ext in (".java", ".kt"):
+        if filename.endswith(f"Test{ext}") or filename.endswith(f"Tests{ext}"):
+            return True
+
     return False
 
 
