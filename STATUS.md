@@ -462,6 +462,7 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 | GraphQL Resolver | [x] | resolver_implements, resolver_for_type | graphql_resolver | Links GraphQL resolver implementations to schema definitions. Detects JavaScript patterns (`Query: { users: () => ... }`), Python Ariadne (`@query.field("users")`), and Python Strawberry (`@strawberry.field`). Enables full-stack GraphQL traversal from client to resolver. |
 | Database Query | [x] | query_references | db_query | Links SQL queries in application code to table definitions in SQL schema files. Detects Python (`cursor.execute()`, `db.execute()`, `session.execute(text())`), JavaScript (`db.query()`, `pool.query()`, `knex()`), and Java (`statement.executeQuery()`, `@Query()`) patterns. Extracts table names from SELECT/INSERT/UPDATE/DELETE/JOIN clauses. Cross-language linking enables full-stack database understanding. |
 | Event Sourcing | [x] | event_publishes | event_publisher, event_subscriber | Links event publishers to subscribers across languages. Detects JavaScript EventEmitter (`emitter.emit()`, `emitter.on()`), DOM events (`addEventListener()`, `dispatchEvent()`), Django signals (`signal.send()`, `@receiver()`), Python event buses (`EventBus.publish()`, `EventBus.subscribe()`), and Spring events (`applicationEventPublisher.publishEvent()`, `@EventListener`). Topic/event name matching enables cross-language event tracing. |
+| Dependency | [x] | depends_on_manifest | — | Links manifest dependencies (Cargo.toml, pyproject.toml) to code import statements. Matches package names to imports with naming convention handling (e.g., Rust hyphens → underscores). Enables traceability from code usage back to manifest declarations. |
 
 ## Test Infrastructure
 
@@ -509,4 +510,4 @@ Linkers run automatically as part of `hypergumbo run` after all language analyze
 
 ---
 
-*Last updated: 2025-12-30*
+*Last updated: 2026-01-05*
