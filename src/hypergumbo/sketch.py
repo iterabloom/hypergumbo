@@ -2903,6 +2903,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # PowerShell analysis failed or tree-sitter not available
 
+    if "gdscript" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.gdscript import analyze_gdscript  # pragma: no cover
+            result = analyze_gdscript(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # GDScript analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover

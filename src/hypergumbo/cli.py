@@ -96,6 +96,7 @@ from .analyze.proto import analyze_proto
 from .analyze.thrift import analyze_thrift
 from .analyze.capnp import analyze_capnp
 from .analyze.powershell import analyze_powershell
+from .analyze.gdscript import analyze_gdscript
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2237,6 +2238,19 @@ def run_behavior_map(
             analysis_runs.append(powershell_result.run.to_dict())
             all_symbols.extend(powershell_result.symbols)
             all_edges.extend(powershell_result.edges)
+
+    # Run GDScript analysis (optional, requires tree-sitter-language-pack)
+    gdscript_result = analyze_gdscript(repo_root)
+    if gdscript_result.run is not None:
+        if gdscript_result.skipped:  # pragma: no cover - gdscript installed
+            limits.skipped_passes.append({
+                "pass": gdscript_result.run.pass_id,
+                "reason": gdscript_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(gdscript_result.run.to_dict())
+            all_symbols.extend(gdscript_result.symbols)
+            all_edges.extend(gdscript_result.edges)
 
     # Run cross-language linkers
 
