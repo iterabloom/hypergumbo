@@ -275,7 +275,7 @@ Prereleases are:
 - [ ] Verify package on PyPI: https://pypi.org/project/hypergumbo/
 - [ ] Verify release on Codeberg: https://codeberg.org/iterabloom/hypergumbo/releases
 - [ ] Test installation: `pip install hypergumbo==X.Y.Z`
-- [ ] Update STATUS.md if needed
+- [ ] Update CHANGELOG.md if needed
 - [ ] Announce release (if significant)
 
 ## Platform Notes

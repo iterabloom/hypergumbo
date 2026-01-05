@@ -1687,7 +1687,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ## 9.6) Known Analysis Limitations
 
-This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `STATUS.md` for per-language implementation status.
+This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `CHANGELOG.md` for per-language implementation status.
 
 ### Re-export Resolution
 
