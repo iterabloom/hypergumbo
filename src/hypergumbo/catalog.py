@@ -16,8 +16,8 @@ analysis with FastAPI-specific route detection).
 Availability checking uses importlib to probe for optional dependencies
 without importing them, keeping the base install lightweight.
 
-The `suggest_passes_for_directory` function scans a directory's file
-extensions and returns passes relevant to detected languages.
+The `suggest_passes_for_languages` function takes a set of detected language
+names and returns passes relevant to those languages.
 
 Why This Design
 ---------------
@@ -25,13 +25,12 @@ Why This Design
 - Core/extra distinction lets users see what's possible without installing
   everything
 - Packs provide curated combinations for common frameworks
-- Directory scanning enables "suggested passes" based on project content
+- Language-based suggestions enable "suggested passes" based on project content
 """
 from __future__ import annotations
 
 import importlib.util
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
@@ -131,72 +130,6 @@ def is_available(p: Pass) -> bool:
 
     return False
 
-
-# Language to file extension patterns (for directory scanning)
-# This maps language names to their common file extensions
-LANGUAGE_EXTENSIONS_MAP: Dict[str, List[str]] = {
-    "python": [".py", ".pyi"],
-    "javascript": [".js", ".mjs", ".cjs", ".jsx"],
-    "typescript": [".ts", ".tsx"],
-    "vue": [".vue"],
-    "html": [".html", ".htm"],
-    "rust": [".rs"],
-    "go": [".go"],
-    "java": [".java"],
-    "c": [".c", ".h"],
-    "cpp": [".cpp", ".cc", ".cxx", ".hpp", ".hxx"],
-    "ruby": [".rb"],
-    "php": [".php"],
-    "swift": [".swift"],
-    "kotlin": [".kt", ".kts"],
-    "scala": [".scala", ".sc"],
-    "elixir": [".ex", ".exs"],
-    "lua": [".lua"],
-    "clojure": [".clj", ".cljs", ".cljc", ".edn"],
-    "erlang": [".erl", ".hrl"],
-    "elm": [".elm"],
-    "haskell": [".hs", ".lhs"],
-    "agda": [".agda", ".lagda"],
-    "lean": [".lean"],
-    "wolfram": [".wl", ".wls", ".nb"],
-    "ocaml": [".ml", ".mli"],
-    "solidity": [".sol"],
-    "csharp": [".cs"],
-    "fortran": [".f", ".f90", ".f95", ".f03", ".f08"],
-    "glsl": [".glsl", ".vert", ".frag", ".geom", ".comp"],
-    "hlsl": [".hlsl", ".hlsli", ".fx"],
-    "wgsl": [".wgsl"],
-    "nix": [".nix"],
-    "cuda": [".cu", ".cuh"],
-    "cmake": [".cmake"],
-    "dockerfile": ["Dockerfile"],
-    "sql": [".sql"],
-    "verilog": [".v", ".sv", ".svh"],
-    "vhdl": [".vhd", ".vhdl"],
-    "graphql": [".graphql", ".gql"],
-    "zig": [".zig"],
-    "groovy": [".groovy", ".gradle"],
-    "julia": [".jl"],
-    "objc": [".m", ".mm"],
-    "hcl": [".tf", ".hcl"],
-    "dart": [".dart"],
-    "cobol": [".cob", ".cbl", ".cobol"],
-    "latex": [".tex"],
-    "fsharp": [".fs", ".fsi", ".fsx"],
-    "perl": [".pl", ".pm"],
-    "proto": [".proto"],
-    "thrift": [".thrift"],
-    "capnp": [".capnp"],
-    "powershell": [".ps1", ".psm1", ".psd1"],
-    "gdscript": [".gd"],
-    "starlark": [".bzl"],
-    "fish": [".fish"],
-    "ada": [".ads", ".adb", ".ada"],
-    "d": [".d", ".di"],
-    "nim": [".nim", ".nims", ".nimble"],
-    "bash": [".sh", ".bash"],
-    "r": [".R", ".r"],
-}
 
 # Config/data formats that shouldn't trigger pass suggestions
 CONFIG_LANGUAGES = {"json", "yaml", "toml", "xml", "css", "markdown"}
@@ -735,45 +668,19 @@ def get_default_catalog() -> Catalog:
     )
 
 
-def suggest_passes_for_directory(directory: Path) -> List[Pass]:
-    """Suggest passes based on file extensions in a directory.
+def suggest_passes_for_languages(detected_languages: set[str]) -> List[Pass]:
+    """Suggest passes based on detected languages.
 
-    Scans the directory for source files and returns passes that would
-    be relevant for the detected languages. Config-only directories
-    (JSON, YAML, etc.) return empty suggestions.
+    Takes a set of language names (from profile.languages) and returns
+    passes that would be relevant. Config-only languages (JSON, YAML, etc.)
+    are filtered out.
 
     Args:
-        directory: Path to scan for source files.
+        detected_languages: Set of language names (e.g., {"python", "javascript"}).
 
     Returns:
         List of Pass objects relevant to detected languages.
     """
-    if not directory.exists():
-        return []
-
-    # Collect all file extensions in directory
-    detected_languages: set[str] = set()
-
-    try:
-        for item in directory.rglob("*"):
-            if item.is_file():
-                suffix = item.suffix.lower()
-                name = item.name
-
-                for lang, extensions in LANGUAGE_EXTENSIONS_MAP.items():
-                    for ext in extensions:
-                        if ext.startswith("."):
-                            if suffix == ext.lower():
-                                detected_languages.add(lang)
-                                break
-                        else:
-                            # Handle exact filename matches (e.g., "Dockerfile")
-                            if name == ext:
-                                detected_languages.add(lang)
-                                break
-    except PermissionError:  # pragma: no cover
-        pass  # Ignore permission errors during scanning
-
     # Filter out config-only languages (they don't suggest passes by default)
     code_languages = detected_languages - CONFIG_LANGUAGES
 

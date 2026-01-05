@@ -103,7 +103,7 @@ from .analyze.hlsl import analyze_hlsl
 from .analyze.ada import analyze_ada
 from .analyze.d_lang import analyze_d
 from .analyze.nim import analyze_nim
-from .catalog import get_default_catalog, is_available, suggest_passes_for_directory
+from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
 from .linkers.graphql_resolver import link_graphql_resolvers
@@ -788,15 +788,19 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     """Display available passes and packs.
 
     Shows:
-    1. Suggested passes based on current directory (if any source files found)
+    1. Suggested passes based on current repo (if any source files found)
     2. All available passes (core and extra)
     3. Available packs
     """
     catalog = get_default_catalog()
     cwd = Path.cwd()
 
-    # Show suggested passes based on current repo
-    suggested = suggest_passes_for_directory(cwd)
+    # Detect repo profile using existing language detection
+    profile = detect_profile(cwd)
+    detected_languages = set(profile.languages.keys())
+
+    # Show suggested passes based on detected languages
+    suggested = suggest_passes_for_languages(detected_languages)
     if suggested:
         print("Suggested for current repo:")
         for p in suggested:
