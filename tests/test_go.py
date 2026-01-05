@@ -399,11 +399,9 @@ class TestGoHelperFunctions:
     """Tests for helper function edge cases."""
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
-        """_find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.go import (
-            _find_child_by_type,
-            is_go_tree_sitter_available,
-        )
+        """find_child_by_type returns None when no matching child."""
+        from hypergumbo.analyze.base import find_child_by_type
+        from hypergumbo.analyze.go import is_go_tree_sitter_available
 
         if not is_go_tree_sitter_available():
             pytest.skip("tree-sitter-go not available")
@@ -418,7 +416,7 @@ class TestGoHelperFunctions:
         tree = parser.parse(source)
 
         # Try to find a child type that doesn't exist
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
 
 
