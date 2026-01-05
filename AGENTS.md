@@ -44,8 +44,9 @@ test -f .git/PR_PENDING && echo "STOP: auto-pr awaiting merge" && exit 1
 git checkout main && git pull origin main
 git checkout dev && git pull origin dev
 
-# 4. Check current progress
-cat STATUS.md
+# 4. Check current progress (at your careful discretion, use `head`, `tail`, `sed`, `grep`, etc, for efficient reading)
+cat docs/hypergumbo-spec.md
+cat CHANGELOG.md
 
 # 5. Create feature branch
 git checkout -b <author>/feat/<short-name>
@@ -60,7 +61,7 @@ git config user.name && git config user.email
 # 2. Run tests with coverage (must be 100%)
 pytest --cov=src --cov-fail-under=100
 
-# 3. Update STATUS.md if feature status changed
+# 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 
 # 4. Commit with sign-off
 git commit -s -m "feat: description"
@@ -250,8 +251,7 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
 - **Stack:** Python 3.10+, standard library preferred where possible.
 - **Core:** `src/hypergumbo` contains the logic. `cli.py` is the entry point.
-- **Specs:** See `docs/hypergumbo-spec.md` for the design contract.
-- **Status:** See `STATUS.md` for implementation progress.
+- **Specs:** See `docs/hypergumbo-spec.md` and `CHANGELOG.md` for the design contract and implementation state and progress.
 
 ## Autonomous Development Mode Stipulations
 When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work:
@@ -263,7 +263,7 @@ When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE",
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
 - **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
 - **Do NOT draw conclusions from mini-trials:** Mini-trials are only for smoke testing (does the setup work?) and ballpark runtime estimation. The sample size is far too small for meaningful conclusions. Save analysis for the full experiment results.
-- **Keep STATUS.md, CHANGELOG.md, pyproject.toml updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
+- **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
 - **Adjust specs based on experiments:** If experiments reveal better approaches, update Spec A/B.
 - **If you run out of Spec A items, dive into Spec B. (Ignore the stuff about timelines, personnel, budgets, etc -- just focus on building good software)**
 - **Don't stop until you've finished Spec B (its software elements, anyway) or you've become profoundly stuck.**
@@ -277,4 +277,5 @@ Priority queue for new analyzers:
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2025-12-30.4-mini-trial-caveat -->
+<!-- CANARY: agents-policy-v2026-01-05.0 -->
+
