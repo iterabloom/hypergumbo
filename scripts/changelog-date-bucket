@@ -3,11 +3,13 @@
 Rewrite CHANGELOG.md's "## [Unreleased]" into date-grouped subheadings.
 
 Walks git history for CHANGELOG.md, finds the first commit where each bullet
-block appears under Unreleased, and groups items by date.
+block appears under Unreleased, and groups items by date (or date+hour).
 
 Usage:
     ./scripts/changelog-date-bucket              # Preview to stdout
     ./scripts/changelog-date-bucket --in-place   # Rewrite file (creates .bak)
+    ./scripts/changelog-date-bucket --granularity hour  # Group by hour
+    ./scripts/changelog-date-bucket --granularity auto  # Auto: hour if few dates
 """
 
 from __future__ import annotations
@@ -56,6 +58,20 @@ def git_show_file(commit: str, relpath: str, repo: Path) -> Optional[str]:
 def git_commit_date(commit: str, repo: Path) -> str:
     """Committer date (YYYY-MM-DD)."""
     return git(["show", "-s", "--format=%cs", commit], cwd=repo).strip()
+
+
+def git_commit_datetime(commit: str, repo: Path) -> str:
+    """Committer date with hour (YYYY-MM-DD HH:00)."""
+    # %ci = committer date ISO format: "2026-01-04 15:52:43 -0500"
+    raw = git(["show", "-s", "--format=%ci", commit], cwd=repo).strip()
+    # Extract date and hour
+    parts = raw.split()
+    if len(parts) >= 2:
+        date = parts[0]
+        time = parts[1]
+        hour = time.split(":")[0]
+        return f"{date} {hour}:00"
+    return raw[:10]  # fallback to date only
 
 
 # ---------------------
@@ -181,32 +197,45 @@ def build_new_unreleased(
     date_desc: bool = True,
 ) -> str:
     """
-    Create new Unreleased block with date groupings.
-    first_seen maps BulletBlock.text -> (YYYY-MM-DD, fullsha)
+    Create new Unreleased block with date as primary grouping.
+    first_seen maps BulletBlock.text -> (timestamp, fullsha)
+
+    Output structure:
+        ## [Unreleased]
+        ### 2026-01-04 15:00
+        #### Added
+        - item 1
+        #### Changed
+        - item 2
+        ### 2026-01-01 23:00
+        #### Added
+        - item 3
     """
     out: List[str] = []
     out.append("## [Unreleased]\n\n")
 
+    # First, group all blocks by date, preserving section info
+    # date -> section_name -> [blocks]
+    date_groups: Dict[str, Dict[str, List[BulletBlock]]] = defaultdict(lambda: defaultdict(list))
+
     for sec_name, blocks in head.sections.items():
-        out.append(f"### {sec_name}\n")
-        if not blocks:
-            out.append("\n")
-            continue
-
-        # Group blocks by date
-        groups: Dict[str, List[BulletBlock]] = defaultdict(list)
         for b in blocks:
-            date, _ = first_seen.get(b.text, ("UNKNOWN", "HEAD"))
-            groups[date].append(b)
+            timestamp, _ = first_seen.get(b.text, ("UNKNOWN", "HEAD"))
+            date_groups[timestamp][sec_name].append(b)
 
-        dates = sorted(groups.keys(), reverse=date_desc)
+    # Sort dates
+    dates = sorted(date_groups.keys(), reverse=date_desc)
 
+    for d in dates:
+        out.append(f"### {d}\n")
+        sections = date_groups[d]
+        # Preserve original section order
+        for sec_name in head.sections.keys():
+            if sec_name in sections and sections[sec_name]:
+                out.append(f"\n#### {sec_name}\n")
+                for b in sections[sec_name]:
+                    out.append(b.text + "\n")
         out.append("\n")
-        for d in dates:
-            out.append(f"#### {d}\n")
-            for b in groups[d]:
-                out.append(b.text + "\n")
-            out.append("\n")
 
     return "".join(out).rstrip() + "\n"
 
@@ -223,6 +252,8 @@ def main() -> int:
     ap.add_argument("--in-place", action="store_true", help="Rewrite file in place")
     ap.add_argument("--date-order", choices=["asc", "desc"], default="desc",
                     help="Date grouping order (default: desc)")
+    ap.add_argument("--granularity", choices=["day", "hour", "auto"], default="auto",
+                    help="Time granularity: day, hour, or auto (default: auto - uses hour if <= 3 days)")
     args = ap.parse_args()
 
     repo = Path(args.repo).resolve()
@@ -262,14 +293,16 @@ def main() -> int:
             k: set(b.text for b in v) for k, v in snap.sections.items()
         }
 
+        # Store both date and datetime for later granularity decision
         commit_date = git_commit_date(sha, repo)
+        commit_datetime = git_commit_datetime(sha, repo)
 
         for sec_name, curr in curr_sets.items():
             prev = prev_sets.get(sec_name, set())
             added = curr - prev
             for item_text in added:
                 if item_text in wanted and item_text not in first_seen:
-                    first_seen[item_text] = (commit_date, sha)
+                    first_seen[item_text] = (commit_date, commit_datetime, sha)
 
         prev_snapshot = snap
 
@@ -279,7 +312,20 @@ def main() -> int:
     # Fallback for items we couldn't attribute
     for item_text in wanted:
         if item_text not in first_seen:
-            first_seen[item_text] = ("UNKNOWN", "HEAD")
+            first_seen[item_text] = ("UNKNOWN", "UNKNOWN", "HEAD")
+
+    # Decide granularity
+    granularity = args.granularity
+    if granularity == "auto":
+        unique_dates = set(v[0] for v in first_seen.values() if v[0] != "UNKNOWN")
+        # Use hour granularity if 3 or fewer unique dates
+        granularity = "hour" if len(unique_dates) <= 3 else "day"
+
+    # Select timestamp based on granularity
+    final_first_seen: Dict[str, Tuple[str, str]] = {}
+    for item_text, (date, datetime, sha) in first_seen.items():
+        timestamp = datetime if granularity == "hour" else date
+        final_first_seen[item_text] = (timestamp, sha)
 
     before, unreleased_block, after = _split_unreleased(head_md)
     if not unreleased_block:
@@ -287,7 +333,7 @@ def main() -> int:
 
     new_unreleased = build_new_unreleased(
         head_snapshot,
-        first_seen,
+        final_first_seen,
         date_desc=(args.date_order == "desc"),
     )
 

@@ -11,9 +11,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
+### 2026-01-04 15:00
 
-#### 2026-01-04
+#### Added
+- Clojure function signature extraction (e.g., `[x, y]` for defn vector params)
+- OCaml function signature extraction (e.g., `(x, y)` for let binding params)
+- Solidity function signature extraction (e.g., `(address to, uint256 amount) returns (bool)`)
+- CUDA function/kernel signature extraction (e.g., `(int *a, int *b) int`)
+- GraphQL operation signature extraction for query/mutation variable definitions
+- Wolfram function signature extraction (e.g., `[x_, y_]` for pattern args)
+- Haskell function signature extraction (e.g., `:: Int -> Int -> Int` for type signatures)
+- Dart function signature extraction (e.g., `(int x, int y) int` for typed functions)
+- Lean function signature extraction (e.g., `(n : Nat) : Nat` for def/theorem)
+- Agda function signature extraction (e.g., `: Nat -> Nat` for type signatures)
+
+### 2026-01-04 14:00
+
+#### Added
+- CMake function/macro signature extraction (e.g., `(ARG1, ARG2, ARG3)`)
+- Nix function signature extraction
+  - Simple lambdas: curried params (e.g., `(x, y)` for `x: y: body`)
+  - Formals: attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`)
+  - Top-level functions (modules/overlays) use file basename as function name
+- Python signature extraction moved from sketch.py to analyzer for consistency
+  - Signatures now populated during AST analysis (same as other languages)
+  - Supports all Python annotation types: Name, Subscript, BinOp (unions), Attribute
+
+### 2026-01-04 13:00
+
+#### Added
+- SQL function signature extraction (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`)
+- Bash function signature extraction (always `()` since Bash uses positional args $1, $2)
+
+### 2026-01-04 06:00
+
+#### Added
+- Zig function signature extraction (e.g., `(x: i32, y: i32) i32`)
+- Ruby method signature extraction (e.g., `(param, optional = ..., &block)`)
+- Elixir function signature extraction (e.g., `(param1, param2)`)
+- Erlang function signature extraction (e.g., `(Param1, Param2)`)
+- Perl subroutine signature extraction (e.g., `()` for traditional subs)
+- Lua function signature extraction (e.g., `(x, y)`)
+- Groovy method signature extraction (e.g., `(String name, int age)`)
+- Elm function signature extraction (e.g., `(x, y)`)
+- R function signature extraction (e.g., `(x, y)`, `(name, greeting = ...)`)
+- GLSL shader function signature extraction (e.g., `(float x, float y) float`)
+- WGSL shader function signature extraction (e.g., `(x: f32, y: f32) -> f32`)
+
+### 2026-01-04 05:00
+
+#### Added
+- C# function signature extraction (e.g., `(int x, string name): void`)
+- Swift function signature extraction (e.g., `(x: Int, name: String) -> Void`)
+- Kotlin function signature extraction (e.g., `(x: Int, name: String): Unit`)
+- Scala function signature extraction (e.g., `(x: Int, y: Int): Int`)
+- PHP function signature extraction (e.g., `(int $x, string $name): void`)
+- Objective-C method signature extraction (e.g., `(int x, int y): int`)
+- Fortran function/subroutine signature extraction (e.g., `(x, y): integer`)
+- F# function signature extraction (e.g., `(x: int, y: int): int`)
+- Julia function signature extraction (e.g., `(x::Int, y::Int)::Int`)
+
+### 2026-01-04 04:00
+
+#### Added
 - Function signature extraction for Rust, Go, and TypeScript/JavaScript
   - Rust: Handles `&self`, `&mut self`, return types (e.g., `(x: i32) -> bool`)
   - Go: Handles multiple returns, named returns, parameter grouping (e.g., `(x int, y string) error`)
@@ -26,48 +86,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Handles methods and constructors (e.g., `(String name, int age) User`)
   - Supports generics, arrays, and varargs (e.g., `(List<String> items, Object... args) Map<K, V>`)
 - Signature sanity tests: verify function signatures appear in sketch Key Symbols section
-- C# function signature extraction (e.g., `(int x, string name): void`)
-- Swift function signature extraction (e.g., `(x: Int, name: String) -> Void`)
-- Kotlin function signature extraction (e.g., `(x: Int, name: String): Unit`)
-- Scala function signature extraction (e.g., `(x: Int, y: Int): Int`)
-- PHP function signature extraction (e.g., `(int $x, string $name): void`)
-- Objective-C method signature extraction (e.g., `(int x, int y): int`)
-- Fortran function/subroutine signature extraction (e.g., `(x, y): integer`)
-- F# function signature extraction (e.g., `(x: int, y: int): int`)
-- Julia function signature extraction (e.g., `(x::Int, y::Int)::Int`)
-- Zig function signature extraction (e.g., `(x: i32, y: i32) i32`)
-- Ruby method signature extraction (e.g., `(param, optional = ..., &block)`)
-- Elixir function signature extraction (e.g., `(param1, param2)`)
-- Erlang function signature extraction (e.g., `(Param1, Param2)`)
-- Perl subroutine signature extraction (e.g., `()` for traditional subs)
-- Lua function signature extraction (e.g., `(x, y)`)
-- Groovy method signature extraction (e.g., `(String name, int age)`)
-- Elm function signature extraction (e.g., `(x, y)`)
-- R function signature extraction (e.g., `(x, y)`, `(name, greeting = ...)`)
-- GLSL shader function signature extraction (e.g., `(float x, float y) float`)
-- WGSL shader function signature extraction (e.g., `(x: f32, y: f32) -> f32`)
-- SQL function signature extraction (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`)
-- Bash function signature extraction (always `()` since Bash uses positional args $1, $2)
-- CMake function/macro signature extraction (e.g., `(ARG1, ARG2, ARG3)`)
-- Nix function signature extraction
-  - Simple lambdas: curried params (e.g., `(x, y)` for `x: y: body`)
-  - Formals: attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`)
-  - Top-level functions (modules/overlays) use file basename as function name
-- Python signature extraction moved from sketch.py to analyzer for consistency
-  - Signatures now populated during AST analysis (same as other languages)
-  - Supports all Python annotation types: Name, Subscript, BinOp (unions), Attribute
-- Clojure function signature extraction (e.g., `[x, y]` for defn vector params)
-- OCaml function signature extraction (e.g., `(x, y)` for let binding params)
-- Solidity function signature extraction (e.g., `(address to, uint256 amount) returns (bool)`)
-- CUDA function/kernel signature extraction (e.g., `(int *a, int *b) int`)
-- GraphQL operation signature extraction for query/mutation variable definitions
-- Wolfram function signature extraction (e.g., `[x_, y_]` for pattern args)
-- Haskell function signature extraction (e.g., `:: Int -> Int -> Int` for type signatures)
-- Dart function signature extraction (e.g., `(int x, int y) int` for typed functions)
-- Lean function signature extraction (e.g., `(n : Nat) : Nat` for def/theorem)
-- Agda function signature extraction (e.g., `: Nat -> Nat` for type signatures)
 
-#### 2026-01-01
+### 2026-01-01 23:00
+
+#### Added
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files
