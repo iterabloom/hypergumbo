@@ -5,7 +5,7 @@ Get a quick overview of any codebase, sized to fit your context window.
 **Requires Python 3.10+**
 
 ```bash
-pip install hypergumbo              # from PyPI (after release)
+pip install hypergumbo              # from PyPI
 pip install git+https://codeberg.org/iterabloom/hypergumbo.git  # from source
 hypergumbo .
 ```
@@ -71,7 +71,7 @@ hypergumbo build-grammars    # build Lean/Wolfram grammars from source
 **Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
 - **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
 - **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
-- **Cross-language edges**: 12 linkers connect symbols across language boundaries (see table below)
+- **Cross-language edges**: 13 linkers connect symbols across language boundaries (see table below)
 
 **LLM-assisted init** (`hypergumbo init --assistant llm`) demonstrates LLM integration
 patterns but provides no practical advantage over the default template-based approach.
@@ -80,17 +80,17 @@ passes. This feature exists as a technical scaffold showing how to integrate Ope
 OpenAI, or local models via the [llm](https://pypi.org/project/llm/) package. It may be
 removed in a future release.
 
-### Supported Languages (51 Analyzers)
+### Supported Languages (54 Analyzers)
 
 | Category | Languages |
 |----------|-----------|
-| **Application** | Python, JavaScript, TypeScript, Java, C#, Go, Rust, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
+| **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
 | **Systems** | C, C++, Zig, Objective-C, CUDA, Fortran |
 | **Smart Contracts** | Solidity |
 | **Hardware** | Verilog, VHDL, GLSL, WGSL |
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
 | **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
-| **Frontend** | Vue, Svelte, HTML |
+| **Frontend** | Elm, Vue, Svelte, HTML |
 | **Proof/Formal** | Agda, Lean*, Wolfram* |
 | **Legacy/Academic** | COBOL, LaTeX |
 
@@ -99,7 +99,7 @@ Run `hypergumbo build-grammars` to enable these analyzers.
 
 All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
 
-### Cross-Language Linkers (12 Linkers)
+### Cross-Language Linkers (13 Linkers)
 
 Linkers run automatically during `hypergumbo run` to connect symbols across language boundaries:
 
@@ -117,6 +117,7 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 | Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
 | Database Query | SQL in app code → table definitions in schema files |
 | Event Sourcing | EventEmitter, Django signals, Spring events |
+| Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
 
 ## Development
 
