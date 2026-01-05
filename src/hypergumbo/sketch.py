@@ -2876,6 +2876,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Proto analysis failed or tree-sitter not available
 
+    if "thrift" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.thrift import analyze_thrift  # pragma: no cover
+            result = analyze_thrift(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Thrift analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover

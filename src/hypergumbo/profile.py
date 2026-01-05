@@ -88,6 +88,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "fsharp": ["*.fs", "*.fsi", "*.fsx"],
     "perl": ["*.pl", "*.pm", "*.t"],
     "proto": ["*.proto"],
+    "thrift": ["*.thrift"],
 }
 
 # Framework detection patterns

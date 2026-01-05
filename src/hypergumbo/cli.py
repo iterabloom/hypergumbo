@@ -93,6 +93,7 @@ from .analyze.latex import analyze_latex
 from .analyze.fsharp import analyze_fsharp
 from .analyze.perl import analyze_perl
 from .analyze.proto import analyze_proto
+from .analyze.thrift import analyze_thrift
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2195,6 +2196,19 @@ def run_behavior_map(
             analysis_runs.append(proto_result.run.to_dict())
             all_symbols.extend(proto_result.symbols)
             all_edges.extend(proto_result.edges)
+
+    # Run Thrift analysis (optional, requires tree-sitter-language-pack)
+    thrift_result = analyze_thrift(repo_root)
+    if thrift_result.run is not None:
+        if thrift_result.skipped:  # pragma: no cover - thrift installed
+            limits.skipped_passes.append({
+                "pass": thrift_result.run.pass_id,
+                "reason": thrift_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(thrift_result.run.to_dict())
+            all_symbols.extend(thrift_result.symbols)
+            all_edges.extend(thrift_result.edges)
 
     # Run cross-language linkers
 
