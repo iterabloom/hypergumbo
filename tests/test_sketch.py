@@ -1001,6 +1001,153 @@ class TestFormatSymbols:
         # Bundled/derived should be excluded entirely
         assert "__webpack_require__" not in result
 
+    def test_deduplicates_utility_functions_across_files(self) -> None:
+        """Utility functions with same name across files are deduplicated.
+
+        Functions like _node_text() appear in many analyzers. We show only
+        the first occurrence to avoid wasting tokens on repeated utilities.
+        """
+        repo_root = Path("/fake/repo")
+        # Create symbols with same name in different files (common pattern)
+        symbols = [
+            # First file - unique function + utility
+            Symbol(id="analyze_rust", name="analyze_rust", kind="function",
+                   language="python", path="/fake/repo/analyze/rust.py",
+                   span=Span(1, 1, 50, 1)),
+            Symbol(id="rust_node_text", name="_node_text", kind="function",
+                   language="python", path="/fake/repo/analyze/rust.py",
+                   span=Span(60, 1, 65, 1)),
+            # Second file - unique function + same utility name
+            Symbol(id="analyze_go", name="analyze_go", kind="function",
+                   language="python", path="/fake/repo/analyze/go.py",
+                   span=Span(1, 1, 50, 1)),
+            Symbol(id="go_node_text", name="_node_text", kind="function",
+                   language="python", path="/fake/repo/analyze/go.py",
+                   span=Span(60, 1, 65, 1)),
+            # Third file - unique function + same utility name
+            Symbol(id="analyze_java", name="analyze_java", kind="function",
+                   language="python", path="/fake/repo/analyze/java.py",
+                   span=Span(1, 1, 50, 1)),
+            Symbol(id="java_node_text", name="_node_text", kind="function",
+                   language="python", path="/fake/repo/analyze/java.py",
+                   span=Span(60, 1, 65, 1)),
+        ]
+
+        # Give all symbols some centrality
+        edges = [
+            Edge.create(src="caller1", dst="analyze_rust", edge_type="calls",
+                        line=1, confidence=1.0),
+            Edge.create(src="caller2", dst="analyze_go", edge_type="calls",
+                        line=2, confidence=1.0),
+            Edge.create(src="caller3", dst="analyze_java", edge_type="calls",
+                        line=3, confidence=1.0),
+            # Utility functions called from their respective analyze functions
+            Edge.create(src="analyze_rust", dst="rust_node_text", edge_type="calls",
+                        line=10, confidence=1.0),
+            Edge.create(src="analyze_go", dst="go_node_text", edge_type="calls",
+                        line=10, confidence=1.0),
+            Edge.create(src="analyze_java", dst="java_node_text", edge_type="calls",
+                        line=10, confidence=1.0),
+        ]
+
+        result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
+
+        # All unique analyze_* functions should appear
+        assert "analyze_rust" in result
+        assert "analyze_go" in result
+        assert "analyze_java" in result
+
+        # _node_text should appear only ONCE as a symbol definition (deduplicated)
+        # It will also appear in the utility function summary at the bottom
+        # Count occurrences of "_node_text`" followed by space/kind (symbol definition)
+        # vs appearing in the summary ("`_node_text` xN")
+        symbol_lines = [line for line in result.split('\n') if '`_node_text`' in line]
+        # Filter to symbol definitions (lines starting with "- `")
+        symbol_def_lines = [line for line in symbol_lines if line.strip().startswith('- `')]
+        assert len(symbol_def_lines) == 1, f"Expected 1 _node_text symbol def, got {len(symbol_def_lines)}"
+
+        # Should also show in utility function summary
+        assert "Utility functions (shown once)" in result
+        assert "`_node_text` x3" in result  # Appeared 3 times total
+
+    def test_deduplication_preserves_unique_functions(self) -> None:
+        """Deduplication doesn't affect functions with unique names."""
+        repo_root = Path("/fake/repo")
+        symbols = [
+            Symbol(id="func_a", name="unique_func_a", kind="function",
+                   language="python", path="/fake/repo/module_a.py",
+                   span=Span(1, 1, 10, 1)),
+            Symbol(id="func_b", name="unique_func_b", kind="function",
+                   language="python", path="/fake/repo/module_b.py",
+                   span=Span(1, 1, 10, 1)),
+            Symbol(id="func_c", name="unique_func_c", kind="function",
+                   language="python", path="/fake/repo/module_c.py",
+                   span=Span(1, 1, 10, 1)),
+        ]
+
+        edges = [
+            Edge.create(src="caller", dst="func_a", edge_type="calls",
+                        line=1, confidence=1.0),
+            Edge.create(src="caller", dst="func_b", edge_type="calls",
+                        line=2, confidence=1.0),
+            Edge.create(src="caller", dst="func_c", edge_type="calls",
+                        line=3, confidence=1.0),
+        ]
+
+        result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
+
+        # All unique functions should appear
+        assert "unique_func_a" in result
+        assert "unique_func_b" in result
+        assert "unique_func_c" in result
+
+    def test_deduplication_shows_utility_function_summary(self) -> None:
+        """Deduplicated utility functions are summarized at the end."""
+        repo_root = Path("/fake/repo")
+        # Create symbols with same utility name in multiple files
+        symbols = [
+            Symbol(id="analyze_rust", name="analyze_rust", kind="function",
+                   language="python", path="/fake/repo/analyze/rust.py",
+                   span=Span(1, 1, 50, 1)),
+            Symbol(id="rust_helper", name="_helper", kind="function",
+                   language="python", path="/fake/repo/analyze/rust.py",
+                   span=Span(60, 1, 65, 1)),
+            Symbol(id="analyze_go", name="analyze_go", kind="function",
+                   language="python", path="/fake/repo/analyze/go.py",
+                   span=Span(1, 1, 50, 1)),
+            Symbol(id="go_helper", name="_helper", kind="function",
+                   language="python", path="/fake/repo/analyze/go.py",
+                   span=Span(60, 1, 65, 1)),
+            Symbol(id="analyze_java", name="analyze_java", kind="function",
+                   language="python", path="/fake/repo/analyze/java.py",
+                   span=Span(1, 1, 50, 1)),
+            Symbol(id="java_helper", name="_helper", kind="function",
+                   language="python", path="/fake/repo/analyze/java.py",
+                   span=Span(60, 1, 65, 1)),
+        ]
+
+        edges = [
+            Edge.create(src="caller1", dst="analyze_rust", edge_type="calls",
+                        line=1, confidence=1.0),
+            Edge.create(src="caller2", dst="analyze_go", edge_type="calls",
+                        line=2, confidence=1.0),
+            Edge.create(src="caller3", dst="analyze_java", edge_type="calls",
+                        line=3, confidence=1.0),
+            Edge.create(src="analyze_rust", dst="rust_helper", edge_type="calls",
+                        line=10, confidence=1.0),
+            Edge.create(src="analyze_go", dst="go_helper", edge_type="calls",
+                        line=10, confidence=1.0),
+            Edge.create(src="analyze_java", dst="java_helper", edge_type="calls",
+                        line=10, confidence=1.0),
+        ]
+
+        result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
+
+        # Should have summary showing _helper appeared 3 times
+        assert "Utility functions (shown once)" in result
+        assert "`_helper`" in result
+        assert "x3" in result  # Appeared 3 times
+
 
 class TestGenerateSketchWithBudget:
     """Tests for budget-based sketch expansion."""

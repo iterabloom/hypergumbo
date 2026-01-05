@@ -3241,6 +3241,14 @@ def _format_symbols(
     lines.append("*★ = centrality ≥ 50% of max*")
     lines.append("")
 
+    # Track function names already rendered for deduplication
+    # Functions like _node_text() appear in many files - show only first occurrence
+    rendered_function_names: set[str] = set()
+
+    # Track duplicate counts for summary at end
+    # Maps function name -> number of times it appeared across files
+    function_occurrence_count: dict[str, int] = {}
+
     total_rendered = 0
     for file_path in sorted_files:
         file_symbols = selected_by_file[file_path]
@@ -3249,7 +3257,17 @@ def _format_symbols(
 
         # Render up to max_symbols_per_file (B2: compression)
         rendered_count = 0
+        deduped_count = 0  # Track skipped duplicates
         for sym in file_symbols[:max_symbols_per_file]:
+            # Deduplicate: skip functions with same name already shown in other files
+            # This reduces noise from utility functions like _node_text() that appear
+            # in many analyzer files with identical implementations
+            if sym.kind in ("function", "method") and sym.name in rendered_function_names:
+                deduped_count += 1
+                # Track occurrence for summary
+                function_occurrence_count[sym.name] = function_occurrence_count.get(sym.name, 1) + 1
+                continue
+
             kind_label = sym.kind
             score = centrality.get(sym.id, 0)
             star = " ★" if score >= star_threshold else ""
@@ -3264,14 +3282,30 @@ def _format_symbols(
                 lines.append(f"- `{display_name}` ({kind_label}){star} — {docstring}")
             else:
                 lines.append(f"- `{display_name}` ({kind_label}){star}")
+
+            # Track rendered function names for deduplication
+            if sym.kind in ("function", "method"):
+                rendered_function_names.add(sym.name)
+
             rendered_count += 1
             total_rendered += 1
 
+        # If all symbols in this file were deduplicated, remove the empty header
+        if rendered_count == 0:
+            # Remove the "### `file_path`" line we added
+            lines.pop()
+            continue
+
         # Summary line for remaining symbols in this file (B2)
-        remaining_in_file = len(file_symbols) - rendered_count
+        # Don't count deduped symbols as "remaining" - they're intentionally hidden
+        remaining_in_file = len(file_symbols) - rendered_count - deduped_count
         if remaining_in_file > 0:
-            # Show stats for compressed symbols
-            remaining_scores = [centrality.get(s.id, 0) for s in file_symbols[max_symbols_per_file:]]
+            # Show stats for compressed symbols (excluding deduped ones)
+            remaining_syms = [
+                s for s in file_symbols[max_symbols_per_file:]
+                if not (s.kind in ("function", "method") and s.name in rendered_function_names)
+            ]
+            remaining_scores = [centrality.get(s.id, 0) for s in remaining_syms]
             if remaining_scores:
                 top_score = max(remaining_scores)
                 lines.append(f"  *… +{remaining_in_file} more (top score: {top_score:.2f})*")
@@ -3284,6 +3318,18 @@ def _format_symbols(
     unselected = total_candidates - total_selected
     if unselected > 0:
         lines.append(f"*… and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files*")
+
+    # Summary of deduplicated utility functions (show top duplicates)
+    if function_occurrence_count:
+        # Sort by occurrence count descending, show top 5
+        sorted_dupes = sorted(
+            function_occurrence_count.items(),
+            key=lambda x: -x[1]
+        )[:5]
+        if sorted_dupes:
+            dupe_parts = [f"`{name}` x{count}" for name, count in sorted_dupes]
+            lines.append("")
+            lines.append(f"*Utility functions (shown once): {', '.join(dupe_parts)}*")
 
     return "\n".join(lines)
 
