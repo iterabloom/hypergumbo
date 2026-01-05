@@ -100,6 +100,7 @@ from .analyze.gdscript import analyze_gdscript
 from .analyze.starlark import analyze_starlark
 from .analyze.fish import analyze_fish
 from .analyze.hlsl import analyze_hlsl
+from .analyze.ada import analyze_ada
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2293,6 +2294,19 @@ def run_behavior_map(
             analysis_runs.append(hlsl_result.run.to_dict())
             all_symbols.extend(hlsl_result.symbols)
             all_edges.extend(hlsl_result.edges)
+
+    # Run Ada analysis (optional, requires tree-sitter-language-pack)
+    ada_result = analyze_ada(repo_root)
+    if ada_result.run is not None:
+        if ada_result.skipped:  # pragma: no cover - ada installed
+            limits.skipped_passes.append({
+                "pass": ada_result.run.pass_id,
+                "reason": ada_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(ada_result.run.to_dict())
+            all_symbols.extend(ada_result.symbols)
+            all_edges.extend(ada_result.edges)
 
     # Run cross-language linkers
 
