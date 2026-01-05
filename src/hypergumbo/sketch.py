@@ -2930,6 +2930,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Fish analysis failed or tree-sitter not available
 
+    if "hlsl" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.hlsl import analyze_hlsl  # pragma: no cover
+            result = analyze_hlsl(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # HLSL analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover
