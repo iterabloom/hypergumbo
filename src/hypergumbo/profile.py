@@ -89,6 +89,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "perl": ["*.pl", "*.pm", "*.t"],
     "proto": ["*.proto"],
     "thrift": ["*.thrift"],
+    "capnp": ["*.capnp"],
 }
 
 # Framework detection patterns

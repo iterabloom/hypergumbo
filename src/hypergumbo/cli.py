@@ -94,6 +94,7 @@ from .analyze.fsharp import analyze_fsharp
 from .analyze.perl import analyze_perl
 from .analyze.proto import analyze_proto
 from .analyze.thrift import analyze_thrift
+from .analyze.capnp import analyze_capnp
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2209,6 +2210,19 @@ def run_behavior_map(
             analysis_runs.append(thrift_result.run.to_dict())
             all_symbols.extend(thrift_result.symbols)
             all_edges.extend(thrift_result.edges)
+
+    # Run Cap'n Proto analysis (optional, requires tree-sitter-language-pack)
+    capnp_result = analyze_capnp(repo_root)
+    if capnp_result.run is not None:
+        if capnp_result.skipped:  # pragma: no cover - capnp installed
+            limits.skipped_passes.append({
+                "pass": capnp_result.run.pass_id,
+                "reason": capnp_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(capnp_result.run.to_dict())
+            all_symbols.extend(capnp_result.symbols)
+            all_edges.extend(capnp_result.edges)
 
     # Run cross-language linkers
 
