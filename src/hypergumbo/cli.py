@@ -795,10 +795,10 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     catalog = get_default_catalog()
     cwd = Path.cwd()
 
-    # Show suggested passes based on current directory
+    # Show suggested passes based on current repo
     suggested = suggest_passes_for_directory(cwd)
     if suggested:
-        print("Suggested for current directory:")
+        print("Suggested for current repo:")
         for p in suggested:
             avail = is_available(p)
             status = "" if avail else " [not installed]"
