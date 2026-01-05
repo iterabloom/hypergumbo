@@ -1751,9 +1751,9 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 * Generate decision report: Go/No-Go for Week 1
 
 **Decision gates:**
-1. ✅ Tree-sitter packaging: Success on 3/4 platforms (Linux, macOS x2, Windows), OR Python-only fallback accepted
-2. ✅ Capsule Plan: Validation works, composition pipeline functional
-3. ✅ LLM: Generated plans valid >80% of time, cost <$0.10/repo, OR defer to template-only
+1. Tree-sitter packaging: Success on 3/4 platforms (Linux, macOS x2, Windows), OR Python-only fallback accepted
+2. Capsule Plan: Validation works, composition pipeline functional
+3. LLM: Generated plans valid >80% of time, cost <$0.10/repo, OR defer to template-only
 **If gates fail**: Adjust Week 1 scope (e.g., skip LLM, defer JS/TS to v0.1.1).
 ### Week 1: Foundation + IR layer + Composition system
 * Schema definition (behavior_map view with execution_id, run_signature, evidence_lang, evidence_spans, origin_run_signature)
@@ -1930,10 +1930,10 @@ Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval befor
 4. **Focus on iteration:** Evidence weak or absent → Improve current capabilities (more languages, better performance)
 
 **No-go triggers (any of these → don't start research):**
-* ❌ Spec A has fundamental adoption blockers (agents abandon after trying)
-* ❌ Competition ships full typed analysis first (market opportunity lost)
-* ❌ Team capacity unavailable (engineers exhausted, need break)
-* ❌ No demonstrated need for higher fidelity (AST analysis "good enough")
+* **Would HALT:** Spec A has fundamental adoption blockers (agents abandon after trying)
+* **Would HALT:** Competition ships full typed analysis first (market opportunity lost)
+* **Would HALT:** Team capacity unavailable (engineers exhausted, need break)
+* **Would HALT:** No demonstrated need for higher fidelity (AST analysis "good enough")
 
 **Decision makers:**
 * Founder (final decision)
@@ -2416,18 +2416,18 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 * 1 independent technical advisor (advisory)
 
 **Quantitative requirements (all must pass):**
-* ✅ Agent adoption: 5+ named projects using hypergumbo
+* Agent adoption: 5+ named projects using hypergumbo
   - OR: 3+ projects with detailed case studies (>500 words each)
-* ✅ Quality improvement: >20% improvement vs. no-hypergumbo baseline
+* Quality improvement: >20% improvement vs. no-hypergumbo baseline
   - Token reduction, OR edit correctness, OR hallucination reduction
   - A/B test with ≥50 tasks
-* ✅ Stability: <5% crash rate on 100+ repos
-* ✅ Market signal: 10+ requests for higher-fidelity analysis features
+* Stability: <5% crash rate on 100+ repos
+* Market signal: 10+ requests for higher-fidelity analysis features
 
 **Qualitative requirements (2 of 3 must pass):**
-* ✅ Agent developers: "hypergumbo is critical, we'd pay for upgrades"
-* ✅ Design partners: 3+ orgs commit to B0 co-development (written agreements)
-* ✅ Error database: 20+ cases where AST analysis failed (with reproduction steps)
+* Agent developers: "hypergumbo is critical, we'd pay for upgrades"
+* Design partners: 3+ orgs commit to B0 co-development (written agreements)
+* Error database: 20+ cases where AST analysis failed (with reproduction steps)
 
 **Decision outcomes:**
 1. **Go:** All quant + 2/3 qual + funding → Start B0 (8 months)
@@ -2436,10 +2436,10 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 4. **No-go:** Focus on Spec A iteration (more languages, better performance)
 
 **No-go triggers:**
-* ❌ Agents abandon Spec A after trying (fundamental flaw)
-* ❌ Competition ships typed analysis first
-* ❌ Team exhausted, needs break
-* ❌ No demonstrated need for higher fidelity
+* **Would HALT:** Agents abandon Spec A after trying (fundamental flaw)
+* **Would HALT:** Competition ships typed analysis first
+* **Would HALT:** Team exhausted, needs break
+* **Would HALT:** No demonstrated need for higher fidelity
 
 ---
 
@@ -2448,11 +2448,11 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 **Timing:** After B0 Month 8 (evaluation complete)
 
 **Prerequisites (all must pass):**
-* ✅ TypeScript prototype: >0.80 precision on benchmark
-* ✅ Context Router: >30% token reduction in agent A/B test
-* ✅ HTTP linker: <20% FP rate with annotations
-* ✅ Independent evaluation: Report confirms results
-* ✅ Design partners: 3+ still committed for B1 (15 months)
+* TypeScript prototype: >0.80 precision on benchmark
+* Context Router: >30% token reduction in agent A/B test
+* HTTP linker: <20% FP rate with annotations
+* Independent evaluation: Report confirms results
+* Design partners: 3+ still committed for B1 (15 months)
 
 **Decision outcomes:**
 1. **Go:** All gates passed → Start B1 (15 months, 3-5 engineers)
@@ -2465,11 +2465,11 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 
 | TypeScript | Context Router | HTTP Linker | Decision |
 |------------|---------------|-------------|----------|
-| ✅ >0.80 | ✅ >30% | ✅ <20% FP | **Full B1** (all features) |
-| ✅ >0.80 | ✅ >30% | ❌ >30% FP | **B1 minus HTTP** (defer linker) |
-| ✅ >0.80 | ❌ <30% | any | **B1 without smart context** (basic slicing only) |
-| ❌ <0.80 | any | any | **Investigate why** 2-month deep-dive, decide: Fix or pivot to Python-only |
-| ❌ <0.60 | ❌ <20% | ❌ >40% FP | **Stop B entirely** (fundamental approach flawed) |
+| >0.80 | >30% | <20% FP | **Full B1** (all features) |
+| >0.80 | >30% | **Would HALT:** >30% FP | **B1 minus HTTP** (defer linker) |
+| >0.80 | **Would HALT:** <30% | any | **B1 without smart context** (basic slicing only) |
+| **Would HALT:** <0.80 | any | any | **Investigate why** 2-month deep-dive, decide: Fix or pivot to Python-only |
+| **Would HALT:** <0.60 | **Would HALT:** <20% | **Would HALT:** >40% FP | **Stop B entirely** (fundamental approach flawed) |
 
 ---
 
@@ -2478,13 +2478,13 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 **Timing:** 6 months after B1 ships (B1 in production)
 
 **Prerequisites (all must pass):**
-* ✅ B1 stable: 6+ months in production, <2% crash rate
-* ✅ Agent demand: 5+ requests for "smarter context" features (logged)
-* ✅ Evidence B1 insufficient: Quantitative gap demonstrated
+* B1 stable: 6+ months in production, <2% crash rate
+* Agent demand: 5+ requests for "smarter context" features (logged)
+* Evidence B1 insufficient: Quantitative gap demonstrated
   - Example: Agents still have >X% hallucination rate, analysis shows better slicing would help
   - Example: 30+ edit tasks failed due to missing dataflow info
-* ✅ Design partners: 3+ orgs commit to B1.5 co-development (18 months)
-* ✅ B0 dataflow prototype: Showed >0.7 precision (look back at B0 results)
+* Design partners: 3+ orgs commit to B1.5 co-development (18 months)
+* B0 dataflow prototype: Showed >0.7 precision (look back at B0 results)
 
 **Decision outcomes:**
 1. **Go:** All gates passed → Start B1.5 (18 months)
@@ -2507,20 +2507,20 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 **Timing:** After B1 (or B1.5) ships + 3 months production use
 
 **Prerequisites (all must pass):**
-* ✅ **B0 reusability validation passed:** Analyzers reusable >70% of time (see B0 Month 5-6 test)
+* **B0 reusability validation passed:** Analyzers reusable >70% of time (see B0 Month 5-6 test)
   - **Critical:** If B0 showed analyzers too bespoke, B2 full registry is not justified
-* ✅ Community activity: 100+ repos analyzed, 20+ custom capsules created
-* ✅ Sharing behavior: 5+ users informally sharing capsules (GitHub gists, etc.)
-* ✅ Demand: 10+ requests for "find analyzer for X" (logged)
+* Community activity: 100+ repos analyzed, 20+ custom capsules created
+* Sharing behavior: 5+ users informally sharing capsules (GitHub gists, etc.)
+* Demand: 10+ requests for "find analyzer for X" (logged)
 
 **Decision outcomes:**
 
 | B0 Reusability | Community Activity | Decision |
 |----------------|-------------------|----------|
-| >70% success | ✅ Active (100+ repos) | **Full B2 registry** (10-12 months) |
-| 50-70% | ✅ Active | **Lightweight GitHub repo** (1 month) |
+| >70% success | Active (100+ repos) | **Full B2 registry** (10-12 months) |
+| 50-70% | Active | **Lightweight GitHub repo** (1 month) |
 | <50% | any | **No registry** (analyzers too bespoke, not worth infrastructure) |
-| any | ❌ Low activity | **Wait 6 months** (registry premature, no demand yet) |
+| any | **Would HALT:** Low activity | **Wait 6 months** (registry premature, no demand yet) |
 
 **Lightweight alternative (if <70% reusability):**
 * GitHub repo: `hypergumbo-community/capsule-examples`
@@ -2566,23 +2566,23 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 * IDE integration (LSP server) or autonomous code editing.
 
 ### Don't build in B1
-* ❌ **Full incremental daemon** (use simple file-change → re-analyze)
-* ❌ **Formal verification** or proof generation
-* ❌ **Code generation** or autonomous editing
-* ❌ **Real-time collaboration** features
-* ❌ **IDE integration** (LSP server)
-* ❌ **Support for >5 languages** (focus on TypeScript, Python, Go, Rust, Java)
-* ❌ **Natural language query parsing** (B1.5 only)
-* ❌ **Dataflow slicing** (B1.5 only, with strict timeouts)
-* ❌ **Impact prediction** ("what could break" inference — B1.5 only)
-* ❌ **SQL/Protobuf/GraphQL linkers** (defer to B1.5 or later)
+* **Would HALT:** Full incremental daemon** (use simple file-change → re-analyze)
+* **Would HALT:** Formal verification** or proof generation
+* **Would HALT:** Code generation** or autonomous editing
+* **Would HALT:** Real-time collaboration** features
+* **Would HALT:** IDE integration** (LSP server)
+* **Would HALT:** Support for >5 languages** (focus on TypeScript, Python, Go, Rust, Java)
+* **Would HALT:** Natural language query parsing** (B1.5 only)
+* **Would HALT:** Dataflow slicing** (B1.5 only, with strict timeouts)
+* **Would HALT:** Impact prediction** ("what could break" inference — B1.5 only)
+* **Would HALT:** SQL/Protobuf/GraphQL linkers** (defer to B1.5 or later)
 ### Don't build in B2
-* ❌ **Social features** (comments, likes, follows)
-* ❌ **Marketplace monetization** (paid capsules)
-* ❌ **Hosted analysis** (SaaS offering)
-* ❌ **Training custom models** per-repo
-* ❌ **Complex recommendation engines** (simple similarity search only)
-* ❌ **Real-time capsule updates** (periodic refresh is sufficient)
+* **Would HALT:** Social features** (comments, likes, follows)
+* **Would HALT:** Marketplace monetization** (paid capsules)
+* **Would HALT:** Hosted analysis** (SaaS offering)
+* **Would HALT:** Training custom models** per-repo
+* **Would HALT:** Complex recommendation engines** (simple similarity search only)
+* **Would HALT:** Real-time capsule updates** (periodic refresh is sufficient)
 
 ## 3) System architecture
 ### 3.1 Core: Multi-pass analysis engine
@@ -2697,7 +2697,7 @@ def get_user_by_email(email: str):
 
 ### 3.2 Agent Context Router
 
-**⚠️ COMPLEXITY WARNING: This subsection describes research-hard capabilities**
+**Caution:** COMPLEXITY WARNING - This subsection describes research-hard capabilities
 
 Full Context Router as specified here is delivered in **B1.5** (separate from B1).
 B0 validates feasibility, B1 delivers basic slicing only, B1.5 delivers full capability.
@@ -2764,7 +2764,7 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
 
 ### 3.3 Social layer: Registry + meta-analysis
 
-**⚠️ VALUE VALIDATION REQUIRED**
+**Caution:** VALUE VALIDATION REQUIRED
 
 Registry (B2) assumes:
 1. Analyzers cluster into generic profiles (work across similar repos)
@@ -2945,7 +2945,7 @@ hypergumbo registry login
 * Language percentages (exact, not binned)
 * Framework signals (detected libraries)
 * Aggregate counts (nodes, edges, endpoints)
-* ❌ NOT uploaded: Source code, symbol names, directory structure, file paths
+* **Would HALT:** NOT uploaded: Source code, symbol names, directory structure, file paths
 
 **Server-side:**
 * Compute similarity to all public analyzers
@@ -3051,16 +3051,16 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 **Goal:** Validate that the hard parts of B are actually feasible before committing to B1.
 
 #### Prerequisites
-* ✅ Spec A validated: 
+* Spec A validated: 
   - 5+ agent adoptions confirmed (named projects, not anonymous)
   - Quantitative improvement: >20% reduction in "code not found" errors (agent logs)
   - 100+ repos analyzed without crashes
-* ✅ Funding secured: Budget for 8 months (4-6 engineers)
-* ✅ Benchmark repos collected:
+* Funding secured: Budget for 8 months (4-6 engineers)
+* Benchmark repos collected:
   - 20+ TypeScript repos with ground-truth call graphs
   - 10+ full-stack repos (Python backend + JS frontend)
   - 10+ Electron apps
-* ✅ Design partner pipeline: 5+ orgs in discussions, 3+ committed in writing
+* Design partner pipeline: 5+ orgs in discussions, 3+ committed in writing
 
 **Validation checkpoint**: If Spec A adoption <5 agents OR no quantitative improvement shown, investigate why before starting B0.
 
@@ -3116,10 +3116,10 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 * Task: Execute protocol, verify results, write report
 
 **Deliverables before B0 Month 1:**
-* ✅ 40 repos with ground truth (TypeScript, full-stack, Electron)
-* ✅ Evaluation protocol pre-registered publicly
-* ✅ Independent evaluators contracted
-* ✅ Baseline results (Spec A on benchmark repos)
+* 40 repos with ground truth (TypeScript, full-stack, Electron)
+* Evaluation protocol pre-registered publicly
+* Independent evaluators contracted
+* Baseline results (Spec A on benchmark repos)
 
 **Total effort:** 360-520 person-hours  
 **Critical path:** 2-3 months
@@ -3149,11 +3149,11 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 * Timeout behavior (kill subprocess after 30s)
 
 **Success criteria for B1:**
-* ✅ Precision >0.80 on happy path (well-typed repos)
-* ✅ Graceful degradation: Falls back to AST when tsserver fails
-* ✅ Performance: <2 minutes for 500-file repo (90th percentile)
-* ✅ Memory: <4GB for large repos
-* ⚠️ If any fail: Re-scope B1 (maybe TypeScript-only, skip Python types)
+* Precision >0.80 on happy path (well-typed repos)
+* Graceful degradation: Falls back to AST when tsserver fails
+* Performance: <2 minutes for 500-file repo (90th percentile)
+* Memory: <4GB for large repos
+* **Caution:** If any fail: Re-scope B1 (maybe TypeScript-only, skip Python types)
 
 **If prototype fails completely:**
 * Fallback: Use tree-sitter + type annotation extraction (no full type checking)
@@ -3204,9 +3204,9 @@ profile = {
 * Generate similarity matrix + cluster dendrogram
 
 **Success criteria (quantitative):**
-* ✅ Within-cluster similarity >0.7 for 50%+ of pairs
-* ✅ Between-cluster similarity <0.4 (distinct clusters exist)
-* ✅ Cluster membership predictable from profile (>80% accuracy with k-means)
+* Within-cluster similarity >0.7 for 50%+ of pairs
+* Between-cluster similarity <0.4 (distinct clusters exist)
+* Cluster membership predictable from profile (>80% accuracy with k-means)
 
 **Registry reusability test (Weeks 3-4)**
 
@@ -3236,9 +3236,9 @@ profile = {
 
 | Success Rate | Edits Needed | Feature Quality | Decision |
 |--------------|--------------|-----------------|----------|
-| >70% | <5 lines | >0.7 precision | ✅ **Build full registry (B2)** – Analyzers are reusable |
-| 50-70% | 5-15 lines | 0.5-0.7 | ⚠️ **Borderline** – Build lightweight GitHub repo, not full infra |
-| <50% | >15 lines | <0.5 | ❌ **Skip registry** – Analyzers too bespoke, manual authoring only |
+| >70% | <5 lines | >0.7 precision | **Build full registry (B2)** – Analyzers are reusable |
+| 50-70% | 5-15 lines | 0.5-0.7 | **Caution:** **Borderline** – Build lightweight GitHub repo, not full infra |
+| <50% | >15 lines | <0.5 | **Would HALT:** Skip registry** – Analyzers too bespoke, manual authoring only |
 
 **Lightweight alternative (if borderline or fail):**
 * Create GitHub repo: `hypergumbo-community/capsule-examples`
@@ -3295,12 +3295,12 @@ profile = {
 **Report template:** Results, analysis, decision recommendation (go/no-go for B1).
 
 #### Success Criteria (gates for B1)
-* ✅ TypeScript typed edges: >0.80 precision vs Spec A baseline
-* ✅ Context Router: >30% token reduction validated by 3+ agents (A/B tested)
-* ✅ HTTP linker: <20% false positive rate (annotation-assisted)
-* ✅ Registry validation: Similarity >0.7 for 50%+ of repo pairs AND reusability >70%
-* ✅ All prototypes completed within 8 months (±2 weeks acceptable)
-* ✅ Team retention: 2/3 engineers commit to B1 (continuity)
+* TypeScript typed edges: >0.80 precision vs Spec A baseline
+* Context Router: >30% token reduction validated by 3+ agents (A/B tested)
+* HTTP linker: <20% false positive rate (annotation-assisted)
+* Registry validation: Similarity >0.7 for 50%+ of repo pairs AND reusability >70%
+* All prototypes completed within 8 months (±2 weeks acceptable)
+* Team retention: 2/3 engineers commit to B1 (continuity)
 
 **If any criterion fails:**
 * TypeScript precision <0.80 → Investigate why; may need different approach (tsserver integration harder than expected?)
@@ -3317,10 +3317,10 @@ profile = {
 
 ### **B1: Typed IR + Basic Linkers (15 months, 3-5 engineers)**
 **Prerequisites:**
-* ✅ B0 completed successfully (all gates passed)
-* ✅ Design partners committed for full B1 duration (3+ orgs, written agreements)
-* ✅ Engineering team hired/allocated (3-5 engineers available for 15 months)
-* ✅ Funding secured for 15-month project
+* B0 completed successfully (all gates passed)
+* Design partners committed for full B1 duration (3+ orgs, written agreements)
+* Engineering team hired/allocated (3-5 engineers available for 15 months)
+* Funding secured for 15-month project
 
 #### Phase 1: Typed IR Foundation (months 1-5)
 * Internal IR schema v2 (typed symbols, resolved calls)
@@ -3371,21 +3371,21 @@ profile = {
   - Annotation-provided: 0.95
 
 **Out of scope (defer to B1.5 or later):**
-* ❌ **Constant propagation:**
+* **Would HALT:** Constant propagation:**
   ```python
   BASE_URL = "/api/v1"
   @app.get(f"{BASE_URL}/users")  # Would need dataflow to resolve BASE_URL
   ```
-* ❌ **Dynamic route construction:**
+* **Would HALT:** Dynamic route construction:**
   ```python
   for entity in ["users", "posts"]:
       app.route(f"/{entity}", ...)(handler)  # Loop-generated routes
   ```
-* ❌ **Middleware/proxy rewriting:**
+* **Would HALT:** Middleware/proxy rewriting:**
   ```python
   app.use("/api", proxy("http://backend:5000"))  # Path transformations
   ```
-* ❌ **GraphQL, tRPC, gRPC:**
+* **Would HALT:** GraphQL, tRPC, gRPC:**
   - Different paradigm (schema-based, not route-based)
   - Defer to dedicated linkers in B1.5 or B2
 
@@ -3397,10 +3397,10 @@ Measure on 10 full-stack repos (from benchmark suite):
 - **False positive rate:** FP / (FP + TN)
 
 **Thresholds:**
-* ✅ Precision >0.80 with annotations: Continue
-* ✅ Precision >0.60 without annotations (inference): Continue
-* ⚠️ FP rate 20-30%: Document limitations, ship anyway
-* ❌ FP rate >30%: **Trigger fallback**
+* Precision >0.80 with annotations: Continue
+* Precision >0.60 without annotations (inference): Continue
+* **Caution:** FP rate 20-30%: Document limitations, ship anyway
+* **Would HALT:** FP rate >30%: **Trigger fallback**
 
 **Fallback options (if Month 6 fails):**
 
@@ -3555,11 +3555,11 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 * Agent SDK (Python + JavaScript clients)
 
 **NOT in B1 (deferred to B1.5)**:
-* ❌ Natural language query parsing ("show me the auth flow")
-* ❌ Dataflow slicing (taint tracking, reaching definitions)
-* ❌ Impact zone prediction ("what could break if I change this")
-* ❌ Invariant inference from tests
-* ❌ Validator pass (re-run analysis after edits)
+* **Would HALT:** Natural language query parsing ("show me the auth flow")
+* **Would HALT:** Dataflow slicing (taint tracking, reaching definitions)
+* **Would HALT:** Impact zone prediction ("what could break if I change this")
+* **Would HALT:** Invariant inference from tests
+* **Would HALT:** Validator pass (re-run analysis after edits)
 
 **Why defer**: These features require research (months 5-9 in B1.5 estimate); including in B1 would extend timeline to 18+ months.
 
@@ -3580,11 +3580,11 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 **Milestone gate:** Zero regressions vs Spec A on compatibility suite
 
 #### Success Criteria (B1)
-* ✅ >0.85 precision on typed call graphs (TypeScript + Python)
-* ✅ HTTP + IPC linkers: >0.80 precision on design partner repos
-* ✅ Basic context assembly: >30% token reduction validated by agents (A/B tested)
-* ✅ 100+ repos analyzed with B1 (upgrades from Spec A)
-* ✅ Zero breaking changes to Spec A compatibility
+* >0.85 precision on typed call graphs (TypeScript + Python)
+* HTTP + IPC linkers: >0.80 precision on design partner repos
+* Basic context assembly: >30% token reduction validated by agents (A/B tested)
+* 100+ repos analyzed with B1 (upgrades from Spec A)
+* Zero breaking changes to Spec A compatibility
 
 **Total B1 timeline: 15 months**
 
@@ -3592,14 +3592,14 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 
 ### **Decision Point: Do We Need B1.5?**
 **Prerequisites for starting B1.5**:
-* ✅ B1 shipped and stable (6+ months in production)
-* ✅ Evidence B1's basic slicing is insufficient:
+* B1 shipped and stable (6+ months in production)
+* Evidence B1's basic slicing is insufficient:
   - Agent developers request "smarter context" (specific feature requests logged)
   - Quantitative gap: Agents with B1 still have >X% hallucination rate, and analysis shows better slicing would help
   - Design partners willing to co-develop B1.5 features (3+ committed)
-* ✅ Funding secured for 18-month project
-* ✅ Engineering capacity: 3-4 engineers available
-* ✅ B0 dataflow prototype showed feasibility (>0.7 precision on known taint flows)
+* Funding secured for 18-month project
+* Engineering capacity: 3-4 engineers available
+* B0 dataflow prototype showed feasibility (>0.7 precision on known taint flows)
 
 **Alternative if B1.5 not needed**:
 * Agents report B1 slicing is "good enough"
@@ -3614,13 +3614,13 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 **Decision meeting**: After B1 is 6 months in production, review evidence and decide.
 
 ### **B1.5: Smart Context Router (18 months, 3-4 engineers)**
-**⚠️ COMPLEXITY WARNING**: This is research-heavy. Even with B0 prototype validation, dataflow slicing in production (handling large codebases, timeouts, edge cases) commonly takes 12+ months. Budget 18 months to avoid schedule pressure.
+**Caution:** COMPLEXITY WARNING - This is research-heavy. Even with B0 prototype validation, dataflow slicing in production (handling large codebases, timeouts, edge cases) commonly takes 12+ months. Budget 18 months to avoid schedule pressure.
 
 **Prerequisites:**
-* ✅ B1 shipped and stable (6+ months in production)
-* ✅ Evidence that basic slicing is insufficient (agents request smarter context)
-* ✅ Funding secured for research-heavy project
-* ✅ B0 dataflow prototype showed >0.7 precision
+* B1 shipped and stable (6+ months in production)
+* Evidence that basic slicing is insufficient (agents request smarter context)
+* Funding secured for research-heavy project
+* B0 dataflow prototype showed >0.7 precision
 #### Phase 1: Query Intelligence (months 1-4)
 * Natural language query → graph query translation
 * Embedding-based similarity search (symbol/file lookup)
@@ -3628,7 +3628,7 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 * **Tests:** Query parsing accuracy on 100 natural language examples
 
 #### Phase 2: Dataflow Slicing (months 5-9)
-**⚠️ HIGHEST COMPLEXITY COMPONENT**
+**Caution:** HIGHEST COMPLEXITY COMPONENT
 * Reaching definitions analysis (with timeouts)
 * Taint tracking (sources → sinks)
 * Partial results when timeout hit
@@ -3636,31 +3636,31 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 * **Tests:** Precision on known taint flows, timeout behavior
 
 #### Month 6 Checkpoint: Dataflow Feasibility Gate
-**⚠️ CRITICAL DECISION POINT:** Dataflow analysis is NP-hard. Even heuristics may not scale.
+**Caution:** CRITICAL DECISION POINT - Dataflow analysis is NP-hard. Even heuristics may not scale.
 **Measure on 20 mid-sized repos (500-2000 files):**
 **1. Timeout rate:**
 * Query: "Find all data flows from user input to database query" (typical taint tracking)
 * Timeout threshold: 30 seconds per query
 * Measure: % of queries that timeout
 * **Thresholds:**
-  - <10%: ✅ On track, continue development
-  - 10-30%: ⚠️ Warning zone, optimize algorithm aggressively
+  - <10%: On track, continue development
+  - 10-30%: **Caution:** Warning zone, optimize algorithm aggressively
   - 30-50%: 🔶 Concerning, evaluate if fixable in 2 months
   - >50%: 🚨 **Trigger fallback evaluation**
 **2. False positive rate (among non-timed-out queries):**
 * Compare dataflow results to ground truth (hand-verified taint flows)
 * False positive: Dataflow claims A→B link but manual analysis shows no path
 * **Thresholds:**
-  - <15%: ✅ Excellent, continue
-  - 15-30%: ✅ Acceptable, document limitations
-  - 30-40%: ⚠️ Marginal, investigate if improvements possible
+  - <15%: Excellent, continue
+  - 15-30%: Acceptable, document limitations
+  - 30-40%: **Caution:** Marginal, investigate if improvements possible
   - >40%: 🚨 **Trigger fallback evaluation**
 **3. Memory usage:**
 * Measure peak memory during dataflow queries
 * **Thresholds:**
-  - <2GB median: ✅ Good
-  - 2-8GB median: ✅ Acceptable with warnings ("dataflow queries require 8GB RAM")
-  - 8-16GB median: ⚠️ High, limits usability (many dev machines <16GB)
+  - <2GB median: Good
+  - 2-8GB median: Acceptable with warnings ("dataflow queries require 8GB RAM")
+  - 8-16GB median: **Caution:** High, limits usability (many dev machines <16GB)
   - >16GB median: 🚨 **Trigger fallback evaluation**
 
 **Fallback trigger conditions (Month 6):**
@@ -3684,12 +3684,12 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 
 | Scenario | Timeout | FP Rate | Memory | Decision |
 |----------|---------|---------|--------|----------|
-| Best case | <10% | <15% | <2GB | ✅ Continue to Month 9 |
-| Acceptable | 10-30% | 15-30% | 2-8GB | ✅ Continue, optimize |
+| Best case | <10% | <15% | <2GB | Continue to Month 9 |
+| Acceptable | 10-30% | 15-30% | 2-8GB | Continue, optimize |
 | Fixable | 30-50% | 30-40% | 8-16GB | 🔶 2-month push, re-evaluate Month 8 |
-| Fallback A | >50% | any | any | ❌ **Syntax-only slicing** |
-| Fallback B | any | >40% | any | ❌ **Annotation-required** |
-| Fallback C | any | any | >16GB | ❌ **LLM-assisted guessing** |
+| Fallback A | >50% | any | any | **Would HALT:** Syntax-only slicing** |
+| Fallback B | any | >40% | any | **Would HALT:** Annotation-required** |
+| Fallback C | any | any | >16GB | **Would HALT:** LLM-assisted guessing** |
 
 ### Fallback A: Syntax-Only Slicing (if timeouts unacceptable)
 
@@ -3830,11 +3830,11 @@ If all fallbacks unacceptable:
 * Agent SDK with full capabilities
 
 #### Success Criteria (B1.5)
-* ✅ Query parsing: >0.80 accuracy on natural language → graph queries
-* ✅ Dataflow slicing: >0.70 precision on taint tracking (where not timed out)
-* ✅ Impact prediction: >0.60 recall on breaking change detection
-* ✅ Token reduction: >50% vs naïve approach (maintained from B1)
-* ✅ Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing
+* Query parsing: >0.80 accuracy on natural language → graph queries
+* Dataflow slicing: >0.70 precision on taint tracking (where not timed out)
+* Impact prediction: >0.60 recall on breaking change detection
+* Token reduction: >50% vs naïve approach (maintained from B1)
+* Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing
   - Measured: Tasks requiring dataflow (e.g., "trace this tainted input"), token efficiency, correctness
   - Target: >50% token reduction on dataflow-relevant tasks, >85% correctness
   - Sample size: 30 tasks where dataflow matters (pre-selected)
@@ -3845,18 +3845,18 @@ If all fallbacks unacceptable:
 ### **B2: Registry + Social Layer (10-12 months OR 1 month, 2-3 engineers OR 1)**
 
 **Prerequisites:**
-* ✅ B1 shipped and stable (6+ months in production)
-* ✅ B1.5 shipped OR validation shows basic slicing is sufficient
-* ✅ **Registry validation completed in B0** showing:
+* B1 shipped and stable (6+ months in production)
+* B1.5 shipped OR validation shows basic slicing is sufficient
+* **Registry validation completed in B0** showing:
   - Repo clustering: Similarity >0.7 for 50%+ of pairs in same category
   - Analyzer reusability: >70% success rate when applying capsules across similar repos
-* ✅ Demonstrated demand: 10+ requests for "find analyzer for X" logged
-* ✅ Community adoption: 100+ repos analyzed, 20+ custom capsule plans created
-* ✅ Sharing activity: 5+ users informally sharing capsules via GitHub gists/repos
+* Demonstrated demand: 10+ requests for "find analyzer for X" logged
+* Community adoption: 100+ repos analyzed, 20+ custom capsule plans created
+* Sharing activity: 5+ users informally sharing capsules via GitHub gists/repos
 
 **If registry validation from B0 failed** (repos don't cluster OR reusability <50%):
-* ❌ Don't build full registry (9-12 months wasted)
-* ✅ Instead: Lightweight alternative (see below)
+* **Would HALT:** Don't build full registry (9-12 months wasted)
+* Instead: Lightweight alternative (see below)
 
 **Lightweight alternative** (1 month effort):
 * GitHub repo: `hypergumbo-examples`
@@ -3904,25 +3904,25 @@ If all fallbacks unacceptable:
 **Milestone gate:** 3+ self-hosted deployments, federation working between instances
 
 #### Success Criteria (B2)
-* ✅ 500+ capsules in registry
-* ✅ Similarity search: >0.80 precision on manual eval (recommendations are relevant)
-* ✅ 100% of public capsules signed and benchmarked
-* ✅ Zero security incidents (malware, data leaks)
-* ✅ Capsule quality (automated):
+* 500+ capsules in registry
+* Similarity search: >0.80 precision on manual eval (recommendations are relevant)
+* 100% of public capsules signed and benchmarked
+* Zero security incidents (malware, data leaks)
+* Capsule quality (automated):
   - Benchmark pass rate: >90% of capsules pass standard benchmark suite
   - Error rate: <5% of downloads result in crashes/failures
   - Security: 0 capsules with known CVEs or malware flags
-* ✅ User satisfaction (manual eval):
+* User satisfaction (manual eval):
   - Survey: "Did downloaded capsule work for your repo?" >70% yes
   - Survey: "Was it better than writing from scratch?" >60% yes
   - Repeat usage: >40% of users who download once, download again within 30 days
-* ✅ 1000+ weekly downloads
-* ✅ 50+ contributors (capsule authors)
+* 1000+ weekly downloads
+* 50+ contributors (capsule authors)
 
 **OR (if lightweight GitHub alternative):**
-* ✅ 50+ example capsules in repo
-* ✅ 100+ stars, 20+ contributors
-* ✅ Active community discussions (10+ issues/month)
+* 50+ example capsules in repo
+* 100+ stars, 20+ contributors
+* Active community discussions (10+ issues/month)
 
 **Total B2 timeline: 10-12 months** (OR 1 month for lightweight GitHub alternative)
 
@@ -4005,77 +4005,77 @@ If all fallbacks unacceptable:
 ### B0 (Research Phase)
 
 **Technical:**
-* ✅ TypeScript typed edges: precision >0.80 vs AST baseline
-* ✅ Context Router prototype: >30% token reduction in agent tests (A/B tested)
-* ✅ HTTP linker prototype: <20% false positive rate
-* ✅ Registry validation: Repo similarity >0.7 for 50%+ of pairs AND reusability >70%
-* ✅ All 3 prototypes completed on schedule (8 months including prep)
+* TypeScript typed edges: precision >0.80 vs AST baseline
+* Context Router prototype: >30% token reduction in agent tests (A/B tested)
+* HTTP linker prototype: <20% false positive rate
+* Registry validation: Repo similarity >0.7 for 50%+ of pairs AND reusability >70%
+* All 3 prototypes completed on schedule (8 months including prep)
 
 **Decision:**
-* ✅ Go/No-Go report approved by stakeholders
-* ✅ Realistic B1 timeline and budget agreed upon
+* Go/No-Go report approved by stakeholders
+* Realistic B1 timeline and budget agreed upon
 
 ### B1 (Typed IR + Basic Linkers)
 
 **Technical:**
-* ✅ >0.85 precision on typed call graphs (TypeScript, Python)
-* ✅ Mixed-fidelity graphs merge without conflicts
-* ✅ HTTP linker: >0.80 precision on design partner repos
-* ✅ IPC linker: >0.80 precision on Electron apps
-* ✅ Basic context assembly: <8K tokens for simple edits
+* >0.85 precision on typed call graphs (TypeScript, Python)
+* Mixed-fidelity graphs merge without conflicts
+* HTTP linker: >0.80 precision on design partner repos
+* IPC linker: >0.80 precision on Electron apps
+* Basic context assembly: <8K tokens for simple edits
 
 **Adoption:**
-* ✅ 3+ agents integrated with context assembly API
-* ✅ 100+ repos analyzed with B1 (upgrades from Spec A)
-* ✅ 5+ design partner case studies published
-* ✅ Agent A/B test: Same tasks with B1 slicing vs. naïve approach (full files)
+* 3+ agents integrated with context assembly API
+* 100+ repos analyzed with B1 (upgrades from Spec A)
+* 5+ design partner case studies published
+* Agent A/B test: Same tasks with B1 slicing vs. naïve approach (full files)
   - Measured: Token count, edit correctness (human eval), hallucination rate
   - Target: >30% token reduction, >80% correctness (maintained), <20% hallucination rate (vs. >40% baseline)
   - Sample size: 50 tasks across 3 agents
   - Pre-register protocol at https://hypergumbo.iterabloom.com/eval/b1
 
 **Quality:**
-* ✅ Zero breaking changes to Spec A compatibility
-* ✅ <10% performance regression vs Spec A on small repos
+* Zero breaking changes to Spec A compatibility
+* <10% performance regression vs Spec A on small repos
 
 ### B1.5 (Smart Context Router)
 
 **Technical:**
-* ✅ Natural language query parsing: >0.80 accuracy
-* ✅ Dataflow slicing: >0.70 precision (where not timed out)
-* ✅ Impact prediction: >0.60 recall on breaking changes
-* ✅ Token reduction: >50% vs naïve approach
+* Natural language query parsing: >0.80 accuracy
+* Dataflow slicing: >0.70 precision (where not timed out)
+* Impact prediction: >0.60 recall on breaking changes
+* Token reduction: >50% vs naïve approach
 
 **Adoption:**
-* ✅ 5+ agents using advanced context features
-* ✅ Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing (pre-registered metrics)
+* 5+ agents using advanced context features
+* Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing (pre-registered metrics)
 
 **Quality:**
-* ✅ Explicit partial-results flags work correctly (timeout behavior)
-* ✅ <5 minutes for complex queries (90th percentile)
+* Explicit partial-results flags work correctly (timeout behavior)
+* <5 minutes for complex queries (90th percentile)
 
 ### B2 (Registry)
 
 **Technical:**
-* ✅ 500+ capsules in registry
-* ✅ Similarity search: >0.80 precision on manual eval
-* ✅ 100% of public capsules signed and benchmarked
-* ✅ Zero security incidents (malware, data leaks)
+* 500+ capsules in registry
+* Similarity search: >0.80 precision on manual eval
+* 100% of public capsules signed and benchmarked
+* Zero security incidents (malware, data leaks)
 
 **Adoption:**
-* ✅ 1000+ weekly downloads from registry
-* ✅ 50+ contributors (capsule authors)
-* ✅ 3+ self-hosted registry deployments
+* 1000+ weekly downloads from registry
+* 50+ contributors (capsule authors)
+* 3+ self-hosted registry deployments
 
 **Quality:**
-* ✅ Capsule quality metrics (automated: >90% pass benchmarks, <5% error rate, 0 CVEs)
-* ✅ User satisfaction surveys (>70% "it worked", >60% "better than scratch")
-* ✅ 95% uptime SLA for hosted registry
+* Capsule quality metrics (automated: >90% pass benchmarks, <5% error rate, 0 CVEs)
+* User satisfaction surveys (>70% "it worked", >60% "better than scratch")
+* 95% uptime SLA for hosted registry
 
 **OR (if lightweight GitHub alternative):**
-* ✅ 50+ example capsules in repo
-* ✅ 100+ stars, 20+ contributors
-* ✅ Active community discussions (10+ issues/month)
+* 50+ example capsules in repo
+* 100+ stars, 20+ contributors
+* Active community discussions (10+ issues/month)
 
 ## Appendix A: Comparison to Spec A
 
