@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 0c9c06ba23b1
+  commit: f92de17371e5
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -13,9 +13,9 @@ GENERATION METADATA (for drift detection):
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **98** Python modules (65 analyzers, 13 linkers)
-- **1366** symbols (functions, classes, methods)
-- **5461** edges (calls, imports, instantiates)
+- **101** Python modules (68 analyzers, 13 linkers)
+- **1381** symbols (functions, classes, methods)
+- **5419** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 101 files · ~42,916 LOC
+Python (100%) · 104 files · ~42,918 LOC
 
 ## Structure
 
@@ -31,7 +31,7 @@ Python (100%) · 101 files · ~42,916 LOC
 
 ## Domain Vocabulary
 
-*Key terms: line, symbols, symbol, source, sitter, files, edges, cover, pragma, find, edge, extract*
+*Key terms: line, symbol, symbols, sitter, source, files, edges, find, cover, pragma, edge, extract*
 
 ## Source Files
 
@@ -63,9 +63,9 @@ Python (100%) · 101 files · ~42,916 LOC
 - `hypergumbo/analyze/sql.py`
 - `hypergumbo/analyze/capnp.py`
 - `hypergumbo/analyze/groovy.py`
+- `hypergumbo/analyze/registry.py`
 - `hypergumbo/analyze/xml_config.py`
-- `hypergumbo/analyze/css.py`
-- ... and 71 more files
+- ... and 74 more files
 
 ## Entry Points
 
@@ -79,6 +79,9 @@ Python (100%) · 101 files · ~42,916 LOC
 - `Span` (class) ★ — Source code location with line and column info.
 - `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
 - `Edge` (class) — A relationship between two symbols (e.g., function calls).
+
+### `hypergumbo/catalog.py`
+- `Pass` (class) — An analysis pass that can be applied to source code.
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
@@ -94,12 +97,15 @@ Python (100%) · 101 files · ~42,916 LOC
 ### `hypergumbo/analyze/rust.py`
 - `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
 
-### `hypergumbo/catalog.py`
-- `Pass` (class) — An analysis pass that can be applied to source code.
+### `hypergumbo/analyze/base.py`
+- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text content for a tree-sitter node.
+- `find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find a child node by field name.
 
-*… and 1257 more symbols across 77 other files*
+(... and 1272 more symbols across 80 other files)
 
-*Utility functions (shown once): `_node_text` x11, `_find_child_by_type` x7, `_find_child_by_field` x2*
+The following symbols, for brevity shown only once above, would have appeared multiple times:
+- `_node_text` - we omitted 9 appearances of `_node_text`
+- `_find_child_by_type` - we omitted 6 appearances
 
 ## All Files
 
@@ -108,6 +114,8 @@ Python (100%) · 101 files · ~42,916 LOC
 - `hypergumbo/analyze/__init__.py`
 - `hypergumbo/analyze/ada.py`
 - `hypergumbo/analyze/agda.py`
+- `hypergumbo/analyze/all_analyzers.py`
+- `hypergumbo/analyze/base.py`
 - `hypergumbo/analyze/bash.py`
 - `hypergumbo/analyze/c.py`
 - `hypergumbo/analyze/capnp.py`
@@ -155,6 +163,7 @@ Python (100%) · 101 files · ~42,916 LOC
 - `hypergumbo/analyze/proto.py`
 - `hypergumbo/analyze/py.py`
 - `hypergumbo/analyze/r_lang.py`
+- `hypergumbo/analyze/registry.py`
 - `hypergumbo/analyze/ruby.py`
 - `hypergumbo/analyze/rust.py`
 - `hypergumbo/analyze/scala.py`
@@ -163,18 +172,7 @@ Python (100%) · 101 files · ~42,916 LOC
 - `hypergumbo/analyze/starlark.py`
 - `hypergumbo/analyze/swift.py`
 - `hypergumbo/analyze/thrift.py`
-- `hypergumbo/analyze/toml_config.py`
-- `hypergumbo/analyze/verilog.py`
-- `hypergumbo/analyze/vhdl.py`
-- `hypergumbo/analyze/wgsl.py`
-- `hypergumbo/analyze/wolfram.py`
-- `hypergumbo/analyze/xml_config.py`
-- `hypergumbo/analyze/yaml_ansible.py`
-- `hypergumbo/analyze/zig.py`
-- `hypergumbo/build_grammars.py`
-- `hypergumbo/catalog.py`
-- `hypergumbo/cli.py`
-- ... and 30 more files
+- ... and 41 more files
 ```
 
 ## Data Flow
@@ -189,7 +187,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1366 Symbols + 5461 Edges
+│  analyzers  │────▶│     IR      │  1381 Symbols + 5419 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -211,12 +209,12 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 328 | ir.py |
+| `Symbol` | class | 330 | ir.py |
 | `Span` | class | 321 | ir.py |
-| `find_files` | function | 144 | discovery.py |
-| `Edge` | class | 123 | ir.py |
-| `AnalysisRun` | class | 89 | ir.py |
-| `Pass` | class | 33 | catalog.py |
+| `find_files` | function | 146 | discovery.py |
+| `Edge` | class | 125 | ir.py |
+| `AnalysisRun` | class | 90 | ir.py |
+| `Pass` | class | 66 | catalog.py |
 | `_find_child_by_type` | function | 29 | julia.py |
 | `Entrypoint` | class | 29 | entrypoints.py |
 | `_node_text` | function | 27 | js_ts.py |
@@ -244,6 +242,8 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 - **`analyze.ada`**: Ada analysis pass using tree-sitter.
 - **`analyze.agda`**: Agda analysis pass using tree-sitter-agda.
+- **`analyze.all_analyzers`**: Consolidated analyzer registry for cli.py.
+- **`analyze.base`**: Base classes and utilities for language analyzers.
 - **`analyze.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`analyze.c`**: C analysis pass using tree-sitter-c.
 - **`analyze.capnp`**: Cap'n Proto analysis pass using tree-sitter.
@@ -291,6 +291,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.proto`**: Protocol Buffers (Proto) analysis pass using tree-sitter.
 - **`analyze.py`**: Python AST analysis pass.
 - **`analyze.r_lang`**: R language analysis pass using tree-sitter.
+- **`analyze.registry`**: Analyzer registry for dynamic dispatch.
 - **`analyze.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`analyze.rust`**: Rust analysis pass using tree-sitter-rust.
 - **`analyze.scala`**: Scala analysis pass using tree-sitter-scala.
