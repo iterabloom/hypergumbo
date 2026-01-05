@@ -98,6 +98,7 @@ from .analyze.capnp import analyze_capnp
 from .analyze.powershell import analyze_powershell
 from .analyze.gdscript import analyze_gdscript
 from .analyze.starlark import analyze_starlark
+from .analyze.fish import analyze_fish
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2265,6 +2266,19 @@ def run_behavior_map(
             analysis_runs.append(starlark_result.run.to_dict())
             all_symbols.extend(starlark_result.symbols)
             all_edges.extend(starlark_result.edges)
+
+    # Run Fish analysis (optional, requires tree-sitter-language-pack)
+    fish_result = analyze_fish(repo_root)
+    if fish_result.run is not None:
+        if fish_result.skipped:  # pragma: no cover - fish installed
+            limits.skipped_passes.append({
+                "pass": fish_result.run.pass_id,
+                "reason": fish_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(fish_result.run.to_dict())
+            all_symbols.extend(fish_result.symbols)
+            all_edges.extend(fish_result.edges)
 
     # Run cross-language linkers
 
