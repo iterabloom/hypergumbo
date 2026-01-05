@@ -5,20 +5,33 @@ Status: draft, living document.
 - Spec A: MVP behavior map + capsules (current focus of this repo).
 - Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
 
+## Implementation Status Legend
+
+| Icon | Status | Meaning |
+|------|--------|---------|
+| ⬜ | todo | Planned, not yet started |
+| 🟨 | in progress | Currently being worked on |
+| 🟧 | blocked | Blocked on external dependency or decision |
+| 🟩 | done | Implemented and tested |
+| 🟪 | needs design | Requires more design thinking before implementation |
+| ⬛ | won't do | Decided against / out of scope |
+
+*Use `grep "🟨"` to find in-progress items, etc.*
+
 # Spec A — hypergumbo MVP
 
 ## 0) One-sentence summary
 A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer capsule** from pre-approved building blocks (optionally LLM-assisted), and (3) runs that capsule to emit a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
 
 ## 1) Goals
-* **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
-* **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
-* **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
-* **Capsule Plan composition**: `hypergumbo init` generates a validated `capsule_plan.json` selecting from pre-approved passes/packs/rules in a `catalog.json`. LLM may assist with plan generation **(optional)**, but `hypergumbo run` stays deterministic and offline-by-default.
-* **Portable analyzer artifact**: `.hypergumbo/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
-* **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
-* **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
-* **Local-first execution**: analysis runs offline by default (no network, no API keys required).
+* 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
+* 🟩 **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
+* 🟩 **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
+* 🟩 **Capsule Plan composition**: `hypergumbo init` generates a validated `capsule_plan.json` selecting from pre-approved passes/packs/rules in a `catalog.json`. LLM may assist with plan generation **(optional)**, but `hypergumbo run` stays deterministic and offline-by-default.
+* 🟩 **Portable analyzer artifact**: `.hypergumbo/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
+* 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
+* 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
+* 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
 
 ## 2) Non-goals (for MVP)
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
@@ -42,12 +55,12 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 * `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` (future language packs)
 
 ### Commands
-**`hypergumbo [path] [-t tokens]`** (default mode)
+🟩 **`hypergumbo [path] [-t tokens]`** (default mode)
 Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
 * If no subcommand is given, assumes sketch mode.
 * `-t N` limits output to approximately N tokens.
 
-** `hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
+🟩 **`hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
 Creates `.hypergumbo/` containing:
 * `capsule.json` (manifest: format version, requirements, capabilities, security defaults)
 * `capsule_plan.json` (validated composition plan)
@@ -65,13 +78,13 @@ Sets security defaults: `trust: local_only`, `network: deny`, `sandbox: recommen
 * If `--assistant llm`, generate `capsule_plan.json` using an LLM **but always validate** against the local catalog; on failure, fall back to template plan.
 * If `--assistant template` (default), generate the plan without any LLM.
 
-**`hypergumbo run [path] [--out hypergumbo.results.json]`**
+🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Runs the analyzer capsule on the repo. If no capsule exists, auto-generates a default one with a warning.
 
-**`hypergumbo slice --entry <symbol|file|route> [--out slice.json]`**
+🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.json]`**
 Produces a reduced subgraph suitable for LLM context.
 
-**`hypergumbo catalog [--show-all]`**
+🟩 **`hypergumbo catalog [--show-all]`**
 Displays available passes, packs, and rule templates. Use `--show-all` to include optional extras requiring additional dependencies (e.g., tree-sitter language packs).
 
 Example output:
@@ -87,7 +100,7 @@ Available Packs:
   - react-nextjs: Component tree + route mapping
 ```
 
-**`hypergumbo export-capsule --shareable [--out capsule.tar.gz]`**
+🟩 **`hypergumbo export-capsule --shareable [--out capsule.tar.gz]`**
 
 Exports the analyzer capsule in a privacy-safe format suitable for sharing or publishing to a registry.
 
@@ -125,13 +138,13 @@ Exports the analyzer capsule in a privacy-safe format suitable for sharing or pu
 Initialization may use language detection; **analysis execution requires no network or API keys** (by default). The capsule should be deterministic and reproducible given the same repo state.
 
 ## 4) Supported stacks (MVP)
-* **Python** (best-effort call edges via `ast`)
-* **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
-* **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
-* **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
-* **C** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[c]`)
-* **Java** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[java]`)
-* **HTML** (script tag/linking edges only; always available, limited to pattern matching)
+* 🟩 **Python** (best-effort call edges via `ast`)
+* 🟩 **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
+* 🟩 **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
+* 🟩 **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
+* 🟩 **C** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[c]`)
+* 🟩 **Java** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[java]`)
+* 🟩 **HTML** (script tag/linking edges only; always available, limited to pattern matching)
 > The analyzer is "best-effort, explicitly limited," but produces consistent structures.
 
 ### Dependency strategy
@@ -292,9 +305,9 @@ def authenticate(username: str, password: str) -> User:
   - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
   - Purpose: Cache invalidation, provenance tracking
 Public outputs are **compiled views** from this IR:
-* `behavior_map.json` (v0.1 default)
-* `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
-* Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
+* 🟩 `behavior_map.json` (v0.1 default)
+* 🟩 `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
+* 🟪 Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
 
@@ -324,18 +337,18 @@ class AnalysisPass(Protocol):
 ```
 
 **MVP ships 9 language passes:**
-* `python-ast-v1` — Python AST parser
-* `javascript-ts-v1` — Tree-sitter JS/TS/Svelte/Vue (optional)
-* `php-ts-v1` — Tree-sitter PHP (optional)
-* `c-ts-v1` — Tree-sitter C (optional)
-* `java-ts-v1` — Tree-sitter Java (optional)
-* `elixir-ts-v1` — Tree-sitter Elixir (optional)
-* `rust-ts-v1` — Tree-sitter Rust (optional)
-* `html-pattern-v1` — HTML script tag parser
+* 🟩 `python-ast-v1` — Python AST parser
+* 🟩 `javascript-ts-v1` — Tree-sitter JS/TS/Svelte/Vue (optional)
+* 🟩 `php-ts-v1` — Tree-sitter PHP (optional)
+* 🟩 `c-ts-v1` — Tree-sitter C (optional)
+* 🟩 `java-ts-v1` — Tree-sitter Java (optional)
+* 🟩 `elixir-ts-v1` — Tree-sitter Elixir (optional)
+* 🟩 `rust-ts-v1` — Tree-sitter Rust (optional)
+* 🟩 `html-pattern-v1` — HTML script tag parser
 
 **MVP ships 2 cross-language linkers:**
-* `jni-linker-v1` — Java↔C native method matching
-* `ipc-linker-v1` — Message channel matching:
+* 🟩 `jni-linker-v1` — Java↔C native method matching
+* 🟩 `ipc-linker-v1` — Message channel matching:
   - Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`)
   - Socket.io (`socket.emit`, `socket.on`, `io.emit`)
   - Phoenix Channels (`broadcast!`, `push`, `handle_in`)
@@ -400,10 +413,10 @@ Declares execution requirements and security policy:
   - `prompt_hash`: (optional) Hash of prompt used
 
 **Format types** (MVP implements `python_script` only):
-- `python_script` — Single file, minimal deps (MVP)
-- `toolchain_bundle` — Bundled with language server (future)
-- `container` — Docker/OCI image (future)
-- `daemon` — Long-running process (future)
+- 🟩 `python_script` — Single file, minimal deps (MVP)
+- 🟪 `toolchain_bundle` — Bundled with language server (future)
+- 🟪 `container` — Docker/OCI image (future)
+- 🟪 `daemon` — Long-running process (future)
 
 **Runner dispatch contract (v0.1.0):**
 - The hypergumbo CLI MUST select the execution runner based on `capsule.json.format`.
@@ -982,11 +995,11 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
 Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces.
 
 **Contents (in priority order for truncation):**
-1. Header: repo name, language breakdown, LOC estimate (always included)
-2. Entry points: detected routes, CLI mains, etc.
-3. Structure: top-level directory overview
-4. Build: detected build system (CMake, npm, etc.)
-5. Dependencies: key frameworks
+1. 🟩 Header: repo name, language breakdown, LOC estimate (always included)
+2. 🟩 Entry points: detected routes, CLI mains, etc.
+3. 🟩 Structure: top-level directory overview
+4. 🟩 Build: detected build system (CMake, npm, etc.)
+5. 🟩 Dependencies: key frameworks
 
 **Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections.
 
@@ -1014,23 +1027,23 @@ CMake, Emscripten
 
 ### Entry sources
 
-* **Detected endpoints** (FastAPI/Flask/Express heuristics):
+* 🟩 **Detected endpoints** (FastAPI/Flask/Express heuristics):
   * `@app.route`, `@app.get`, `app.get(`, `app.post(`
-* **Electron main/renderer hints**:
+* 🟩 **Electron main/renderer hints**:
   * File names: `main.js`, `renderer.js`, `preload.js`
   * IPC patterns: `ipcMain.on`, `ipcRenderer.send`
-* **CLI entrypoints**:
+* 🟩 **CLI entrypoints**:
   * Python: `if __name__ == "__main__"`
   * JavaScript: `process.argv` parsing patterns
 
 ### Slicing algorithm
 
-* **Method**: BFS or DFS on relationships
-* **Limits**:
+* 🟩 **Method**: BFS or DFS on relationships
+* 🟩 **Limits**:
   * Hop limit (default: 3)
   * File count limit (default: 20)
   * Configurable via `--max-hops`, `--max-files`
-* **Edge filtering**: Optionally exclude tests, exclude low-confidence edges
+* 🟩 **Edge filtering**: Optionally exclude tests, exclude low-confidence edges
 
 ### Slice identity and reproducibility
 
@@ -1299,12 +1312,12 @@ The solution is not to exclude dependencies entirely—sometimes tracing into th
 
 Code is classified into four tiers based on its relationship to the project:
 
-| Tier | Name | Description | Examples |
-|------|------|-------------|----------|
-| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` |
-| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks |
-| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` |
-| 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files |
+| Tier | Name | Description | Examples | Status |
+|------|------|-------------|----------|--------|
+| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` | 🟩 |
+| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks | 🟩 |
+| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` | 🟩 |
+| 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1546,27 +1559,27 @@ Supply chain configuration can be customized in `capsule_plan.json`:
 
 ### Test fixtures
 
-* Small controlled fixtures in `tests/fixtures/*` for property testing
-* Synthetic code samples with known structure (e.g., "3 functions" → expect 3 function nodes)
+* 🟩 Small controlled fixtures in `tests/fixtures/*` for property testing
+* 🟩 Synthetic code samples with known structure (e.g., "3 functions" → expect 3 function nodes)
 
 ### Property-based testing (current approach)
 
 **Rationale:** Golden file testing assumes we know the "correct" output a priori. For complex real-world repos, this is infeasible—we can't manually verify every node and edge. Instead, we verify *invariants* that must hold regardless of the specific output.
 
 **Invariants tested:**
-- Every edge's source/target references a valid node ID
-- Confidence scores are in range [0.0, 1.0]
-- Every symbol has a non-empty name
-- Output matches the JSON schema
-- Analysis completes without errors
-- Determinism: same input → same output
+- 🟩 Every edge's source/target references a valid node ID
+- 🟩 Confidence scores are in range [0.0, 1.0]
+- 🟩 Every symbol has a non-empty name
+- 🟩 Output matches the JSON schema
+- 🟩 Analysis completes without errors
+- 🟩 Determinism: same input → same output
 
 **Benefits:**
 - No need to know "correct" answer upfront
 - Tests remain valid as analysis improves
 - Catches structural bugs (dangling references, invalid values)
 
-### Future: Longitudinal analysis ("slow thinking")
+### 🟪 Future: Longitudinal analysis ("slow thinking")
 
 **Problem:** Property tests provide immediate pass/fail feedback ("fast thinking"). But some insights only emerge from patterns across many CI runs:
 - Did node count suddenly drop 40%? (regression)
@@ -1597,45 +1610,45 @@ def test_observatory(capsys):
 This is a fundamentally different paradigm than pytest's immediate feedback. Defer to future work.
 
 ### Unit tests
-* Parsing to nodes/edges (per language)
-* Stability of IDs across runs (same code → same IDs)
-* **ID survival across refactors**: `stable_id` unchanged when code renamed/moved (if signature unchanged)
-* ID collision handling (multiple definitions at same location)
-* Fingerprint changes when code changes
-* Slicing correctness (known entry → expected subgraph)
-* Exclude behavior (respects patterns)
-* Confidence calculation determinism
-* Provenance tracking (correct origin fields, execution_id/run_signature hashing)
-* IR → view compilation correctness
-* **Capsule Plan validation**: invalid plans rejected, valid plans execute correctly
-* **Catalog loading**: building blocks (packs) discovered and merged correctly, schema validation
-* Plan validation: unknown pass/pack rejected in strict mode
-* Pack schema validation: invalid pack.json rejected
-* LLM plan output must validate or fall back to template
+* 🟩 Parsing to nodes/edges (per language)
+* 🟩 Stability of IDs across runs (same code → same IDs)
+* 🟩 **ID survival across refactors**: `stable_id` unchanged when code renamed/moved (if signature unchanged)
+* 🟩 ID collision handling (multiple definitions at same location)
+* 🟩 Fingerprint changes when code changes
+* 🟩 Slicing correctness (known entry → expected subgraph)
+* 🟩 Exclude behavior (respects patterns)
+* 🟩 Confidence calculation determinism
+* 🟩 Provenance tracking (correct origin fields, execution_id/run_signature hashing)
+* 🟩 IR → view compilation correctness
+* 🟩 **Capsule Plan validation**: invalid plans rejected, valid plans execute correctly
+* 🟩 **Catalog loading**: building blocks (packs) discovered and merged correctly, schema validation
+* 🟩 Plan validation: unknown pass/pack rejected in strict mode
+* 🟩 Pack schema validation: invalid pack.json rejected
+* 🟩 LLM plan output must validate or fall back to template
 ### Schema validation tests
-* Output validates against published JSON Schema
-* Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
-* Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)
-* ID format conformance (both `id` and `stable_id` when present)
-* Evidence type presence in all edges
-* Toolchain capture in analysis_runs
+* 🟩 Output validates against published JSON Schema
+* 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
+* 🟩 Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)
+* 🟩 ID format conformance (both `id` and `stable_id` when present)
+* 🟩 Evidence type presence in all edges
+* 🟩 Toolchain capture in analysis_runs
 ### Smoke test
-* `hypergumbo init` then `hypergumbo run` on a fixture repo
-* Yields valid JSON schema
-* All expected nodes/edges present
-* No crashes, warnings logged appropriately
-* `hypergumbo catalog` displays building blocks
+* 🟩 `hypergumbo init` then `hypergumbo run` on a fixture repo
+* 🟩 Yields valid JSON schema
+* 🟩 All expected nodes/edges present
+* 🟩 No crashes, warnings logged appropriately
+* 🟩 `hypergumbo catalog` displays building blocks
 ### Performance benchmarks
-* Small repo (<100 files): <5 seconds end-to-end
-* Medium repo (~500 files): <30 seconds
-* Caching: second run on unchanged repo <2 seconds
+* 🟩 Small repo (<100 files): <5 seconds end-to-end
+* 🟩 Medium repo (~500 files): <30 seconds
+* ⬜ Caching: second run on unchanged repo <2 seconds
 
 ## 9.5) Error handling
 
 ### Parse errors
 
-* **Behavior**: Log warning, skip file, continue analysis
-* **Output**: Add to `limits.failed_files[]`:
+* 🟩 **Behavior**: Log warning, skip file, continue analysis
+* 🟩 **Output**: Add to `limits.failed_files[]`:
   ```json
   {
     "path": "malformed.py",
@@ -1646,13 +1659,13 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ### Circular imports
 
-* **Behavior**: Detect cycle, log warning, break at arbitrary point
-* **Output**: Add to `warnings[]` in `analysis_runs[]`
+* 🟩 **Behavior**: Detect cycle, log warning, break at arbitrary point
+* 🟩 **Output**: Add to `warnings[]` in `analysis_runs[]`
 
 ### Missing dependencies
 
-* **Behavior**: If pass requires unavailable extra (e.g., tree-sitter), skip pass
-* **Output**: Add to `analysis_runs[].skipped_passes[]`:
+* 🟩 **Behavior**: If pass requires unavailable extra (e.g., tree-sitter), skip pass
+* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]`:
   ```json
   {
     "pass": "javascript-ts-v1",
@@ -1662,15 +1675,15 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ### Analyzer crashes
 
-* **Behavior**: Catch exception, log stack trace to `.hypergumbo/error.log`, continue
-* **Output**: Set `analysis_incomplete: true` in top-level, add to `warnings[]`
+* 🟩 **Behavior**: Catch exception, log stack trace to `.hypergumbo/error.log`, continue
+* 🟩 **Output**: Set `analysis_incomplete: true` in top-level, add to `warnings[]`
 
 ### Partial results guarantee
 
-* **All output is valid JSON** even if analysis is incomplete
-* `analysis_incomplete: true` flag signals partial results
-* `limits.partial_results_reason` documents what went wrong
-* Agents can decide whether partial results are sufficient
+* 🟩 **All output is valid JSON** even if analysis is incomplete
+* 🟩 `analysis_incomplete: true` flag signals partial results
+* 🟩 `limits.partial_results_reason` documents what went wrong
+* 🟩 Agents can decide whether partial results are sufficient
 
 ## 9.6) Known Analysis Limitations
 
@@ -1822,44 +1835,44 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 ## 12) Success criteria
 ### Technical
-* ✅ Analyzes Python repo (100 files) in <10 seconds
-* ✅ Generates valid behavior map JSON 100% of runs
-* ✅ Stable node IDs (same code → same IDs across runs)
-* ✅ **Stable IDs survive refactors**: Renamed/moved functions retain stable_id (when signature unchanged)
-* ✅ Capsule runs without network/API keys (unless --assistant llm used for init)
-* ✅ Catalog displays all available building blocks
-* ✅ Template-based plans work without LLM
-* ✅ Shareable capsules export without leaking repo structure
+* 🟩 Analyzes Python repo (100 files) in <10 seconds
+* 🟩 Generates valid behavior map JSON 100% of runs
+* 🟩 Stable node IDs (same code → same IDs across runs)
+* 🟩 **Stable IDs survive refactors**: Renamed/moved functions retain stable_id (when signature unchanged)
+* 🟩 Capsule runs without network/API keys (unless --assistant llm used for init)
+* 🟩 Catalog displays all available building blocks
+* 🟩 Template-based plans work without LLM
+* 🟩 Shareable capsules export without leaking repo structure
 
 ### Adoption (measured over 3 months post-launch)
-* ✅ 5+ agent projects using output (OR 3+ with detailed case studies)
-* ✅ 100+ repos analyzed
-* ✅ 3+ community-contributed capsule plans or packs published
+* ⬜ 5+ agent projects using output (OR 3+ with detailed case studies)
+* ⬜ 100+ repos analyzed
+* ⬜ 3+ community-contributed capsule plans or packs published
 
 ### Agent validation (objective metrics)
 
 **Measured during 3-month validation period after v0.1.0 ships:**
 
 **Metric 1: Token reduction**
-* Measure: Tokens in hypergumbo slice vs. naïve approach (full files)
+* ⬜ Measure: Tokens in hypergumbo slice vs. naïve approach (full files)
 * Method: A/B test on 50 edit tasks across 3+ agents
 * Target: >30% reduction (median)
 * Collection: Agents log token counts, submit anonymized data
 
 **Metric 2: Edit correctness**
-* Measure: Human evaluation of agent-generated edits
+* ⬜ Measure: Human evaluation of agent-generated edits
 * Method: Blind review of 50 edits (25 with hypergumbo, 25 without)
 * Target: ≥80% correct with hypergumbo (same or better than baseline)
 * Evaluators: 2 independent developers (not project team)
 
 **Metric 3: Hallucination rate**
-* Measure: Fabricated symbols/calls in agent output
+* ⬜ Measure: Fabricated symbols/calls in agent output
 * Method: Parse agent responses, check if symbols exist in hypergumbo nodes
 * Target: <20% hallucination rate (vs. >40% without hypergumbo baseline)
 * Collection: Automated parsing of agent logs
 
 **Metric 4: Error cases (qualitative → quantitative)**
-* Measure: Documented cases where AST-only analysis failed
+* ⬜ Measure: Documented cases where AST-only analysis failed
 * Collection: GitHub issues, agent developer reports, user feedback
 * Target: 20+ specific cases with reproduction steps
 * Analysis: Categorize by type (false positive, false negative, missing edge)
@@ -1871,15 +1884,15 @@ Prevents cherry-picking results.
 **Use:** These metrics feed into decision whether to proceed with advanced capabilities.
 
 ### Benchmark validation (if research continues)
-* ✅ **Precision**: >0.85 on call graph edges (ground truth from 20 hand-verified repos)
-* ✅ **Recall**: >0.70 on detectable edges (AST-visible calls, not dynamic dispatch)
-* ✅ **Confidence calibration**: Edges with confidence >0.9 have <5% false positive rate
+* ⬜ **Precision**: >0.85 on call graph edges (ground truth from 20 hand-verified repos)
+* ⬜ **Recall**: >0.70 on detectable edges (AST-visible calls, not dynamic dispatch)
+* ⬜ **Confidence calibration**: Edges with confidence >0.9 have <5% false positive rate
 
 Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval before collecting results.
 
 ### Quality
-* ✅ Zero crashes on 50+ real-world repos
-* ✅ Documentation clarity: new user can run analysis in <10 minutes
+* 🟩 Zero crashes on 50+ real-world repos
+* ⬜ Documentation clarity: new user can run analysis in <10 minutes
 
 ## 13) Spec A Validation (Prerequisite for Future Enhancements)
 
@@ -1888,27 +1901,27 @@ Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval befor
 **Decision meeting:** Review evidence, decide whether to invest in advanced capabilities
 
 **Quantitative requirements (all must pass):**
-* ✅ Agent adoption: 5+ named projects using hypergumbo in production
+* ⬜ Agent adoption: 5+ named projects using hypergumbo in production
   - OR: 3+ projects with detailed case studies (>500 words each)
-* ✅ Quality improvement: >20% improvement vs. no-hypergumbo baseline
+* ⬜ Quality improvement: >20% improvement vs. no-hypergumbo baseline
   - Measured via: Token reduction, OR edit correctness, OR hallucination reduction
   - A/B test with ≥50 tasks
-* ✅ Stability: <5% crash rate on 100+ repos
+* ⬜ Stability: <5% crash rate on 100+ repos
   - Measured via: CI runs, user reports, agent telemetry
-* ✅ Market signal: 10+ requests for features requiring higher-fidelity analysis
+* ⬜ Market signal: 10+ requests for features requiring higher-fidelity analysis
   - Logged in: GitHub issues, agent developer discussions, design partner feedback
 
 **Qualitative requirements (2 of 3 must pass):**
-* ✅ Agent developers: "hypergumbo is critical, we'd pay for upgrades"
+* ⬜ Agent developers: "hypergumbo is critical, we'd pay for upgrades"
   - Survey or direct quotes from 3+ organizations
-* ✅ Design partners: 3+ orgs pledge engineering time for co-development
+* ⬜ Design partners: 3+ orgs pledge engineering time for co-development
   - Written commitment (not just verbal interest)
-* ✅ Specific gaps: 20+ documented cases where AST analysis failed
+* ⬜ Specific gaps: 20+ documented cases where AST analysis failed
   - With reproduction steps, expected behavior, impact assessment
 
 **Funding secured:**
-* ✅ Research budget: 4-6 engineers × 6-8 months
-* ✅ Commitment: If research succeeds, funding for full development available
+* ⬜ Research budget: 4-6 engineers × 6-8 months
+* ⬜ Commitment: If research succeeds, funding for full development available
 
 **Decision outcomes:**
 1. **Go:** All quantitative + 2/3 qualitative + funding secured → Start research phase
@@ -2334,11 +2347,13 @@ hypergumbo init --upgrade  # Gets new capabilities
 
 ---
 
-# Spec B — "Multi-Fidelity Analysis Platform"
+# 🟪 Spec B — "Multi-Fidelity Analysis Platform"
 
 ## 0) One-sentence summary
 
 A multi-phase code understanding platform that produces typed IR + behavior maps, an agent context router for token-efficient editing, and an optional registry for sharing analyzers — built incrementally with explicit validation gates after Spec A proves market fit.
+
+*All of Spec B is future work requiring design validation. See §1 Prerequisites.*
 
 ## 1) Goals and Prerequisites
 
@@ -2537,11 +2552,11 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
    - Published publicly (transparency)
 **Commitment:** Follow the process. If gate fails, **do not proceed.**
 ### Objectives
-* **High-fidelity IR** across common stacks (typed call graph + optional dataflow + cross-language edges).
-* **Agent-grade context provider** ("give me the smallest set of code + invariants to safely edit X").
-* **Optional analyzer registry** (capsules + rule packs + fingerprints + benchmarks).
-* **Amortize LLM cost** via nearest-neighbor reuse + retrieval-augmented generation.
-* **Local-first privacy**, optional opt-in sharing of sanitized metadata only.
+* 🟪 **High-fidelity IR** across common stacks (typed call graph + optional dataflow + cross-language edges).
+* 🟪 **Agent-grade context provider** ("give me the smallest set of code + invariants to safely edit X").
+* 🟪 **Optional analyzer registry** (capsules + rule packs + fingerprints + benchmarks).
+* 🟪 **Amortize LLM cost** via nearest-neighbor reuse + retrieval-augmented generation.
+* 🟪 **Local-first privacy**, optional opt-in sharing of sanitized metadata only.
 
 ## 2) Non-goals
 * "Prove programs correct" in the formal methods sense.
@@ -2572,29 +2587,29 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 ## 3) System architecture
 ### 3.1 Core: Multi-pass analysis engine
 #### Frontends (parsers / symbolizers)
-* **tree-sitter** for universal syntax (inherited from Spec A)
-* **Language-native engines** (optional, high-fidelity):
-  * **TypeScript**: `tsserver` (type checker + language service)
-  * **Python**: `pyright` or `mypy` (type inference)
-  * **Rust**: `rust-analyzer` (full semantic analysis)
-  * **Go**: `gopls` (language server)
-  * **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
+* 🟩 **tree-sitter** for universal syntax (inherited from Spec A)
+* 🟪 **Language-native engines** (optional, high-fidelity):
+  * 🟪 **TypeScript**: `tsserver` (type checker + language service)
+  * 🟪 **Python**: `pyright` or `mypy` (type inference)
+  * 🟪 **Rust**: `rust-analyzer` (full semantic analysis)
+  * 🟪 **Go**: `gopls` (language server)
+  * 🟪 **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
 #### Runner types and execution models
 Different analyzers require different execution environments. The capsule manifest declares required runner type.
 
-**`python_script` (Spec A, B1)**:
+🟩 **`python_script` (Spec A, B1)**:
 - Single Python file, minimal dependencies
 - Runs in same Python environment as hypergumbo CLI
 - Fastest, simplest, most portable
 - **Limitations**: Can't bundle complex toolchains
 
-**`toolchain_bundle` (B1)**:
+🟪 **`toolchain_bundle` (B1)**:
 - Ships with language server or type checker
 - Example: tsserver, pyright, gopls bundled as subprocess
 - Heavier (100MB+ downloads), but high fidelity
 - **Security**: Runs in restricted sandbox, no network by default
 
-**`container_image` (B2)**:
+🟪 **`container_image` (B2)**:
 - OCI/Docker image with full environment
 - Maximum isolation and reproducibility
 - **Security**: Runs in container runtime (Docker/Podman)
@@ -2602,7 +2617,7 @@ Different analyzers require different execution environments. The capsule manife
 - **Use case**: CI environments (GitHub Actions, GitLab CI)
 - **Not recommended**: Local development (too heavy)
 
-**`daemon_process` (Future, not in current specs)**:
+🟪 **`daemon_process` (Future, not in current specs)**:
 - Long-running incremental analysis
 - Watches file changes, maintains indexed state
 - Example: Language server protocol (LSP) integration
@@ -2660,14 +2675,14 @@ Different analyzers require different execution environments. The capsule manife
 * Public view schemas evolve slowly; IR can evolve rapidly
 
 #### Cross-language linkers
-* **HTTP**: route patterns ↔ client calls ↔ handlers
+* 🟩 **HTTP**: route patterns ↔ client calls ↔ handlers (server-side route detection done in Spec A)
   * Example: FastAPI `@app.get("/users/{id}")` ↔ Axios `GET /users/123`
-* **IPC (Electron)**: main ↔ renderer message channels
+* 🟩 **IPC (Electron)**: main ↔ renderer message channels (done in Spec A)
   * Example: `ipcMain.on("login")` ↔ `ipcRenderer.send("login")`
-* **SQL**: query ↔ table/column mapping (best-effort, annotation-assisted)
+* 🟪 **SQL**: query ↔ table/column mapping (best-effort, annotation-assisted)
   * Example: `SELECT * FROM users WHERE id = ?` ↔ `users` table schema
-* **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
-* **GraphQL/OpenAPI**: schema ↔ resolvers ↔ clients
+* 🟪 **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
+* 🟪 **GraphQL/OpenAPI**: schema ↔ resolvers ↔ clients
 
 **Implementation strategy:** Start with **annotation-assisted** linking (developer hints) before attempting full inference.
 
@@ -2727,12 +2742,12 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
 - Deterministic ordering: Sort by (edge confidence, distance from entry)
 - No ML-based ranking (defer to B1.5)
 
-**Future B1.5:**
-- Learned relevance models
-- Agent feedback loop (which code was actually edited?)
-- **Embedding-based context expansion**: Use embedding selections as a scaffold, then expand context around them as token budget allows. At line level: grow ±N lines around selected chunks. At word level: grow ±N words around selected phrases. No recomputation of embeddings needed—just expand around already-selected items. Applicable to Key Symbols (once embeddings are used there) and config extraction.
-- **Coverage report parsing for test summary**: Parse coverage reports (coverage.xml, lcov.info, etc.) to extract coverage percentages for the sketch test summary section. E.g., "103 test files · pytest · 85% coverage". Requires detecting and parsing various coverage report formats without executing tests (static parsing of existing reports).
-- **Multi-language documentation summarization**: Detect and collapse multi-language documentation directories (e.g., `docs/de/`, `docs/en/`, `docs/es/`) into a single summary line like "Documentation in 12 languages (de, en, es, fr, ...)". Reduces noise in sketches for documentation-heavy projects where translated docs dominate the file count. Detection via parallel directory structures with language codes (ISO 639-1) or common patterns like `docs/{lang}/` or `{lang}/docs/`.
+**🟪 Future B1.5:**
+- 🟪 Learned relevance models
+- 🟪 Agent feedback loop (which code was actually edited?)
+- 🟪 **Embedding-based context expansion**: Use embedding selections as a scaffold, then expand context around them as token budget allows. At line level: grow ±N lines around selected chunks. At word level: grow ±N words around selected phrases. No recomputation of embeddings needed—just expand around already-selected items. Applicable to Key Symbols (once embeddings are used there) and config extraction.
+- 🟪 **Coverage report parsing for test summary**: Parse coverage reports (coverage.xml, lcov.info, etc.) to extract coverage percentages for the sketch test summary section. E.g., "103 test files · pytest · 85% coverage". Requires detecting and parsing various coverage report formats without executing tests (static parsing of existing reports).
+- 🟪 **Multi-language documentation summarization**: Detect and collapse multi-language documentation directories (e.g., `docs/de/`, `docs/en/`, `docs/es/`) into a single summary line like "Documentation in 12 languages (de, en, es, fr, ...)". Reduces noise in sketches for documentation-heavy projects where translated docs dominate the file count. Detection via parallel directory structures with language codes (ISO 639-1) or common patterns like `docs/{lang}/` or `{lang}/docs/`.
 
 #### Complexity warning
 * **Natural language query parsing** (step 1) requires embedding models + semantic search
@@ -2823,24 +2838,24 @@ Versioned schema, not exported by default. Used internally by analyzers and regi
 
 ### Views
 
-#### behavior_map.json (Spec A compatible)
+#### 🟩 behavior_map.json (Spec A compatible)
 * Same schema as Spec A v0.1
 * Maintained for backward compatibility
 * Enhanced with higher-fidelity edges when available (via higher confidence scores, new evidence types)
 
-#### ir_export.json (full detail)
+#### 🟪 ir_export.json (full detail)
 * Complete symbol table
 * Typed edges with resolution provenance
 * Dataflow facts (optional)
 * Cross-language links
 
-#### context_bundle.json (agent-optimized)
+#### 🟪 context_bundle.json (agent-optimized)
 * Minimal code excerpts for a query
 * Invariant checklist
 * "Impact zones" (what could break) — **B1.5 only**
 * Token-budget optimized
 
-#### sarif.json (CI integration)
+#### 🟪 sarif.json (CI integration)
 * SARIF 2.1 compatible
 * Findings from rule packs
 * Integration with GitHub Code Scanning, GitLab SAST
