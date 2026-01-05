@@ -192,6 +192,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     max_config_files = getattr(args, "max_config_files", 15)
     fleximax_lines = getattr(args, "fleximax_lines", 100)
     max_chunk_chars = getattr(args, "max_chunk_chars", 800)
+    language_proportional = getattr(args, "language_proportional", False)
 
     sketch = generate_sketch(
         repo_root,
@@ -204,6 +205,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         max_config_files=max_config_files,
         fleximax_lines=fleximax_lines,
         max_chunk_chars=max_chunk_chars,
+        language_proportional=language_proportional,
     )
     print(sketch)
     return 0
@@ -991,6 +993,12 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         type=int,
         default=800,
         help="Maximum characters per chunk for embedding (default: 800)",
+    )
+    p_sketch.add_argument(
+        "--language-proportional",
+        action="store_true",
+        dest="language_proportional",
+        help="Enable language-proportional symbol selection for multi-language projects",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
 
