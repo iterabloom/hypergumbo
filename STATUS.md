@@ -83,8 +83,11 @@ This document tracks progress against [Spec A (MVP)](docs/hypergumbo-spec.md#spe
 | Source file listings | [x] | Progressive expansion based on budget |
 | Entry points section | [x] | CLI, HTTP routes, Electron patterns |
 | Key symbols section | [x] | Functions/classes from static analysis |
+| Minimum Key Symbols guarantee | [x] | Always includes at least 5 symbols even with tight budget |
 | Graph centrality ranking | [x] | In-degree centrality orders symbols by importance |
 | Test file filtering | [x] | Excludes test files from centrality calculation |
+| Multi-language test detection | [x] | Detects Swift (Tests/, *Tests.swift), Go (*_test.go), Java/Kotlin (*Test.java/kt), Rust (*_test.rs) in addition to Python/JS patterns |
+| Framework-specific coverage hints | [x] | Test summary section suggests appropriate coverage tool (jest --coverage, go test -cover, mvn test jacoco:report, etc.) instead of always suggesting pytest |
 | **Symbol Selection** | | |
 | Two-phase selection policy | [x] | Coverage-first phase (33% budget) ensures broad file coverage, then diminishing-returns greedy fill maximizes marginal utility |
 | Sum-of-top-K file scoring | [x] | Files ranked by sum of top-3 symbol scores (density metric) rather than single-max centrality |

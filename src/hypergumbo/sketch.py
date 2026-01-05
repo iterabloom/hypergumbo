@@ -2439,8 +2439,8 @@ TEST_FRAMEWORK_PATTERNS = [
 ]
 
 
-def _detect_test_summary(repo_root: Path) -> Optional[str]:
-    """Detect test files and frameworks, return a summary string.
+def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
+    """Detect test files and frameworks, return a summary string and frameworks.
 
     This is a static analysis - it detects test files by naming conventions
     and test frameworks by import patterns. It does NOT measure coverage
@@ -2450,8 +2450,9 @@ def _detect_test_summary(repo_root: Path) -> Optional[str]:
         repo_root: Path to the repository root.
 
     Returns:
-        A summary string like "103 test files · pytest, hypothesis"
-        or None if no tests detected.
+        Tuple of (summary_string, frameworks_set) where:
+        - summary_string: Like "103 test files · pytest, hypothesis" or None if no tests
+        - frameworks_set: Set of detected framework names
     """
     import re
 
@@ -2468,7 +2469,7 @@ def _detect_test_summary(repo_root: Path) -> Optional[str]:
     test_files = list(set(test_files))
 
     if not test_files:
-        return None
+        return None, set()
 
     # Sample test files to detect frameworks (don't read all of them)
     sample_size = min(20, len(test_files))
@@ -2489,9 +2490,63 @@ def _detect_test_summary(repo_root: Path) -> Optional[str]:
 
     if frameworks_found:
         framework_str = ", ".join(sorted(frameworks_found))
-        return f"{file_count} test {file_word} · {framework_str}"
+        return f"{file_count} test {file_word} · {framework_str}", frameworks_found
     else:
-        return f"{file_count} test {file_word}"
+        return f"{file_count} test {file_word}", frameworks_found
+
+
+# Coverage command hints for different test frameworks
+COVERAGE_HINTS: dict[str, str] = {
+    # Python
+    "pytest": "pytest --cov",
+    "unittest": "coverage run -m unittest",
+    "hypothesis": "pytest --cov",  # Usually used with pytest
+    # JavaScript/TypeScript
+    "jest": "jest --coverage",
+    "vitest": "vitest run --coverage",
+    "mocha": "nyc mocha",
+    "testing-library": "jest --coverage",  # Usually used with jest
+    # Go
+    "go test": "go test -cover",
+    # Java/Kotlin
+    "junit": "mvn test jacoco:report",
+    "testng": "mvn test jacoco:report",
+    # Ruby
+    "rspec": "rspec --format documentation",
+    # Rust
+    "cargo test": "cargo tarpaulin",
+    # Elixir
+    "exunit": "mix test --cover",
+    # Shell
+    "bats": "bats tests/",
+}
+
+
+def _get_coverage_hint(frameworks: set[str]) -> str:
+    """Get the best coverage command hint for the detected frameworks.
+
+    Prioritizes common frameworks and returns the first match.
+    Falls back to generic hint if no match found.
+    """
+    # Priority order for common frameworks
+    priority = [
+        "pytest", "jest", "vitest", "go test", "junit",
+        "rspec", "cargo test", "exunit", "mocha", "bats",
+        "unittest", "testing-library", "hypothesis", "testng",
+    ]
+
+    for fw in priority:
+        if fw in frameworks:
+            return COVERAGE_HINTS[fw]
+
+    # If no specific match, try to infer from any framework
+    # (This is a defensive fallback for any future frameworks not in priority list)
+    for fw in frameworks:  # pragma: no cover
+        if fw in COVERAGE_HINTS:
+            return COVERAGE_HINTS[fw]
+
+    # Default fallback
+    return "your test runner's coverage tool"
 
 
 def _format_test_summary(repo_root: Path) -> str:
@@ -2503,11 +2558,12 @@ def _format_test_summary(repo_root: Path) -> str:
     Returns:
         Markdown section string, or empty string if no tests.
     """
-    summary = _detect_test_summary(repo_root)
+    summary, frameworks = _detect_test_summary(repo_root)
     if not summary:
         return ""
 
-    return f"## Tests\n\n{summary}\n\n*Coverage requires execution; see pytest --cov*"
+    coverage_hint = _get_coverage_hint(frameworks)
+    return f"## Tests\n\n{summary}\n\n*Coverage requires execution; see {coverage_hint}*"
 
 
 def _run_analysis(
@@ -3537,11 +3593,25 @@ def generate_sketch(
             current_tokens = estimate_tokens(current_sketch)
             remaining_tokens = max_tokens - current_tokens
 
-    # Section 6: Key symbols (if we still have budget >= 200 tokens)
-    if remaining_tokens > 200 and symbols:
-        # Use most of remaining budget for symbols
-        budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
-        max_symbols = max(10, budget_for_symbols // tokens_per_symbol)
+    # Section 6: Key symbols
+    # IMPORTANT: Minimum Key Symbols guarantee
+    # Always include at least MIN_KEY_SYMBOLS symbols when analysis produces results.
+    # This addresses the issue where some projects (qwix, marlin, guacamole-client)
+    # had 0 Key Symbols at 1k budget because budget was exhausted earlier.
+    # Key Symbols is the most valuable section for code understanding, so we
+    # guarantee its presence even if it means slight budget overage.
+    MIN_KEY_SYMBOLS = 5
+
+    if symbols:
+        # Calculate symbol budget based on remaining tokens
+        if remaining_tokens > 200:
+            # Normal case: use most of remaining budget for symbols
+            budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
+            max_symbols = max(10, budget_for_symbols // tokens_per_symbol)
+        else:
+            # Budget-constrained case: guarantee minimum symbols anyway
+            # This ensures Key Symbols section appears for every analyzable project
+            max_symbols = MIN_KEY_SYMBOLS
 
         # Extract docstrings for Python symbols
         docstrings = _extract_python_docstrings(repo_root, symbols)
