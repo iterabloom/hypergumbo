@@ -10,6 +10,7 @@ from hypergumbo.cli import (
     cmd_export_capsule,
     cmd_sketch,
     main,
+    _find_git_root,
 )
 
 
@@ -1483,3 +1484,120 @@ def test_cmd_sketch_nonexistent_path(capsys) -> None:
     assert result == 1
     _, err = capsys.readouterr()
     assert "does not exist" in err
+
+
+def test_cmd_sketch_warns_about_git_root(tmp_path: Path, capsys) -> None:
+    """Test cmd_sketch warns when analyzing a subdirectory of a git repo."""
+    # Create a git repo structure
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+
+    # Create a subdirectory with some code
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(src_dir)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+
+    result = cmd_sketch(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "NOTE: Your repo root appears to be at" in err
+    assert str(tmp_path) in err
+    assert "You may want to run" in err
+    # Verify flags are preserved in suggested command
+    assert "-t 100" in err
+
+
+def test_cmd_sketch_git_warning_with_exclude_tests(tmp_path: Path, capsys) -> None:
+    """Test git root warning includes -x flag when exclude_tests is True."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(src_dir)
+    args.tokens = 100
+    args.exclude_tests = True  # This should be included in suggested command
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+
+    result = cmd_sketch(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "-x" in err
+    assert "-t 100" in err
+
+
+def test_cmd_sketch_no_warning_at_git_root(tmp_path: Path, capsys) -> None:
+    """Test cmd_sketch does not warn when already at git root."""
+    # Create a git repo structure
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+
+    result = cmd_sketch(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "NOTE: Your repo root" not in err
+
+
+def test_find_git_root_finds_repo(tmp_path: Path) -> None:
+    """Test _find_git_root finds the git root directory."""
+    # Create nested structure: tmp/.git and tmp/a/b/c
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    nested = tmp_path / "a" / "b" / "c"
+    nested.mkdir(parents=True)
+
+    result = _find_git_root(nested)
+    assert result == tmp_path
+
+
+def test_find_git_root_returns_none_outside_repo(tmp_path: Path) -> None:
+    """Test _find_git_root returns None when not in a git repo."""
+    # No .git directory
+    subdir = tmp_path / "some" / "dir"
+    subdir.mkdir(parents=True)
+
+    result = _find_git_root(subdir)
+    assert result is None
+
+
+def test_find_git_root_at_root_itself(tmp_path: Path) -> None:
+    """Test _find_git_root when starting at the git root."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+
+    result = _find_git_root(tmp_path)
+    assert result == tmp_path
