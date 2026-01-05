@@ -97,7 +97,7 @@ removed in a future release.
 \* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI).
 Run `hypergumbo build-grammars` to enable these analyzers.
 
-All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
+All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ### Cross-Language Linkers (13 Linkers)
 
@@ -137,7 +137,7 @@ pytest
 All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
 
-See [STATUS.md](STATUS.md) for implementation progress.
+See [CHANGELOG.md](CHANGELOG.md) for implementation progress.
 
 ## Security
 
