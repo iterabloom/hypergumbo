@@ -97,6 +97,7 @@ from .analyze.thrift import analyze_thrift
 from .analyze.capnp import analyze_capnp
 from .analyze.powershell import analyze_powershell
 from .analyze.gdscript import analyze_gdscript
+from .analyze.starlark import analyze_starlark
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2251,6 +2252,19 @@ def run_behavior_map(
             analysis_runs.append(gdscript_result.run.to_dict())
             all_symbols.extend(gdscript_result.symbols)
             all_edges.extend(gdscript_result.edges)
+
+    # Run Starlark analysis (optional, requires tree-sitter-language-pack)
+    starlark_result = analyze_starlark(repo_root)
+    if starlark_result.run is not None:
+        if starlark_result.skipped:  # pragma: no cover - starlark installed
+            limits.skipped_passes.append({
+                "pass": starlark_result.run.pass_id,
+                "reason": starlark_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(starlark_result.run.to_dict())
+            all_symbols.extend(starlark_result.symbols)
+            all_edges.extend(starlark_result.edges)
 
     # Run cross-language linkers
 
