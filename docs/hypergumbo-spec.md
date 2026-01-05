@@ -2731,6 +2731,7 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
 - Learned relevance models
 - Agent feedback loop (which code was actually edited?)
 - **Embedding-based context expansion**: Use embedding selections as a scaffold, then expand context around them as token budget allows. At line level: grow ±N lines around selected chunks. At word level: grow ±N words around selected phrases. No recomputation of embeddings needed—just expand around already-selected items. Applicable to Key Symbols (once embeddings are used there) and config extraction.
+- **Coverage report parsing for test summary**: Parse coverage reports (coverage.xml, lcov.info, etc.) to extract coverage percentages for the sketch test summary section. E.g., "103 test files · pytest · 85% coverage". Requires detecting and parsing various coverage report formats without executing tests (static parsing of existing reports).
 
 #### Complexity warning
 * **Natural language query parsing** (step 1) requires embedding models + semantic search
