@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
+#### 2026-01-04
 - Function signature extraction for Rust, Go, and TypeScript/JavaScript
   - Rust: Handles `&self`, `&mut self`, return types (e.g., `(x: i32) -> bool`)
   - Go: Handles multiple returns, named returns, parameter grouping (e.g., `(x int, y string) error`)
@@ -64,6 +66,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Dart function signature extraction (e.g., `(int x, int y) int` for typed functions)
 - Lean function signature extraction (e.g., `(n : Nat) : Nat` for def/theorem)
 - Agda function signature extraction (e.g., `: Nat -> Nat` for type signatures)
+
+#### 2026-01-01
 - Embedding mode config extraction now uses diminishing returns and intra-file diversity
   - Prevents any single file (e.g., LICENSE) from dominating the config section
   - Prioritizes diverse, relevant content across multiple config files
