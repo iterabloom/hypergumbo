@@ -99,6 +99,7 @@ from .analyze.powershell import analyze_powershell
 from .analyze.gdscript import analyze_gdscript
 from .analyze.starlark import analyze_starlark
 from .analyze.fish import analyze_fish
+from .analyze.hlsl import analyze_hlsl
 from .catalog import get_default_catalog, is_available
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
@@ -2279,6 +2280,19 @@ def run_behavior_map(
             analysis_runs.append(fish_result.run.to_dict())
             all_symbols.extend(fish_result.symbols)
             all_edges.extend(fish_result.edges)
+
+    # Run HLSL analysis (optional, requires tree-sitter-language-pack)
+    hlsl_result = analyze_hlsl(repo_root)
+    if hlsl_result.run is not None:
+        if hlsl_result.skipped:  # pragma: no cover - hlsl installed
+            limits.skipped_passes.append({
+                "pass": hlsl_result.run.pass_id,
+                "reason": hlsl_result.skip_reason,
+            })
+        else:
+            analysis_runs.append(hlsl_result.run.to_dict())
+            all_symbols.extend(hlsl_result.symbols)
+            all_edges.extend(hlsl_result.edges)
 
     # Run cross-language linkers
 
