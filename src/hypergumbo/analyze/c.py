@@ -204,10 +204,18 @@ def _extract_symbols(
     file_path: Path,
     run: AnalysisRun,
 ) -> list[Symbol]:
-    """Extract symbols from a parsed C tree (pass 1)."""
+    """Extract symbols from a parsed C tree (pass 1).
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
     symbols: list[Symbol] = []
 
-    def visit(node: "tree_sitter.Node") -> None:
+    # Use a stack for iterative traversal (avoids RecursionError)
+    stack: list["tree_sitter.Node"] = [tree.root_node]
+
+    while stack:
+        node = stack.pop()
+
         # Function definitions
         if node.type == "function_definition":
             name = _get_function_name(node, source)
@@ -329,11 +337,9 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
+        # Add children to stack for iterative traversal
+        stack.extend(reversed(node.children))
 
-    visit(tree.root_node)
     return symbols
 
 
@@ -347,10 +353,16 @@ def _extract_edges(
     """Extract edges from a parsed C tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
 
-    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
+    # Stack entries: (node, current_function_context)
+    stack: list[tuple["tree_sitter.Node", Optional[Symbol]]] = [(tree.root_node, None)]
+
+    while stack:
+        node, current_function = stack.pop()
+
         # Track current function context
         if node.type == "function_definition":
             name = _get_function_name(node, source)
@@ -358,9 +370,10 @@ def _extract_edges(
                 func_sym = global_symbols[name]
                 # Only use if it's from this file
                 if func_sym.path == str(file_path):
-                    for child in node.children:
-                        visit(child, func_sym)
-                    return
+                    # Add children with this function as context
+                    for child in reversed(node.children):
+                        stack.append((child, func_sym))
+                    continue
 
         # Function calls: func_name(...)
         if node.type == "call_expression":
@@ -383,11 +396,10 @@ def _extract_edges(
                         )
                         edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child, current_function)
+        # Add children to stack with current function context
+        for child in reversed(node.children):
+            stack.append((child, current_function))
 
-    visit(tree.root_node)
     return edges
 
 

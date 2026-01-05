@@ -251,7 +251,10 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
 ) -> FileAnalysis:
-    """Extract symbols from a single Objective-C file."""
+    """Extract symbols from a single Objective-C file.
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
     analysis = FileAnalysis()
     rel_path = str(file_path)
 
@@ -263,16 +266,21 @@ def _extract_symbols_from_file(
     tree = parser.parse(source)
     root = tree.root_node
 
-    current_class: str | None = None
-    current_class_symbol: Symbol | None = None
+    # Stack entries: (node, current_class, current_class_symbol)
+    stack: list[tuple["tree_sitter.Node", str | None, Symbol | None]] = [
+        (root, None, None)
+    ]
 
-    def process_node(node: "tree_sitter.Node") -> None:
-        nonlocal current_class, current_class_symbol
+    while stack:
+        node, current_class, current_class_symbol = stack.pop()
+
+        new_class = current_class
+        new_class_symbol = current_class_symbol
 
         if node.type in ("class_interface", "class_implementation"):
             class_name = _extract_class_name(node, source)
             if class_name:
-                current_class = class_name
+                new_class = class_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, class_name, "class")
@@ -294,7 +302,7 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
-                current_class_symbol = symbol
+                new_class_symbol = symbol
 
         elif node.type == "protocol_declaration":
             protocol_name = _extract_protocol_name(node, source)
@@ -378,15 +386,15 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
 
-        # Check for @end to reset current class context
+        # Check for @end to reset current class context for siblings
         if node.type == "@end":
-            current_class = None
-            current_class_symbol = None
+            new_class = None
+            new_class_symbol = None
 
-        for child in node.children:
-            process_node(child)
+        # Add children to stack with updated context
+        for child in reversed(node.children):
+            stack.append((child, new_class, new_class_symbol))
 
-    process_node(root)
     return analysis
 
 
@@ -450,7 +458,10 @@ def _extract_edges_from_file(
     global_methods: dict[str, Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract edges from a file using global symbol knowledge."""
+    """Extract edges from a file using global symbol knowledge.
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
     edges: list[Edge] = []
     rel_path = str(file_path)
     file_id = _make_file_id(rel_path)
@@ -463,21 +474,27 @@ def _extract_edges_from_file(
     tree = parser.parse(source)
     root = tree.root_node
 
-    current_method: Symbol | None = None
-    current_method_end: int = 0
+    # Stack entries: (node, current_method, current_method_end)
+    stack: list[tuple["tree_sitter.Node", Symbol | None, int]] = [
+        (root, None, 0)
+    ]
 
-    def process_node(node: "tree_sitter.Node") -> None:
-        nonlocal current_method, current_method_end
+    while stack:
+        node, current_method, current_method_end = stack.pop()
 
+        # Reset method context if we've moved past it
         if node.start_point[0] >= current_method_end:
             current_method = None
+
+        new_method = current_method
+        new_method_end = current_method_end
 
         # Track current method context
         if node.type == "method_definition":
             method_name = _extract_method_name(node, source)
             if method_name and method_name in local_methods:
-                current_method = local_methods[method_name]
-                current_method_end = node.end_point[0]
+                new_method = local_methods[method_name]
+                new_method_end = node.end_point[0]
 
         # Handle imports
         if node.type == "preproc_include":
@@ -530,10 +547,10 @@ def _extract_edges_from_file(
                         origin_run_id=run.execution_id,
                     ))
 
-        for child in node.children:
-            process_node(child)
+        # Add children to stack with updated context
+        for child in reversed(node.children):
+            stack.append((child, new_method, new_method_end))
 
-    process_node(root)
     return edges
 
 
