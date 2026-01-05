@@ -21,6 +21,8 @@ from hypergumbo.sketch import (
     _format_annotation,
     _extract_domain_vocabulary,
     _format_vocabulary,
+    _detect_test_summary,
+    _format_test_summary,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -234,6 +236,26 @@ class TestGenerateSketch:
 
         # Should not have Frameworks section
         assert "## Frameworks" not in sketch or "Frameworks" in sketch
+
+    def test_includes_test_summary(self, tmp_path: Path) -> None:
+        """Sketch includes test summary when tests exist."""
+        (tmp_path / "main.py").write_text("def hello(): pass\n")
+        (tmp_path / "test_main.py").write_text("import pytest\n\ndef test_hello(): pass\n")
+
+        sketch = generate_sketch(tmp_path)
+
+        assert "## Tests" in sketch
+        assert "pytest" in sketch
+        assert "1 test file" in sketch
+
+    def test_no_test_summary_when_no_tests(self, tmp_path: Path) -> None:
+        """Sketch omits test summary section when no tests exist."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+
+        sketch = generate_sketch(tmp_path)
+
+        # Should not have Tests section
+        assert "## Tests" not in sketch
 
     def test_many_directories(self, tmp_path: Path) -> None:
         """Sketch handles projects with many directories."""
@@ -2685,4 +2707,107 @@ class TestLogScaledSampling:
 
         # Should be truncated
         assert len(chunk) <= 200
+
+
+class TestDetectTestSummary:
+    """Tests for _detect_test_summary function."""
+
+    def test_no_test_files(self, tmp_path: Path) -> None:
+        """Returns None when no test files exist."""
+        (tmp_path / "main.py").write_text("print('hello')")
+        result = _detect_test_summary(tmp_path)
+        assert result is None
+
+    def test_single_python_test_file(self, tmp_path: Path) -> None:
+        """Detects a single Python test file."""
+        (tmp_path / "test_example.py").write_text("def test_foo(): pass")
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "1 test file" in result  # Singular
+
+    def test_multiple_python_test_files(self, tmp_path: Path) -> None:
+        """Detects multiple Python test files."""
+        (tmp_path / "test_foo.py").write_text("def test_foo(): pass")
+        (tmp_path / "test_bar.py").write_text("def test_bar(): pass")
+        (tmp_path / "baz_test.py").write_text("def test_baz(): pass")
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "3 test files" in result  # Plural
+
+    def test_detects_pytest_framework(self, tmp_path: Path) -> None:
+        """Detects pytest framework from imports."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "pytest" in result
+
+    def test_detects_unittest_framework(self, tmp_path: Path) -> None:
+        """Detects unittest framework from imports."""
+        (tmp_path / "test_example.py").write_text(
+            "import unittest\n\nclass TestFoo(unittest.TestCase): pass"
+        )
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "unittest" in result
+
+    def test_detects_multiple_frameworks(self, tmp_path: Path) -> None:
+        """Detects multiple test frameworks."""
+        (tmp_path / "test_a.py").write_text("import pytest\n\ndef test_a(): pass")
+        (tmp_path / "test_b.py").write_text("import unittest\n\nclass TestB: pass")
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "pytest" in result
+        assert "unittest" in result
+
+    def test_javascript_test_files(self, tmp_path: Path) -> None:
+        """Detects JavaScript/TypeScript test files."""
+        (tmp_path / "app.spec.ts").write_text("describe('app', () => {})")
+        (tmp_path / "utils.test.js").write_text("test('utils', () => {})")
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "2 test files" in result
+
+    def test_go_test_files(self, tmp_path: Path) -> None:
+        """Detects Go test files."""
+        (tmp_path / "main_test.go").write_text(
+            'package main\nimport "testing"\nfunc TestFoo(t *testing.T) {}'
+        )
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "1 test file" in result
+        assert "go test" in result
+
+    def test_excludes_node_modules(self, tmp_path: Path) -> None:
+        """Test files in excluded directories are not counted."""
+        nm = tmp_path / "node_modules" / "pkg"
+        nm.mkdir(parents=True)
+        (nm / "test.spec.js").write_text("test('foo', () => {})")
+        # Only the excluded file, no test files in main tree
+        result = _detect_test_summary(tmp_path)
+        assert result is None
+
+    def test_bats_test_files(self, tmp_path: Path) -> None:
+        """Detects shell test files (.bats)."""
+        (tmp_path / "test_cli.bats").write_text("@test 'example' { true; }")
+        result = _detect_test_summary(tmp_path)
+        assert result is not None
+        assert "1 test file" in result
+
+
+class TestFormatTestSummary:
+    """Tests for _format_test_summary function."""
+
+    def test_returns_empty_when_no_tests(self, tmp_path: Path) -> None:
+        """Returns empty string when no tests detected."""
+        (tmp_path / "main.py").write_text("print('hello')")
+        result = _format_test_summary(tmp_path)
+        assert result == ""
+
+    def test_formats_as_markdown_section(self, tmp_path: Path) -> None:
+        """Formats test summary as a Markdown section."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        result = _format_test_summary(tmp_path)
+        assert result.startswith("## Tests\n")
+        assert "pytest" in result
+        assert "*Coverage requires execution" in result
 
