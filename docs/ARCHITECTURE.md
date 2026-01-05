@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e44bd00ba59f
+  commit: 0c9c06ba23b1
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -13,9 +13,9 @@ GENERATION METADATA (for drift detection):
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **87** Python modules (54 analyzers, 13 linkers)
-- **1214** symbols (functions, classes, methods)
-- **4799** edges (calls, imports, instantiates)
+- **98** Python modules (65 analyzers, 13 linkers)
+- **1366** symbols (functions, classes, methods)
+- **5461** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 90 files · ~39,097 LOC
+Python (100%) · 101 files · ~42,916 LOC
 
 ## Structure
 
@@ -31,7 +31,7 @@ Python (100%) · 90 files · ~39,097 LOC
 
 ## Domain Vocabulary
 
-*Key terms: line, symbol, symbols, source, sitter, files, edges, pragma, cover, find, edge, extract*
+*Key terms: line, symbols, symbol, source, sitter, files, edges, cover, pragma, find, edge, extract*
 
 ## Source Files
 
@@ -61,11 +61,11 @@ Python (100%) · 90 files · ~39,097 LOC
 - `hypergumbo/analyze/fortran.py`
 - `hypergumbo/analyze/csharp.py`
 - `hypergumbo/analyze/sql.py`
+- `hypergumbo/analyze/capnp.py`
 - `hypergumbo/analyze/groovy.py`
 - `hypergumbo/analyze/xml_config.py`
 - `hypergumbo/analyze/css.py`
-- `hypergumbo/analyze/dart.py`
-- ... and 60 more files
+- ... and 71 more files
 
 ## Entry Points
 
@@ -78,6 +78,7 @@ Python (100%) · 90 files · ~39,097 LOC
 ### `hypergumbo/ir.py`
 - `Span` (class) ★ — Source code location with line and column info.
 - `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
+- `Edge` (class) — A relationship between two symbols (e.g., function calls).
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
@@ -90,68 +91,26 @@ Python (100%) · 90 files · ~39,097 LOC
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 - `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
 
-### `hypergumbo/analyze/js_ts.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
 ### `hypergumbo/analyze/rust.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
 - `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
-
-### `hypergumbo/analyze/dart.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-
-### `hypergumbo/analyze/go.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
-
-### `hypergumbo/analyze/cpp.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
 
 ### `hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
 
-### `hypergumbo/analyze/fsharp.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+*… and 1257 more symbols across 77 other files*
 
-### `hypergumbo/analyze/ruby.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/analyze/erlang.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-
-### `hypergumbo/analyze/java.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/analyze/zig.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find the first child node of a specific type.
-
-### `hypergumbo/analyze/sql.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/analyze/groovy.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/analyze/csharp.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/analyze/elm.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-
-### `hypergumbo/analyze/agda.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-
-*… and 1107 more symbols across 66 other files*
+*Utility functions (shown once): `_node_text` x11, `_find_child_by_type` x7, `_find_child_by_field` x2*
 
 ## All Files
 
 - `hypergumbo/__init__.py`
 - `hypergumbo/__main__.py`
 - `hypergumbo/analyze/__init__.py`
+- `hypergumbo/analyze/ada.py`
 - `hypergumbo/analyze/agda.py`
 - `hypergumbo/analyze/bash.py`
 - `hypergumbo/analyze/c.py`
+- `hypergumbo/analyze/capnp.py`
 - `hypergumbo/analyze/clojure.py`
 - `hypergumbo/analyze/cmake.py`
 - `hypergumbo/analyze/cobol.py`
@@ -159,14 +118,63 @@ Python (100%) · 90 files · ~39,097 LOC
 - `hypergumbo/analyze/csharp.py`
 - `hypergumbo/analyze/css.py`
 - `hypergumbo/analyze/cuda.py`
+- `hypergumbo/analyze/d_lang.py`
 - `hypergumbo/analyze/dart.py`
 - `hypergumbo/analyze/dockerfile.py`
 - `hypergumbo/analyze/elixir.py`
 - `hypergumbo/analyze/elm.py`
 - `hypergumbo/analyze/erlang.py`
+- `hypergumbo/analyze/fish.py`
 - `hypergumbo/analyze/fortran.py`
 - `hypergumbo/analyze/fsharp.py`
-- ... and 70 more files
+- `hypergumbo/analyze/gdscript.py`
+- `hypergumbo/analyze/glsl.py`
+- `hypergumbo/analyze/go.py`
+- `hypergumbo/analyze/graphql.py`
+- `hypergumbo/analyze/groovy.py`
+- `hypergumbo/analyze/haskell.py`
+- `hypergumbo/analyze/hcl.py`
+- `hypergumbo/analyze/hlsl.py`
+- `hypergumbo/analyze/html.py`
+- `hypergumbo/analyze/java.py`
+- `hypergumbo/analyze/js_ts.py`
+- `hypergumbo/analyze/json_config.py`
+- `hypergumbo/analyze/julia.py`
+- `hypergumbo/analyze/kotlin.py`
+- `hypergumbo/analyze/latex.py`
+- `hypergumbo/analyze/lean.py`
+- `hypergumbo/analyze/lua.py`
+- `hypergumbo/analyze/make.py`
+- `hypergumbo/analyze/nim.py`
+- `hypergumbo/analyze/nix.py`
+- `hypergumbo/analyze/objc.py`
+- `hypergumbo/analyze/ocaml.py`
+- `hypergumbo/analyze/perl.py`
+- `hypergumbo/analyze/php.py`
+- `hypergumbo/analyze/powershell.py`
+- `hypergumbo/analyze/proto.py`
+- `hypergumbo/analyze/py.py`
+- `hypergumbo/analyze/r_lang.py`
+- `hypergumbo/analyze/ruby.py`
+- `hypergumbo/analyze/rust.py`
+- `hypergumbo/analyze/scala.py`
+- `hypergumbo/analyze/solidity.py`
+- `hypergumbo/analyze/sql.py`
+- `hypergumbo/analyze/starlark.py`
+- `hypergumbo/analyze/swift.py`
+- `hypergumbo/analyze/thrift.py`
+- `hypergumbo/analyze/toml_config.py`
+- `hypergumbo/analyze/verilog.py`
+- `hypergumbo/analyze/vhdl.py`
+- `hypergumbo/analyze/wgsl.py`
+- `hypergumbo/analyze/wolfram.py`
+- `hypergumbo/analyze/xml_config.py`
+- `hypergumbo/analyze/yaml_ansible.py`
+- `hypergumbo/analyze/zig.py`
+- `hypergumbo/build_grammars.py`
+- `hypergumbo/catalog.py`
+- `hypergumbo/cli.py`
+- ... and 30 more files
 ```
 
 ## Data Flow
@@ -181,7 +189,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1214 Symbols + 4799 Edges
+│  analyzers  │────▶│     IR      │  1366 Symbols + 5461 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -203,11 +211,11 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 306 | ir.py |
-| `Span` | class | 299 | ir.py |
-| `find_files` | function | 122 | discovery.py |
-| `Edge` | class | 93 | ir.py |
-| `AnalysisRun` | class | 67 | ir.py |
+| `Symbol` | class | 328 | ir.py |
+| `Span` | class | 321 | ir.py |
+| `find_files` | function | 144 | discovery.py |
+| `Edge` | class | 123 | ir.py |
+| `AnalysisRun` | class | 89 | ir.py |
 | `Pass` | class | 33 | catalog.py |
 | `_find_child_by_type` | function | 29 | julia.py |
 | `Entrypoint` | class | 29 | entrypoints.py |
@@ -234,9 +242,11 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 ### Analyzers
 
+- **`analyze.ada`**: Ada analysis pass using tree-sitter.
 - **`analyze.agda`**: Agda analysis pass using tree-sitter-agda.
 - **`analyze.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`analyze.c`**: C analysis pass using tree-sitter-c.
+- **`analyze.capnp`**: Cap'n Proto analysis pass using tree-sitter.
 - **`analyze.clojure`**: Clojure analysis pass using tree-sitter.
 - **`analyze.cmake`**: CMake analysis pass using tree-sitter-cmake.
 - **`analyze.cobol`**: COBOL analyzer using tree-sitter.
@@ -244,19 +254,23 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.csharp`**: C# analysis pass using tree-sitter-c-sharp.
 - **`analyze.css`**: CSS stylesheet analysis using tree-sitter-css.
 - **`analyze.cuda`**: CUDA analysis pass using tree-sitter-cuda.
+- **`analyze.d_lang`**: D language analysis pass using tree-sitter.
 - **`analyze.dart`**: Dart/Flutter analysis pass using tree-sitter.
 - **`analyze.dockerfile`**: Dockerfile analysis pass using tree-sitter-dockerfile.
 - **`analyze.elixir`**: Elixir analysis pass using tree-sitter-elixir.
 - **`analyze.elm`**: Elm analysis pass using tree-sitter.
 - **`analyze.erlang`**: Erlang analysis pass using tree-sitter.
+- **`analyze.fish`**: Fish shell analysis pass using tree-sitter.
 - **`analyze.fortran`**: Fortran analysis pass using tree-sitter-fortran.
 - **`analyze.fsharp`**: F# analysis pass using tree-sitter.
+- **`analyze.gdscript`**: GDScript (Godot) analysis pass using tree-sitter.
 - **`analyze.glsl`**: GLSL shader analysis pass using tree-sitter-glsl.
 - **`analyze.go`**: Go analysis pass using tree-sitter-go.
 - **`analyze.graphql`**: GraphQL schema analysis pass using tree-sitter-graphql.
 - **`analyze.groovy`**: Groovy analysis pass using tree-sitter-groovy.
 - **`analyze.haskell`**: Haskell analysis pass using tree-sitter-haskell.
 - **`analyze.hcl`**: HCL/Terraform analyzer using tree-sitter.
+- **`analyze.hlsl`**: HLSL (DirectX shader) analysis pass using tree-sitter.
 - **`analyze.html`**: HTML script tag analysis pass.
 - **`analyze.java`**: Java analysis pass using tree-sitter-java.
 - **`analyze.js_ts`**: JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
@@ -267,11 +281,14 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.lean`**: Lean 4 analysis pass using tree-sitter-lean.
 - **`analyze.lua`**: Lua analysis pass using tree-sitter-lua.
 - **`analyze.make`**: Makefile analysis pass using tree-sitter-make.
+- **`analyze.nim`**: Nim language analysis pass using tree-sitter.
 - **`analyze.nix`**: Nix expression analysis pass using tree-sitter-nix.
 - **`analyze.objc`**: Objective-C analyzer using tree-sitter.
 - **`analyze.ocaml`**: OCaml analysis pass using tree-sitter-ocaml.
 - **`analyze.perl`**: Perl analysis pass using tree-sitter.
 - **`analyze.php`**: PHP analysis pass using tree-sitter-php.
+- **`analyze.powershell`**: PowerShell analysis pass using tree-sitter.
+- **`analyze.proto`**: Protocol Buffers (Proto) analysis pass using tree-sitter.
 - **`analyze.py`**: Python AST analysis pass.
 - **`analyze.r_lang`**: R language analysis pass using tree-sitter.
 - **`analyze.ruby`**: Ruby analysis pass using tree-sitter-ruby.
@@ -279,7 +296,9 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.scala`**: Scala analysis pass using tree-sitter-scala.
 - **`analyze.solidity`**: Solidity analysis pass using tree-sitter-solidity.
 - **`analyze.sql`**: SQL schema analysis pass using tree-sitter-sql.
+- **`analyze.starlark`**: Starlark (Bazel/Buck) analysis pass using tree-sitter.
 - **`analyze.swift`**: Swift analysis pass using tree-sitter-swift.
+- **`analyze.thrift`**: Apache Thrift analysis pass using tree-sitter.
 - **`analyze.toml_config`**: TOML configuration file analyzer using tree-sitter-toml.
 - **`analyze.verilog`**: Verilog/SystemVerilog analysis pass using tree-sitter-verilog.
 - **`analyze.vhdl`**: VHDL analysis pass using tree-sitter-vhdl.
