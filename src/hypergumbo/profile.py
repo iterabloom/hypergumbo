@@ -95,6 +95,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "starlark": ["BUILD", "BUILD.bazel", "BUCK", "*.bzl"],
     "fish": ["*.fish"],
     "hlsl": ["*.hlsl", "*.hlsli", "*.fx"],
+    "ada": ["*.ads", "*.adb", "*.ada"],
 }
 
 # Framework detection patterns
