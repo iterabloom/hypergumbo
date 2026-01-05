@@ -91,6 +91,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "thrift": ["*.thrift"],
     "capnp": ["*.capnp"],
     "powershell": ["*.ps1", "*.psm1", "*.psd1"],
+    "gdscript": ["*.gd"],
 }
 
 # Framework detection patterns
