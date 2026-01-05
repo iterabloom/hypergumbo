@@ -35,7 +35,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .analyze.c import analyze_c
@@ -129,6 +129,26 @@ from .compact import (
 from .build_grammars import build_all_grammars, check_grammar_availability
 
 
+def _find_git_root(start_path: Path) -> Optional[Path]:
+    """Find the git repository root by walking up from start_path.
+
+    Args:
+        start_path: Directory to start searching from.
+
+    Returns:
+        Path to git root (directory containing .git), or None if not in a git repo.
+    """
+    current = start_path.resolve()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    # Check root directory too (only possible at filesystem root like /)
+    if (current / ".git").exists():  # pragma: no cover
+        return current  # pragma: no cover
+    return None
+
+
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -136,6 +156,23 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     if not repo_root.exists():
         print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
         return 1
+
+    # Warn if analyzing a subdirectory of a git repo
+    git_root = _find_git_root(repo_root)
+    if git_root is not None and git_root.resolve() != repo_root.resolve():
+        # Reconstruct command with original flags but new path
+        cmd_parts = ["hypergumbo", "sketch"]
+        if args.tokens:
+            cmd_parts.extend(["-t", str(args.tokens)])
+        if getattr(args, "exclude_tests", False):
+            cmd_parts.append("-x")
+        cmd_parts.append(str(git_root))
+        suggested_cmd = " ".join(cmd_parts)
+        print(
+            f"NOTE: Your repo root appears to be at {git_root}\n"
+            f"      You may want to run: {suggested_cmd}\n",
+            file=sys.stderr,
+        )
 
     max_tokens = args.tokens if args.tokens else None
     exclude_tests = getattr(args, "exclude_tests", False)
