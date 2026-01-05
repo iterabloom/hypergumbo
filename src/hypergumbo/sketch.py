@@ -2885,6 +2885,15 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # Thrift analysis failed or tree-sitter not available
 
+    if "capnp" in profile.languages:
+        try:  # pragma: no cover
+            from .analyze.capnp import analyze_capnp  # pragma: no cover
+            result = analyze_capnp(repo_root)  # pragma: no cover
+            all_symbols.extend(result.symbols)  # pragma: no cover
+            all_edges.extend(result.edges)  # pragma: no cover
+        except Exception:  # pragma: no cover
+            pass  # Cap'n Proto analysis failed or tree-sitter not available
+
     if "r" in profile.languages:
         try:  # pragma: no cover
             from .analyze.r_lang import analyze_r  # pragma: no cover
