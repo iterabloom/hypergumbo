@@ -7,7 +7,9 @@ import pytest
 from hypergumbo.ir import AnalysisRun
 from hypergumbo.linkers.registry import (
     LinkerContext,
+    LinkerRequirement,
     LinkerResult,
+    check_linker_requirements,
     clear_registry,
     get_all_linkers,
     get_linker,
@@ -324,3 +326,142 @@ class TestListRegistered:
         names = list_registered()
         assert "list-a" in names
         assert "list-b" in names
+
+
+class TestLinkerRequirements:
+    """Tests for linker requirements/contracts system."""
+
+    def test_register_with_requirements(self):
+        """Linker can be registered with requirements."""
+
+        def count_java_native(ctx: LinkerContext) -> int:
+            return sum(
+                1 for s in ctx.symbols
+                if s.language == "java" and "native" in s.modifiers  # type: ignore
+            )
+
+        req = LinkerRequirement(
+            name="java_native",
+            description="Java native methods",
+            check=count_java_native,
+        )
+
+        @register_linker("req-linker", requirements=[req])
+        def link_req(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        linker = get_linker("req-linker")
+        assert linker is not None
+        assert len(linker.requirements) == 1
+        assert linker.requirements[0].name == "java_native"
+
+    def test_check_requirements_all_met(self):
+        """check_linker_requirements reports all_met=True when requirements are met."""
+        from hypergumbo.ir import Symbol, Span
+
+        def count_items(ctx: LinkerContext) -> int:
+            return len(ctx.symbols)
+
+        req = LinkerRequirement(
+            name="symbols",
+            description="Any symbols",
+            check=count_items,
+        )
+
+        @register_linker("check-met", description="Test linker", requirements=[req])
+        def link_check(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        # Create context with one symbol
+        sym = Symbol(
+            id="test:a.py:1-1:foo:function",
+            name="foo",
+            kind="function",
+            language="test",
+            path="a.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            origin="test",
+            origin_run_id="test",
+        )
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym])
+
+        diagnostics = check_linker_requirements(ctx)
+
+        assert len(diagnostics) == 1
+        diag = diagnostics[0]
+        assert diag.linker_name == "check-met"
+        assert diag.linker_description == "Test linker"
+        assert diag.all_met is True
+        assert len(diag.requirements) == 1
+        assert diag.requirements[0].met is True
+        assert diag.requirements[0].count == 1
+
+    def test_check_requirements_unmet(self):
+        """check_linker_requirements reports all_met=False when requirements are unmet."""
+
+        def count_nothing(ctx: LinkerContext) -> int:
+            return 0
+
+        req = LinkerRequirement(
+            name="nothing",
+            description="Nothing found",
+            check=count_nothing,
+        )
+
+        @register_linker("check-unmet", requirements=[req])
+        def link_unmet(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+
+        diagnostics = check_linker_requirements(ctx)
+
+        assert len(diagnostics) == 1
+        diag = diagnostics[0]
+        assert diag.all_met is False
+        assert diag.requirements[0].met is False
+        assert diag.requirements[0].count == 0
+
+    def test_check_requirements_multiple(self):
+        """check_linker_requirements handles multiple requirements correctly."""
+
+        def count_symbols(ctx: LinkerContext) -> int:
+            return len(ctx.symbols)
+
+        def count_edges(ctx: LinkerContext) -> int:
+            return len(ctx.edges)
+
+        reqs = [
+            LinkerRequirement(name="symbols", description="Symbols", check=count_symbols),
+            LinkerRequirement(name="edges", description="Edges", check=count_edges),
+        ]
+
+        @register_linker("multi-req", requirements=reqs)
+        def link_multi(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        # Context with symbols but no edges
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=["s"], edges=[])  # type: ignore
+
+        diagnostics = check_linker_requirements(ctx)
+
+        assert len(diagnostics) == 1
+        diag = diagnostics[0]
+        # Has symbols (met) but no edges (unmet)
+        assert diag.all_met is False
+        assert diag.requirements[0].met is True  # symbols
+        assert diag.requirements[1].met is False  # edges
+
+    def test_check_requirements_skips_linkers_without_requirements(self):
+        """Linkers without requirements are omitted from diagnostics."""
+
+        @register_linker("no-req")
+        def link_no_req(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+
+        diagnostics = check_linker_requirements(ctx)
+
+        # Linker without requirements should not appear in diagnostics
+        assert len(diagnostics) == 0

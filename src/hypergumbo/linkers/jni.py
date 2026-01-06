@@ -37,9 +37,53 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..ir import AnalysisRun, Edge, Symbol
+from .registry import (
+    LinkerContext,
+    LinkerRequirement,
+    LinkerResult,
+    register_linker,
+)
 
 PASS_ID = "jni-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
+
+
+# Requirement check functions for the linker contract
+def _count_java_native_methods(ctx: LinkerContext) -> int:
+    """Count Java methods with native modifier."""
+    count = 0
+    for sym in ctx.symbols:
+        if sym.language != "java" or sym.kind != "method":
+            continue
+        is_native_via_modifiers = "native" in sym.modifiers
+        is_native_via_meta = sym.meta.get("is_native", False) if sym.meta else False
+        if is_native_via_modifiers or is_native_via_meta:
+            count += 1
+    return count
+
+
+def _count_c_jni_functions(ctx: LinkerContext) -> int:
+    """Count C functions with JNI naming convention (Java_...)."""
+    count = 0
+    for sym in ctx.symbols:
+        if sym.language == "c" and sym.kind == "function" and sym.name.startswith("Java_"):
+            count += 1
+    return count
+
+
+# Define the linker requirements contract
+JNI_REQUIREMENTS = [
+    LinkerRequirement(
+        name="java_native_methods",
+        description="Java native method declarations",
+        check=_count_java_native_methods,
+    ),
+    LinkerRequirement(
+        name="c_jni_functions",
+        description="C JNI implementation functions (Java_*)",
+        check=_count_c_jni_functions,
+    ),
+]
 
 
 @dataclass
@@ -178,9 +222,10 @@ def link_jni(java_symbols: list[Symbol], c_symbols: list[Symbol]) -> JniLinkResu
         if sym.kind != "method":
             continue
 
-        # Check if this is a native method
-        is_native = sym.meta.get("is_native", False) if sym.meta else False
-        if not is_native:
+        # Check if this is a native method (via modifiers field or legacy meta.is_native)
+        is_native_via_modifiers = "native" in sym.modifiers
+        is_native_via_meta = sym.meta.get("is_native", False) if sym.meta else False
+        if not (is_native_via_modifiers or is_native_via_meta):
             continue
 
         # Look up the corresponding C function
@@ -202,3 +247,28 @@ def link_jni(java_symbols: list[Symbol], c_symbols: list[Symbol]) -> JniLinkResu
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return JniLinkResult(edges=edges, run=run)
+
+
+# Register the linker with the registry for unified dispatch
+@register_linker(
+    "jni",
+    priority=10,  # Early priority - JNI linking should happen before other linkers
+    description="Java/C JNI bridge - links native method declarations to C implementations",
+    requirements=JNI_REQUIREMENTS,
+)
+def jni_linker(ctx: LinkerContext) -> LinkerResult:
+    """JNI linker for registry-based dispatch.
+
+    This wraps link_jni() to use the LinkerContext/LinkerResult interface.
+    """
+    # Separate Java and C symbols
+    java_symbols = [s for s in ctx.symbols if s.language == "java"]
+    c_symbols = [s for s in ctx.symbols if s.language == "c"]
+
+    result = link_jni(java_symbols, c_symbols)
+
+    return LinkerResult(
+        symbols=[],
+        edges=result.edges,
+        run=result.run,
+    )

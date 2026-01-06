@@ -154,6 +154,17 @@ CLI_NAME_PATTERNS = {
     "main", "cli", "run", "execute", "start",
 }
 
+# Languages where CLI_NAME_PATTERNS (like "main") indicate program entry points.
+# Excludes shader languages (GLSL/HLSL/WGSL), hardware description (Verilog/VHDL),
+# and config/data languages where "main" has no CLI meaning.
+CLI_CAPABLE_LANGUAGES = {
+    "c", "cpp", "python", "go", "java", "rust",
+    "javascript", "typescript", "kotlin", "swift",
+    "ruby", "php", "csharp", "fsharp", "scala",
+    "perl", "lua", "nim", "zig", "d", "haskell",
+    "ocaml", "elixir", "erlang", "crystal", "julia",
+}
+
 # Electron file patterns (only specific patterns to avoid false positives)
 # Note: renderer.js/ts and index.js are too generic - many frameworks use these names
 ELECTRON_MAIN_FILES = {"electron.js", "electron.ts", "electron-main.js", "electron-main.ts"}
@@ -387,7 +398,9 @@ def _detect_cli_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         # Check for name patterns (lower confidence)
-        if sym.name.lower() in CLI_NAME_PATTERNS:
+        # Only match CLI patterns for languages where "main" means program entry point
+        # (excludes shaders like GLSL/HLSL/WGSL, HDL like Verilog/VHDL, etc.)
+        if sym.language in CLI_CAPABLE_LANGUAGES and sym.name.lower() in CLI_NAME_PATTERNS:
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.CLI_MAIN,

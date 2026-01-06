@@ -128,6 +128,52 @@ class TestCLIEntrypoints:
         assert len(entrypoints) == 1
         assert entrypoints[0].kind == EntrypointKind.CLI_COMMAND
 
+    def test_c_main_detected_as_cli(self) -> None:
+        """C main function is detected as CLI_MAIN."""
+        sym = make_symbol("main", path="src/main.c", language="c")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_cpp_main_detected_as_cli(self) -> None:
+        """C++ main function is detected as CLI_MAIN."""
+        sym = make_symbol("main", path="src/main.cpp", language="cpp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_glsl_main_not_detected_as_cli(self) -> None:
+        """GLSL shader main function is NOT detected as CLI_MAIN."""
+        sym = make_symbol("main", path="shaders/vertex.glsl", language="glsl")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # GLSL main is a shader entry point, not a CLI entry point
+        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_hlsl_main_not_detected_as_cli(self) -> None:
+        """HLSL shader main function is NOT detected as CLI_MAIN."""
+        sym = make_symbol("main", path="shaders/pixel.hlsl", language="hlsl")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_wgsl_main_not_detected_as_cli(self) -> None:
+        """WGSL shader main function is NOT detected as CLI_MAIN."""
+        sym = make_symbol("main", path="shaders/compute.wgsl", language="wgsl")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
 
 class TestElectronEntrypoints:
     """Tests for Electron app detection."""

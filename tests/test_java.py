@@ -1021,6 +1021,85 @@ public class ResourceController {
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
 
+class TestJavaModifiersCapture:
+    """Tests for Java method modifier capture in the modifiers field."""
+
+    def test_native_modifier_captured(self, tmp_path: Path) -> None:
+        """Native methods should have 'native' in modifiers list."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Native.java"
+        java_file.write_text("""
+public class Native {
+    public native void processData(byte[] data);
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "processData" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert "native" in method.modifiers
+
+    def test_public_static_modifiers_captured(self, tmp_path: Path) -> None:
+        """Public static methods should have both modifiers in list."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Utils.java"
+        java_file.write_text("""
+public class Utils {
+    public static int max(int a, int b) {
+        return a > b ? a : b;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "max" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert "public" in method.modifiers
+        assert "static" in method.modifiers
+
+    def test_all_modifiers_captured(self, tmp_path: Path) -> None:
+        """All method modifiers should be captured."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "JNIBridge.java"
+        java_file.write_text("""
+public class JNIBridge {
+    public static native void nativeCall();
+    private synchronized void syncMethod() {}
+    protected final void finalMethod() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Native static method
+        native_methods = [s for s in result.symbols if s.kind == "method" and "nativeCall" in s.name]
+        assert len(native_methods) == 1
+        assert "native" in native_methods[0].modifiers
+        assert "static" in native_methods[0].modifiers
+        assert "public" in native_methods[0].modifiers
+
+        # Synchronized method
+        sync_methods = [s for s in result.symbols if s.kind == "method" and "syncMethod" in s.name]
+        assert len(sync_methods) == 1
+        assert "synchronized" in sync_methods[0].modifiers
+        assert "private" in sync_methods[0].modifiers
+
+        # Final method
+        final_methods = [s for s in result.symbols if s.kind == "method" and "finalMethod" in s.name]
+        assert len(final_methods) == 1
+        assert "final" in final_methods[0].modifiers
+        assert "protected" in final_methods[0].modifiers
+
+
 class TestJavaSignatureExtraction:
     """Tests for Java function signature extraction."""
 
