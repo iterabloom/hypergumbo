@@ -41,18 +41,29 @@ When coverage is below 100%, use `./scripts/find-uncovered` to efficiently locat
 # Query saved data without re-running tests (~2-3 min saved)
 ./scripts/find-uncovered --report
 
+# Output as file:line format (easy to navigate to)
+./scripts/find-uncovered --lines
+
+# Show actual code for each uncovered line
+./scripts/find-uncovered --context
+
 # Filter for specific files
-./scripts/find-uncovered --report js_ts
-./scripts/find-uncovered --report analyze/
+./scripts/find-uncovered --lines cli
+./scripts/find-uncovered --context analyze/
 ```
 
 The script saves coverage data to `.coverage.txt`, allowing multiple queries without re-running the full test suite. This is especially useful when iteratively fixing coverage gaps.
 
+**Agent-friendly modes:**
+- `--lines` outputs `file:line` format for easy navigation with Read tool
+- `--context` shows actual code snippets for each uncovered line
+- Both modes imply `--report` (no re-running tests)
+
 **Workflow for fixing coverage:**
 1. Run `./scripts/find-uncovered` once (takes ~2-3 min)
-2. Note the uncovered lines (format: `src/file.py  100  2  98%  123, 456`)
+2. Use `--lines` or `--context` to locate uncovered code
 3. Add `# pragma: no cover` to defensive/unreachable code paths
-4. Run `./scripts/find-uncovered` again to verify 100%
+4. Run `pytest --cov=src --cov-fail-under=100` to verify
 
 ## Pre-Work Checklist
 Run these checks before starting any new feature or task:
