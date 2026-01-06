@@ -29,24 +29,34 @@ Why This Design
 - Java support is separate from other languages to keep modules focused
 - Two-pass allows cross-file call resolution and inheritance tracking
 - Same pattern as C/PHP/JS analyzers for consistency
+- Uses iterative traversal to avoid RecursionError on deeply nested code
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import (
+    AnalysisResult,
+    is_grammar_available,
+    iter_tree,
+    make_symbol_id as _base_make_symbol_id,
+    node_text as _node_text,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = "java-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
+
+# Backwards compatibility alias
+JavaAnalysisResult = AnalysisResult
 
 
 def find_java_files(repo_root: Path) -> Iterator[Path]:
@@ -56,32 +66,12 @@ def find_java_files(repo_root: Path) -> Iterator[Path]:
 
 def is_java_tree_sitter_available() -> bool:
     """Check if tree-sitter and Java grammar are available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_java") is None:
-        return False
-    return True
-
-
-@dataclass
-class JavaAnalysisResult:
-    """Result of analyzing Java files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
+    return is_grammar_available("tree_sitter_java")
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
     """Generate location-based ID."""
-    return f"java:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return _base_make_symbol_id("java", path, start_line, end_line, name, kind)
 
 
 def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -421,22 +411,45 @@ class _ParsedFile:
     source: bytes
 
 
+def _get_class_ancestors(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree to find enclosing class/interface/enum names.
+
+    Returns a list of class names from outermost to innermost (excluding current node).
+    Used to build qualified names for nested types without recursion.
+    """
+    ancestors: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "interface_declaration", "enum_declaration"):
+            name = _get_class_name(current, source)
+            if name:
+                ancestors.append(name)
+        current = current.parent
+    # Reverse because we walked from inner to outer
+    return list(reversed(ancestors))
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
 ) -> list[Symbol]:
-    """Extract symbols from a parsed Java tree (pass 1)."""
-    symbols: list[Symbol] = []
-    class_stack: list[str] = []  # Track nested class context
+    """Extract symbols from a parsed Java tree (pass 1).
 
-    def visit(node: "tree_sitter.Node") -> None:
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
+    symbols: list[Symbol] = []
+
+    for node in iter_tree(tree.root_node):
         # Class declarations
         if node.type == "class_declaration":
             name = _get_class_name(node, source)
             if name:
-                full_name = ".".join(class_stack + [name]) if class_stack else name
+                ancestors = _get_class_ancestors(node, source)
+                full_name = ".".join(ancestors + [name]) if ancestors else name
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -455,18 +468,12 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-                # Process children with class context
-                class_stack.append(name)
-                for child in node.children:
-                    visit(child)
-                class_stack.pop()
-                return
-
         # Interface declarations
-        if node.type == "interface_declaration":
+        elif node.type == "interface_declaration":
             name = _get_class_name(node, source)
             if name:
-                full_name = ".".join(class_stack + [name]) if class_stack else name
+                ancestors = _get_class_ancestors(node, source)
+                full_name = ".".join(ancestors + [name]) if ancestors else name
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -485,18 +492,12 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-                # Process children with interface context
-                class_stack.append(name)
-                for child in node.children:
-                    visit(child)
-                class_stack.pop()
-                return
-
         # Enum declarations
-        if node.type == "enum_declaration":
+        elif node.type == "enum_declaration":
             name = _get_class_name(node, source)
             if name:
-                full_name = ".".join(class_stack + [name]) if class_stack else name
+                ancestors = _get_class_ancestors(node, source)
+                full_name = ".".join(ancestors + [name]) if ancestors else name
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -515,18 +516,13 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-                class_stack.append(name)
-                for child in node.children:
-                    visit(child)
-                class_stack.pop()
-                return
-
         # Method declarations
-        if node.type == "method_declaration":
+        elif node.type == "method_declaration":
             name = _get_method_name(node, source)
-            if name and class_stack:
+            ancestors = _get_class_ancestors(node, source)
+            if name and ancestors:
                 # Name methods with class prefix
-                full_name = f"{'.'.join(class_stack)}.{name}"
+                full_name = f"{'.'.join(ancestors)}.{name}"
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -578,10 +574,11 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Constructor declarations
-        if node.type == "constructor_declaration":
+        elif node.type == "constructor_declaration":
             name = _get_method_name(node, source)
-            if name and class_stack:
-                full_name = f"{'.'.join(class_stack)}.{name}"
+            ancestors = _get_class_ancestors(node, source)
+            if name and ancestors:
+                full_name = f"{'.'.join(ancestors)}.{name}"
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -604,12 +601,32 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return symbols
+
+
+def _get_enclosing_method(
+    node: "tree_sitter.Node",
+    source: bytes,
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing method/constructor.
+
+    Returns the Symbol for the enclosing method, or None if not inside a method.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("method_declaration", "constructor_declaration"):
+            name = _get_method_name(current, source)
+            if name:
+                # Get class context
+                ancestors = _get_class_ancestors(current, source)
+                if ancestors:
+                    full_name = f"{'.'.join(ancestors)}.{name}"
+                    if full_name in global_symbols:
+                        return global_symbols[full_name]
+            return None  # pragma: no cover  # Found method but couldn't resolve it
+        current = current.parent
+    return None
 
 
 def _extract_edges(
@@ -623,24 +640,17 @@ def _extract_edges(
     """Extract edges from a parsed Java tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
-    class_stack: list[str] = []
-    method_stack: list[Symbol] = []
 
-    def get_current_class() -> Optional[str]:
-        return ".".join(class_stack) if class_stack else None
-
-    def get_current_method() -> Optional[Symbol]:
-        return method_stack[-1] if method_stack else None
-
-    def visit(node: "tree_sitter.Node") -> None:
-        # Track class context and detect extends/implements
+    for node in iter_tree(tree.root_node):
+        # Check for extends (superclass) in class declarations
         if node.type == "class_declaration":
             name = _get_class_name(node, source)
             if name:
-                class_stack.append(name)
-                current_class = get_current_class()
+                ancestors = _get_class_ancestors(node, source)
+                current_class = ".".join(ancestors + [name]) if ancestors else name
 
                 # Check for extends (superclass)
                 for child in node.children:
@@ -649,7 +659,7 @@ def _extract_edges(
                         for subchild in child.children:
                             if subchild.type == "type_identifier":
                                 parent_name = _node_text(subchild, source)
-                                if current_class and current_class in class_symbols:
+                                if current_class in class_symbols:
                                     src_sym = class_symbols[current_class]
                                     if parent_name in class_symbols:
                                         dst_sym = class_symbols[parent_name]
@@ -673,7 +683,7 @@ def _extract_edges(
                                 for type_node in subchild.children:
                                     if type_node.type == "type_identifier":
                                         iface_name = _node_text(type_node, source)
-                                        if current_class and current_class in class_symbols:
+                                        if current_class in class_symbols:
                                             src_sym = class_symbols[current_class]
                                             if iface_name in class_symbols:
                                                 dst_sym = class_symbols[iface_name]
@@ -689,48 +699,9 @@ def _extract_edges(
                                                 )
                                                 edges.append(edge)
 
-                for child in node.children:
-                    visit(child)
-                class_stack.pop()
-                return
-
-        # Track interface context
-        if node.type == "interface_declaration":
-            name = _get_class_name(node, source)
-            if name:
-                class_stack.append(name)
-                for child in node.children:
-                    visit(child)
-                class_stack.pop()
-                return
-
-        # Track enum context
-        if node.type == "enum_declaration":
-            name = _get_class_name(node, source)
-            if name:
-                class_stack.append(name)
-                for child in node.children:
-                    visit(child)
-                class_stack.pop()
-                return
-
-        # Track method context
-        if node.type in ("method_declaration", "constructor_declaration"):
-            name = _get_method_name(node, source)
-            current_class = get_current_class()
-            if name and current_class:
-                full_name = f"{current_class}.{name}"
-                if full_name in global_symbols:
-                    method_sym = global_symbols[full_name]
-                    method_stack.append(method_sym)
-                    for child in node.children:
-                        visit(child)
-                    method_stack.pop()
-                    return
-
         # Method invocations
-        if node.type == "method_invocation":
-            current_method = get_current_method()
+        elif node.type == "method_invocation":
+            current_method = _get_enclosing_method(node, source, global_symbols)
             if current_method:
                 # Get the method name being called
                 method_name = None
@@ -740,7 +711,10 @@ def _extract_edges(
                         break
 
                 if method_name:
-                    current_class = get_current_class()
+                    # Get class context
+                    ancestors = _get_class_ancestors(node, source)
+                    current_class = ".".join(ancestors) if ancestors else None
+
                     # Try to resolve: this.method(), method(), ClassName.method()
                     candidates = []
                     if current_class:
@@ -770,8 +744,8 @@ def _extract_edges(
                             break
 
         # Object creation: new ClassName()
-        if node.type == "object_creation_expression":
-            current_method = get_current_method()
+        elif node.type == "object_creation_expression":
+            current_method = _get_enclosing_method(node, source, global_symbols)
             if current_method:
                 # Find the type being instantiated
                 for child in node.children:
@@ -792,11 +766,6 @@ def _extract_edges(
                             edges.append(edge)
                         break
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

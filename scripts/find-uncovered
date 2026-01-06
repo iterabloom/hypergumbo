@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Find uncovered lines in the codebase
+#
+# Usage:
+#   ./scripts/find-uncovered           # Generate report and show uncovered lines
+#   ./scripts/find-uncovered --report  # Show uncovered lines from saved data (no re-run)
+#   ./scripts/find-uncovered PATTERN   # Filter for files matching PATTERN
+#
+# Examples:
+#   ./scripts/find-uncovered              # Full run + show uncovered
+#   ./scripts/find-uncovered --report     # Just show from .coverage file
+#   ./scripts/find-uncovered js_ts        # Full run, filter for js_ts
+#
+# The script generates .coverage file and coverage.txt for later queries.
+
+set -e
+
+REPORT_ONLY=false
+PATTERN=""
+
+if [ "$1" = "--report" ]; then
+    REPORT_ONLY=true
+    PATTERN="${2:-}"
+else
+    PATTERN="${1:-}"
+fi
+
+COVERAGE_TXT=".coverage.txt"
+
+if [ "$REPORT_ONLY" = false ]; then
+    echo "🔍 Running coverage analysis (this takes ~2-3 mins)..."
+
+    # Run once and save output
+    pytest --cov=src --cov-report=term-missing -q 2>&1 > "$COVERAGE_TXT" || true
+
+    echo "   Coverage data saved to $COVERAGE_TXT"
+fi
+
+if [ ! -f "$COVERAGE_TXT" ]; then
+    echo "❌ No coverage data found. Run without --report first."
+    exit 1
+fi
+
+echo ""
+echo "📋 Uncovered lines:"
+echo "-------------------"
+
+# Extract lines with uncovered code (have line numbers after percentage)
+# Format: src/file.py    100   2   98%   123, 456
+if [ -n "$PATTERN" ]; then
+    grep -E "^src/.*\s+[0-9]+\s+[0-9]+\s+[0-9]+%\s+[0-9]" "$COVERAGE_TXT" | \
+        grep "$PATTERN" || echo "No uncovered lines matching '$PATTERN'"
+else
+    grep -E "^src/.*\s+[0-9]+\s+[0-9]+%\s+[0-9]" "$COVERAGE_TXT" || {
+        echo "✅ 100% coverage - no uncovered lines!"
+    }
+fi
+
+echo ""
+echo "-------------------"
+# Show summary from last line
+tail -5 "$COVERAGE_TXT" | head -3
