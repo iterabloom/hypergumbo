@@ -52,10 +52,26 @@ from typing import Dict, List, Tuple
 from .ir import Symbol, Edge
 from .ranking import compute_centrality, apply_tier_weights
 from .selection.filters import (
+    EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
     EXCLUDED_KINDS,
     is_test_path as _is_test_path,
     is_example_path as _is_example_path,
 )
+from .selection.token_budget import (
+    CHARS_PER_TOKEN,  # re-export for backwards compatibility
+    DEFAULT_TIERS,  # re-export for backwards compatibility
+    TOKENS_BEHAVIOR_MAP_OVERHEAD,
+    estimate_json_tokens,
+    parse_tier_spec,  # re-export for backwards compatibility
+)
+
+# Re-exports for backwards compatibility (from selection.* modules)
+__all__ = [
+    "CHARS_PER_TOKEN",
+    "DEFAULT_TIERS",
+    "EXAMPLE_PATH_PATTERNS",
+    "parse_tier_spec",
+]
 
 
 @dataclass
@@ -420,66 +436,15 @@ def format_compact_behavior_map(
     return compact_map
 
 
-# Token estimation constants
-# ~4 chars per token is a reasonable approximation for JSON with code
-CHARS_PER_TOKEN = 4
-
-# Overhead per node (JSON structure, keys, formatting)
-# Estimated from typical node: {"id": "...", "name": "...", "kind": "...", ...}
-TOKENS_PER_NODE_OVERHEAD = 50
-
-# Overhead for behavior map shell (schema_version, view, metrics, etc.)
-TOKENS_BEHAVIOR_MAP_OVERHEAD = 200
-
-# Default tiers in tokens (k = 1000 tokens)
-DEFAULT_TIERS = ["4k", "16k", "64k"]
-
-
-def parse_tier_spec(spec: str) -> int:
-    """Parse a tier specification into target tokens.
-
-    Args:
-        spec: Tier spec like "4k", "16k", "64000", etc.
-
-    Returns:
-        Target token count.
-
-    Raises:
-        ValueError: If spec cannot be parsed.
-    """
-    spec = spec.lower().strip()
-    if spec.endswith("k"):
-        return int(float(spec[:-1]) * 1000)
-    return int(spec)
-
-
+# Backwards compatibility aliases for functions that were moved
 def estimate_node_tokens(node_dict: dict) -> int:
-    """Estimate tokens for a serialized node.
-
-    Args:
-        node_dict: Node dictionary from Symbol.to_dict().
-
-    Returns:
-        Estimated token count.
-    """
-    # Rough estimate based on JSON serialization
-    import json
-    json_str = json.dumps(node_dict)
-    return len(json_str) // CHARS_PER_TOKEN
+    """Estimate tokens for a serialized node. Alias for estimate_json_tokens."""
+    return estimate_json_tokens(node_dict)
 
 
 def estimate_behavior_map_tokens(behavior_map: dict) -> int:
-    """Estimate total tokens for a behavior map.
-
-    Args:
-        behavior_map: Full behavior map dictionary.
-
-    Returns:
-        Estimated token count.
-    """
-    import json
-    json_str = json.dumps(behavior_map)
-    return len(json_str) // CHARS_PER_TOKEN
+    """Estimate total tokens for a behavior map. Alias for estimate_json_tokens."""
+    return estimate_json_tokens(behavior_map)
 
 
 def select_by_tokens(

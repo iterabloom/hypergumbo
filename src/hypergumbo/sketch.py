@@ -40,6 +40,10 @@ from .ranking import (
     compute_file_scores,
     _is_test_path,
 )
+from .selection.token_budget import (
+    estimate_tokens,
+    truncate_to_tokens,
+)
 
 
 class ConfigExtractionMode(Enum):
@@ -297,9 +301,6 @@ BIG_PICTURE_QUESTIONS = [
     "How are database migrations handled?",
 ]
 
-
-# Approximate characters per token (conservative estimate for English text)
-CHARS_PER_TOKEN = 4
 
 # Config files to extract project metadata from
 # Config files grouped by language/ecosystem for targeted discovery
@@ -1626,103 +1627,6 @@ def _format_config_section(config_info: str) -> str:
     lines.append("```")
 
     return "\n".join(lines)
-
-
-def estimate_tokens(text: str) -> int:
-    """Estimate token count using character-based heuristic.
-
-    Uses ~4 characters per token, which is a reasonable approximation
-    for English text with OpenAI's tokenizers. Uses ceiling division
-    to be conservative and avoid exceeding budgets.
-
-    Args:
-        text: The text to estimate tokens for.
-
-    Returns:
-        Estimated token count (conservative/ceiling estimate).
-    """
-    if not text:
-        return 0
-    # Use ceiling division for conservative estimate
-    return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
-
-
-def truncate_to_tokens(text: str, max_tokens: int) -> str:
-    """Truncate text to approximately fit within token budget.
-
-    Attempts to truncate at markdown section boundaries (## headers) to
-    keep headers with their content. Avoids orphaned headers like
-    "## Entry Points" appearing without their content.
-
-    Args:
-        text: The text to truncate.
-        max_tokens: Maximum tokens allowed.
-
-    Returns:
-        Truncated text fitting within budget.
-    """
-    if estimate_tokens(text) <= max_tokens:
-        return text
-
-    # Target character count
-    max_chars = max_tokens * CHARS_PER_TOKEN
-
-    # Split by markdown section headers (## ...) while keeping them
-    # This ensures headers stay with their content
-    import re
-
-    # Find all section starts (lines beginning with ## )
-    section_pattern = re.compile(r"^(## .+)$", re.MULTILINE)
-    section_starts = [(m.start(), m.group(1)) for m in section_pattern.finditer(text)]
-
-    if not section_starts:
-        # No markdown sections, fall back to paragraph splitting
-        paragraphs = text.split("\n\n")
-        result_parts = []
-        current_length = 0
-
-        for para in paragraphs:
-            para_with_sep = para + "\n\n"
-            if current_length + len(para_with_sep) <= max_chars:
-                result_parts.append(para)
-                current_length += len(para_with_sep)
-            else:
-                break
-
-        if result_parts:
-            return "\n\n".join(result_parts)
-        return text[:max_chars]
-
-    # Extract sections (each section is header + content until next header)
-    sections = []
-    for i, (start, _header) in enumerate(section_starts):
-        if i + 1 < len(section_starts):
-            end = section_starts[i + 1][0]
-        else:
-            end = len(text)
-        sections.append(text[start:end].rstrip())
-
-    # Include any content before the first section (like the title)
-    prefix = text[: section_starts[0][0]].rstrip() if section_starts[0][0] > 0 else ""
-
-    # Build result keeping whole sections
-    result_parts = [prefix] if prefix else []
-    current_length = len(prefix) + 2 if prefix else 0
-
-    for section in sections:
-        section_with_sep = section + "\n\n"
-        if current_length + len(section_with_sep) <= max_chars:
-            result_parts.append(section)
-            current_length += len(section_with_sep)
-        else:
-            # Can't fit this section, stop here
-            break
-
-    if result_parts:
-        return "\n\n".join(result_parts)
-
-    # Fallback: hard truncate if nothing fits
-    return text[:max_chars]  # pragma: no cover - defensive path
 
 
 def _format_language_stats(profile: RepoProfile) -> str:
