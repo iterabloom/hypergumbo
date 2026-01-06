@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -100,6 +101,50 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
         if child.type == "name":
             return _node_text(child, source)
     return None
+
+
+def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class name."""
+    current = node.parent
+    while current is not None:
+        if current.type == "class_declaration":
+            name = _find_name_in_children(current, source)
+            if name:
+                return name
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function_php(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/method for PHP."""
+    current = node.parent
+
+    while current is not None:
+        if current.type == "function_definition":
+            name = _find_name_in_children(current, source)
+            if name and name in global_symbols:
+                sym = global_symbols[name]
+                if sym.path == str(file_path):
+                    return sym
+
+        if current.type == "method_declaration":
+            name = _find_name_in_children(current, source)
+            if name:
+                # Find enclosing class by walking up further
+                class_name = _get_enclosing_class(current, source)
+                if class_name:
+                    full_name = f"{class_name}.{name}"
+                    if full_name in global_symbols:
+                        sym = global_symbols[full_name]
+                        if sym.path == str(file_path):
+                            return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_php_signature(
@@ -238,11 +283,8 @@ def _extract_symbols(
 ) -> list[Symbol]:
     """Extract symbols from a parsed PHP tree (pass 1)."""
     symbols: list[Symbol] = []
-    current_class: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_class
-
+    for node in iter_tree(tree.root_node):
         # Laravel route detection: Route::get(), Route::post(), etc.
         if node.type == "scoped_call_expression":
             http_method, route_path = _detect_laravel_route(node, source)
@@ -272,7 +314,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Function declarations
-        if node.type == "function_definition":
+        elif node.type == "function_definition":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -296,7 +338,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Class declarations
-        if node.type == "class_declaration":
+        elif node.type == "class_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -316,15 +358,9 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                old_class = current_class
-                current_class = symbol
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
 
         # Method declarations (inside classes)
-        if node.type == "method_declaration":
+        elif node.type == "method_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -333,7 +369,8 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                full_name = f"{current_class.name}.{name}" if current_class else name
+                enclosing_class = _get_enclosing_class(node, source)
+                full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
@@ -348,11 +385,6 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return symbols
 
 
@@ -370,52 +402,14 @@ def _extract_edges(
     Uses global symbol registries to resolve cross-file references.
     """
     edges: list[Edge] = []
-    current_class: Optional[Symbol] = None
-    current_class_name: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
-        nonlocal current_class, current_class_name
-
-        # Track current function/method context
-        if node.type == "function_definition":
-            name = _find_name_in_children(node, source)
-            if name and name in global_symbols:
-                func_sym = global_symbols[name]
-                # Only use if it's from this file
-                if func_sym.path == str(file_path):
-                    for child in node.children:
-                        visit(child, func_sym)
-                    return
-
-        if node.type == "class_declaration":
-            name = _find_name_in_children(node, source)
-            if name:
-                old_class = current_class
-                old_class_name = current_class_name
-                current_class_name = name
-                current_class = global_classes.get(name)
-                for child in node.children:
-                    visit(child, current_function)
-                current_class = old_class
-                current_class_name = old_class_name
-                return
-
-        if node.type == "method_declaration":
-            name = _find_name_in_children(node, source)
-            if name and current_class_name:
-                full_name = f"{current_class_name}.{name}"
-                if full_name in global_symbols:
-                    method_sym = global_symbols[full_name]
-                    if method_sym.path == str(file_path):
-                        for child in node.children:
-                            visit(child, method_sym)
-                        return
-
+    for node in iter_tree(tree.root_node):
         # Function calls: func_name()
         if node.type == "function_call_expression":
             func_node = node.child_by_field_name("function")
             if func_node and func_node.type == "name":
                 callee_name = _node_text(func_node, source)
+                current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
                 if current_function and callee_name in global_symbols:
                     target_sym = global_symbols[callee_name]
                     edge = Edge.create(
@@ -431,7 +425,8 @@ def _extract_edges(
                     edges.append(edge)
 
         # Method calls: $this->method() or $obj->method()
-        if node.type == "member_call_expression":
+        elif node.type == "member_call_expression":
+            current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
             if current_function:
                 # Get the method name
                 name_node = node.child_by_field_name("name")
@@ -442,6 +437,7 @@ def _extract_edges(
                     # Check if it's $this->method()
                     is_this_call = obj_node and obj_node.type == "variable_name" and _node_text(obj_node, source) == "$this"
 
+                    current_class_name = _get_enclosing_class(node, source)
                     if is_this_call and current_class_name:
                         # Try to resolve to a method in the same class
                         full_name = f"{current_class_name}.{method_name}"
@@ -475,7 +471,8 @@ def _extract_edges(
                             edges.append(edge)
 
         # Static method calls: ClassName::method()
-        if node.type == "scoped_call_expression":
+        elif node.type == "scoped_call_expression":
+            current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
             if current_function:
                 scope_node = node.child_by_field_name("scope")
                 name_node = node.child_by_field_name("name")
@@ -484,6 +481,7 @@ def _extract_edges(
                     method_name = _node_text(name_node, source)
 
                     # Handle self:: and static::
+                    current_class_name = _get_enclosing_class(node, source)
                     if class_name in ("self", "static") and current_class_name:
                         class_name = current_class_name
 
@@ -503,7 +501,8 @@ def _extract_edges(
                         edges.append(edge)
 
         # Object instantiation: new ClassName()
-        if node.type == "object_creation_expression":
+        elif node.type == "object_creation_expression":
+            current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
             if current_function:
                 # Get the class name
                 for child in node.children:
@@ -524,11 +523,6 @@ def _extract_edges(
                             edges.append(edge)
                         break
 
-        # Recurse into children
-        for child in node.children:
-            visit(child, current_function)
-
-    visit(tree.root_node)
     return edges
 
 

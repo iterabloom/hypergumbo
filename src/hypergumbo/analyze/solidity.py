@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -100,6 +101,49 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+def _get_enclosing_contract(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing contract/interface/library name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("contract_declaration", "interface_declaration", "library_declaration"):
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function_solidity(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/constructor/modifier."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                func_name = _node_text(name_node, source)
+                sym = local_symbols.get(func_name) or global_symbols.get(func_name)
+                if sym:
+                    return sym
+        elif current.type == "constructor_definition":  # pragma: no cover - constructor calls rare
+            sym = local_symbols.get("constructor") or global_symbols.get("constructor")
+            if sym:
+                return sym
+        elif current.type == "modifier_definition":
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                mod_name = _node_text(name_node, source)
+                sym = local_symbols.get(mod_name) or global_symbols.get(mod_name)
+                if sym:
+                    return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_solidity_signature(
@@ -185,17 +229,13 @@ def _extract_symbols_from_file(
         analysis.symbol_by_name[full_name] = symbol
         return symbol
 
-    def visit(node: "tree_sitter.Node", current_contract: str = "") -> None:
+    for node in iter_tree(tree.root_node):
         # Contract declaration
         if node.type == "contract_declaration":
             name_node = _find_child_by_type(node, "identifier")
             if name_node:
                 contract_name = _node_text(name_node, source)
                 add_symbol(contract_name, "contract", node)
-                # Visit children with contract context
-                for child in node.children:
-                    visit(child, contract_name)
-                return
 
         # Interface declaration
         elif node.type == "interface_declaration":
@@ -203,9 +243,6 @@ def _extract_symbols_from_file(
             if name_node:
                 interface_name = _node_text(name_node, source)
                 add_symbol(interface_name, "interface", node)
-                for child in node.children:
-                    visit(child, interface_name)
-                return
 
         # Library declaration
         elif node.type == "library_declaration":
@@ -213,20 +250,19 @@ def _extract_symbols_from_file(
             if name_node:
                 lib_name = _node_text(name_node, source)
                 add_symbol(lib_name, "library", node)
-                for child in node.children:
-                    visit(child, lib_name)
-                return
 
         # Function definition
         elif node.type == "function_definition":
             name_node = _find_child_by_field(node, "name")
             if name_node:
                 func_name = _node_text(name_node, source)
+                current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
                 add_symbol(func_name, "function", node, current_contract, signature=signature)
 
         # Constructor definition
         elif node.type == "constructor_definition":
+            current_contract = _get_enclosing_contract(node, source) or ""
             add_symbol("constructor", "constructor", node, current_contract)
 
         # Modifier definition
@@ -234,6 +270,7 @@ def _extract_symbols_from_file(
             name_node = _find_child_by_field(node, "name")
             if name_node:
                 mod_name = _node_text(name_node, source)
+                current_contract = _get_enclosing_contract(node, source) or ""
                 add_symbol(mod_name, "modifier", node, current_contract)
 
         # Event definition
@@ -241,13 +278,9 @@ def _extract_symbols_from_file(
             name_node = _find_child_by_field(node, "name")
             if name_node:
                 event_name = _node_text(name_node, source)
+                current_contract = _get_enclosing_contract(node, source) or ""
                 add_symbol(event_name, "event", node, current_contract)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child, current_contract)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -268,27 +301,7 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
 
-
-    current_function: Optional[Symbol] = None
-
-    def visit(node: "tree_sitter.Node", context_symbol: Optional[Symbol] = None) -> None:
-        nonlocal current_function
-
-        # Track current function context
-        if node.type in ("function_definition", "constructor_definition", "modifier_definition"):
-            name_node = _find_child_by_field(node, "name")
-            if name_node:
-                func_name = _node_text(name_node, source)
-                current_function = local_symbols.get(func_name) or global_symbols.get(func_name)
-            elif node.type == "constructor_definition":
-                current_function = local_symbols.get("constructor") or global_symbols.get("constructor")
-
-            # Visit children with this function as context
-            for child in node.children:
-                visit(child, current_function)
-            current_function = None
-            return
-
+    for node in iter_tree(tree.root_node):
         # Import directive
         if node.type == "import_directive":
             # Find the import path (string node)
@@ -309,13 +322,16 @@ def _extract_edges_from_file(
         # Function call
         elif node.type == "call_expression":
             func_node = _find_child_by_field(node, "function")
-            if func_node and context_symbol:
+            current_function = _get_enclosing_function_solidity(
+                node, source, local_symbols, global_symbols
+            )
+            if func_node and current_function:
                 call_name = _node_text(func_node, source)
                 # Try to resolve the called function
                 target = local_symbols.get(call_name) or global_symbols.get(call_name)
                 if target:
                     edge = Edge.create(
-                        src=context_symbol.id,
+                        src=current_function.id,
                         dst=target.id,
                         edge_type="calls",
                         line=node.start_point[0] + 1,
@@ -325,11 +341,6 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child, context_symbol or current_function)
-
-    visit(tree.root_node)
     return edges
 
 
