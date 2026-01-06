@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -99,6 +100,43 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> tuple[Optional[str], str]:
+    """Walk up the tree to find the enclosing class or module name.
+
+    Returns (name, type) where type is 'class' or 'module'.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "class":
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                return _node_text(name_node, source), "class"
+        elif current.type == "module":
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                return _node_text(name_node, source), "module"
+        current = current.parent
+    return None, ""  # pragma: no cover - defensive
+
+
+def _get_enclosing_method(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing method."""
+    current = node.parent
+    while current is not None:
+        if current.type == "method":
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                method_name = _node_text(name_node, source)
+                if method_name in local_symbols:
+                    return local_symbols[method_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_ruby_signature(
@@ -269,22 +307,19 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_class: Optional[str] = None
-    current_module: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_class, current_module
-
+    for node in iter_tree(tree.root_node):
         # Method definition
         if node.type == "method":
             name_node = _find_child_by_field(node, "name")
             if name_node:
                 method_name = _node_text(name_node, source)
                 # Qualify with class/module name if inside one
-                if current_class:
-                    full_name = f"{current_class}#{method_name}"
-                elif current_module:
-                    full_name = f"{current_module}.{method_name}"
+                enclosing_name, enclosing_type = _get_enclosing_class_or_module(node, source)
+                if enclosing_type == "class" and enclosing_name:
+                    full_name = f"{enclosing_name}#{method_name}"
+                elif enclosing_type == "module" and enclosing_name:
+                    full_name = f"{enclosing_name}.{method_name}"
                 else:
                     full_name = method_name
 
@@ -337,14 +372,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
 
-                # Process class body with class context
-                old_class = current_class
-                current_class = class_name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return  # Already processed children
-
         # Module definition
         elif node.type == "module":
             name_node = _find_child_by_field(node, "name")
@@ -370,14 +397,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
-
-                # Process module body with module context
-                old_module = current_module
-                current_module = module_name
-                for child in node.children:
-                    visit(child)
-                current_module = old_module
-                return  # Already processed children
 
         # Rails route detection
         elif node.type == "call":
@@ -418,11 +437,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -442,29 +456,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_method: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_method
-
-        # Track current method for call edges
-        if node.type == "method":
-            name_node = _find_child_by_field(node, "name")
-            if name_node:
-                method_name = _node_text(name_node, source)
-                if method_name in local_symbols:
-                    old_method = current_method
-                    current_method = local_symbols[method_name]
-
-                    # Process method body
-                    for child in node.children:
-                        visit(child)
-
-                    current_method = old_method
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Detect call nodes (require statements and method calls)
-        elif node.type == "call":
+        if node.type == "call":
             # Get method name from identifier child
             method_node = None
             for child in node.children:
@@ -496,36 +491,39 @@ def _extract_edges_from_file(
                                     ))
 
                 # Handle regular method calls
-                elif current_method is not None:
-                    # Check local symbols first
-                    if callee_name in local_symbols:
-                        callee = local_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_method.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="method_call",
-                            confidence=0.85,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
-                    # Check global symbols
-                    elif callee_name in global_symbols:
-                        callee = global_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_method.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="method_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                else:
+                    current_method = _get_enclosing_method(node, source, local_symbols)
+                    if current_method is not None:
+                        # Check local symbols first
+                        if callee_name in local_symbols:
+                            callee = local_symbols[callee_name]
+                            edges.append(Edge.create(
+                                src=current_method.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="method_call",
+                                confidence=0.85,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+                        # Check global symbols
+                        elif callee_name in global_symbols:
+                            callee = global_symbols[callee_name]
+                            edges.append(Edge.create(
+                                src=current_method.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="method_call",
+                                confidence=0.80,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
         # Detect bare method calls (identifier nodes that are method names)
         elif node.type == "identifier":
+            current_method = _get_enclosing_method(node, source, local_symbols)
             if current_method is not None:
                 callee_name = _node_text(node, source)
                 # Check if this identifier is a known method
@@ -556,11 +554,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -108,6 +109,42 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:  # pragma: no cover
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class/interface/trait name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "interface_declaration", "trait_declaration"):
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function_groovy(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing method/function."""
+    current = node.parent
+    while current is not None:
+        if current.type == "method_declaration":
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                method_name = _node_text(name_node, source)
+                if method_name in local_symbols:
+                    return local_symbols[method_name]
+        elif current.type == "function_definition":
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                func_name = _node_text(name_node, source)
+                if func_name in local_symbols:
+                    return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_groovy_signature(
@@ -173,11 +210,8 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_class: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_class
-
+    for node in iter_tree(tree.root_node):
         # Class declaration
         if node.type == "class_declaration":
             name_node = _find_child_by_type(node, "identifier")
@@ -205,14 +239,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
 
-                # Process body with class context
-                old_class = current_class
-                current_class = class_name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
-
         # Interface declaration
         elif node.type == "interface_declaration":
             name_node = _find_child_by_type(node, "identifier")
@@ -239,11 +265,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[iface_name] = symbol
-
-                # Process body
-                for child in node.children:
-                    visit(child)
-                return
 
         # Trait declaration (Groovy-specific)
         # NOTE: tree-sitter-groovy v0.1.2 doesn't produce trait_declaration nodes
@@ -273,14 +294,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[trait_name] = symbol
-
-                # Process body with trait context
-                old_class = current_class
-                current_class = trait_name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
 
         # Enum declaration
         elif node.type == "enum_declaration":
@@ -315,9 +328,10 @@ def _extract_symbols_from_file(
 
             if name_node:
                 method_name = _node_text(name_node, source)
+                current_class = _get_enclosing_class(node, source)
                 if current_class:
                     full_name = f"{current_class}.{method_name}"
-                else:
+                else:  # pragma: no cover - defensive: methods always in classes
                     full_name = method_name
 
                 start_line = node.start_point[0] + 1
@@ -346,6 +360,7 @@ def _extract_symbols_from_file(
         # Function definition (def keyword at top level)
         elif node.type == "function_definition":
             name_node = _find_child_by_type(node, "identifier")
+            current_class = _get_enclosing_class(node, source)
 
             if name_node and current_class is None:
                 func_name = _node_text(name_node, source)
@@ -371,11 +386,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -395,45 +405,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current function for call edges
-        if node.type == "method_declaration":
-            name_node = _find_child_by_type(node, "identifier")
-            if name_node:
-                method_name = _node_text(name_node, source)
-                # Try full name first, then short name
-                if method_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[method_name]
-
-                    # Process method body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
-        elif node.type == "function_definition":
-            name_node = _find_child_by_type(node, "identifier")
-            if name_node:
-                func_name = _node_text(name_node, source)
-                if func_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[func_name]
-
-                    # Process function body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Detect import statements
-        elif node.type == "import_declaration":
+        if node.type == "import_declaration":
             # Get the scoped identifier being imported
             id_node = _find_child_by_type(node, "scoped_identifier")
             if not id_node:  # pragma: no cover - grammar fallback
@@ -455,6 +430,7 @@ def _extract_edges_from_file(
         # method_invocation: helper() inside a method
         # juxt_function_call: println "hello" (Groovy's operator-less call syntax)
         elif node.type in ("method_invocation", "juxt_function_call"):
+            current_function = _get_enclosing_function_groovy(node, source, local_symbols)
             if current_function is not None:
                 # Get the function/method being called
                 callee_node = _find_child_by_type(node, "identifier")
@@ -491,11 +467,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

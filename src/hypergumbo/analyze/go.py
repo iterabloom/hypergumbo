@@ -47,6 +47,7 @@ from .base import (
     find_child_by_field,
     find_child_by_type,
     is_grammar_available,
+    iter_tree,
     make_file_id,
     make_symbol_id,
     node_text,
@@ -141,7 +142,10 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
 ) -> FileAnalysis:
-    """Extract symbols from a single Go file."""
+    """Extract symbols from a single Go file.
+
+    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+    """
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -150,7 +154,7 @@ def _extract_symbols_from_file(
 
     analysis = FileAnalysis()
 
-    def visit(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
         if node.type == "function_declaration":
             name_node = find_child_by_field(node, "name")
@@ -269,12 +273,34 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/method.
+
+    Args:
+        node: The current node.
+        source: Source bytes for extracting text.
+        local_symbols: Map of function names to Symbol objects.
+
+    Returns:
+        The Symbol for the enclosing function, or None if not inside a function.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("function_declaration", "method_declaration"):
+            name_node = find_child_by_field(current, "name")
+            if name_node:
+                func_name = node_text(name_node, source)
+                if func_name in local_symbols:
+                    return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_edges_from_file(
@@ -284,7 +310,10 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
+    """Extract call and import edges from a file.
+
+    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+    """
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -293,29 +322,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = make_file_id("go", str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current function for call edges
-        if node.type in ("function_declaration", "method_declaration"):
-            name_node = find_child_by_field(node, "name")
-            if name_node:
-                func_name = node_text(name_node, source)
-                if func_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[func_name]
-
-                    # Process function body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Detect import statements
-        elif node.type == "import_declaration":
+        if node.type == "import_declaration":
             # Handle both single imports and import blocks
             for child in node.children:
                 if child.type == "import_spec":
@@ -351,6 +361,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
+            current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
                 func_node = find_child_by_field(node, "function")
                 if func_node:
@@ -393,11 +404,6 @@ def _extract_edges_from_file(
                                 origin_run_id=run.execution_id,
                             ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 
@@ -414,10 +420,11 @@ def _extract_go_routes(
     - Fiber: app.Get("/path", handler) (lowercase methods)
 
     Creates symbols with stable_id = HTTP method for route discovery.
+    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
     """
     routes: list[Symbol] = []
 
-    def visit(n: "tree_sitter.Node") -> None:
+    for n in iter_tree(node):
         # Look for call_expression with selector_expression function
         if n.type == "call_expression":
             func_node = find_child_by_field(n, "function")
@@ -490,11 +497,6 @@ def _extract_go_routes(
                                 )
                                 routes.append(route_sym)
 
-        # Recurse
-        for child in n.children:
-            visit(child)
-
-    visit(node)
     return routes
 
 

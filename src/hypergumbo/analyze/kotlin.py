@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -98,6 +99,42 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class/object/interface name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "object_declaration"):
+            name_node = _find_child_by_field(current, "name")
+            if not name_node:  # pragma: no cover - defensive fallback
+                name_node = _find_child_by_type(current, "identifier")
+                if not name_node:
+                    name_node = _find_child_by_type(current, "type_identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/method."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name_node = _find_child_by_field(current, "name")
+            if not name_node:  # pragma: no cover - defensive fallback
+                name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                func_name = _node_text(name_node, source)
+                if func_name in local_symbols:
+                    return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_kotlin_signature(
@@ -169,11 +206,8 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_class: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_class
-
+    for node in iter_tree(tree.root_node):
         # Function declaration
         if node.type == "function_declaration":
             name_node = _find_child_by_field(node, "name")
@@ -182,8 +216,9 @@ def _extract_symbols_from_file(
 
             if name_node:
                 func_name = _node_text(name_node, source)
-                if current_class:
-                    full_name = f"{current_class}.{func_name}"
+                enclosing_class = _get_enclosing_class(node, source)
+                if enclosing_class:
+                    full_name = f"{enclosing_class}.{func_name}"
                     kind = "method"
                 else:
                     full_name = func_name
@@ -249,14 +284,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-                # Process body with class context
-                old_class = current_class
-                current_class = type_name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
-
         # Object declaration
         elif node.type == "object_declaration":
             name_node = _find_child_by_field(node, "name")
@@ -286,19 +313,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol
 
-                # Process object body with class context
-                old_class = current_class
-                current_class = object_name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
-
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -318,31 +332,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current function for call edges
-        if node.type == "function_declaration":
-            name_node = _find_child_by_field(node, "name")
-            if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "identifier")
-            if name_node:
-                func_name = _node_text(name_node, source)
-                if func_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[func_name]
-
-                    # Process function body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Detect import statements
-        elif node.type == "import":
+        if node.type == "import":
             # Get the qualified identifier being imported
             id_node = _find_child_by_type(node, "qualified_identifier")
             if not id_node:
@@ -362,6 +355,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
+            current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
                 # Get the function being called
                 callee_node = _find_child_by_type(node, "identifier")
@@ -401,11 +395,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 
