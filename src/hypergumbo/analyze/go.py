@@ -137,6 +137,82 @@ def _extract_go_signature(
     return sig
 
 
+def _extract_import_aliases(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import alias → import path mappings from a Go file.
+
+    Returns a dict mapping alias names to their import paths.
+    For imports without explicit aliases, uses the last path component.
+
+    Example:
+        import (
+            "fmt"                    -> {"fmt": "fmt"}
+            pb "github.com/foo/bar"  -> {"pb": "github.com/foo/bar"}
+        )
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(root_node):
+        if node.type == "import_declaration":
+            for child in node.children:
+                if child.type == "import_spec":
+                    _process_import_spec(child, source, aliases)
+                elif child.type == "import_spec_list":
+                    for spec in child.children:
+                        if spec.type == "import_spec":
+                            _process_import_spec(spec, source, aliases)
+
+    return aliases
+
+
+def _process_import_spec(
+    spec: "tree_sitter.Node",
+    source: bytes,
+    aliases: dict[str, str],
+) -> None:
+    """Process a single import_spec node and add to aliases dict."""
+    path_node = find_child_by_field(spec, "path")
+    if not path_node:
+        return  # pragma: no cover - defensive for malformed AST
+
+    import_path = node_text(path_node, source).strip('"')
+
+    # Check for explicit alias
+    name_node = find_child_by_field(spec, "name")
+    if name_node:
+        alias = node_text(name_node, source)
+        if alias != "_" and alias != ".":  # Ignore blank and dot imports
+            aliases[alias] = import_path
+    else:
+        # No explicit alias - use last component of path
+        # e.g., "github.com/foo/bar" -> "bar"
+        alias = import_path.rsplit("/", 1)[-1]
+        aliases[alias] = import_path
+
+
+def _import_path_to_dir_hint(import_path: str) -> str | None:
+    """Convert an import path to a directory hint for matching.
+
+    For paths like "github.com/example/src/checkoutservice/genproto",
+    returns "/src/checkoutservice/genproto" or similar suffix that
+    can be used to match against file paths.
+    """
+    # Look for common patterns that indicate local paths
+    if "/src/" in import_path:
+        # Extract from /src/ onwards
+        tail = import_path.split("/src/", 1)[1]
+        return f"/src/{tail}"
+
+    # For other paths, use the last 2-3 components
+    parts = import_path.split("/")
+    if len(parts) >= 2:
+        return "/" + "/".join(parts[-2:])
+
+    return None
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -153,6 +229,9 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
+
+    # Extract import aliases for this file (used later in edge extraction)
+    analysis.import_aliases = _extract_import_aliases(tree.root_node, source)
 
     for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
@@ -303,17 +382,50 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
+def _resolve_callee(
+    callee_name: str,
+    candidates: list[Symbol],
+    import_path_hint: str | None,
+) -> Symbol | None:
+    """Resolve the best callee from a list of candidates using import path hint.
+
+    When multiple symbols have the same name (e.g., RegisterCheckoutServiceServer
+    in multiple genproto directories), use the import path to pick the right one.
+    """
+    if not candidates:
+        return None  # pragma: no cover - defensive
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Multiple candidates - try to disambiguate using import path
+    if import_path_hint:
+        dir_hint = _import_path_to_dir_hint(import_path_hint)
+        if dir_hint:
+            for candidate in candidates:
+                if dir_hint in candidate.path:
+                    return candidate
+
+    # Fallback: return first candidate (legacy behavior)
+    return candidates[0]
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, Symbol],
+    global_symbols: dict[str, list[Symbol]],
     run: AnalysisRun,
+    import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+    Uses import_aliases to disambiguate when multiple files define the same symbol.
     """
+    if import_aliases is None:
+        import_aliases = {}
+
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -366,15 +478,22 @@ def _extract_edges_from_file(
                 func_node = find_child_by_field(node, "function")
                 if func_node:
                     callee_name = None
+                    import_path_hint = None
 
                     if func_node.type == "identifier":
                         # Simple call: helper()
                         callee_name = node_text(func_node, source)
                     elif func_node.type == "selector_expression":
                         # Method call: obj.Method() or pkg.Func()
+                        operand_node = find_child_by_field(func_node, "operand")
                         field_node = find_child_by_field(func_node, "field")
                         if field_node:
                             callee_name = node_text(field_node, source)
+                        # Check if operand is a package alias
+                        if operand_node and operand_node.type == "identifier":
+                            alias = node_text(operand_node, source)
+                            if alias in import_aliases:
+                                import_path_hint = import_aliases[alias]
 
                     if callee_name:
                         # Check local symbols first
@@ -390,16 +509,39 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
-                        # Check global symbols
+                        # Check global symbols with disambiguation
                         elif callee_name in global_symbols:
-                            callee = global_symbols[callee_name]
+                            candidates = global_symbols[callee_name]
+                            callee = _resolve_callee(callee_name, candidates, import_path_hint)
+                            if callee:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="function_call",
+                                    confidence=0.80,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                        # Bug #2 fix: Create edge for external/unresolved method calls
+                        # This enables linkers to potentially match across languages
+                        elif func_node.type == "selector_expression":
+                            # For s.Method() where Method is external, create unresolved edge
+                            # Use the import path if available to make the ID more specific
+                            if import_path_hint:
+                                # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
+                                dst_id = f"go:{import_path_hint}:0-0:{callee_name}:unresolved"
+                            else:
+                                # Fallback: use "external" as the path
+                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=callee.id,
+                                dst=dst_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
-                                confidence=0.80,
+                                evidence_type="unresolved_method_call",
+                                confidence=0.50,  # Lower confidence for unresolved
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
@@ -550,14 +692,20 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
         else:
             files_skipped += 1
 
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
+    # Build global symbol registry - store ALL symbols with same name
+    # This enables disambiguation using import paths
+    global_symbols: dict[str, list[Symbol]] = {}
     for analysis in file_analyses.values():
         for symbol in analysis.symbols:
             # Store by short name for cross-file resolution
             short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
+            if short_name not in global_symbols:
+                global_symbols[short_name] = []
+            global_symbols[short_name].append(symbol)
+            if symbol.name != short_name:
+                if symbol.name not in global_symbols:
+                    global_symbols[symbol.name] = []
+                global_symbols[symbol.name].append(symbol)
 
     # Pass 2: Extract edges and routes
     all_symbols: list[Symbol] = []
@@ -567,7 +715,8 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            go_file, parser, analysis.symbol_by_name, global_symbols, run
+            go_file, parser, analysis.symbol_by_name, global_symbols, run,
+            analysis.import_aliases,
         )
         all_edges.extend(edges)
 
