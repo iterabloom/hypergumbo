@@ -54,6 +54,10 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from .ir import Symbol, Edge
+from .selection.filters import is_test_path
+
+# Backwards compatibility alias - external code imports _is_test_path from here
+_is_test_path = is_test_path
 
 
 # Tier weights for supply chain ranking (first-party prioritized)
@@ -331,76 +335,6 @@ def rank_files(
         )
 
     return results
-
-
-def _is_test_path(path: str) -> bool:
-    """Check if a path looks like a test file.
-
-    Matches common test patterns across many languages:
-    - Python: test_*.py, *_test.py, tests/, test/
-    - JavaScript/TypeScript: *.test.js, *.spec.ts, __tests__/
-    - Swift: Tests/, *Tests.swift (Xcode convention)
-    - Go: *_test.go
-    - Java/Kotlin: src/test/, *Test.java, *Test.kt
-    - Rust: tests/, *_test.rs
-
-    Only matches actual test files, not directories that happen to contain 'test'.
-    """
-    import os
-    if not path:
-        return False
-
-    filename = os.path.basename(path)
-
-    # Directory patterns (case-insensitive for Tests/ vs tests/)
-    # Note: Using lowercase comparison to catch both "tests/" and "Tests/"
-    # This also catches Java/Kotlin's src/test/ convention since it contains /test/
-    path_lower = path.lower()
-    if "/test/" in path_lower or "/tests/" in path_lower or "/__tests__/" in path_lower:
-        return True
-    # Handle paths that start with test/ or Tests/
-    if path_lower.startswith("test/") or path_lower.startswith("tests/"):
-        return True
-    # Gradle test fixtures and integration test source sets
-    if "/testfixtures/" in path_lower or "/inttest/" in path_lower:
-        return True
-    if "/integrationtest/" in path_lower:
-        return True
-
-    # File name patterns: test_*.py, test_*.js, etc.
-    if filename.startswith("test_"):
-        return True
-
-    # Python/JS/TS suffix patterns (.test.ts, .spec.js, _test.py, etc.)
-    for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
-        if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
-            return True
-        if filename.endswith(f"_test{ext}"):
-            return True
-
-    # TypeScript type test files (.test-d.ts, .test-d.tsx)
-    if filename.endswith(".test-d.ts") or filename.endswith(".test-d.tsx"):
-        return True
-
-    # Go test files: *_test.go
-    if filename.endswith("_test.go"):
-        return True
-
-    # Rust test files: *_test.rs
-    if filename.endswith("_test.rs"):
-        return True
-
-    # Swift test files: *Tests.swift (Xcode convention - test class suffix)
-    # Match "RouteTests.swift" but not "TestHelpers.swift"
-    if filename.endswith("Tests.swift"):
-        return True
-
-    # Java/Kotlin test files: *Test.java, *Test.kt, *Tests.java, *Tests.kt
-    for ext in (".java", ".kt"):
-        if filename.endswith(f"Test{ext}") or filename.endswith(f"Tests{ext}"):
-            return True
-
-    return False
 
 
 def get_importance_threshold(
