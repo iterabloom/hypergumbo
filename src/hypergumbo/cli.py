@@ -50,6 +50,7 @@ from .linkers.http import link_http
 from .linkers.ipc import link_ipc
 from .linkers.jni import link_jni
 from .linkers.phoenix_ipc import link_phoenix_ipc
+from .linkers.registry import LinkerContext, run_all_linkers
 from .linkers.swift_objc import link_swift_objc
 from .linkers.websocket import link_websocket
 from .linkers.message_queue import link_message_queues
@@ -1458,6 +1459,31 @@ def run_behavior_map(
     java_symbols = captured_symbols.get("java", [])
 
     # Run cross-language linkers
+    #
+    # Linkers are being migrated to a registry pattern (like analyzers).
+    # New linkers should use @register_linker decorator in linkers/registry.py.
+    # The registry-based linkers run first, then existing explicit linkers below.
+    # Once all linkers are migrated, the explicit calls below can be removed.
+
+    # Run any registry-based linkers (new pattern)
+    # This enables new linkers to be added without modifying this file.
+    # LinkerContext provides all inputs; each linker picks what it needs.
+    linker_ctx = LinkerContext(
+        repo_root=repo_root,
+        symbols=all_symbols,
+        edges=all_edges,
+        captured_symbols=captured_symbols,
+    )
+    for _linker_name, linker_result in run_all_linkers(linker_ctx):
+        # pragma: no cover - loop body not exercised until linkers are migrated
+        if linker_result.run is not None:  # pragma: no cover
+            analysis_runs.append(linker_result.run.to_dict())  # pragma: no cover
+        all_symbols.extend(linker_result.symbols)  # pragma: no cover
+        all_edges.extend(linker_result.edges)  # pragma: no cover
+
+    # --- Legacy explicit linker calls (pending migration to registry) ---
+    # These linkers will be migrated one-by-one to use @register_linker.
+    # Until then, they continue to work via direct function calls.
 
     # JNI linker: connect Java native methods to C implementations
     if java_symbols and c_symbols:
