@@ -68,10 +68,12 @@ class FileAnalysis:
     Attributes:
         symbols: Symbols detected in this file
         symbol_by_name: Quick lookup by symbol name for edge resolution
+        import_aliases: Mapping of import alias → import path (Go, etc.)
     """
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
