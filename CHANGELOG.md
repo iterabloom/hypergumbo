@@ -1,15 +1,26 @@
 # Changelog
 
-All notable changes to hypergumbo are documented in this file.
+All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+- Released **tool** is at: v0.6.0
+- Released **schema** is at: v0.1.0
 
-> **Version Note:** This changelog tracks the **tool version** (package releases).
-> The **schema version** (output format) is tracked separately in `schema.py` as
-> `SCHEMA_VERSION`. Currently: tool v0.5.0, schema v0.1.0. The schema version only
-> changes when the JSON output format has breaking changes.
+This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
 ## [Unreleased]
+
+### 2026-01-06 15:00
+
+#### Analysis & IR
+- **Symbol modifiers field**: Added `modifiers` field to Symbol for semantic attributes (`native`, `public`, `static`, etc.). Java analyzer extracts modifiers from method/constructor declarations.
+- **Entrypoint language filtering**: CLI entrypoint detection (`main`, `cli`, etc.) now filters by language - excludes shader languages (GLSL/HLSL/WGSL) where `main` is a shader entry point, not a program entry point.
+
+#### Cross-Language Linkers
+- **Linker contracts system**: Added `LinkerRequirement` dataclass and `check_linker_requirements()` for diagnostics. Linkers can declare what they need, and users can see why a linker produced no edges.
+- **JNI linker registry integration**: Refactored JNI linker to use registry pattern with declared requirements (`java_native_methods`, `c_jni_functions`).
+
+#### Tooling
+- **find-uncovered improvements**: Auto-runs tests when `--lines` used without prior data, warns when coverage data is stale, renamed cache to visible `coverage-report.txt`.
 
 ### 2026-01-06 09:00
 
