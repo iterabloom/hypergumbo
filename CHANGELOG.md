@@ -11,6 +11,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-01-06 09:00
+
+#### Refactoring
+- **Linker registry infrastructure**: Added `linkers/registry.py` with registration system for cross-language linkers, mirroring the pattern used in `analyze/registry.py`. Includes `LinkerContext` (unified inputs), `LinkerResult` (standardized output), `@register_linker` decorator, and `run_all_linkers()` for loop-based dispatch. **Note**: This is purely additive infrastructure - existing linkers work exactly as before. The registry establishes the pattern for future consolidation of the ~150 lines of explicit linker calls in cli.py, but no migration has been done yet. Linkers can be migrated incrementally in future PRs.
+- **Language-proportional selection module**: Extracted language-proportional symbol selection from sketch.py into shared `selection/language_proportional.py`. Updated compact.py to use language-proportional selection by default (`CompactConfig.language_proportional=True`). This ensures multi-language projects get balanced representation across languages rather than being dominated by verbose languages with more symbols.
+- **Selection module consolidation**: Created `selection/` package with shared utilities:
+  - `filters.py`: Path classification (`is_test_path`, `is_example_path`) and symbol filtering (`EXCLUDED_KINDS`)
+  - `token_budget.py`: Token estimation (`estimate_tokens`, `truncate_to_tokens`, `parse_tier_spec`)
+  - `language_proportional.py`: Language-stratified selection (`group_symbols_by_language`, `allocate_language_budget`)
+
 ### 2026-01-05 20:00
 
 #### Refactoring
