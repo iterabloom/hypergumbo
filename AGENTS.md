@@ -30,6 +30,30 @@
      `git config --global user.name "Your Name" && git config --global user.email "you@example.com"`
   3. Once configured, all commits must use `git commit -s` to satisfy the DCO.
 
+### Finding Uncovered Lines
+
+When coverage is below 100%, use `./scripts/find-uncovered` to efficiently locate uncovered lines:
+
+```bash
+# Full run: runs tests once, saves output, shows uncovered lines
+./scripts/find-uncovered
+
+# Query saved data without re-running tests (~2-3 min saved)
+./scripts/find-uncovered --report
+
+# Filter for specific files
+./scripts/find-uncovered --report js_ts
+./scripts/find-uncovered --report analyze/
+```
+
+The script saves coverage data to `.coverage.txt`, allowing multiple queries without re-running the full test suite. This is especially useful when iteratively fixing coverage gaps.
+
+**Workflow for fixing coverage:**
+1. Run `./scripts/find-uncovered` once (takes ~2-3 min)
+2. Note the uncovered lines (format: `src/file.py  100  2  98%  123, 456`)
+3. Add `# pragma: no cover` to defensive/unreachable code paths
+4. Run `./scripts/find-uncovered` again to verify 100%
+
 ## Pre-Work Checklist
 Run these checks before starting any new feature or task:
 ```bash
