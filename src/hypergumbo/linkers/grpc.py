@@ -34,11 +34,20 @@ How It Works
 4. Match clients to servers by service name
 5. Create grpc_calls edges linking client stubs to servicers
 
+Unresolved Edge Resolution
+--------------------------
+When the Go analyzer creates unresolved edges to gRPC registration functions
+(e.g., RegisterUserServer), this linker attempts to resolve them by:
+1. Finding unresolved edges with names matching Register*Server pattern
+2. Looking up corresponding symbols created by the linker's file scan
+3. Creating proper resolved edges
+
 Why This Design
 ---------------
 - Regex-based detection is fast and language-agnostic
 - Service name matching enables cross-file RPC graph construction
 - Separate linker keeps language analyzers focused on their language
+- Unresolved edge protocol enables integration with analyzer-generated edges
 """
 from __future__ import annotations
 
@@ -50,6 +59,12 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import (
+    LinkerContext,
+    LinkerRequirement,
+    LinkerResult,
+    register_linker,
+)
 
 PASS_ID = "grpc-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -445,4 +460,152 @@ def link_grpc(root: Path) -> GrpcLinkResult:
         symbols=symbols,
         edges=edges,
         run=run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Linker Registry Integration
+# ---------------------------------------------------------------------------
+
+
+def _count_proto_files(ctx: LinkerContext) -> int:
+    """Count .proto files in the repository."""
+    count = 0
+    for _ in find_files(ctx.repo_root, ["**/*.proto"]):
+        count += 1
+    return count
+
+
+def _count_grpc_patterns_in_symbols(ctx: LinkerContext) -> int:
+    """Count symbols that look like gRPC patterns from analyzers."""
+    count = 0
+    for sym in ctx.symbols:
+        # Count Go registration patterns
+        if sym.language == "go" and sym.name.startswith("Register") and "Server" in sym.name:
+            count += 1
+        # Count Python servicer classes
+        if sym.language == "python" and sym.name.endswith("Servicer"):
+            count += 1
+        # Count Java ImplBase extensions
+        if sym.language == "java" and "ImplBase" in (sym.meta or {}).get("extends", ""):
+            count += 1
+    return count
+
+
+GRPC_REQUIREMENTS = [
+    LinkerRequirement(
+        name="proto_files",
+        description=".proto service definition files",
+        check=_count_proto_files,
+    ),
+    LinkerRequirement(
+        name="grpc_symbols",
+        description="gRPC patterns in analyzer symbols",
+        check=_count_grpc_patterns_in_symbols,
+    ),
+]
+
+
+def _resolve_unresolved_grpc_edges(
+    ctx: LinkerContext,
+    symbols: list[Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Resolve unresolved edges pointing to gRPC registration functions.
+
+    When the Go analyzer can't resolve a RegisterXxxServer call, it creates
+    an unresolved edge. This function attempts to resolve these by matching
+    the function name to symbols created by the linker's file scan.
+
+    Args:
+        ctx: LinkerContext with edges and symbols
+        symbols: Symbols created by the linker
+        run: AnalysisRun for attribution
+
+    Returns:
+        List of resolved edges (replacing unresolved ones).
+    """
+    resolved_edges: list[Edge] = []
+
+    # Build lookup for linker-created symbols by name
+    linker_symbols_by_name: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        name = sym.name
+        if name not in linker_symbols_by_name:
+            linker_symbols_by_name[name] = []
+        linker_symbols_by_name[name].append(sym)
+
+    # Also build from ctx.symbols for analyzer symbols
+    for sym in ctx.symbols:
+        name = sym.name
+        if name not in linker_symbols_by_name:
+            linker_symbols_by_name[name] = []
+        linker_symbols_by_name[name].append(sym)
+
+    # Find unresolved Go edges
+    for edge in ctx.get_unresolved_edges(lang="go"):
+        parsed = ctx.parse_unresolved_dst(edge.dst)
+        if not parsed:  # pragma: no cover - defensive check
+            continue
+
+        callee_name = parsed["name"]
+
+        # Check if this is a gRPC registration pattern
+        if not (callee_name.startswith("Register") and "Server" in callee_name):
+            continue
+
+        # Try to find a matching symbol
+        candidates = linker_symbols_by_name.get(callee_name, [])
+
+        # Prefer symbols from the same package hint if available
+        package_hint = parsed.get("package", "")
+        best_candidate = None
+
+        for candidate in candidates:
+            # First match wins for now; could add package matching later
+            if best_candidate is None:
+                best_candidate = candidate
+            # If package hint matches the candidate's path, prefer it
+            if package_hint and package_hint in candidate.path:
+                best_candidate = candidate
+                break
+
+        if best_candidate:
+            resolved_edges.append(Edge.create(
+                src=edge.src,
+                dst=best_candidate.id,
+                edge_type="calls",
+                line=edge.line,
+                confidence=0.75,  # Lower confidence for linker-resolved
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="grpc_unresolved_resolution",
+            ))
+
+    return resolved_edges
+
+
+@register_linker(
+    "grpc",
+    priority=30,  # Run after analyzers but before dependency linker
+    description="gRPC/Protobuf RPC pattern linking across languages",
+    requirements=GRPC_REQUIREMENTS,
+)
+def grpc_linker(ctx: LinkerContext) -> LinkerResult:
+    """gRPC linker for registry-based dispatch.
+
+    This wraps link_grpc() and adds unresolved edge resolution.
+    """
+    # Run the core linking logic
+    result = link_grpc(ctx.repo_root)
+
+    # Resolve unresolved edges from analyzers
+    resolved_edges = _resolve_unresolved_grpc_edges(
+        ctx, result.symbols, result.run or AnalysisRun.create(PASS_ID, PASS_VERSION)
+    )
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges + resolved_edges,
+        run=result.run,
     )
