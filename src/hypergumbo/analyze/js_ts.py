@@ -32,19 +32,26 @@ Why This Design
 - Tree-sitter provides accurate parsing even for complex syntax
 - Two-pass allows cross-file call resolution
 - Svelte support reuses existing TS/JS parsing infrastructure
+- Uses iterative traversal to avoid RecursionError on deeply nested code
 """
 from __future__ import annotations
 
-import importlib.util
 import re
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import (
+    AnalysisResult,
+    find_child_by_field,
+    is_grammar_available,
+    iter_tree,
+    node_text as _node_text,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -184,22 +191,11 @@ def extract_vue_scripts(source: str) -> list[VueScriptBlock]:
 
 def is_tree_sitter_available() -> bool:
     """Check if tree-sitter and required grammars are available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_javascript") is None:
-        return False
-    return True
+    return is_grammar_available("tree_sitter_javascript")
 
 
-@dataclass
-class JsAnalysisResult:
-    """Result of analyzing JavaScript/TypeScript files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
+# Backwards compatibility alias
+JsAnalysisResult = AnalysisResult
 
 
 @dataclass
@@ -260,14 +256,8 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
-    """Find child by field name."""
-    return node.child_by_field_name(field_name)
+# Use find_child_by_field from base.py (imported above)
+_find_child_by_field = find_child_by_field
 
 
 def _extract_jsts_signature(
@@ -576,6 +566,22 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None
 
 
+def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class name.
+
+    Returns the class name if inside a class, or None if not.
+    Used to build qualified method names without recursion.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "class_declaration":
+            name = _find_name_in_children(current, source)
+            if name:
+                return name
+        current = current.parent
+    return None
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -586,6 +592,8 @@ def _extract_symbols(
 ) -> list[Symbol]:
     """Extract symbols from a parsed tree (pass 1).
 
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+
     Args:
         tree: Parsed tree-sitter tree
         source: Source bytes
@@ -595,10 +603,13 @@ def _extract_symbols(
         line_offset: Line offset for Svelte script blocks
     """
     symbols: list[Symbol] = []
-    current_class_name: Optional[str] = None
+    # Track nodes we've already processed as route handlers (to avoid duplicates)
+    processed_handlers: set[int] = set()
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_class_name
+    for node in iter_tree(tree.root_node):
+        # Skip nodes we've already processed as route handlers
+        if id(node) in processed_handlers:
+            continue
 
         # Express-style route handler detection: app.get('/path', handler)
         if node.type == "call_expression":
@@ -606,16 +617,17 @@ def _extract_symbols(
             if http_method:
                 handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
                 if handler_node:
+                    # Mark the handler as processed to avoid extracting it again
+                    processed_handlers.add(id(handler_node))
+
                     if is_external:
                         # External handler: router.post('/path', userController.createUser)
-                        # Create a route symbol pointing to the external handler
                         span = Span(
                             start_line=handler_node.start_point[0] + 1 + line_offset,
                             end_line=handler_node.end_point[0] + 1 + line_offset,
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
-                        # Use the handler name as the route name
                         name = handler_name or f"_{http_method}_handler"
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "route", lang),
@@ -632,13 +644,10 @@ def _extract_symbols(
                         symbols.append(symbol)
                     else:
                         # Inline handler: router.get('/path', (req, res) => {})
-                        # Extract function name if it's a named function expression
                         name = None
                         if handler_node.type == "function_expression" or handler_node.type == "function":
                             name = _find_name_in_children(handler_node, source)
-                        # For anonymous functions, generate a name from route
                         if not name:
-                            # Clean route path for name: /users/:id -> _users_id
                             clean_path = route_path.replace("/", "_").replace(":", "").replace("{", "").replace("}", "") if route_path else ""
                             name = f"_{http_method}{clean_path}_handler"
 
@@ -661,15 +670,13 @@ def _extract_symbols(
                             meta={"route_path": route_path, "http_method": http_method} if route_path else None,
                         )
                         symbols.append(symbol)
-                    # Don't recurse into this handler - we've already processed it
-                    # But we need to continue visiting other children
-                    for child in node.children:
-                        if child != handler_node:
-                            visit(child)
-                    return
+                    continue  # Skip further processing of this call_expression
 
-        # Function declarations
+        # Function declarations (skip if inside an export_statement - handled below)
         if node.type == "function_declaration":
+            # Check if parent is export_statement - if so, skip (handled in export_statement case)
+            if node.parent and node.parent.type == "export_statement":
+                continue
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -678,7 +685,6 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                # Extract function signature
                 signature = _extract_jsts_signature(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
@@ -694,8 +700,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Arrow functions assigned to variables: const foo = () => {}
-        # Also handles wrapper patterns: const foo = wrapper(async () => {})
-        if node.type == "lexical_declaration" or node.type == "variable_declaration":
+        elif node.type in ("lexical_declaration", "variable_declaration"):
             for child in node.children:
                 if child.type == "variable_declarator":
                     name_node = None
@@ -706,7 +711,6 @@ def _extract_symbols(
                         elif grandchild.type == "arrow_function":
                             value_node = grandchild
                         elif grandchild.type == "call_expression":
-                            # Check for arrow function inside wrapper call
                             # Pattern: const handler = catchAsync(async (req, res) => {})
                             for call_child in grandchild.children:
                                 if call_child.type == "arguments":
@@ -724,7 +728,6 @@ def _extract_symbols(
                             start_col=value_node.start_point[1],
                             end_col=value_node.end_point[1],
                         )
-                        # Extract arrow function signature
                         signature = _extract_jsts_signature(value_node, source)
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
@@ -740,7 +743,7 @@ def _extract_symbols(
                         symbols.append(symbol)
 
         # Class declarations
-        if node.type == "class_declaration":
+        elif node.type == "class_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -760,15 +763,9 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
-                old_class_name = current_class_name
-                current_class_name = name
-                for child in node.children:
-                    visit(child)
-                current_class_name = old_class_name
-                return
 
         # TypeScript interface declarations
-        if node.type == "interface_declaration":
+        elif node.type == "interface_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -790,7 +787,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # TypeScript type alias declarations
-        if node.type == "type_alias_declaration":
+        elif node.type == "type_alias_declaration":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -812,8 +809,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # TypeScript enum declarations
-        if node.type == "enum_declaration":
-            # Enum name is in identifier child (not type_identifier)
+        elif node.type == "enum_declaration":
             name = None
             for child in node.children:
                 if child.type == "identifier":
@@ -839,10 +835,9 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Method definitions inside classes (including getters/setters)
-        if node.type == "method_definition":
+        elif node.type == "method_definition":
             name = _find_name_in_children(node, source)
             if name:
-                # Determine method kind (getter, setter, or regular method)
                 kind = "method"
                 for child in node.children:
                     if child.type == "get":
@@ -858,15 +853,14 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                # Use ClassName.methodName for method symbols
+                # Use parent-walking to get class context
+                current_class_name = _get_class_context(node, source)
                 full_name = f"{current_class_name}.{name}" if current_class_name else name
 
-                # Check for NestJS route decorators (@Get, @Post, etc.)
                 http_method, route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
                 meta = {"route_path": route_path} if route_path else None
 
-                # Extract method signature
                 signature = _extract_jsts_signature(node, source)
 
                 symbol = Symbol(
@@ -884,8 +878,8 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Export default function - handle specially to avoid double extraction
-        if node.type == "export_statement":
+        # Export default function - extract the function symbol
+        elif node.type == "export_statement":
             for child in node.children:
                 if child.type == "function_declaration":
                     name = _find_name_in_children(child, source)
@@ -896,7 +890,6 @@ def _extract_symbols(
                             start_col=child.start_point[1],
                             end_col=child.end_point[1],
                         )
-                        # Extract function signature
                         signature = _extract_jsts_signature(child, source)
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
@@ -910,22 +903,65 @@ def _extract_symbols(
                             signature=signature,
                         )
                         symbols.append(symbol)
-                        return  # Don't recurse - we handled the function_declaration
-                elif child.type == "class_declaration":
-                    # For exported classes, let normal recursion handle it
-                    visit(child)
-                    return
-            # For other export types, recurse normally
-            for child in node.children:
-                visit(child)
-            return
+                    break  # Only handle one function_declaration per export
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return symbols
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/method.
+
+    Returns the Symbol for the enclosing function, or None if not inside one.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name = _find_name_in_children(current, source)
+            if name and name in global_symbols:
+                sym = global_symbols[name]
+                if sym.path == str(file_path):
+                    return sym
+            return None  # pragma: no cover
+
+        if current.type == "method_definition":
+            name = _find_name_in_children(current, source)
+            if name:
+                class_ctx = _get_class_context(current, source)
+                if class_ctx:
+                    full_name = f"{class_ctx}.{name}"
+                    if full_name in global_symbols:
+                        sym = global_symbols[full_name]
+                        if sym.path == str(file_path):
+                            return sym
+            return None  # pragma: no cover
+
+        # Arrow functions assigned to variables
+        if current.type == "arrow_function":
+            # Walk up to find the variable_declarator
+            parent = current.parent
+            while parent is not None:
+                if parent.type == "variable_declarator":
+                    for child in parent.children:
+                        if child.type == "identifier":
+                            name = _node_text(child, source)
+                            if name in global_symbols:
+                                sym = global_symbols[name]
+                                if sym.path == str(file_path):
+                                    return sym
+                    break  # pragma: no cover
+                # Don't go too far up
+                if parent.type in ("lexical_declaration", "variable_declaration", "program"):
+                    break
+                parent = parent.parent
+            return None  # pragma: no cover
+
+        current = current.parent
+    return None  # pragma: no cover
 
 
 def _extract_edges(
@@ -942,94 +978,11 @@ def _extract_edges(
     """Extract edges from a parsed tree (pass 2).
 
     Uses global symbol registries to resolve cross-file references.
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
-    current_class_name: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node", current_function: Optional[Symbol] = None) -> None:
-        nonlocal current_class_name
-
-        # Track current function context
-        if node.type == "function_declaration":
-            name = _find_name_in_children(node, source)
-            if name and name in global_symbols:
-                func_sym = global_symbols[name]
-                if func_sym.path == str(file_path):
-                    for child in node.children:
-                        visit(child, func_sym)
-                    return
-
-        # Arrow functions assigned to variables
-        # Also handles wrapper patterns: const foo = wrapper(async () => {})
-        if node.type == "lexical_declaration" or node.type == "variable_declaration":
-            for child in node.children:
-                if child.type == "variable_declarator":
-                    name_node = None
-                    value_node = None
-                    call_node = None
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            name_node = grandchild
-                        elif grandchild.type == "arrow_function":
-                            value_node = grandchild
-                        elif grandchild.type == "call_expression":
-                            call_node = grandchild
-                            # Check for arrow function inside wrapper call
-                            # Pattern: const handler = catchAsync(async (req, res) => {})
-                            for call_child in grandchild.children:
-                                if call_child.type == "arguments":
-                                    for arg in call_child.children:
-                                        if arg.type == "arrow_function":
-                                            value_node = arg
-                                            break
-                                    if value_node:
-                                        break
-                    if name_node and value_node:
-                        name = _node_text(name_node, source)
-                        if name in global_symbols:
-                            func_sym = global_symbols[name]
-                            if func_sym.path == str(file_path):
-                                for vc in value_node.children:
-                                    visit(vc, func_sym)
-                    if call_node:
-                        visit(call_node, current_function)
-            return
-
-        # Track class context
-        if node.type == "class_declaration":
-            name = _find_name_in_children(node, source)
-            if name:
-                old_class_name = current_class_name
-                current_class_name = name
-                for child in node.children:
-                    visit(child, current_function)
-                current_class_name = old_class_name
-                return
-
-        # Track method context
-        if node.type == "method_definition":
-            name = _find_name_in_children(node, source)
-            if name and current_class_name:
-                full_name = f"{current_class_name}.{name}"
-                if full_name in global_symbols:
-                    method_sym = global_symbols[full_name]
-                    if method_sym.path == str(file_path):
-                        for child in node.children:
-                            visit(child, method_sym)
-                        return
-
-        # Export default function
-        if node.type == "export_statement":
-            for child in node.children:
-                if child.type == "function_declaration":
-                    name = _find_name_in_children(child, source)
-                    if name and name in global_symbols:
-                        func_sym = global_symbols[name]
-                        if func_sym.path == str(file_path):
-                            for fc in child.children:
-                                visit(fc, func_sym)
-                            return
-
+    for node in iter_tree(tree.root_node):
         # Import statements
         if node.type == "import_statement":
             for child in node.children:
@@ -1051,7 +1004,7 @@ def _extract_edges(
                     break
 
         # Call expressions
-        if node.type == "call_expression":
+        elif node.type == "call_expression":
             func_node = None
             args_node = None
             for child in node.children:
@@ -1099,91 +1052,90 @@ def _extract_edges(
                             )
                             edges.append(edge)
                             break
-                # Regular function call
-                elif current_function and func_name in global_symbols:
-                    callee_symbol = global_symbols[func_name]
-                    edge = Edge.create(
-                        src=current_function.id,
-                        dst=callee_symbol.id,
-                        edge_type="calls",
-                        line=node.start_point[0] + 1 + line_offset,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="ast_call_direct",
-                        confidence=0.85,
-                    )
-                    edges.append(edge)
-
-            # Method calls: obj.method()
-            if func_node and func_node.type == "member_expression" and current_function:
-                # Get the method name (property)
-                method_name = None
-                obj_node = None
-                for child in func_node.children:
-                    if child.type == "property_identifier":
-                        method_name = _node_text(child, source)
-                    elif child.type in ("identifier", "this", "member_expression"):
-                        obj_node = child
-
-                if method_name:
-                    # Check if it's this.method()
-                    is_this_call = obj_node and obj_node.type == "this"
-
-                    if is_this_call and current_class_name:
-                        full_name = f"{current_class_name}.{method_name}"
-                        if full_name in global_symbols:
-                            target_sym = global_symbols[full_name]
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=target_sym.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1 + line_offset,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_method_this",
-                                confidence=0.95,
-                            )
-                            edges.append(edge)
-                    elif method_name in global_methods:
-                        # Infer method by name
-                        for target_sym in global_methods[method_name]:
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=target_sym.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1 + line_offset,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_method_inferred",
-                                confidence=0.60,
-                            )
-                            edges.append(edge)
-
-        # new ClassName()
-        if node.type == "new_expression" and current_function:
-            for child in node.children:
-                if child.type == "identifier":
-                    class_name = _node_text(child, source)
-                    if class_name in global_classes:
-                        target_sym = global_classes[class_name]
+                else:
+                    # Regular function call
+                    current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+                    if current_function and func_name in global_symbols:
+                        callee_symbol = global_symbols[func_name]
                         edge = Edge.create(
                             src=current_function.id,
-                            dst=target_sym.id,
-                            edge_type="instantiates",
+                            dst=callee_symbol.id,
+                            edge_type="calls",
                             line=node.start_point[0] + 1 + line_offset,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            evidence_type="ast_new",
-                            confidence=0.95,
+                            evidence_type="ast_call_direct",
+                            confidence=0.85,
                         )
                         edges.append(edge)
-                    break
 
-        # Recurse into children
-        for child in node.children:
-            visit(child, current_function)
+            # Method calls: obj.method()
+            if func_node and func_node.type == "member_expression":
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+                if current_function:
+                    method_name = None
+                    obj_node = None
+                    for child in func_node.children:
+                        if child.type == "property_identifier":
+                            method_name = _node_text(child, source)
+                        elif child.type in ("identifier", "this", "member_expression"):
+                            obj_node = child
 
-    visit(tree.root_node)
+                    if method_name:
+                        is_this_call = obj_node and obj_node.type == "this"
+                        current_class_name = _get_class_context(node, source)
+
+                        if is_this_call and current_class_name:
+                            full_name = f"{current_class_name}.{method_name}"
+                            if full_name in global_symbols:
+                                target_sym = global_symbols[full_name]
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=target_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_this",
+                                    confidence=0.95,
+                                )
+                                edges.append(edge)
+                        elif method_name in global_methods:
+                            for target_sym in global_methods[method_name]:
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=target_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_inferred",
+                                    confidence=0.60,
+                                )
+                                edges.append(edge)
+
+        # new ClassName()
+        elif node.type == "new_expression":
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+            if current_function:
+                for child in node.children:
+                    if child.type == "identifier":
+                        class_name = _node_text(child, source)
+                        if class_name in global_classes:
+                            target_sym = global_classes[class_name]
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=target_sym.id,
+                                edge_type="instantiates",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_new",
+                                confidence=0.95,
+                            )
+                            edges.append(edge)
+                        break
+
     return edges
 
 

@@ -608,7 +608,12 @@ class TestMockedTreeSitter:
         children: list | None = None,
         has_error: bool = False,
     ) -> MagicMock:
-        """Create a mock tree-sitter node."""
+        """Create a mock tree-sitter node.
+
+        Note: Must explicitly set parent=None to prevent MagicMock from
+        creating infinite mock chains when code walks up via node.parent.
+        Parent pointers for children are set up automatically.
+        """
         node = MagicMock()
         node.type = node_type
         node.start_byte = start_byte
@@ -617,6 +622,10 @@ class TestMockedTreeSitter:
         node.end_point = end_point
         node.children = children or []
         node.has_error = has_error
+        node.parent = None  # Explicit None prevents infinite mock chains
+        # Set parent pointers for all children
+        for child in node.children:
+            child.parent = node
         return node
 
     def test_get_parser_for_js_file(self, tmp_path: Path) -> None:

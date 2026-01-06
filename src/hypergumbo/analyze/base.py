@@ -186,6 +186,75 @@ def is_grammar_available(grammar_module: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Iterative tree traversal (avoids RecursionError on deeply nested code)
+# ---------------------------------------------------------------------------
+
+
+def iter_tree(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
+    """Iterate over all nodes in a tree-sitter tree without recursion.
+
+    Uses an explicit stack to avoid RecursionError on deeply nested code
+    (e.g., TensorFlow has files exceeding Python's 1000-level limit).
+
+    Args:
+        root: The root node of the tree to traverse
+
+    Yields:
+        Each node in depth-first order.
+
+    Example:
+        for node in iter_tree(tree.root_node):
+            if node.type == "function_definition":
+                # process function...
+    """
+    stack: list["tree_sitter.Node"] = [root]
+    while stack:
+        node = stack.pop()
+        yield node
+        # Add children in reverse order so leftmost is processed first
+        stack.extend(reversed(node.children))
+
+
+def iter_tree_with_context(
+    root: "tree_sitter.Node",
+    context_types: set[str],
+) -> Iterator[tuple["tree_sitter.Node", Optional["tree_sitter.Node"]]]:
+    """Iterate over nodes with parent context tracking.
+
+    Useful for edge extraction where we need to know the enclosing
+    function/method when processing call expressions.
+
+    Args:
+        root: The root node of the tree to traverse
+        context_types: Node types that establish context (e.g., {"function_definition"})
+
+    Yields:
+        Tuples of (node, context_node) where context_node is the nearest
+        ancestor matching one of context_types, or None if outside any context.
+
+    Example:
+        for node, func_ctx in iter_tree_with_context(tree.root_node, {"function_definition"}):
+            if node.type == "call_expression" and func_ctx:
+                # We know which function contains this call
+    """
+    # Stack entries: (node, current_context)
+    stack: list[tuple["tree_sitter.Node", Optional["tree_sitter.Node"]]] = [
+        (root, None)
+    ]
+    while stack:
+        node, context = stack.pop()
+
+        # Update context if this node is a context type
+        new_context = node if node.type in context_types else context
+
+        yield node, context
+
+        # Add children with updated context
+        for child in reversed(node.children):
+            stack.append((child, new_context))
+
+
+# ---------------------------------------------------------------------------
 # File discovery helpers
 # ---------------------------------------------------------------------------
 
