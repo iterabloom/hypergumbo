@@ -50,57 +50,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 from .ir import Symbol, Edge
-from .ranking import compute_centrality, apply_tier_weights, _is_test_path
-
-
-# Symbol kinds to exclude from tiered output
-# These have high centrality but don't represent useful code
-EXCLUDED_KINDS = frozenset({
-    "dependency",       # package.json, pyproject.toml dependencies
-    "devDependency",    # package.json dev dependencies
-    "file",             # file-level nodes (import targets)
-    "target",           # Makefile targets
-    "special_target",   # .PHONY and other special targets
-    "project",          # project-level nodes
-    "package",          # package.json package name
-    "script",           # package.json scripts
-    "event_subscriber", # CSS/JS event handlers (less useful in isolation)
-    "class_selector",   # CSS class selectors
-    "id_selector",      # CSS id selectors
-})
-
-# Path patterns indicating example/demo code
-# Include both /examples/ and examples/ to handle absolute and relative paths
-EXAMPLE_PATH_PATTERNS = (
-    "/examples/",
-    "/example/",
-    "/demos/",
-    "/demo/",
-    "/samples/",
-    "/sample/",
-    "/playground/",
-    "/tutorial/",
-    "/tutorials/",
+from .ranking import compute_centrality, apply_tier_weights
+from .selection.filters import (
+    EXCLUDED_KINDS,
+    is_test_path as _is_test_path,
+    is_example_path as _is_example_path,
 )
-
-
-def _is_example_path(path: str) -> bool:
-    """Check if a path represents example/demo code.
-
-    Args:
-        path: File path to check.
-
-    Returns:
-        True if the path appears to be example code.
-    """
-    path_lower = path.lower()
-    # Check standard patterns (with leading slash)
-    if any(pattern in path_lower for pattern in EXAMPLE_PATH_PATTERNS):
-        return True
-    # Also check if path starts with example directory (relative paths)
-    return path_lower.startswith(("examples/", "example/", "demos/", "demo/",
-                                   "samples/", "sample/", "playground/",
-                                   "tutorial/", "tutorials/"))
 
 
 @dataclass
