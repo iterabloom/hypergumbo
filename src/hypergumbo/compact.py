@@ -57,6 +57,10 @@ from .selection.filters import (
     is_test_path as _is_test_path,
     is_example_path as _is_example_path,
 )
+from .selection.language_proportional import (
+    allocate_language_budget,
+    group_symbols_by_language,
+)
 from .selection.token_budget import (
     CHARS_PER_TOKEN,  # re-export for backwards compatibility
     DEFAULT_TIERS,  # re-export for backwards compatibility
@@ -86,6 +90,11 @@ class CompactConfig:
         top_words_count: Number of top words to include in summary. Default 10.
         top_paths_count: Number of top path patterns to include. Default 5.
         first_party_priority: Apply tier weighting. Default True.
+        language_proportional: Use language-stratified selection. Default True.
+            When enabled, symbol budget is allocated proportionally by language
+            to ensure multi-language projects have representation from each.
+        min_per_language: Minimum symbols per language (floor guarantee).
+            Only used when language_proportional=True. Default 1.
     """
 
     target_coverage: float = 0.8
@@ -94,6 +103,8 @@ class CompactConfig:
     top_words_count: int = 10
     top_paths_count: int = 5
     first_party_priority: bool = True
+    language_proportional: bool = True
+    min_per_language: int = 1
 
 
 @dataclass
@@ -335,18 +346,43 @@ def select_by_coverage(
     else:
         centrality = raw_centrality
 
-    # Sort by centrality (highest first)
-    sorted_symbols = sorted(
-        symbols,
-        key=lambda s: (-centrality.get(s.id, 0), s.name)
-    )
-
     # Compute total centrality
     total_centrality = sum(centrality.values())
     if total_centrality == 0:
         total_centrality = 1.0  # Avoid division by zero
 
-    # Select by coverage
+    # Select symbols using appropriate strategy
+    if config.language_proportional:
+        # Language-proportional selection: allocate budget by language
+        lang_groups = group_symbols_by_language(symbols)
+        budgets = allocate_language_budget(
+            lang_groups, config.max_symbols, config.min_per_language
+        )
+
+        # Select top symbols from each language
+        candidates: List[Symbol] = []
+        for lang, budget in budgets.items():
+            lang_symbols = lang_groups.get(lang, [])
+            # Sort by centrality within language
+            sorted_lang = sorted(
+                lang_symbols,
+                key=lambda s: (-centrality.get(s.id, 0), s.name)
+            )
+            candidates.extend(sorted_lang[:budget])
+
+        # Sort combined candidates by centrality
+        sorted_symbols = sorted(
+            candidates,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+    else:
+        # Original behavior: sort all symbols by centrality
+        sorted_symbols = sorted(
+            symbols,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+
+    # Select by coverage from the (possibly pre-filtered) candidates
     included: List[Symbol] = []
     included_centrality = 0.0
 
@@ -456,6 +492,8 @@ def select_by_tokens(
     exclude_non_code: bool = True,
     deduplicate_names: bool = True,
     exclude_examples: bool = True,
+    language_proportional: bool = True,
+    min_per_language: int = 1,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -473,6 +511,11 @@ def select_by_tokens(
             Prevents "push" appearing 4 times from different files.
         exclude_examples: Exclude symbols from example directories. Default True.
             Prevents example handlers from polluting tiers.
+        language_proportional: Use language-stratified selection. Default True.
+            When enabled, selects symbols proportionally by language to ensure
+            multi-language projects have representation from each.
+        min_per_language: Minimum symbols per language (floor guarantee).
+            Only used when language_proportional=True. Default 1.
 
     Returns:
         CompactResult with symbols fitting the budget.
@@ -506,16 +549,43 @@ def select_by_tokens(
     else:
         centrality = raw_centrality
 
-    # Sort eligible symbols by centrality (highest first)
-    sorted_symbols = sorted(
-        eligible_symbols,
-        key=lambda s: (-centrality.get(s.id, 0), s.name)
-    )
-
     # Compute total centrality for coverage calculation
     total_centrality = sum(centrality.values())
     if total_centrality == 0:
         total_centrality = 1.0
+
+    # Apply language-proportional pre-selection if enabled
+    if language_proportional:
+        # Group eligible symbols by language
+        lang_groups = group_symbols_by_language(eligible_symbols)
+        # Estimate max symbols that could fit (rough estimate for budget allocation)
+        avg_tokens_per_symbol = 50  # Conservative estimate
+        estimated_max_symbols = (target_tokens - TOKENS_BEHAVIOR_MAP_OVERHEAD) // avg_tokens_per_symbol
+        budgets = allocate_language_budget(
+            lang_groups, max(estimated_max_symbols, 10), min_per_language
+        )
+
+        # Select top symbols from each language
+        candidates: List[Symbol] = []
+        for lang, budget in budgets.items():
+            lang_symbols = lang_groups.get(lang, [])
+            sorted_lang = sorted(
+                lang_symbols,
+                key=lambda s: (-centrality.get(s.id, 0), s.name)
+            )
+            candidates.extend(sorted_lang[:budget])
+
+        # Sort combined candidates by centrality
+        sorted_symbols = sorted(
+            candidates,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+    else:
+        # Original behavior: sort all eligible symbols by centrality
+        sorted_symbols = sorted(
+            eligible_symbols,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
 
     # Select symbols until we approach the token budget
     # Reserve tokens for overhead and summary

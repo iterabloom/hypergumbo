@@ -319,6 +319,35 @@ class TestSelectByCoverage:
         if result.omitted.count > 0:
             assert len(result.omitted.top_words) >= 0  # May have words
 
+    def test_language_proportional_disabled(self):
+        """language_proportional=False uses original sorting."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(20)]
+        config = CompactConfig(
+            language_proportional=False,
+            max_symbols=10,
+            min_symbols=1,
+        )
+
+        result = select_by_coverage(symbols, [], config)
+
+        # Should still select symbols, just without language stratification
+        assert result.included.count <= 10
+
+    def test_max_symbols_breaks_loop(self):
+        """Max symbols limit breaks the selection loop."""
+        # Create many symbols to ensure we hit max before coverage
+        symbols = [make_symbol(f"sym_{i}") for i in range(200)]
+        config = CompactConfig(
+            target_coverage=0.99,  # Very high coverage
+            max_symbols=5,  # But strict max limit
+            min_symbols=1,
+        )
+
+        result = select_by_coverage(symbols, [], config)
+
+        # Should stop at max_symbols even though coverage not met
+        assert result.included.count == 5
+
 
 class TestCompactConfig:
     """Tests for CompactConfig dataclass."""
@@ -686,6 +715,18 @@ class TestSelectByTokens:
         # Without tier weighting, external with edges should be included
         included_names = {s.name for s in result.included.symbols}
         assert "external_dep" in included_names
+
+    def test_language_proportional_disabled(self):
+        """language_proportional=False uses original sorting."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(20)]
+        result = select_by_tokens(
+            symbols, [],
+            target_tokens=4000,
+            language_proportional=False,
+        )
+
+        # Should still select symbols, just without language stratification
+        assert result.included.count > 0
 
 
 class TestFormatTieredBehaviorMap:
