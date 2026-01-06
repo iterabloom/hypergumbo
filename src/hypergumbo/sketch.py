@@ -40,6 +40,10 @@ from .ranking import (
     compute_file_scores,
     _is_test_path,
 )
+from .selection.language_proportional import (
+    allocate_language_budget as _allocate_language_budget,
+    group_files_by_language as _group_files_by_language,
+)
 from .selection.token_budget import (
     estimate_tokens,
     truncate_to_tokens,
@@ -2864,97 +2868,6 @@ def _format_entrypoints(
         lines.append(f"- ... and {len(entrypoints) - max_entries} more entry points")
 
     return "\n".join(lines)
-
-
-def _group_files_by_language(
-    by_file: dict[str, list[Symbol]],
-) -> dict[str, dict[str, list[Symbol]]]:
-    """Group files by the dominant language of their symbols.
-
-    Each file is assigned to a single language based on its first symbol's
-    language field. This works well because source files are typically
-    monolingual (a .py file only contains Python symbols).
-
-    This function is used for language-proportional symbol selection,
-    ensuring that multi-language projects have representation from each
-    language proportional to its symbol count.
-
-    Args:
-        by_file: Symbols grouped by file path.
-
-    Returns:
-        Dict mapping language -> {file_path -> [symbols]}.
-        Empty files (no symbols) are excluded from the result.
-    """
-    lang_groups: dict[str, dict[str, list[Symbol]]] = {}
-    for file_path, symbols in by_file.items():
-        if not symbols:
-            continue
-        # Use first symbol's language (files are typically monolingual)
-        lang = symbols[0].language
-        if lang not in lang_groups:
-            lang_groups[lang] = {}
-        lang_groups[lang][file_path] = symbols
-    return lang_groups
-
-
-def _allocate_language_budget(
-    lang_groups: dict[str, dict[str, list[Symbol]]],
-    max_symbols: int,
-    min_per_language: int = 1,
-) -> dict[str, int]:
-    """Allocate symbol budget proportionally by language symbol count.
-
-    Computes proportions from actual filtered symbols, not raw profile LOC.
-    This naturally handles languages like JSON/YAML that have LOC but produce
-    no analyzable symbols.
-
-    Each language receives a proportional share of the budget with a floor
-    guarantee (min_per_language). Any remainder after proportional allocation
-    is redistributed to the largest languages.
-
-    Args:
-        lang_groups: Files grouped by language from _group_files_by_language().
-        max_symbols: Total symbol budget to allocate.
-        min_per_language: Minimum slots per language (floor guarantee).
-
-    Returns:
-        Dict mapping language to allocated symbol budget.
-        Empty if lang_groups is empty.
-    """
-    # Count symbols per language
-    lang_symbol_count = {
-        lang: sum(len(syms) for syms in files.values())
-        for lang, files in lang_groups.items()
-    }
-    total_symbols = sum(lang_symbol_count.values())
-    if total_symbols == 0:
-        return {}
-
-    budgets: dict[str, int] = {}
-    allocated = 0
-
-    # Proportional allocation with floor
-    for lang, count in lang_symbol_count.items():
-        proportion = count / total_symbols
-        budget = max(min_per_language, int(max_symbols * proportion))
-        budgets[lang] = budget
-        allocated += budget
-
-    # Redistribute remainder to largest languages
-    remaining = max_symbols - allocated
-    if remaining > 0:
-        sorted_langs = sorted(
-            lang_symbol_count.keys(),
-            key=lambda lang: -lang_symbol_count[lang]
-        )
-        for lang in sorted_langs:
-            if remaining <= 0:
-                break
-            budgets[lang] += 1
-            remaining -= 1
-
-    return budgets
 
 
 def _select_symbols_two_phase(
