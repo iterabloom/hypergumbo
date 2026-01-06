@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -324,6 +325,27 @@ def _extract_symbols_from_file(
     return symbols, module_name
 
 
+def _get_enclosing_function_erlang(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Symbol | None:
+    """Walk up parent chain to find enclosing function."""
+    current = node.parent
+    while current is not None:
+        if current.type == "fun_decl":
+            clause = _find_child_by_type(current, "function_clause")
+            if clause:
+                atom = _find_child_by_type(clause, "atom")
+                if atom:
+                    func_name = _node_text(atom, source)
+                    sym = local_symbols.get(func_name)
+                    if sym:
+                        return sym
+        current = current.parent
+    return None
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -352,29 +374,8 @@ def _extract_edges_from_file(
             if base:
                 local_symbols[base] = s
 
-    # Track enclosing function for call edges
-    function_stack: list[Symbol] = []
-
-    def find_enclosing_function() -> Symbol | None:
-        """Get the innermost enclosing function."""
-        return function_stack[-1] if function_stack else None
-
-    def walk(node: "tree_sitter.Node") -> None:
-        is_func_decl = False
-
-        if node.type == "fun_decl":
-            # Find the function symbol
-            clause = _find_child_by_type(node, "function_clause")
-            if clause:
-                atom = _find_child_by_type(clause, "atom")
-                if atom:
-                    func_name = _node_text(atom, source)
-                    sym = local_symbols.get(func_name)
-                    if sym:
-                        function_stack.append(sym)
-                        is_func_decl = True
-
-        elif node.type == "behaviour_attribute":
+    for node in iter_tree(tree.root_node):
+        if node.type == "behaviour_attribute":
             # -behaviour(gen_server)
             atom = _find_child_by_type(node, "atom")
             if atom:
@@ -414,7 +415,7 @@ def _extract_edges_from_file(
 
         elif node.type == "call":
             # Function call
-            caller = find_enclosing_function()
+            caller = _get_enclosing_function_erlang(node, source, local_symbols)
             if caller:
                 remote = _find_child_by_type(node, "remote")
                 if remote:
@@ -464,15 +465,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-        # Pop function context
-        if is_func_decl:
-            function_stack.pop()
-
-    walk(tree.root_node)
     return edges
 
 

@@ -33,6 +33,8 @@ from typing import Optional
 
 from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
 
+from .base import iter_tree
+
 PASS_ID = "cobol"
 
 
@@ -88,10 +90,9 @@ def _find_child(node, child_type: str):
 def _find_all_descendants(node, target_types: set):
     """Find all descendant nodes of given types."""
     results = []
-    if node.type in target_types:
-        results.append(node)
-    for child in node.children:
-        results.extend(_find_all_descendants(child, target_types))
+    for n in iter_tree(node):
+        if n.type in target_types:
+            results.append(n)
     return results
 
 

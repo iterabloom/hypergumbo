@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -215,21 +216,19 @@ def _process_import_statement(ctx: _FileContext, node: "tree_sitter.Node") -> No
                 )
 
 
-def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a tree-sitter node and its children."""
-    if node.type == "proc_declaration":
-        _process_proc_declaration(ctx, node)
-    elif node.type == "func_declaration":
-        _process_func_declaration(ctx, node)
-    elif node.type == "method_declaration":
-        _process_method_declaration(ctx, node)
-    elif node.type == "type_declaration":
-        _process_type_declaration(ctx, node)
-    elif node.type == "import_statement":
-        _process_import_statement(ctx, node)
-
-    for child in node.children:
-        _process_node(ctx, child)
+def _process_tree(ctx: _FileContext, root: "tree_sitter.Node") -> None:
+    """Process a tree-sitter tree iteratively."""
+    for node in iter_tree(root):
+        if node.type == "proc_declaration":
+            _process_proc_declaration(ctx, node)
+        elif node.type == "func_declaration":
+            _process_func_declaration(ctx, node)
+        elif node.type == "method_declaration":
+            _process_method_declaration(ctx, node)
+        elif node.type == "type_declaration":
+            _process_type_declaration(ctx, node)
+        elif node.type == "import_statement":
+            _process_import_statement(ctx, node)
 
 
 def analyze_nim(repo_root: Path) -> NimAnalysisResult:
@@ -276,7 +275,7 @@ def analyze_nim(repo_root: Path) -> NimAnalysisResult:
             edges=edges,
         )
 
-        _process_node(ctx, tree.root_node)
+        _process_tree(ctx, tree.root_node)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return NimAnalysisResult(

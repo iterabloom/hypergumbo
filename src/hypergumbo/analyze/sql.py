@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -215,7 +216,7 @@ def _find_references_in_columns(node: "tree_sitter.Node", source: bytes) -> list
     """Find REFERENCES clauses in column definitions."""
     references: list[str] = []
 
-    def walk(n: "tree_sitter.Node") -> None:
+    for n in iter_tree(node):
         # Look for column_definition nodes that contain keyword_references
         if n.type == "column_definition":
             has_references = False
@@ -238,15 +239,11 @@ def _find_references_in_columns(node: "tree_sitter.Node", source: bytes) -> list
                 if ref_name and ref_name not in references:  # pragma: no cover
                     references.append(ref_name)  # pragma: no cover
 
-        for child in n.children:
-            walk(child)
-
-    walk(node)
     return references
 
 
 def _process_sql_tree(
-    node: "tree_sitter.Node",
+    root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
@@ -256,205 +253,202 @@ def _process_sql_tree(
     """Process SQL AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         symbol_registry: Registry mapping lowercase names to (symbol_id, kind)
     """
-    if node.type == "create_table":
-        name = _extract_table_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "table")
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="table",
-                name=name,
-                path=rel_path,
-                language="sql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name.lower()] = (symbol_id, "table")
+    for node in iter_tree(root_node):
+        if node.type == "create_table":
+            name = _extract_table_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "table")
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="table",
+                    name=name,
+                    path=rel_path,
+                    language="sql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name.lower()] = (symbol_id, "table")
 
-            # Look for REFERENCES in column definitions
-            col_defs = _find_child_by_type(node, "column_definitions")
-            if col_defs:
-                refs = _find_references_in_columns(col_defs, source)
-                for ref_table in refs:
-                    ref_lower = ref_table.lower()
-                    if ref_lower in symbol_registry:
-                        dst_id, _ = symbol_registry[ref_lower]
-                        edge = Edge(
-                            id=_make_edge_id(symbol_id, dst_id, "references"),
-                            src=symbol_id,
-                            dst=dst_id,
-                            edge_type="references",
-                            line=start_line,
-                            confidence=0.90,
-                            origin=PASS_ID,
-                            evidence_type="sql_foreign_key",
-                        )
-                        edges.append(edge)
+                # Look for REFERENCES in column definitions
+                col_defs = _find_child_by_type(node, "column_definitions")
+                if col_defs:
+                    refs = _find_references_in_columns(col_defs, source)
+                    for ref_table in refs:
+                        ref_lower = ref_table.lower()
+                        if ref_lower in symbol_registry:
+                            dst_id, _ = symbol_registry[ref_lower]
+                            edge = Edge(
+                                id=_make_edge_id(symbol_id, dst_id, "references"),
+                                src=symbol_id,
+                                dst=dst_id,
+                                edge_type="references",
+                                line=start_line,
+                                confidence=0.90,
+                                origin=PASS_ID,
+                                evidence_type="sql_foreign_key",
+                            )
+                            edges.append(edge)
 
-    elif node.type == "create_view":
-        name = _extract_view_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "view")
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="view",
-                name=name,
-                path=rel_path,
-                language="sql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name.lower()] = (symbol_id, "view")
+        elif node.type == "create_view":
+            name = _extract_view_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "view")
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="view",
+                    name=name,
+                    path=rel_path,
+                    language="sql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name.lower()] = (symbol_id, "view")
 
-    elif node.type == "create_function":
-        name = _extract_function_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="function",
-                name=name,
-                path=rel_path,
-                language="sql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                signature=_extract_sql_signature(node, source),
-            )
-            symbols.append(sym)
-            symbol_registry[name.lower()] = (symbol_id, "function")
+        elif node.type == "create_function":
+            name = _extract_function_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="function",
+                    name=name,
+                    path=rel_path,
+                    language="sql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=_extract_sql_signature(node, source),
+                )
+                symbols.append(sym)
+                symbol_registry[name.lower()] = (symbol_id, "function")
 
-    # Note: CREATE PROCEDURE syntax varies by dialect and may not be
-    # supported by the tree-sitter-sql grammar in all cases
-    elif node.type == "create_procedure":  # pragma: no cover
-        name = _extract_procedure_name(node, source)  # pragma: no cover
-        if name:  # pragma: no cover
-            start_line = node.start_point[0] + 1  # pragma: no cover
-            end_line = node.end_point[0] + 1  # pragma: no cover
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "procedure")  # pragma: no cover
-            sym = Symbol(  # pragma: no cover
-                id=symbol_id,  # pragma: no cover
-                stable_id=None,  # pragma: no cover
-                shape_id=None,  # pragma: no cover
-                canonical_name=name,  # pragma: no cover
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],  # pragma: no cover
-                kind="procedure",  # pragma: no cover
-                name=name,  # pragma: no cover
-                path=rel_path,  # pragma: no cover
-                language="sql",  # pragma: no cover
-                span=Span(  # pragma: no cover
-                    start_line=start_line,  # pragma: no cover
-                    end_line=end_line,  # pragma: no cover
-                    start_col=node.start_point[1],  # pragma: no cover
-                    end_col=node.end_point[1],  # pragma: no cover
-                ),  # pragma: no cover
-                origin=PASS_ID,  # pragma: no cover
-            )  # pragma: no cover
-            symbols.append(sym)  # pragma: no cover
-            symbol_registry[name.lower()] = (symbol_id, "procedure")  # pragma: no cover
+        # Note: CREATE PROCEDURE syntax varies by dialect and may not be
+        # supported by the tree-sitter-sql grammar in all cases
+        elif node.type == "create_procedure":  # pragma: no cover
+            name = _extract_procedure_name(node, source)  # pragma: no cover
+            if name:  # pragma: no cover
+                start_line = node.start_point[0] + 1  # pragma: no cover
+                end_line = node.end_point[0] + 1  # pragma: no cover
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "procedure")  # pragma: no cover
+                sym = Symbol(  # pragma: no cover
+                    id=symbol_id,  # pragma: no cover
+                    stable_id=None,  # pragma: no cover
+                    shape_id=None,  # pragma: no cover
+                    canonical_name=name,  # pragma: no cover
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],  # pragma: no cover
+                    kind="procedure",  # pragma: no cover
+                    name=name,  # pragma: no cover
+                    path=rel_path,  # pragma: no cover
+                    language="sql",  # pragma: no cover
+                    span=Span(  # pragma: no cover
+                        start_line=start_line,  # pragma: no cover
+                        end_line=end_line,  # pragma: no cover
+                        start_col=node.start_point[1],  # pragma: no cover
+                        end_col=node.end_point[1],  # pragma: no cover
+                    ),  # pragma: no cover
+                    origin=PASS_ID,  # pragma: no cover
+                )  # pragma: no cover
+                symbols.append(sym)  # pragma: no cover
+                symbol_registry[name.lower()] = (symbol_id, "procedure")  # pragma: no cover
 
-    elif node.type == "create_trigger":
-        name = _extract_trigger_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "trigger")
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="trigger",
-                name=name,
-                path=rel_path,
-                language="sql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name.lower()] = (symbol_id, "trigger")
+        elif node.type == "create_trigger":
+            name = _extract_trigger_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "trigger")
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="trigger",
+                    name=name,
+                    path=rel_path,
+                    language="sql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name.lower()] = (symbol_id, "trigger")
 
-    elif node.type == "create_index":
-        name = _extract_index_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "index")
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="index",
-                name=name,
-                path=rel_path,
-                language="sql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name.lower()] = (symbol_id, "index")
-
-    # Recurse into children
-    for child in node.children:
-        _process_sql_tree(child, source, rel_path, symbols, edges, symbol_registry)
+        elif node.type == "create_index":
+            name = _extract_index_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "index")
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="index",
+                    name=name,
+                    path=rel_path,
+                    language="sql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name.lower()] = (symbol_id, "index")
 
 
 def _find_cross_file_refs(  # pragma: no cover
-    node: "tree_sitter.Node",  # pragma: no cover
+    root_node: "tree_sitter.Node",  # pragma: no cover
     source: bytes,  # pragma: no cover
     rel_path: str,  # pragma: no cover
     symbols: list[Symbol],  # pragma: no cover
@@ -462,40 +456,38 @@ def _find_cross_file_refs(  # pragma: no cover
     symbol_registry: dict[str, tuple[str, str]],  # pragma: no cover
 ) -> None:  # pragma: no cover
     """Find cross-file references in a second pass."""
-    if node.type == "create_table":  # pragma: no cover
-        name = _extract_table_name(node, source)  # pragma: no cover
-        if name:  # pragma: no cover
-            symbol_id = None  # pragma: no cover
-            line_num = node.start_point[0] + 1  # pragma: no cover
-            for sym in symbols:  # pragma: no cover
-                if sym.name == name and sym.kind == "table" and sym.path == rel_path:  # pragma: no cover
-                    symbol_id = sym.id  # pragma: no cover
-                    break  # pragma: no cover
-            if symbol_id:  # pragma: no cover
-                col_defs = _find_child_by_type(node, "column_definitions")  # pragma: no cover
-                if col_defs:  # pragma: no cover
-                    refs = _find_references_in_columns(col_defs, source)  # pragma: no cover
-                    for ref_table in refs:  # pragma: no cover
-                        ref_lower = ref_table.lower()  # pragma: no cover
-                        if ref_lower in symbol_registry:  # pragma: no cover
-                            dst_id, _ = symbol_registry[ref_lower]  # pragma: no cover
-                            edge_id = _make_edge_id(symbol_id, dst_id, "references")  # pragma: no cover
-                            # Check if edge already exists  # pragma: no cover
-                            if not any(e.id == edge_id for e in edges):  # pragma: no cover
-                                edge = Edge(  # pragma: no cover
-                                    id=edge_id,  # pragma: no cover
-                                    src=symbol_id,  # pragma: no cover
-                                    dst=dst_id,  # pragma: no cover
-                                    edge_type="references",  # pragma: no cover
-                                    line=line_num,  # pragma: no cover
-                                    confidence=0.90,  # pragma: no cover
-                                    origin=PASS_ID,  # pragma: no cover
-                                    evidence_type="sql_foreign_key",  # pragma: no cover
-                                )  # pragma: no cover
-                                edges.append(edge)  # pragma: no cover
-
-    for child in node.children:  # pragma: no cover
-        _find_cross_file_refs(child, source, rel_path, symbols, edges, symbol_registry)  # pragma: no cover
+    for node in iter_tree(root_node):  # pragma: no cover
+        if node.type == "create_table":  # pragma: no cover
+            name = _extract_table_name(node, source)  # pragma: no cover
+            if name:  # pragma: no cover
+                symbol_id = None  # pragma: no cover
+                line_num = node.start_point[0] + 1  # pragma: no cover
+                for sym in symbols:  # pragma: no cover
+                    if sym.name == name and sym.kind == "table" and sym.path == rel_path:  # pragma: no cover
+                        symbol_id = sym.id  # pragma: no cover
+                        break  # pragma: no cover
+                if symbol_id:  # pragma: no cover
+                    col_defs = _find_child_by_type(node, "column_definitions")  # pragma: no cover
+                    if col_defs:  # pragma: no cover
+                        refs = _find_references_in_columns(col_defs, source)  # pragma: no cover
+                        for ref_table in refs:  # pragma: no cover
+                            ref_lower = ref_table.lower()  # pragma: no cover
+                            if ref_lower in symbol_registry:  # pragma: no cover
+                                dst_id, _ = symbol_registry[ref_lower]  # pragma: no cover
+                                edge_id = _make_edge_id(symbol_id, dst_id, "references")  # pragma: no cover
+                                # Check if edge already exists  # pragma: no cover
+                                if not any(e.id == edge_id for e in edges):  # pragma: no cover
+                                    edge = Edge(  # pragma: no cover
+                                        id=edge_id,  # pragma: no cover
+                                        src=symbol_id,  # pragma: no cover
+                                        dst=dst_id,  # pragma: no cover
+                                        edge_type="references",  # pragma: no cover
+                                        line=line_num,  # pragma: no cover
+                                        confidence=0.90,  # pragma: no cover
+                                        origin=PASS_ID,  # pragma: no cover
+                                        evidence_type="sql_foreign_key",  # pragma: no cover
+                                    )  # pragma: no cover
+                                    edges.append(edge)  # pragma: no cover
 
 
 def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:

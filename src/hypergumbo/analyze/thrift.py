@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -143,13 +144,13 @@ def _extract_namespace(root: "tree_sitter.Node", source: bytes) -> Optional[str]
     Thrift can have multiple namespace declarations for different languages.
     We use the first one found for canonical naming.
     """
-    for child in root.children:
-        if child.type == "namespace_declaration":
+    for node in iter_tree(root):
+        if node.type == "namespace_declaration":
             # namespace_declaration structure:
             # "namespace" namespace_scope namespace namespace ...
             # The namespace path parts are in "namespace" type nodes
             namespace_parts = []
-            for subchild in child.children:
+            for subchild in node.children:
                 if subchild.type == "namespace":
                     part = _node_text(subchild, source).strip()
                     # First "namespace" is the keyword, skip it
@@ -215,68 +216,74 @@ def _extract_symbols_and_edges(
             signature=signature,
         )
 
-    # Process top-level nodes
-    for child in root.children:
-        if child.type == "service_definition":
+    # Track service symbols for contains edges - use byte range as key
+    # because node.parent returns a new Python object each time
+    service_by_pos: dict[tuple[int, int], Symbol] = {}
+
+    # Process nodes using iterative traversal
+    for node in iter_tree(root):
+        if node.type == "service_definition":
             # Extract service name
-            service_name_node = _find_child_by_type(child, "identifier")
+            service_name_node = _find_child_by_type(node, "identifier")
             if service_name_node:
                 service_name = _node_text(service_name_node, source).strip()
-                service_sym = make_symbol(child, service_name, "service")
+                service_sym = make_symbol(node, service_name, "service")
                 symbols.append(service_sym)
+                service_by_pos[(node.start_byte, node.end_byte)] = service_sym
 
-                # Extract functions
-                for func_child in child.children:
-                    if func_child.type == "function_definition":
-                        func_name_node = _find_child_by_type(func_child, "identifier")
-                        if func_name_node:
-                            func_name = _node_text(func_name_node, source).strip()
-                            func_sig = _extract_function_signature(func_child, source)
-                            func_sym = make_symbol(
-                                func_child, func_name, "function",
-                                prefix=service_name,
-                                signature=func_sig
-                            )
-                            symbols.append(func_sym)
+        elif node.type == "function_definition":
+            # Find containing service by walking up parents
+            service_sym = _find_containing_service(node, service_by_pos)
+            if service_sym:
+                func_name_node = _find_child_by_type(node, "identifier")
+                if func_name_node:
+                    func_name = _node_text(func_name_node, source).strip()
+                    func_sig = _extract_function_signature(node, source)
+                    func_sym = make_symbol(
+                        node, func_name, "function",
+                        prefix=service_sym.name,
+                        signature=func_sig
+                    )
+                    symbols.append(func_sym)
 
-                            # Create contains edge from service to function
-                            edges.append(Edge(
-                                id=_make_edge_id(),
-                                src=service_sym.id,
-                                dst=func_sym.id,
-                                edge_type="contains",
-                                line=func_sym.span.start_line,
-                            ))
+                    # Create contains edge from service to function
+                    edges.append(Edge(
+                        id=_make_edge_id(),
+                        src=service_sym.id,
+                        dst=func_sym.id,
+                        edge_type="contains",
+                        line=func_sym.span.start_line,
+                    ))
 
-        elif child.type == "struct_definition":
-            struct_name_node = _find_child_by_type(child, "identifier")
+        elif node.type == "struct_definition":
+            struct_name_node = _find_child_by_type(node, "identifier")
             if struct_name_node:
                 struct_name = _node_text(struct_name_node, source).strip()
-                symbols.append(make_symbol(child, struct_name, "struct"))
+                symbols.append(make_symbol(node, struct_name, "struct"))
 
-        elif child.type == "enum_definition":
-            enum_name_node = _find_child_by_type(child, "identifier")
+        elif node.type == "enum_definition":
+            enum_name_node = _find_child_by_type(node, "identifier")
             if enum_name_node:
                 enum_name = _node_text(enum_name_node, source).strip()
-                symbols.append(make_symbol(child, enum_name, "enum"))
+                symbols.append(make_symbol(node, enum_name, "enum"))
 
-        elif child.type == "typedef_definition":
+        elif node.type == "typedef_definition":
             # typedef: typedef Type typedef_identifier
-            typedef_id_node = _find_child_by_type(child, "typedef_identifier")
+            typedef_id_node = _find_child_by_type(node, "typedef_identifier")
             if typedef_id_node:
                 typedef_name = _node_text(typedef_id_node, source).strip()
-                symbols.append(make_symbol(child, typedef_name, "typedef"))
+                symbols.append(make_symbol(node, typedef_name, "typedef"))
 
-        elif child.type == "const_definition":
+        elif node.type == "const_definition":
             # const: const Type Name = value
-            const_name_node = _find_child_by_type(child, "identifier")
+            const_name_node = _find_child_by_type(node, "identifier")
             if const_name_node:
                 const_name = _node_text(const_name_node, source).strip()
-                symbols.append(make_symbol(child, const_name, "const"))
+                symbols.append(make_symbol(node, const_name, "const"))
 
-        elif child.type == "include_statement":
+        elif node.type == "include_statement":
             # Extract include path
-            for subchild in child.children:
+            for subchild in node.children:
                 if subchild.type == "string":
                     include_path = _node_text(subchild, source).strip().strip('"')
                     edges.append(Edge(
@@ -284,10 +291,23 @@ def _extract_symbols_and_edges(
                         src=_make_file_id(file_path),
                         dst=f"thrift:{include_path}:1-1:file:file",
                         edge_type="imports",
-                        line=child.start_point[0] + 1,
+                        line=node.start_point[0] + 1,
                     ))
 
     return symbols, edges
+
+
+def _find_containing_service(
+    node: "tree_sitter.Node", service_by_pos: dict[tuple[int, int], Symbol]
+) -> Optional[Symbol]:
+    """Walk up parents to find the containing service definition."""
+    current = node.parent
+    while current is not None:
+        pos_key = (current.start_byte, current.end_byte)
+        if pos_key in service_by_pos:
+            return service_by_pos[pos_key]
+        current = current.parent  # pragma: no cover - loop continuation
+    return None  # pragma: no cover - defensive
 
 
 def analyze_thrift(repo_root: Path) -> ThriftAnalysisResult:

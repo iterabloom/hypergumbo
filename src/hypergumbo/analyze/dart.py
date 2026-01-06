@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -205,6 +206,21 @@ def _extract_dart_signature(
     return sig
 
 
+def _find_enclosing_class(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> Optional[str]:
+    """Find the enclosing class/mixin/extension name for a given node."""
+    current = node.parent
+    while current:
+        if current.type in ("class_definition", "mixin_declaration", "extension_declaration"):
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -245,7 +261,7 @@ def _extract_symbols_from_file(
             signature=signature,
         )
 
-    def walk(node: "tree_sitter.Node", class_name: Optional[str] = None) -> None:
+    for node in iter_tree(tree.root_node):
         # Class declaration
         if node.type == "class_definition":
             name_node = _find_child_by_type(node, "identifier")
@@ -253,12 +269,7 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "class"))
-                # Process class body with class name context
-                body = _find_child_by_type(node, "class_body")
-                if body:
-                    for child in body.children:
-                        walk(child, name)
-            return
+            continue
 
         # Mixin declaration
         if node.type == "mixin_declaration":
@@ -267,11 +278,7 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "mixin"))
-                body = _find_child_by_type(node, "class_body")
-                if body:
-                    for child in body.children:
-                        walk(child, name)
-            return
+            continue
 
         # Extension declaration
         if node.type == "extension_declaration":
@@ -280,11 +287,7 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "extension"))
-                body = _find_child_by_type(node, "extension_body")
-                if body:
-                    for child in body.children:
-                        walk(child, name)
-            return
+            continue
 
         # Enum declaration
         if node.type == "enum_declaration":
@@ -293,10 +296,12 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "enum"))
-            return
+            continue
 
         # Method signature (inside class body) - contains function_signature, getter, or setter
         if node.type == "method_signature":
+            class_name = _find_enclosing_class(node, source)
+
             # Check for getter_signature
             getter_sig = _find_child_by_type(node, "getter_signature")
             if getter_sig:
@@ -307,7 +312,7 @@ def _extract_symbols_from_file(
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "getter", class_name))
-                return
+                continue
 
             # Check for setter_signature
             setter_sig = _find_child_by_type(node, "setter_signature")
@@ -318,7 +323,7 @@ def _extract_symbols_from_file(
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "setter", class_name))
-                return
+                continue
 
             # Check for constructor_signature (rare in method_signature)
             ctor_sig = _find_child_by_type(node, "constructor_signature")
@@ -332,7 +337,7 @@ def _extract_symbols_from_file(
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name))
-                return
+                continue
 
             # Regular function_signature inside method_signature
             func_sig = _find_child_by_type(node, "function_signature")
@@ -344,10 +349,11 @@ def _extract_symbols_from_file(
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     sig = _extract_dart_signature(func_sig, source)
                     symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name, signature=sig))
-            return
+            continue
 
         # Top-level function_signature (not inside method_signature)
         if node.type == "function_signature" and (node.parent is None or node.parent.type != "method_signature"):
+            class_name = _find_enclosing_class(node, source)
             name_node = _find_child_by_type(node, "identifier")
             if name_node:
                 name = _node_text(name_node, source)
@@ -356,10 +362,11 @@ def _extract_symbols_from_file(
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                 sig = _extract_dart_signature(node, source)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig))
-            return
+            continue
 
         # Constructor signature at top level of class body (rare but possible)
         if node.type == "constructor_signature" and (node.parent is None or node.parent.type != "method_signature"):
+            class_name = _find_enclosing_class(node, source)
             name_parts = []
             for child in node.children:
                 if child.type == "identifier":
@@ -369,14 +376,40 @@ def _extract_symbols_from_file(
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name))
-            return
+            continue
 
-        # Recurse into children
-        for child in node.children:
-            walk(child, class_name)
-
-    walk(tree.root_node)
     return symbols
+
+
+def _find_enclosing_function(
+    node: "tree_sitter.Node",
+    function_scopes: dict[int, Symbol],
+) -> Optional[Symbol]:
+    """Find the function/method that contains this node."""
+    current = node.parent
+    while current:
+        if current.type in ("function_signature", "function_body"):
+            # Get the line number and look up
+            line = current.start_point[0] + 1
+            if line in function_scopes:
+                return function_scopes[line]
+            # Also check if this is part of a method_signature
+            if current.parent and current.parent.type == "method_signature":  # pragma: no cover
+                line = current.parent.start_point[0] + 1  # pragma: no cover
+                if line in function_scopes:  # pragma: no cover
+                    return function_scopes[line]  # pragma: no cover
+        current = current.parent
+    return None  # pragma: no cover - no enclosing function
+
+
+def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the import path from an import/export directive using iterative traversal."""
+    for n in iter_tree(node):
+        if n.type == "string_literal":
+            text = _node_text(n, source)
+            # Remove quotes
+            return text.strip("'\"")
+    return None  # pragma: no cover - no string literal found
 
 
 def _extract_edges_from_file(
@@ -395,47 +428,17 @@ def _extract_edges_from_file(
     local_symbols = {s.name: s for s in file_symbols}
 
     # Track functions by their enclosing scope
-    function_scopes: dict[int, Symbol] = {}  # node_id -> symbol
+    function_scopes: dict[int, Symbol] = {}  # line -> symbol
 
-    # First pass: map node IDs to their symbols
+    # First pass: map lines to their symbols
     for sym in file_symbols:
         if sym.kind in ("function", "method"):
             function_scopes[sym.span.start_line] = sym
 
-    def find_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
-        """Find the function/method that contains this node."""
-        current = node.parent
-        while current:
-            if current.type in ("function_signature", "function_body"):
-                # Get the line number and look up
-                line = current.start_point[0] + 1
-                if line in function_scopes:
-                    return function_scopes[line]
-                # Also check if this is part of a method_signature
-                if current.parent and current.parent.type == "method_signature":  # pragma: no cover
-                    line = current.parent.start_point[0] + 1  # pragma: no cover
-                    if line in function_scopes:  # pragma: no cover
-                        return function_scopes[line]  # pragma: no cover
-            current = current.parent
-        return None  # pragma: no cover - no enclosing function
-
-    def extract_import_path(node: "tree_sitter.Node") -> Optional[str]:
-        """Extract the import path from an import/export directive."""
-        # Recurse to find string_literal
-        for child in node.children:
-            if child.type == "string_literal":
-                text = _node_text(child, source)
-                # Remove quotes
-                return text.strip("'\"")
-            result = extract_import_path(child)
-            if result:
-                return result
-        return None
-
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Import/export directive
         if node.type == "import_or_export":
-            import_path = extract_import_path(node)
+            import_path = _extract_import_path(node, source)
             if import_path:
                 module_id = f"dart:{import_path}:0-0:module:module"
                 edge = Edge.create(
@@ -465,7 +468,7 @@ def _extract_edges_from_file(
                             for c in selector.children
                         )
                         if has_args:
-                            caller = find_enclosing_function(node)
+                            caller = _find_enclosing_function(node, function_scopes)
                             if caller:
                                 callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
                                 if callee:
@@ -493,7 +496,7 @@ def _extract_edges_from_file(
                     if method_name:
                         has_args = any(c.type == "argument_part" for c in node.children)
                         if has_args:
-                            caller = find_enclosing_function(node)
+                            caller = _find_enclosing_function(node, function_scopes)
                             if caller:
                                 callee = local_symbols.get(method_name) or global_symbol_registry.get(method_name)
                                 if callee:
@@ -515,7 +518,7 @@ def _extract_edges_from_file(
             for child in node.children:
                 if child.type in ("type_identifier", "identifier"):
                     class_name = _node_text(child, source)
-                    caller = find_enclosing_function(node)
+                    caller = _find_enclosing_function(node, function_scopes)
                     if caller:
                         callee = local_symbols.get(class_name) or global_symbol_registry.get(class_name)
                         if callee:
@@ -541,7 +544,7 @@ def _extract_edges_from_file(
                     class_name = _node_text(child, source)
                     # Check for following arguments
                     if i + 1 < len(children) and children[i + 1].type == "arguments":
-                        caller = find_enclosing_function(node)
+                        caller = _find_enclosing_function(node, function_scopes)
                         if caller:
                             callee = local_symbols.get(class_name) or global_symbol_registry.get(class_name)
                             if callee:
@@ -558,11 +561,6 @@ def _extract_edges_from_file(
                                 edges.append(edge)
                     break
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

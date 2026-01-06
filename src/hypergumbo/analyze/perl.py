@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -154,6 +155,27 @@ def _extract_perl_signature(
     return "()"
 
 
+def _get_current_package(node: "tree_sitter.Node", source: bytes) -> str:
+    """Walk up the tree to find the most recent package_statement before this node.
+
+    Returns "main" if no package statement is found.
+    """
+    # Walk backwards through siblings in parent to find package_statement
+    current = node.parent
+    while current:
+        # Check siblings that appear before this node
+        found_self = False
+        for sibling in reversed(current.children):
+            if sibling is node or (sibling.end_byte <= node.start_byte):
+                found_self = True
+            if found_self and sibling.type == "package_statement":
+                package_nodes = _find_children_by_type(sibling, "package")
+                if len(package_nodes) >= 2:
+                    return _node_text(package_nodes[1], source)
+        current = current.parent
+    return "main"  # pragma: no cover - defensive
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -172,9 +194,7 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     package_name = "main"  # Default Perl package
 
-    def walk(node: "tree_sitter.Node") -> None:
-        nonlocal package_name
-
+    for node in iter_tree(tree.root_node):
         if node.type == "package_statement":
             # Extract package name
             package_nodes = _find_children_by_type(node, "package")
@@ -206,6 +226,10 @@ def _extract_symbols_from_file(
             bareword = _find_child_by_type(node, "bareword")
             if bareword:
                 sub_name = _node_text(bareword, source)
+                # Get current package context for this subroutine
+                current_pkg = _get_current_package(node, source)
+                if current_pkg != "main":
+                    package_name = current_pkg
                 # Qualify with package name for cross-file resolution
                 qualified_name = f"{package_name}::{sub_name}" if package_name != "main" else sub_name
                 start_line = node.start_point[0] + 1
@@ -229,12 +253,26 @@ def _extract_symbols_from_file(
                     signature=_extract_perl_signature(node, source),
                 ))
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols, package_name
+
+
+def _find_enclosing_function_perl(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    package_name: str,
+) -> Optional[Symbol]:
+    """Find the subroutine that contains this node by walking up parents."""
+    current = node.parent
+    while current:
+        if current.type == "subroutine_declaration_statement":
+            bareword = _find_child_by_type(current, "bareword")
+            if bareword:
+                name = _node_text(bareword, source)
+                qualified = f"{package_name}::{name}" if package_name != "main" else name
+                return local_symbols.get(qualified) or local_symbols.get(name)
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_edges_from_file(
@@ -257,7 +295,7 @@ def _extract_edges_from_file(
     file_id = _make_file_id(file_path)
 
     # Build local symbol map for this file (unqualified name -> symbol)
-    local_symbols = {}
+    local_symbols: dict[str, Symbol] = {}
     for s in file_symbols:
         # Store both qualified and unqualified names
         local_symbols[s.name] = s
@@ -265,20 +303,7 @@ def _extract_edges_from_file(
             unqualified = s.name.rsplit("::", 1)[-1]
             local_symbols[unqualified] = s
 
-    def find_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
-        """Find the subroutine that contains this node."""
-        current = node.parent
-        while current:
-            if current.type == "subroutine_declaration_statement":
-                bareword = _find_child_by_type(current, "bareword")
-                if bareword:
-                    name = _node_text(bareword, source)
-                    qualified = f"{package_name}::{name}" if package_name != "main" else name
-                    return local_symbols.get(qualified) or local_symbols.get(name)
-            current = current.parent
-        return None
-
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Handle use statements
         if node.type == "use_statement":
             package_nodes = _find_children_by_type(node, "package")
@@ -333,7 +358,7 @@ def _extract_edges_from_file(
                                       "bless", "keys", "values", "each", "exists", "delete",
                                       "length", "substr", "index", "rindex", "chomp", "chop",
                                       "lc", "uc", "lcfirst", "ucfirst", "scalar", "wantarray"):
-                    caller = find_enclosing_function(node)
+                    caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
                     if caller:
                         # Try to resolve callee
                         callee = local_symbols.get(func_name) or global_symbol_registry.get(func_name)
@@ -370,7 +395,7 @@ def _extract_edges_from_file(
             method_node = _find_child_by_type(node, "method")
             if method_node:
                 method_name = _node_text(method_node, source)
-                caller = find_enclosing_function(node)
+                caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
                 if caller:
                     callee = local_symbols.get(method_name) or global_symbol_registry.get(method_name)
                     if callee:
@@ -386,11 +411,6 @@ def _extract_edges_from_file(
                         )
                         edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

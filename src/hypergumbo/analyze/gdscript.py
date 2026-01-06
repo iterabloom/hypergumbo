@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -156,6 +157,56 @@ def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) ->
     return sig
 
 
+def _get_enclosing_function_gdscript(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> Optional[str]:
+    """Walk up parent chain to find enclosing function name."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            name_node = _find_child_by_type(current, "name")
+            if name_node:
+                return _node_text(name_node, source).strip()
+        current = current.parent
+    return None  # pragma: no cover - no enclosing function found
+
+
+def _make_gd_symbol(
+    node: "tree_sitter.Node",
+    name: str,
+    kind: str,
+    file_path: str,
+    run_id: str,
+    signature: Optional[str] = None,
+) -> Symbol:
+    """Create a Symbol from a tree-sitter node."""
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    start_col = node.start_point[1]
+    end_col = node.end_point[1]
+
+    span = Span(
+        start_line=start_line,
+        end_line=end_line,
+        start_col=start_col,
+        end_col=end_col,
+    )
+    sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+    return Symbol(
+        id=sym_id,
+        name=name,
+        canonical_name=name,
+        kind=kind,
+        language="gdscript",
+        path=file_path,
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        signature=signature,
+    )
+
+
 def _extract_symbols_and_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -165,118 +216,46 @@ def _extract_symbols_and_edges(
     """Extract all symbols and edges from a parsed GDScript file."""
     symbols: list[Symbol] = []
     edges: list[Edge] = []
-    current_function: Optional[str] = None
 
-    root = tree.root_node
+    for node in iter_tree(tree.root_node):
+        if node.type == "function_definition":
+            name_node = _find_child_by_type(node, "name")
+            if name_node:
+                func_name = _node_text(name_node, source).strip()
+                sig = _extract_function_signature(node, source)
+                symbols.append(_make_gd_symbol(node, func_name, "function", file_path, run_id, signature=sig))
 
-    def make_symbol(
-        node: "tree_sitter.Node",
-        name: str,
-        kind: str,
-        signature: Optional[str] = None,
-    ) -> Symbol:
-        """Create a Symbol from a tree-sitter node."""
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        start_col = node.start_point[1]
-        end_col = node.end_point[1]
+        elif node.type == "variable_statement":
+            name_node = _find_child_by_type(node, "name")
+            if name_node:
+                var_name = _node_text(name_node, source).strip()
+                symbols.append(_make_gd_symbol(node, var_name, "variable", file_path, run_id))
 
-        span = Span(
-            start_line=start_line,
-            end_line=end_line,
-            start_col=start_col,
-            end_col=end_col,
-        )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
-        return Symbol(
-            id=sym_id,
-            name=name,
-            canonical_name=name,
-            kind=kind,
-            language="gdscript",
-            path=file_path,
-            span=span,
-            origin=PASS_ID,
-            origin_run_id=run_id,
-            signature=signature,
-        )
+        elif node.type == "signal_statement":
+            name_node = _find_child_by_type(node, "name")
+            if name_node:
+                signal_name = _node_text(name_node, source).strip()
+                symbols.append(_make_gd_symbol(node, signal_name, "signal", file_path, run_id))
 
-    def process_function(node: "tree_sitter.Node") -> None:
-        """Process a function definition."""
-        nonlocal current_function
-        name_node = _find_child_by_type(node, "name")
-        if name_node:
-            func_name = _node_text(name_node, source).strip()
-            sig = _extract_function_signature(node, source)
-            symbols.append(make_symbol(node, func_name, "function", signature=sig))
+        elif node.type == "class_name_statement":
+            name_node = _find_child_by_type(node, "name")
+            if name_node:
+                class_name = _node_text(name_node, source).strip()
+                symbols.append(_make_gd_symbol(node, class_name, "class", file_path, run_id))
 
-            # Process function body for calls
-            old_func = current_function
-            current_function = func_name
-            body_node = _find_child_by_type(node, "body")
-            if body_node:
-                process_node_for_calls(body_node)
-            current_function = old_func
+        elif node.type == "class_definition":
+            name_node = _find_child_by_type(node, "name")
+            if name_node:
+                class_name = _node_text(name_node, source).strip()
+                symbols.append(_make_gd_symbol(node, class_name, "class", file_path, run_id))
 
-    def process_variable(node: "tree_sitter.Node") -> None:
-        """Process a variable declaration."""
-        name_node = _find_child_by_type(node, "name")
-        if name_node:
-            var_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, var_name, "variable"))
-
-            # Check for preload in assignment
-            process_node_for_preload(node)
-
-    def process_signal(node: "tree_sitter.Node") -> None:
-        """Process a signal declaration."""
-        name_node = _find_child_by_type(node, "name")
-        if name_node:
-            signal_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, signal_name, "signal"))
-
-    def process_class_name(node: "tree_sitter.Node") -> None:
-        """Process a class_name declaration."""
-        name_node = _find_child_by_type(node, "name")
-        if name_node:
-            class_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, class_name, "class"))
-
-    def process_inner_class(node: "tree_sitter.Node") -> None:
-        """Process an inner class definition."""
-        name_node = _find_child_by_type(node, "name")
-        if name_node:
-            class_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, class_name, "class"))
-
-    def process_node_for_calls(node: "tree_sitter.Node") -> None:
-        """Walk a node tree looking for function calls."""
-        if node.type == "call":
-            # Get the function name
-            ident_node = _find_child_by_type(node, "identifier")
-            if ident_node and current_function:
-                called_name = _node_text(ident_node, source).strip()
-                # Skip built-in functions like print
-                if called_name not in ("print", "push_error", "push_warning", "printerr"):
-                    edges.append(Edge(
-                        id=_make_edge_id(),
-                        src=_make_file_id(file_path),
-                        dst=f"gdscript:?:?:{called_name}:function",
-                        edge_type="calls",
-                        line=node.start_point[0] + 1,
-                    ))
-
-        for child in node.children:
-            process_node_for_calls(child)
-
-    def process_node_for_preload(node: "tree_sitter.Node") -> None:
-        """Look for preload() or load() calls for imports."""
-        if node.type == "call":
+        elif node.type == "call":
             ident_node = _find_child_by_type(node, "identifier")
             if ident_node:
-                func_name = _node_text(ident_node, source).strip()
-                if func_name in ("preload", "load"):
-                    # Get the path argument
+                called_name = _node_text(ident_node, source).strip()
+
+                # Check for preload/load imports
+                if called_name in ("preload", "load"):
                     args_node = _find_child_by_type(node, "arguments")
                     if args_node:
                         for arg_child in args_node.children:
@@ -290,34 +269,19 @@ def _extract_symbols_and_edges(
                                     line=node.start_point[0] + 1,
                                 ))
                                 break
-
-        for child in node.children:
-            process_node_for_preload(child)
-
-    def process_const_for_preload(node: "tree_sitter.Node") -> None:
-        """Process const statements for preload."""
-        # Const statements with preload: const X = preload("...")
-        process_node_for_preload(node)
-
-    def walk_tree(node: "tree_sitter.Node") -> None:
-        """Walk the tree to find relevant nodes."""
-        if node.type == "function_definition":
-            process_function(node)
-        elif node.type == "variable_statement":
-            process_variable(node)
-        elif node.type == "signal_statement":
-            process_signal(node)
-        elif node.type == "class_name_statement":
-            process_class_name(node)
-        elif node.type == "class_definition":
-            process_inner_class(node)
-        elif node.type == "const_statement":
-            process_const_for_preload(node)
-
-        for child in node.children:
-            walk_tree(child)
-
-    walk_tree(root)
+                else:
+                    # Check if inside a function for call edge
+                    enclosing_func = _get_enclosing_function_gdscript(node, source)
+                    if enclosing_func:
+                        # Skip built-in functions like print
+                        if called_name not in ("print", "push_error", "push_warning", "printerr"):
+                            edges.append(Edge(
+                                id=_make_edge_id(),
+                                src=_make_file_id(file_path),
+                                dst=f"gdscript:?:?:{called_name}:function",
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                            ))
 
     return symbols, edges
 

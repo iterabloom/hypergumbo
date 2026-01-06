@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -217,23 +218,21 @@ def _process_interface_declaration(ctx: _FileContext, node: "tree_sitter.Node") 
     ctx.symbols.append(_make_symbol(ctx, node, iface_name, "interface"))
 
 
-def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a tree-sitter node and its children."""
-    if node.type == "module_declaration":
-        _process_module_declaration(ctx, node)
-    elif node.type == "import_declaration":
-        _process_import_declaration(ctx, node)
-    elif node.type == "function_declaration":
-        _process_function_declaration(ctx, node)
-    elif node.type == "struct_declaration":
-        _process_struct_declaration(ctx, node)
-    elif node.type == "class_declaration":
-        _process_class_declaration(ctx, node)
-    elif node.type == "interface_declaration":
-        _process_interface_declaration(ctx, node)
-
-    for child in node.children:
-        _process_node(ctx, child)
+def _process_tree(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
+    """Process a tree-sitter tree iteratively."""
+    for node in iter_tree(tree.root_node):
+        if node.type == "module_declaration":
+            _process_module_declaration(ctx, node)
+        elif node.type == "import_declaration":
+            _process_import_declaration(ctx, node)
+        elif node.type == "function_declaration":
+            _process_function_declaration(ctx, node)
+        elif node.type == "struct_declaration":
+            _process_struct_declaration(ctx, node)
+        elif node.type == "class_declaration":
+            _process_class_declaration(ctx, node)
+        elif node.type == "interface_declaration":
+            _process_interface_declaration(ctx, node)
 
 
 def analyze_d(repo_root: Path) -> DAnalysisResult:
@@ -280,7 +279,7 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
             edges=edges,
         )
 
-        _process_node(ctx, tree.root_node)
+        _process_tree(ctx, tree)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return DAnalysisResult(

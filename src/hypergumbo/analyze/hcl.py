@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from .base import iter_tree
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -180,13 +181,12 @@ def _extract_symbols_from_file(
         return analysis
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    def process_node(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "block":
             block_type, labels = _extract_block_info(node, source)
             if not block_type:
-                return  # pragma: no cover
+                continue  # pragma: no cover
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
@@ -312,10 +312,6 @@ def _extract_symbols_from_file(
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[name] = symbol
 
-        for child in node.children:
-            process_node(child)
-
-    process_node(root)
     return analysis
 
 
@@ -355,15 +351,12 @@ def _find_references_in_expression(
     """
     refs: list[tuple[str, int]] = []
 
-    def walk(n: "tree_sitter.Node") -> None:
+    for n in iter_tree(node):
         if n.type == "variable_expr":
             ref = _extract_reference_chain(n, source)
             if ref:
                 refs.append((ref, n.start_point[0] + 1))
-        for child in n.children:
-            walk(child)
 
-    walk(node)
     return refs
 
 
@@ -386,6 +379,33 @@ def _extract_module_source(node: "tree_sitter.Node", source: bytes) -> str | Non
     return None  # pragma: no cover - no source attribute
 
 
+def _find_enclosing_block_symbol(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Symbol | None:
+    """Find the enclosing block's symbol by walking up parent nodes."""
+    current = node.parent
+    while current is not None:
+        if current.type == "block":
+            block_type, labels = _extract_block_info(current, source)
+
+            sym_name: str | None = None
+            if block_type == "resource" and len(labels) >= 2:
+                sym_name = f"{labels[0]}.{labels[1]}"
+            elif block_type == "data" and len(labels) >= 2:
+                sym_name = f"data.{labels[0]}.{labels[1]}"
+            elif block_type == "module" and len(labels) >= 1:
+                sym_name = f"module.{labels[0]}"
+            elif block_type == "output" and len(labels) >= 1:
+                sym_name = f"output.{labels[0]}"
+
+            if sym_name and sym_name in local_symbols:
+                return local_symbols[sym_name]
+        current = current.parent
+    return None
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -404,29 +424,10 @@ def _extract_edges_from_file(
         return edges
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    current_symbol: Symbol | None = None
-
-    def process_node(node: "tree_sitter.Node") -> None:
-        nonlocal current_symbol
-
+    for node in iter_tree(tree.root_node):
         if node.type == "block":
             block_type, labels = _extract_block_info(node, source)
-
-            # Determine current symbol name for context
-            sym_name: str | None = None
-            if block_type == "resource" and len(labels) >= 2:
-                sym_name = f"{labels[0]}.{labels[1]}"
-            elif block_type == "data" and len(labels) >= 2:
-                sym_name = f"data.{labels[0]}.{labels[1]}"
-            elif block_type == "module" and len(labels) >= 1:
-                sym_name = f"module.{labels[0]}"
-            elif block_type == "output" and len(labels) >= 1:
-                sym_name = f"output.{labels[0]}"
-
-            if sym_name and sym_name in local_symbols:
-                current_symbol = local_symbols[sym_name]
 
             # Handle module source
             if block_type == "module" and len(labels) >= 1:
@@ -445,36 +446,34 @@ def _extract_edges_from_file(
                     ))
 
         # Find references in expressions
-        if node.type == "expression" and current_symbol:
-            refs = _find_references_in_expression(node, source)
-            for ref_name, ref_line in refs:
-                # Try to match reference to a known symbol
-                target: Symbol | None = None
-                confidence = 0.85
-
-                if ref_name in local_symbols:
-                    target = local_symbols[ref_name]
-                    confidence = 0.95
-                elif ref_name in global_symbols:  # pragma: no cover - cross-file
-                    target = global_symbols[ref_name]
+        elif node.type == "expression":
+            current_symbol = _find_enclosing_block_symbol(node, source, local_symbols)
+            if current_symbol:
+                refs = _find_references_in_expression(node, source)
+                for ref_name, ref_line in refs:
+                    # Try to match reference to a known symbol
+                    target: Symbol | None = None
                     confidence = 0.85
 
-                if target and target.id != current_symbol.id:
-                    edges.append(Edge.create(
-                        src=current_symbol.id,
-                        dst=target.id,
-                        edge_type="depends_on",
-                        line=ref_line,
-                        evidence_type="reference",
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                    ))
+                    if ref_name in local_symbols:
+                        target = local_symbols[ref_name]
+                        confidence = 0.95
+                    elif ref_name in global_symbols:  # pragma: no cover - cross-file
+                        target = global_symbols[ref_name]
+                        confidence = 0.85
 
-        for child in node.children:
-            process_node(child)
+                    if target and target.id != current_symbol.id:
+                        edges.append(Edge.create(
+                            src=current_symbol.id,
+                            dst=target.id,
+                            edge_type="depends_on",
+                            line=ref_line,
+                            evidence_type="reference",
+                            confidence=confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
 
-    process_node(root)
     return edges
 
 

@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -215,9 +216,7 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     module_name = ""
 
-    def walk(node: "tree_sitter.Node") -> None:
-        nonlocal module_name
-
+    for node in iter_tree(tree.root_node):
         # Module declaration
         if node.type == "named_module":
             long_id = _find_child_by_type(node, "long_identifier")
@@ -364,12 +363,28 @@ def _extract_symbols_from_file(
                             origin_run_id=run_id,
                         ))
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols, module_name
+
+
+def _get_enclosing_function_fsharp(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Symbol | None:
+    """Walk up parent chain to find enclosing function."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_or_value_defn":
+            func_left = _find_child_by_type(current, "function_declaration_left")
+            if func_left:
+                name_node = _find_child_by_type(func_left, "identifier")
+                if name_node:
+                    func_name = _node_text(name_node, source)
+                    sym = local_symbols.get(func_name)
+                    if sym:
+                        return sym
+        current = current.parent
+    return None
 
 
 def _extract_edges_from_file(
@@ -392,28 +407,8 @@ def _extract_edges_from_file(
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
-    # Track enclosing function for call edges
-    function_stack: list[Symbol] = []
-
-    def find_enclosing_function() -> Symbol | None:
-        """Get the innermost enclosing function."""
-        return function_stack[-1] if function_stack else None
-
-    def walk(node: "tree_sitter.Node") -> None:
-        is_func_decl = False
-
-        if node.type == "function_or_value_defn":
-            func_left = _find_child_by_type(node, "function_declaration_left")
-            if func_left:
-                name_node = _find_child_by_type(func_left, "identifier")
-                if name_node:
-                    func_name = _node_text(name_node, source)
-                    sym = local_symbols.get(func_name)
-                    if sym:
-                        function_stack.append(sym)
-                        is_func_decl = True
-
-        elif node.type == "import_decl":
+    for node in iter_tree(tree.root_node):
+        if node.type == "import_decl":
             # open Module.Submodule
             long_id = _find_child_by_type(node, "long_identifier")
             if long_id:
@@ -433,7 +428,7 @@ def _extract_edges_from_file(
 
         elif node.type == "application_expression":
             # Function application - first child is the function being called
-            caller = find_enclosing_function()
+            caller = _get_enclosing_function_fsharp(node, source, local_symbols)
             if caller and node.children:
                 first_child = node.children[0]
                 # Look for long_identifier_or_op > identifier
@@ -455,15 +450,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-        # Pop function context
-        if is_func_decl:
-            function_stack.pop()
-
-    walk(tree.root_node)
     return edges
 
 

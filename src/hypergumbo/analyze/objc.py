@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -246,6 +247,18 @@ def _is_class_method(node: "tree_sitter.Node") -> bool:  # pragma: no cover - un
     return False  # default to instance
 
 
+def _get_enclosing_class_objc(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Walk up the tree to find enclosing class/implementation name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_interface", "class_implementation"):
+            return _extract_class_name(current, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -264,23 +277,11 @@ def _extract_symbols_from_file(
         return analysis
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    # Stack entries: (node, current_class, current_class_symbol)
-    stack: list[tuple["tree_sitter.Node", str | None, Symbol | None]] = [
-        (root, None, None)
-    ]
-
-    while stack:
-        node, current_class, current_class_symbol = stack.pop()
-
-        new_class = current_class
-        new_class_symbol = current_class_symbol
-
+    for node in iter_tree(tree.root_node):
         if node.type in ("class_interface", "class_implementation"):
             class_name = _extract_class_name(node, source)
             if class_name:
-                new_class = class_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, class_name, "class")
@@ -302,7 +303,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
-                new_class_symbol = symbol
 
         elif node.type == "protocol_declaration":
             protocol_name = _extract_protocol_name(node, source)
@@ -335,6 +335,7 @@ def _extract_symbols_from_file(
             method_name = _extract_method_name(node, source)
             if method_name:
                 # Prefix with class name if inside a class
+                current_class = _get_enclosing_class_objc(node, source)
                 full_name = f"{current_class}.{method_name}" if current_class else method_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
@@ -365,6 +366,7 @@ def _extract_symbols_from_file(
         elif node.type == "property_declaration":
             prop_name = _extract_property_name(node, source)
             if prop_name:
+                current_class = _get_enclosing_class_objc(node, source)
                 full_name = f"{current_class}.{prop_name}" if current_class else prop_name
                 start_line = node.start_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, start_line, full_name, "property")
@@ -385,15 +387,6 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                 )
                 analysis.symbols.append(symbol)
-
-        # Check for @end to reset current class context for siblings
-        if node.type == "@end":
-            new_class = None
-            new_class_symbol = None
-
-        # Add children to stack with updated context
-        for child in reversed(node.children):
-            stack.append((child, new_class, new_class_symbol))
 
     return analysis
 
@@ -451,6 +444,22 @@ def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | 
     return None  # pragma: no cover
 
 
+def _get_enclosing_method_objc(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_methods: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find enclosing method definition."""
+    current = node.parent
+    while current is not None:
+        if current.type == "method_definition":
+            method_name = _extract_method_name(current, source)
+            if method_name and method_name in local_methods:
+                return local_methods[method_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -472,30 +481,8 @@ def _extract_edges_from_file(
         return edges
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    # Stack entries: (node, current_method, current_method_end)
-    stack: list[tuple["tree_sitter.Node", Symbol | None, int]] = [
-        (root, None, 0)
-    ]
-
-    while stack:
-        node, current_method, current_method_end = stack.pop()
-
-        # Reset method context if we've moved past it
-        if node.start_point[0] >= current_method_end:
-            current_method = None
-
-        new_method = current_method
-        new_method_end = current_method_end
-
-        # Track current method context
-        if node.type == "method_definition":
-            method_name = _extract_method_name(node, source)
-            if method_name and method_name in local_methods:
-                new_method = local_methods[method_name]
-                new_method_end = node.end_point[0]
-
+    for node in iter_tree(tree.root_node):
         # Handle imports
         if node.type == "preproc_include":
             # Check if it's #import (not #include)
@@ -516,8 +503,9 @@ def _extract_edges_from_file(
                     ))
 
         # Handle message expressions (method calls)
-        if node.type == "message_expression":
+        elif node.type == "message_expression":
             selector = _extract_message_selector(node, source)
+            current_method = _get_enclosing_method_objc(node, source, local_methods)
             if selector and current_method is not None:
                 line = node.start_point[0] + 1
 
@@ -546,10 +534,6 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
-
-        # Add children to stack with updated context
-        for child in reversed(node.children):
-            stack.append((child, new_method, new_method_end))
 
     return edges
 

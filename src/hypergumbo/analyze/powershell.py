@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -174,6 +175,101 @@ def _extract_parameter(param_node: "tree_sitter.Node", source: bytes) -> Optiona
     return None  # pragma: no cover - defensive
 
 
+def _make_powershell_symbol(
+    file_path: str,
+    run_id: str,
+    node: "tree_sitter.Node",
+    name: str,
+    kind: str,
+    signature: Optional[str] = None,
+) -> Symbol:
+    """Create a Symbol from a tree-sitter node."""
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    start_col = node.start_point[1]
+    end_col = node.end_point[1]
+
+    span = Span(
+        start_line=start_line,
+        end_line=end_line,
+        start_col=start_col,
+        end_col=end_col,
+    )
+    sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+    return Symbol(
+        id=sym_id,
+        name=name,
+        canonical_name=name,
+        kind=kind,
+        language="powershell",
+        path=file_path,
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        signature=signature,
+    )
+
+
+def _find_enclosing_function_powershell(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Find the enclosing function name by walking up parents."""
+    current = node.parent
+    while current:
+        if current.type == "function_statement":
+            name_node = _find_child_by_type(current, "function_name")
+            if name_node:
+                return _node_text(name_node, source).strip()
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _process_import_module(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Process Import-Module command to extract module name."""
+    elements_node = _find_child_by_type(node, "command_elements")
+    if elements_node:
+        for child in elements_node.children:
+            if child.type == "generic_token":
+                module_text = _node_text(child, source).strip()
+                if module_text and not module_text.startswith("-"):
+                    edges.append(Edge(
+                        id=_make_edge_id(),
+                        src=_make_file_id(file_path),
+                        dst=f"powershell:?:?:{module_text}:module",
+                        edge_type="imports",
+                        line=node.start_point[0] + 1,
+                    ))
+                    return
+
+
+def _process_using_command(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Process 'using' command to extract module imports."""
+    elements_node = _find_child_by_type(node, "command_elements")
+    if elements_node:
+        tokens = [
+            _node_text(child, source).strip()
+            for child in elements_node.children
+            if child.type == "generic_token"
+        ]
+        if len(tokens) >= 2 and tokens[0].lower() == "module":
+            module_name = tokens[1]
+            edges.append(Edge(
+                id=_make_edge_id(),
+                src=_make_file_id(file_path),
+                dst=f"powershell:?:?:{module_name}:module",
+                edge_type="imports",
+                line=node.start_point[0] + 1,
+            ))
+
+
 def _extract_symbols_and_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -185,151 +281,50 @@ def _extract_symbols_and_edges(
     edges: list[Edge] = []
     function_names: set[str] = set()  # Track defined functions
 
-    root = tree.root_node
+    for node in iter_tree(tree.root_node):
+        if node.type == "function_statement":
+            # Process a function, filter, or workflow definition
+            kind = "function"
+            for child in node.children:
+                if child.type == "filter":
+                    kind = "filter"
+                    break
+                elif child.type == "workflow":
+                    kind = "workflow"
+                    break
+                elif child.type == "function":
+                    kind = "function"
+                    break
 
-    def make_symbol(
-        node: "tree_sitter.Node",
-        name: str,
-        kind: str,
-        signature: Optional[str] = None,
-    ) -> Symbol:
-        """Create a Symbol from a tree-sitter node."""
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        start_col = node.start_point[1]
-        end_col = node.end_point[1]
-
-        span = Span(
-            start_line=start_line,
-            end_line=end_line,
-            start_col=start_col,
-            end_col=end_col,
-        )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
-        return Symbol(
-            id=sym_id,
-            name=name,
-            canonical_name=name,
-            kind=kind,
-            language="powershell",
-            path=file_path,
-            span=span,
-            origin=PASS_ID,
-            origin_run_id=run_id,
-            signature=signature,
-        )
-
-    def process_function(node: "tree_sitter.Node") -> None:
-        """Process a function, filter, or workflow definition."""
-        # Determine kind based on first keyword child
-        kind = "function"
-        for child in node.children:
-            if child.type == "filter":
-                kind = "filter"
-                break
-            elif child.type == "workflow":
-                kind = "workflow"
-                break
-            elif child.type == "function":
-                kind = "function"
-                break
-
-        name_node = _find_child_by_type(node, "function_name")
-        if name_node:
-            func_name = _node_text(name_node, source).strip()
-            function_names.add(func_name)
-            sig = _extract_function_signature(node, source)
-            symbols.append(make_symbol(node, func_name, kind, signature=sig))
-
-            # Process commands inside the function for call edges
-            process_commands_in_node(node, func_name)
-
-    def process_commands_in_node(node: "tree_sitter.Node", caller: Optional[str] = None) -> None:
-        """Find and process command calls within a node."""
-        for child in node.children:
-            if child.type == "command":
-                process_command(child, caller)
-            elif child.type in ("pipeline", "pipeline_chain", "command_elements",
-                                "script_block", "script_block_body", "statement_list"):
-                process_commands_in_node(child, caller)
-
-    def process_command(node: "tree_sitter.Node", caller: Optional[str] = None) -> None:
-        """Process a command invocation."""
-        command_name_node = _find_child_by_type(node, "command_name")
-        if command_name_node:
-            command_name = _node_text(command_name_node, source).strip()
-
-            # Handle Import-Module specially
-            if command_name.lower() == "import-module":
-                process_import_module(node)
-            elif command_name.lower() == "using":
-                process_using_command(node)
-            elif caller:
-                # Create call edge from caller to command
-                edges.append(Edge(
-                    id=_make_edge_id(),
-                    src=_make_file_id(file_path),
-                    dst=f"powershell:?:?:{command_name}:function",
-                    edge_type="calls",
-                    line=node.start_point[0] + 1,
+            name_node = _find_child_by_type(node, "function_name")
+            if name_node:
+                func_name = _node_text(name_node, source).strip()
+                function_names.add(func_name)
+                sig = _extract_function_signature(node, source)
+                symbols.append(_make_powershell_symbol(
+                    file_path, run_id, node, func_name, kind, signature=sig
                 ))
 
-    def process_import_module(node: "tree_sitter.Node") -> None:
-        """Process Import-Module command to extract module name."""
-        # Look for command_elements which contain the module name
-        elements_node = _find_child_by_type(node, "command_elements")
-        if elements_node:
-            # Look for generic_token nodes (module names are parsed as generic_token)
-            for child in elements_node.children:
-                if child.type == "generic_token":
-                    module_text = _node_text(child, source).strip()
-                    # Skip parameters like -Name
-                    if module_text and not module_text.startswith("-"):
+        elif node.type == "command":
+            command_name_node = _find_child_by_type(node, "command_name")
+            if command_name_node:
+                command_name = _node_text(command_name_node, source).strip()
+
+                if command_name.lower() == "import-module":
+                    _process_import_module(node, source, file_path, edges)
+                elif command_name.lower() == "using":
+                    _process_using_command(node, source, file_path, edges)
+                else:
+                    # Check if inside a function
+                    caller = _find_enclosing_function_powershell(node, source)
+                    if caller:
                         edges.append(Edge(
                             id=_make_edge_id(),
                             src=_make_file_id(file_path),
-                            dst=f"powershell:?:?:{module_text}:module",
-                            edge_type="imports",
+                            dst=f"powershell:?:?:{command_name}:function",
+                            edge_type="calls",
                             line=node.start_point[0] + 1,
                         ))
-                        return  # Only get the first module name
-
-    def process_using_command(node: "tree_sitter.Node") -> None:
-        """Process 'using' command to extract module imports.
-
-        Handles: using module ModuleName, using namespace System.X
-        """
-        elements_node = _find_child_by_type(node, "command_elements")
-        if elements_node:
-            tokens = [
-                _node_text(child, source).strip()
-                for child in elements_node.children
-                if child.type == "generic_token"
-            ]
-            # tokens should be ['module', 'ModuleName'] or ['namespace', 'System.X']
-            if len(tokens) >= 2 and tokens[0].lower() == "module":
-                module_name = tokens[1]
-                edges.append(Edge(
-                    id=_make_edge_id(),
-                    src=_make_file_id(file_path),
-                    dst=f"powershell:?:?:{module_name}:module",
-                    edge_type="imports",
-                    line=node.start_point[0] + 1,
-                ))
-
-    def walk_tree(node: "tree_sitter.Node") -> None:
-        """Walk the tree to find relevant nodes."""
-        if node.type == "function_statement":
-            # function_statement handles function, filter, and workflow
-            process_function(node)
-        elif node.type == "command":
-            # Top-level commands (not inside functions)
-            process_command(node, None)
-
-        for child in node.children:
-            walk_tree(child)
-
-    walk_tree(root)
 
     return symbols, edges
 

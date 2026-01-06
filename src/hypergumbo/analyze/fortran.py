@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -190,260 +191,271 @@ def _extract_fortran_signature(
     return signature
 
 
-def _process_fortran_tree(
+def _get_enclosing_fortran_symbol(
     node: "tree_sitter.Node",
+    source: bytes,
+    symbol_registry: dict[str, str],
+) -> Optional[str]:
+    """Walk up to find the enclosing symbol (module, program, function, subroutine)."""
+    current = node.parent
+    while current is not None:
+        if current.type == "module":  # pragma: no cover - call context
+            for child in current.children:  # pragma: no cover - call context
+                if child.type == "module_statement":  # pragma: no cover - call context
+                    name = _get_name(child, source)  # pragma: no cover - call context
+                    if name and name in symbol_registry:  # pragma: no cover - call context
+                        return symbol_registry[name]  # pragma: no cover - call context
+        elif current.type == "program":
+            for child in current.children:
+                if child.type == "program_statement":
+                    name = _get_name(child, source)
+                    if name and name in symbol_registry:
+                        return symbol_registry[name]
+        elif current.type == "function":  # pragma: no cover - call context
+            name = _get_statement_name(current, source, "function_statement")  # pragma: no cover - call context
+            if name and name in symbol_registry:  # pragma: no cover - call context
+                return symbol_registry[name]  # pragma: no cover - call context
+        elif current.type == "subroutine":  # pragma: no cover - call context
+            name = _get_statement_name(current, source, "subroutine_statement")  # pragma: no cover - call context
+            if name and name in symbol_registry:  # pragma: no cover - call context
+                return symbol_registry[name]  # pragma: no cover - call context
+        current = current.parent  # pragma: no cover - loop continuation
+    return None  # pragma: no cover - defensive
+
+
+def _process_fortran_tree(
+    root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
     symbol_registry: dict[str, str],
-    current_symbol: Optional[str] = None,
 ) -> None:
     """Process Fortran AST tree to extract symbols and edges.
 
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+
     Args:
-        node: Tree-sitter node to process
+        root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         symbol_registry: Registry mapping symbol names to IDs
-        current_symbol: ID of current enclosing symbol (for call edges)
     """
-    # Module definitions
-    if node.type == "module":
-        name = None
-        for child in node.children:
-            if child.type == "module_statement":
-                name = _get_name(child, source)
-                break
-
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "module")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="module",
-                name=name,
-                path=rel_path,
-                language="fortran",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name] = symbol_id
-
-            # Process children with this module as current
+    for node in iter_tree(root_node):
+        # Module definitions
+        if node.type == "module":
+            name = None
             for child in node.children:
-                _process_fortran_tree(child, source, rel_path, symbols, edges, symbol_registry, symbol_id)
-            return
+                if child.type == "module_statement":
+                    name = _get_name(child, source)
+                    break
 
-    # Program definitions
-    elif node.type == "program":
-        name = None
-        for child in node.children:
-            if child.type == "program_statement":
-                name = _get_name(child, source)
-                break
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "module")
 
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "program")
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="module",
+                    name=name,
+                    path=rel_path,
+                    language="fortran",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name] = symbol_id
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="program",
-                name=name,
-                path=rel_path,
-                language="fortran",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name] = symbol_id
-
-            # Process children with this program as current
+        # Program definitions
+        elif node.type == "program":
+            name = None
             for child in node.children:
-                _process_fortran_tree(child, source, rel_path, symbols, edges, symbol_registry, symbol_id)
-            return
+                if child.type == "program_statement":
+                    name = _get_name(child, source)
+                    break
 
-    # Function definitions
-    elif node.type == "function":
-        name = _get_statement_name(node, source, "function_statement")
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "program")
 
-            # Extract signature
-            signature = _extract_fortran_signature(node, source, is_function=True)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="program",
+                    name=name,
+                    path=rel_path,
+                    language="fortran",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name] = symbol_id
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="function",
-                name=name,
-                path=rel_path,
-                language="fortran",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                signature=signature,
-            )
-            symbols.append(sym)
-            symbol_registry[name] = symbol_id
+        # Function definitions
+        elif node.type == "function":
+            name = _get_statement_name(node, source, "function_statement")
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
 
-            # Process children with this function as current
+                # Extract signature
+                signature = _extract_fortran_signature(node, source, is_function=True)
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="function",
+                    name=name,
+                    path=rel_path,
+                    language="fortran",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=signature,
+                )
+                symbols.append(sym)
+                symbol_registry[name] = symbol_id
+
+        # Subroutine definitions
+        elif node.type == "subroutine":
+            name = _get_statement_name(node, source, "subroutine_statement")
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "subroutine")
+
+                # Extract signature
+                signature = _extract_fortran_signature(node, source, is_function=False)
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="subroutine",
+                    name=name,
+                    path=rel_path,
+                    language="fortran",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=signature,
+                )
+                symbols.append(sym)
+                symbol_registry[name] = symbol_id
+
+        # Derived type definitions
+        elif node.type == "derived_type_definition":
+            name = _get_type_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "type")
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="type",
+                    name=name,
+                    path=rel_path,
+                    language="fortran",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                symbol_registry[name] = symbol_id
+
+        # Use statements (imports)
+        elif node.type == "use_statement":
+            mod_name = None
             for child in node.children:
-                _process_fortran_tree(child, source, rel_path, symbols, edges, symbol_registry, symbol_id)
-            return
+                if child.type == "module_name":
+                    mod_name = _node_text(child, source).lower()
+                    break
 
-    # Subroutine definitions
-    elif node.type == "subroutine":
-        name = _get_statement_name(node, source, "subroutine_statement")
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "subroutine")
+            current_symbol = _get_enclosing_fortran_symbol(node, source, symbol_registry)
+            if mod_name and current_symbol:
+                start_line = node.start_point[0] + 1
+                dst_id = symbol_registry.get(mod_name, f"fortran:external:{mod_name}")
 
-            # Extract signature
-            signature = _extract_fortran_signature(node, source, is_function=False)
+                edge = Edge(
+                    id=_make_edge_id(current_symbol, dst_id, "imports"),
+                    src=current_symbol,
+                    dst=dst_id,
+                    edge_type="imports",
+                    line=start_line,
+                    confidence=0.90 if mod_name in symbol_registry else 0.70,
+                    origin=PASS_ID,
+                    evidence_type="static",
+                )
+                edges.append(edge)
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="subroutine",
-                name=name,
-                path=rel_path,
-                language="fortran",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                signature=signature,
-            )
-            symbols.append(sym)
-            symbol_registry[name] = symbol_id
-
-            # Process children with this subroutine as current
+        # Subroutine calls
+        elif node.type == "subroutine_call":
+            call_name = None
             for child in node.children:
-                _process_fortran_tree(child, source, rel_path, symbols, edges, symbol_registry, symbol_id)
-            return
+                if child.type == "identifier":
+                    call_name = _node_text(child, source).lower()
+                    break
 
-    # Derived type definitions
-    elif node.type == "derived_type_definition":
-        name = _get_type_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "type")
+            current_symbol = _get_enclosing_fortran_symbol(node, source, symbol_registry)
+            if call_name and current_symbol:
+                start_line = node.start_point[0] + 1
+                dst_id = symbol_registry.get(call_name, f"fortran:external:{call_name}")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="type",
-                name=name,
-                path=rel_path,
-                language="fortran",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            symbol_registry[name] = symbol_id
-
-    # Use statements (imports)
-    elif node.type == "use_statement":
-        mod_name = None
-        for child in node.children:
-            if child.type == "module_name":
-                mod_name = _node_text(child, source).lower()
-                break
-
-        if mod_name and current_symbol:
-            start_line = node.start_point[0] + 1
-            dst_id = symbol_registry.get(mod_name, f"fortran:external:{mod_name}")
-
-            edge = Edge(
-                id=_make_edge_id(current_symbol, dst_id, "imports"),
-                src=current_symbol,
-                dst=dst_id,
-                edge_type="imports",
-                line=start_line,
-                confidence=0.90 if mod_name in symbol_registry else 0.70,
-                origin=PASS_ID,
-                evidence_type="static",
-            )
-            edges.append(edge)
-
-    # Subroutine calls
-    elif node.type == "subroutine_call":
-        call_name = None
-        for child in node.children:
-            if child.type == "identifier":
-                call_name = _node_text(child, source).lower()
-                break
-
-        if call_name and current_symbol:
-            start_line = node.start_point[0] + 1
-            dst_id = symbol_registry.get(call_name, f"fortran:external:{call_name}")
-
-            edge = Edge(
-                id=_make_edge_id(current_symbol, dst_id, "calls"),
-                src=current_symbol,
-                dst=dst_id,
-                edge_type="calls",
-                line=start_line,
-                confidence=0.90 if call_name in symbol_registry else 0.70,
-                origin=PASS_ID,
-                evidence_type="static",
-            )
-            edges.append(edge)
-
-    # Recurse into children
-    for child in node.children:
-        _process_fortran_tree(child, source, rel_path, symbols, edges, symbol_registry, current_symbol)
+                edge = Edge(
+                    id=_make_edge_id(current_symbol, dst_id, "calls"),
+                    src=current_symbol,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=start_line,
+                    confidence=0.90 if call_name in symbol_registry else 0.70,
+                    origin=PASS_ID,
+                    evidence_type="static",
+                )
+                edges.append(edge)
 
 
 def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
