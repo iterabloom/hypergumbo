@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.ir import AnalysisRun
+from hypergumbo.ir import AnalysisRun, Edge, Symbol
 from hypergumbo.linkers.registry import (
     LinkerContext,
     LinkerRequirement,
@@ -50,6 +50,187 @@ class TestLinkerContext:
         assert ctx.symbols == ["sym1"]
         assert ctx.edges == ["edge1"]
         assert ctx.captured_symbols == {"c": ["c_sym"]}
+
+
+class TestLinkerContextSymbolLookup:
+    """Tests for LinkerContext symbol lookup methods."""
+
+    def _make_symbol(
+        self, name: str, lang: str = "go", kind: str = "function"
+    ) -> Symbol:
+        """Helper to create a symbol."""
+        from hypergumbo.ir import Span, Symbol
+
+        sym_id = f"{lang}:test.go:1-10:{name}:{kind}"
+        return Symbol(
+            id=sym_id,
+            name=name,
+            kind=kind,
+            language=lang,
+            path="test.go",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+    def test_get_symbol_by_id_found(self):
+        """get_symbol_by_id returns symbol when found."""
+        sym = self._make_symbol("foo")
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym])
+
+        result = ctx.get_symbol_by_id(sym.id)
+        assert result is not None
+        assert result.name == "foo"
+
+    def test_get_symbol_by_id_not_found(self):
+        """get_symbol_by_id returns None when not found."""
+        sym = self._make_symbol("foo")
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym])
+
+        result = ctx.get_symbol_by_id("nonexistent:id")
+        assert result is None
+
+    def test_find_symbols_by_name_found(self):
+        """find_symbols_by_name returns matching symbols."""
+        sym1 = self._make_symbol("RegisterUserServer")
+        sym2 = self._make_symbol("RegisterUserServer", lang="python")
+        sym3 = self._make_symbol("OtherFunc")
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym1, sym2, sym3])
+
+        result = ctx.find_symbols_by_name("RegisterUserServer")
+        assert len(result) == 2
+        assert all(s.name == "RegisterUserServer" for s in result)
+
+    def test_find_symbols_by_name_not_found(self):
+        """find_symbols_by_name returns empty list when not found."""
+        sym = self._make_symbol("foo")
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym])
+
+        result = ctx.find_symbols_by_name("nonexistent")
+        assert result == []
+
+    def test_find_symbols_by_name_with_dot_qualified(self):
+        """find_symbols_by_name indexes by short name from qualified names."""
+        from hypergumbo.ir import Span, Symbol
+
+        # Create a symbol with qualified name
+        sym = Symbol(
+            id="go:test.go:1-10:MyClass.method:method",
+            name="MyClass.method",
+            kind="method",
+            language="go",
+            path="test.go",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym])
+
+        # Should find by short name
+        result = ctx.find_symbols_by_name("method")
+        assert len(result) == 1
+        assert result[0].name == "MyClass.method"
+
+    def test_indexes_built_lazily(self):
+        """Symbol indexes are built lazily on first lookup."""
+        sym = self._make_symbol("foo")
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[sym])
+
+        # Before lookup, indexes should be None
+        assert ctx._symbol_by_id is None
+        assert ctx._symbols_by_name is None
+
+        # After lookup, indexes should be built
+        ctx.get_symbol_by_id(sym.id)
+        assert ctx._symbol_by_id is not None
+        assert ctx._symbols_by_name is not None
+
+
+class TestLinkerContextUnresolvedEdges:
+    """Tests for LinkerContext unresolved edge methods."""
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls") -> Edge:
+        """Helper to create an edge."""
+        from hypergumbo.ir import Edge
+
+        return Edge.create(
+            src=src,
+            dst=dst,
+            edge_type=edge_type,
+            line=1,
+            confidence=0.9,
+            origin="test",
+            origin_run_id="test",
+        )
+
+    def test_get_unresolved_edges_finds_unresolved(self):
+        """get_unresolved_edges finds edges with :unresolved suffix."""
+        edge1 = self._make_edge(
+            "go:main.go:1-10:main:function",
+            "go:github.com/pkg:0-0:Foo:unresolved"
+        )
+        edge2 = self._make_edge(
+            "go:main.go:1-10:main:function",
+            "go:main.go:20-30:bar:function"  # resolved
+        )
+        ctx = LinkerContext(repo_root=Path("/test"), edges=[edge1, edge2])
+
+        result = ctx.get_unresolved_edges()
+        assert len(result) == 1
+        assert result[0].dst.endswith(":unresolved")
+
+    def test_get_unresolved_edges_filter_by_lang(self):
+        """get_unresolved_edges can filter by language."""
+        edge_go = self._make_edge(
+            "go:main.go:1-10:main:function",
+            "go:github.com/pkg:0-0:Foo:unresolved"
+        )
+        edge_py = self._make_edge(
+            "python:main.py:1-10:main:function",
+            "python:os:0-0:path:unresolved"
+        )
+        ctx = LinkerContext(repo_root=Path("/test"), edges=[edge_go, edge_py])
+
+        result = ctx.get_unresolved_edges(lang="go")
+        assert len(result) == 1
+        assert result[0].dst.startswith("go:")
+
+    def test_get_unresolved_edges_returns_empty_when_none(self):
+        """get_unresolved_edges returns empty list when no unresolved edges."""
+        edge = self._make_edge(
+            "go:main.go:1-10:main:function",
+            "go:main.go:20-30:bar:function"
+        )
+        ctx = LinkerContext(repo_root=Path("/test"), edges=[edge])
+
+        result = ctx.get_unresolved_edges()
+        assert result == []
+
+    def test_parse_unresolved_dst_valid(self):
+        """parse_unresolved_dst parses valid unresolved IDs."""
+        ctx = LinkerContext(repo_root=Path("/test"))
+
+        result = ctx.parse_unresolved_dst(
+            "go:github.com/grpc/pkg:0-0:RegisterUserServer:unresolved"
+        )
+        assert result is not None
+        assert result["lang"] == "go"
+        assert result["package"] == "github.com/grpc/pkg"
+        assert result["name"] == "RegisterUserServer"
+
+    def test_parse_unresolved_dst_not_unresolved(self):
+        """parse_unresolved_dst returns None for resolved IDs."""
+        ctx = LinkerContext(repo_root=Path("/test"))
+
+        result = ctx.parse_unresolved_dst("go:main.go:1-10:main:function")
+        assert result is None
+
+    def test_parse_unresolved_dst_too_few_parts(self):
+        """parse_unresolved_dst returns None for malformed IDs."""
+        ctx = LinkerContext(repo_root=Path("/test"))
+
+        result = ctx.parse_unresolved_dst("go:foo:unresolved")
+        assert result is None
 
 
 class TestLinkerResult:

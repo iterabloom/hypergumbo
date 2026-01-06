@@ -67,12 +67,123 @@ class LinkerContext:
         edges: All edges collected so far
         captured_symbols: Symbols captured by specific analyzers (for JNI, etc.)
             Maps analyzer name to list of symbols (e.g., {"c": [...], "java": [...]})
+
+    Unresolved Edge Protocol
+    ------------------------
+    Analyzers create "unresolved" edges when they detect calls to external
+    symbols that can't be resolved within the same pass. Format:
+
+        {lang}:{package_or_path}:0-0:{name}:unresolved
+
+    Linkers can use `get_unresolved_edges()` to find these edges and resolve
+    them using `find_symbols_matching()`. This enables:
+
+    1. Go analyzer creates unresolved edge: go:github.com/foo/grpc:0-0:RegisterUserServer:unresolved
+    2. gRPC linker finds this edge and resolves it to the actual RegisterUserServer function
+    3. Linker creates proper edge to the resolved symbol
     """
 
     repo_root: Path
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
     captured_symbols: dict[str, list[Symbol]] = field(default_factory=dict)
+
+    # Cached indexes, built lazily
+    _symbol_by_id: dict[str, "Symbol"] | None = field(
+        default=None, init=False, repr=False
+    )
+    _symbols_by_name: dict[str, list["Symbol"]] | None = field(
+        default=None, init=False, repr=False
+    )
+
+    def _ensure_indexes(self) -> None:
+        """Build symbol indexes if not already built."""
+        if self._symbol_by_id is None:
+            self._symbol_by_id = {s.id: s for s in self.symbols}
+            self._symbols_by_name = {}
+            for s in self.symbols:
+                # Index by short name (last component)
+                short_name = s.name.split(".")[-1] if "." in s.name else s.name
+                if short_name not in self._symbols_by_name:
+                    self._symbols_by_name[short_name] = []
+                self._symbols_by_name[short_name].append(s)
+
+    def get_symbol_by_id(self, symbol_id: str) -> "Symbol | None":
+        """Look up a symbol by its ID.
+
+        Args:
+            symbol_id: The symbol ID to look up
+
+        Returns:
+            The Symbol if found, None otherwise.
+        """
+        self._ensure_indexes()
+        assert self._symbol_by_id is not None  # for type checker
+        return self._symbol_by_id.get(symbol_id)
+
+    def find_symbols_by_name(self, name: str) -> list["Symbol"]:
+        """Find all symbols matching a name.
+
+        Args:
+            name: The symbol name to search for (matches short name)
+
+        Returns:
+            List of matching symbols (may be empty).
+        """
+        self._ensure_indexes()
+        assert self._symbols_by_name is not None  # for type checker
+        return self._symbols_by_name.get(name, [])
+
+    def get_unresolved_edges(
+        self,
+        lang: str | None = None,
+    ) -> list["Edge"]:
+        """Get edges pointing to unresolved symbols.
+
+        Unresolved edges have dst matching pattern:
+            {lang}:{package}:0-0:{name}:unresolved
+
+        Args:
+            lang: Optional language filter (e.g., "go", "python")
+
+        Returns:
+            List of edges with unresolved destinations.
+        """
+        result = []
+        for edge in self.edges:
+            if not edge.dst.endswith(":unresolved"):
+                continue
+            if lang is not None:
+                # Check if edge dst starts with the language
+                if not edge.dst.startswith(f"{lang}:"):
+                    continue
+            result.append(edge)
+        return result
+
+    def parse_unresolved_dst(
+        self,
+        dst: str,
+    ) -> dict[str, str] | None:
+        """Parse an unresolved destination ID into components.
+
+        Args:
+            dst: Destination ID like "go:github.com/foo/pkg:0-0:FuncName:unresolved"
+
+        Returns:
+            Dict with keys 'lang', 'package', 'name' or None if not unresolved format.
+        """
+        if not dst.endswith(":unresolved"):
+            return None
+
+        parts = dst.split(":")
+        if len(parts) < 5:
+            return None
+
+        return {
+            "lang": parts[0],
+            "package": parts[1],
+            "name": parts[-2],  # second to last is the name
+        }
 
 
 @dataclass
