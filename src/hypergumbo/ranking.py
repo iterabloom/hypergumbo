@@ -361,6 +361,11 @@ def _is_test_path(path: str) -> bool:
     # Handle paths that start with test/ or Tests/
     if path_lower.startswith("test/") or path_lower.startswith("tests/"):
         return True
+    # Gradle test fixtures and integration test source sets
+    if "/testfixtures/" in path_lower or "/inttest/" in path_lower:
+        return True
+    if "/integrationtest/" in path_lower:
+        return True
 
     # File name patterns: test_*.py, test_*.js, etc.
     if filename.startswith("test_"):
@@ -372,6 +377,10 @@ def _is_test_path(path: str) -> bool:
             return True
         if filename.endswith(f"_test{ext}"):
             return True
+
+    # TypeScript type test files (.test-d.ts, .test-d.tsx)
+    if filename.endswith(".test-d.ts") or filename.endswith(".test-d.tsx"):
+        return True
 
     # Go test files: *_test.go
     if filename.endswith("_test.go"):
