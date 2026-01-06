@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -173,6 +174,8 @@ def _extract_symbols_from_file(
     Detects:
     - function: SetDelayed (:=) with call on left side
     - variable: Set (=) with symbol on left side
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
@@ -213,7 +216,7 @@ def _extract_symbols_from_file(
             sym.meta = meta  # pragma: no cover
         symbols.append(sym)
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Look for binary expressions with := or =
         if node.type == "binary":
             children = node.children
@@ -264,11 +267,6 @@ def _extract_symbols_from_file(
                             if func_name:  # pragma: no cover
                                 add_symbol(node, func_name, "function")  # pragma: no cover
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
 
 
@@ -285,12 +283,14 @@ def _extract_edges_from_file(
     Detects:
     - imports: Get["package`"], Needs["package`"], Import["file"]
     - calls: function calls like Sin[x], Map[f, list]
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
     seen_calls: set[str] = set()
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Look for function calls
         if node.type == "call":
             # First child should be the function name
@@ -344,11 +344,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

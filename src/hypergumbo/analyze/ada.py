@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -152,10 +153,6 @@ def _process_package_declaration(ctx: _FileContext, node: "tree_sitter.Node") ->
     pkg_name = _node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, pkg_name, "package"))
 
-    # Process children for nested declarations
-    for child in node.children:
-        _process_node(ctx, child)
-
 
 def _process_package_body(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a package body."""
@@ -165,10 +162,6 @@ def _process_package_body(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
     pkg_name = _node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, pkg_name, "package"))
-
-    # Process children for nested declarations
-    for child in node.children:
-        _process_node(ctx, child)
 
 
 def _process_subprogram_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
@@ -288,7 +281,7 @@ def _process_with_clause(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 
 def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a tree-sitter node and its children."""
+    """Process a single tree-sitter node (non-recursive dispatch)."""
     if node.type == "package_declaration":
         _process_package_declaration(ctx, node)
     elif node.type == "package_body":
@@ -303,9 +296,6 @@ def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         _process_object_declaration(ctx, node)
     elif node.type == "with_clause":
         _process_with_clause(ctx, node)
-    else:
-        for child in node.children:
-            _process_node(ctx, child)
 
 
 def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
@@ -352,7 +342,8 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
             edges=edges,
         )
 
-        _process_node(ctx, tree.root_node)
+        for node in iter_tree(tree.root_node):
+            _process_node(ctx, node)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return AdaAnalysisResult(

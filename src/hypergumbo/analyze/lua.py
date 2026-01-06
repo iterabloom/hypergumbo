@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -181,7 +182,7 @@ def _extract_symbols_from_file(
     """
     symbols: list[Symbol] = []
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "function_declaration":
             name, kind = _get_function_name(node, source)
             if name:
@@ -206,12 +207,27 @@ def _extract_symbols_from_file(
                     signature=_extract_lua_signature(node, source),
                 ))
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
+
+
+def _find_enclosing_lua_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    global_symbol_registry: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the function that contains this node by walking up the parent chain."""
+    current = node.parent
+    while current:
+        if current.type == "function_declaration":
+            name, _ = _get_function_name(current, source)
+            # Check local symbols first, then global
+            if name in local_symbols:
+                return local_symbols[name]
+            if name in global_symbol_registry:  # pragma: no cover - cross-file case
+                return global_symbol_registry[name]  # pragma: no cover
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_edges_from_file(
@@ -235,21 +251,7 @@ def _extract_edges_from_file(
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
-    def find_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
-        """Find the function that contains this node."""
-        current = node.parent
-        while current:
-            if current.type == "function_declaration":
-                name, _ = _get_function_name(current, source)
-                # Check local symbols first, then global
-                if name in local_symbols:
-                    return local_symbols[name]
-                if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                    return global_symbol_registry[name]  # pragma: no cover
-            current = current.parent
-        return None  # pragma: no cover - no enclosing function
-
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "function_call":
             # Extract function name being called
             callee_name = None
@@ -293,7 +295,7 @@ def _extract_edges_from_file(
             elif callee_name:
                 # Regular function call
                 # Find the caller (enclosing function)
-                caller = find_enclosing_function(node)
+                caller = _find_enclosing_lua_function(node, source, local_symbols, global_symbol_registry)
                 if caller:
                     # Try to resolve callee
                     callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
@@ -324,11 +326,6 @@ def _extract_edges_from_file(
                         )
                         edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

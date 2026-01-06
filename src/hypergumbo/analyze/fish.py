@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -132,6 +133,21 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
     )
 
 
+def _get_enclosing_function_fish(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> Optional[str]:
+    """Walk up parent chain to find enclosing function name."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            words = _find_children_by_type(current, "word")
+            if words:
+                return _node_text(words[0], source)
+        current = current.parent  # pragma: no cover - loop until function found
+    return None  # pragma: no cover - no enclosing function found
+
+
 def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a function definition."""
     words = _find_children_by_type(node, "word")
@@ -158,16 +174,8 @@ def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         signature = f"({', '.join(arguments)})" if arguments else "()"
         ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
 
-        # Process function body for calls
-        old_function = ctx.current_function
-        ctx.current_function = func_name
-        for child in node.children:
-            if child.type == "command":
-                _process_command(ctx, child, is_top_level=False)
-        ctx.current_function = old_function
 
-
-def _process_command(ctx: _FileContext, node: "tree_sitter.Node", is_top_level: bool = True) -> None:
+def _process_command(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a command."""
     words = _find_children_by_type(node, "word")
     if not words:
@@ -227,31 +235,32 @@ def _process_command(ctx: _FileContext, node: "tree_sitter.Node", is_top_level: 
                 )
             )
 
-    elif not is_top_level and ctx.current_function:
-        # This is a function/command call inside a function body
-        ctx.edges.append(
-            Edge(
-                id=f"edge:fish:{uuid.uuid4().hex[:12]}",
-                src=f"fish:{ctx.rel_path}:{ctx.current_function}",
-                dst=f"fish:?:{cmd_name}:function",
-                edge_type="calls",
-                line=node.start_point[0] + 1,
-                confidence=0.7,
-                origin=PASS_ID,
-                origin_run_id=ctx.run_id,
-            )
-        )
-
-
-def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a tree-sitter node and its children."""
-    if node.type == "function_definition":
-        _process_function(ctx, node)
-    elif node.type == "command":
-        _process_command(ctx, node)
     else:
-        for child in node.children:
-            _process_node(ctx, child)
+        # Check if inside a function for call edge
+        enclosing_func = _get_enclosing_function_fish(node, ctx.source)
+        if enclosing_func:
+            # This is a function/command call inside a function body
+            ctx.edges.append(
+                Edge(
+                    id=f"edge:fish:{uuid.uuid4().hex[:12]}",
+                    src=f"fish:{ctx.rel_path}:{enclosing_func}",
+                    dst=f"fish:?:{cmd_name}:function",
+                    edge_type="calls",
+                    line=node.start_point[0] + 1,
+                    confidence=0.7,
+                    origin=PASS_ID,
+                    origin_run_id=ctx.run_id,
+                )
+            )
+
+
+def _process_tree(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
+    """Process a tree-sitter tree iteratively."""
+    for node in iter_tree(tree.root_node):
+        if node.type == "function_definition":
+            _process_function(ctx, node)
+        elif node.type == "command":
+            _process_command(ctx, node)
 
 
 def analyze_fish(repo_root: Path) -> FishAnalysisResult:
@@ -299,7 +308,7 @@ def analyze_fish(repo_root: Path) -> FishAnalysisResult:
             current_function=None,
         )
 
-        _process_node(ctx, tree.root_node)
+        _process_tree(ctx, tree)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return FishAnalysisResult(

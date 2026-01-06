@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -124,7 +125,7 @@ def _get_package_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 
 def _process_vhdl_tree(
-    node: "tree_sitter.Node",
+    root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
@@ -134,135 +135,29 @@ def _process_vhdl_tree(
     """Process VHDL AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         entity_registry: Registry mapping entity names to symbol IDs
     """
-    if node.type == "entity_declaration":
-        entity_name = _get_entity_name(node, source)
-        if entity_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, entity_name, "entity")
+    for node in iter_tree(root):
+        if node.type == "entity_declaration":
+            entity_name = _get_entity_name(node, source)
+            if entity_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, entity_name, "entity")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=entity_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="entity",
-                name=entity_name,
-                path=rel_path,
-                language="vhdl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            entity_registry[entity_name.lower()] = symbol_id
-
-    elif node.type == "architecture_definition":
-        arch_info = _get_architecture_info(node, source)
-        if arch_info:
-            arch_name, entity_name = arch_info
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, arch_name, "architecture")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=f"{arch_name}({entity_name})",
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="architecture",
-                name=arch_name,
-                path=rel_path,
-                language="vhdl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-
-            # Create implements edge to entity
-            if entity_name.lower() in entity_registry:
-                dst_id = entity_registry[entity_name.lower()]
-                confidence = 0.90
-            else:
-                # External entity reference
-                dst_id = f"vhdl:external:{entity_name}:entity"
-                confidence = 0.70
-
-            edge = Edge(
-                id=_make_edge_id(symbol_id, dst_id, "implements"),
-                src=symbol_id,
-                dst=dst_id,
-                edge_type="implements",
-                line=start_line,
-                confidence=confidence,
-                origin=PASS_ID,
-                evidence_type="vhdl_architecture",
-            )
-            edges.append(edge)
-
-    elif node.type == "package_declaration":
-        pkg_name = _get_package_name(node, source)
-        if pkg_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=pkg_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="package",
-                name=pkg_name,
-                path=rel_path,
-                language="vhdl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            entity_registry[pkg_name.lower()] = symbol_id
-
-    elif node.type == "component_declaration":  # pragma: no cover - rare VHDL syntax
-        # Component declaration within architecture
-        for child in node.children:  # pragma: no cover
-            if child.type == "identifier":  # pragma: no cover
-                comp_name = _node_text(child, source)  # pragma: no cover
-                start_line = node.start_point[0] + 1  # pragma: no cover
-                end_line = node.end_point[0] + 1  # pragma: no cover
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, comp_name, "component")  # pragma: no cover
-
-                sym = Symbol(  # pragma: no cover
+                sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=comp_name,
+                    canonical_name=entity_name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind="component",
-                    name=comp_name,
+                    kind="entity",
+                    name=entity_name,
                     path=rel_path,
                     language="vhdl",
                     span=Span(
@@ -273,12 +168,115 @@ def _process_vhdl_tree(
                     ),
                     origin=PASS_ID,
                 )
-                symbols.append(sym)  # pragma: no cover
-                break  # pragma: no cover
+                symbols.append(sym)
+                entity_registry[entity_name.lower()] = symbol_id
 
-    # Recurse into children
-    for child in node.children:
-        _process_vhdl_tree(child, source, rel_path, symbols, edges, entity_registry)
+        elif node.type == "architecture_definition":
+            arch_info = _get_architecture_info(node, source)
+            if arch_info:
+                arch_name, entity_name = arch_info
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, arch_name, "architecture")
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=f"{arch_name}({entity_name})",
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="architecture",
+                    name=arch_name,
+                    path=rel_path,
+                    language="vhdl",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+
+                # Create implements edge to entity
+                if entity_name.lower() in entity_registry:
+                    dst_id = entity_registry[entity_name.lower()]
+                    confidence = 0.90
+                else:
+                    # External entity reference
+                    dst_id = f"vhdl:external:{entity_name}:entity"
+                    confidence = 0.70
+
+                edge = Edge(
+                    id=_make_edge_id(symbol_id, dst_id, "implements"),
+                    src=symbol_id,
+                    dst=dst_id,
+                    edge_type="implements",
+                    line=start_line,
+                    confidence=confidence,
+                    origin=PASS_ID,
+                    evidence_type="vhdl_architecture",
+                )
+                edges.append(edge)
+
+        elif node.type == "package_declaration":
+            pkg_name = _get_package_name(node, source)
+            if pkg_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=pkg_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="package",
+                    name=pkg_name,
+                    path=rel_path,
+                    language="vhdl",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                entity_registry[pkg_name.lower()] = symbol_id
+
+        elif node.type == "component_declaration":  # pragma: no cover - rare VHDL syntax
+            # Component declaration within architecture
+            for child in node.children:  # pragma: no cover
+                if child.type == "identifier":  # pragma: no cover
+                    comp_name = _node_text(child, source)  # pragma: no cover
+                    start_line = node.start_point[0] + 1  # pragma: no cover
+                    end_line = node.end_point[0] + 1  # pragma: no cover
+                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, comp_name, "component")  # pragma: no cover
+
+                    sym = Symbol(  # pragma: no cover
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=comp_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind="component",
+                        name=comp_name,
+                        path=rel_path,
+                        language="vhdl",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                    symbols.append(sym)  # pragma: no cover
+                    break  # pragma: no cover
 
 
 def analyze_vhdl_files(repo_root: Path) -> VHDLAnalysisResult:

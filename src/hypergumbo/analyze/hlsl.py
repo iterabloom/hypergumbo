@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -184,17 +185,15 @@ def _process_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     ctx.symbols.append(_make_symbol(ctx, node, var_name, "variable"))
 
 
-def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a tree-sitter node and its children."""
-    if node.type == "function_definition":
-        _process_function(ctx, node)
-    elif node.type == "struct_specifier":
-        _process_struct(ctx, node)
-    elif node.type == "declaration":
-        _process_declaration(ctx, node)
-
-    for child in node.children:
-        _process_node(ctx, child)
+def _process_tree(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
+    """Process all nodes in a tree-sitter tree."""
+    for node in iter_tree(tree.root_node):
+        if node.type == "function_definition":
+            _process_function(ctx, node)
+        elif node.type == "struct_specifier":
+            _process_struct(ctx, node)
+        elif node.type == "declaration":
+            _process_declaration(ctx, node)
 
 
 def analyze_hlsl(repo_root: Path) -> HLSLAnalysisResult:
@@ -238,7 +237,7 @@ def analyze_hlsl(repo_root: Path) -> HLSLAnalysisResult:
             edges=edges,
         )
 
-        _process_node(ctx, tree.root_node)
+        _process_tree(ctx, tree)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return HLSLAnalysisResult(

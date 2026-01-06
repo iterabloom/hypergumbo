@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -141,270 +142,265 @@ def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optiona
 
 
 def _process_cmake_tree(
-    node: "tree_sitter.Node",
+    root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
     target_registry: dict[str, str],
-    current_target_id: list[Optional[str]],
 ) -> None:
     """Process CMake AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         target_registry: Registry mapping target names to symbol IDs
-        current_target_id: Current target context (mutable wrapper)
     """
-    if node.type == "normal_command":
-        cmd_name = _get_command_name(node, source)
-        args = _get_arguments(node, source)
+    for node in iter_tree(root_node):
+        if node.type == "normal_command":
+            cmd_name = _get_command_name(node, source)
+            args = _get_arguments(node, source)
 
-        if cmd_name == "project" and args:
-            # Project definition
-            project_name = args[0]
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, project_name, "project")
+            if cmd_name == "project" and args:
+                # Project definition
+                project_name = args[0]
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, project_name, "project")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=project_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="project",
-                name=project_name,
-                path=rel_path,
-                language="cmake",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            target_registry[project_name.lower()] = symbol_id
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=project_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="project",
+                    name=project_name,
+                    path=rel_path,
+                    language="cmake",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                target_registry[project_name.lower()] = symbol_id
 
-        elif cmd_name == "add_library" and args:
-            # Library target
-            lib_name = args[0]
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, lib_name, "library")
+            elif cmd_name == "add_library" and args:
+                # Library target
+                lib_name = args[0]
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, lib_name, "library")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=lib_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="library",
-                name=lib_name,
-                path=rel_path,
-                language="cmake",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            target_registry[lib_name.lower()] = symbol_id
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=lib_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="library",
+                    name=lib_name,
+                    path=rel_path,
+                    language="cmake",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                target_registry[lib_name.lower()] = symbol_id
 
-        elif cmd_name == "add_executable" and args:
-            # Executable target
-            exe_name = args[0]
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, exe_name, "executable")
+            elif cmd_name == "add_executable" and args:
+                # Executable target
+                exe_name = args[0]
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, exe_name, "executable")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=exe_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="executable",
-                name=exe_name,
-                path=rel_path,
-                language="cmake",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            target_registry[exe_name.lower()] = symbol_id
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=exe_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="executable",
+                    name=exe_name,
+                    path=rel_path,
+                    language="cmake",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                target_registry[exe_name.lower()] = symbol_id
 
-        elif cmd_name == "target_link_libraries" and len(args) >= 2:
-            # Link dependency edges
-            target_name = args[0]
-            start_line = node.start_point[0] + 1
+            elif cmd_name == "target_link_libraries" and len(args) >= 2:
+                # Link dependency edges
+                target_name = args[0]
+                start_line = node.start_point[0] + 1
 
-            # Get source target ID
-            src_id = target_registry.get(target_name.lower())
-            if src_id:
-                # Skip visibility keywords
-                visibility_keywords = {"public", "private", "interface"}
-                for dep in args[1:]:
-                    if dep.lower() in visibility_keywords:
-                        continue
-                    # Look up dependency
-                    if dep.lower() in target_registry:
-                        dst_id = target_registry[dep.lower()]
-                        confidence = 0.90
-                    else:
-                        # External library reference
-                        dst_id = f"cmake:external:{dep}:library"
-                        confidence = 0.70
+                # Get source target ID
+                src_id = target_registry.get(target_name.lower())
+                if src_id:
+                    # Skip visibility keywords
+                    visibility_keywords = {"public", "private", "interface"}
+                    for dep in args[1:]:
+                        if dep.lower() in visibility_keywords:
+                            continue
+                        # Look up dependency
+                        if dep.lower() in target_registry:
+                            dst_id = target_registry[dep.lower()]
+                            confidence = 0.90
+                        else:
+                            # External library reference
+                            dst_id = f"cmake:external:{dep}:library"
+                            confidence = 0.70
 
-                    edge = Edge(
-                        id=_make_edge_id(src_id, dst_id, "links"),
-                        src=src_id,
-                        dst=dst_id,
-                        edge_type="links",
-                        line=start_line,
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        evidence_type="cmake_target_link",
-                    )
-                    edges.append(edge)
+                        edge = Edge(
+                            id=_make_edge_id(src_id, dst_id, "links"),
+                            src=src_id,
+                            dst=dst_id,
+                            edge_type="links",
+                            line=start_line,
+                            confidence=confidence,
+                            origin=PASS_ID,
+                            evidence_type="cmake_target_link",
+                        )
+                        edges.append(edge)
 
-        elif cmd_name == "add_subdirectory" and args:
-            # Subdirectory include
-            subdir = args[0]
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, subdir, "subdirectory")
+            elif cmd_name == "add_subdirectory" and args:
+                # Subdirectory include
+                subdir = args[0]
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, subdir, "subdirectory")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=subdir,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="subdirectory",
-                name=subdir,
-                path=rel_path,
-                language="cmake",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=subdir,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="subdirectory",
+                    name=subdir,
+                    path=rel_path,
+                    language="cmake",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
 
-        elif cmd_name == "find_package" and args:
-            # External package dependency
-            pkg_name = args[0]
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
+            elif cmd_name == "find_package" and args:
+                # External package dependency
+                pkg_name = args[0]
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=pkg_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="package",
-                name=pkg_name,
-                path=rel_path,
-                language="cmake",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=pkg_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="package",
+                    name=pkg_name,
+                    path=rel_path,
+                    language="cmake",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
 
-    elif node.type == "function_def":
-        # Function definition
-        for child in node.children:
-            if child.type == "function_command":
-                func_name = _get_function_name(child, source)
-                if func_name:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
+        elif node.type == "function_def":
+            # Function definition
+            for child in node.children:
+                if child.type == "function_command":
+                    func_name = _get_function_name(child, source)
+                    if func_name:
+                        start_line = node.start_point[0] + 1
+                        end_line = node.end_point[0] + 1
+                        symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
 
-                    sym = Symbol(
-                        id=symbol_id,
-                        stable_id=None,
-                        shape_id=None,
-                        canonical_name=func_name,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                        kind="function",
-                        name=func_name,
-                        path=rel_path,
-                        language="cmake",
-                        span=Span(
-                            start_line=start_line,
-                            end_line=end_line,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                        signature=_extract_cmake_signature(child, source),
-                    )
-                    symbols.append(sym)
-                    target_registry[func_name.lower()] = symbol_id
-                break
+                        sym = Symbol(
+                            id=symbol_id,
+                            stable_id=None,
+                            shape_id=None,
+                            canonical_name=func_name,
+                            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                            kind="function",
+                            name=func_name,
+                            path=rel_path,
+                            language="cmake",
+                            span=Span(
+                                start_line=start_line,
+                                end_line=end_line,
+                                start_col=node.start_point[1],
+                                end_col=node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            signature=_extract_cmake_signature(child, source),
+                        )
+                        symbols.append(sym)
+                        target_registry[func_name.lower()] = symbol_id
+                    break
 
-    elif node.type == "macro_def":
-        # Macro definition
-        for child in node.children:
-            if child.type == "macro_command":
-                macro_name = _get_function_name(child, source)
-                if macro_name:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, macro_name, "macro")
+        elif node.type == "macro_def":
+            # Macro definition
+            for child in node.children:
+                if child.type == "macro_command":
+                    macro_name = _get_function_name(child, source)
+                    if macro_name:
+                        start_line = node.start_point[0] + 1
+                        end_line = node.end_point[0] + 1
+                        symbol_id = _make_symbol_id(rel_path, start_line, end_line, macro_name, "macro")
 
-                    sym = Symbol(
-                        id=symbol_id,
-                        stable_id=None,
-                        shape_id=None,
-                        canonical_name=macro_name,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                        kind="macro",
-                        name=macro_name,
-                        path=rel_path,
-                        language="cmake",
-                        span=Span(
-                            start_line=start_line,
-                            end_line=end_line,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                        signature=_extract_cmake_signature(child, source),
-                    )
-                    symbols.append(sym)
-                    target_registry[macro_name.lower()] = symbol_id
-                break
-
-    # Recurse into children
-    for child in node.children:
-        _process_cmake_tree(child, source, rel_path, symbols, edges, target_registry, current_target_id)
+                        sym = Symbol(
+                            id=symbol_id,
+                            stable_id=None,
+                            shape_id=None,
+                            canonical_name=macro_name,
+                            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                            kind="macro",
+                            name=macro_name,
+                            path=rel_path,
+                            language="cmake",
+                            span=Span(
+                                start_line=start_line,
+                                end_line=end_line,
+                                start_col=node.start_point[1],
+                                end_col=node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            signature=_extract_cmake_signature(child, source),
+                        )
+                        symbols.append(sym)
+                        target_registry[macro_name.lower()] = symbol_id
+                    break
 
 
 def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
@@ -455,9 +451,6 @@ def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Current target context
-            current_target_id: list[Optional[str]] = [None]
-
             # Process this file
             _process_cmake_tree(
                 tree.root_node,
@@ -466,7 +459,6 @@ def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
                 symbols,
                 edges,
                 target_registry,
-                current_target_id,
             )
 
         except Exception as e:  # pragma: no cover

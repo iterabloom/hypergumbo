@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -308,20 +309,18 @@ def _process_call(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         _process_target(ctx, node, func_name)
 
 
-def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_node(ctx: _FileContext, root_node: "tree_sitter.Node") -> None:
     """Process a tree-sitter node and its children."""
-    if node.type == "function_definition":
-        _process_function(ctx, node)
-    elif node.type == "expression_statement":
-        # Check for assignment or call
-        for child in node.children:
-            if child.type == "assignment":
-                _process_assignment(ctx, child)
-            elif child.type == "call":
-                _process_call(ctx, child)
-    else:
-        for child in node.children:
-            _process_node(ctx, child)
+    for node in iter_tree(root_node):
+        if node.type == "function_definition":
+            _process_function(ctx, node)
+        elif node.type == "expression_statement":
+            # Check for assignment or call
+            for child in node.children:
+                if child.type == "assignment":
+                    _process_assignment(ctx, child)
+                elif child.type == "call":
+                    _process_call(ctx, child)
 
 
 def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:

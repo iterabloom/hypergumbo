@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -169,7 +170,7 @@ def _extract_arg_name(arg_instruction: "tree_sitter.Node", source: bytes) -> Opt
 
 
 def _process_dockerfile_tree(
-    node: "tree_sitter.Node",
+    root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
@@ -179,8 +180,10 @@ def _process_dockerfile_tree(
 ) -> None:
     """Process Dockerfile AST tree to extract symbols and edges.
 
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+
     Args:
-        node: Tree-sitter node to process
+        root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
@@ -188,72 +191,27 @@ def _process_dockerfile_tree(
         stage_registry: Registry mapping stage names to symbol IDs
         stage_counter: Counter for unnamed stages (wrapped in list for mutability)
     """
-    if node.type == "from_instruction":
-        # Extract image name and optional alias
-        image_name = _extract_image_name(node, source)
-        stage_alias = _extract_stage_alias(node, source)
+    for node in iter_tree(root_node):
+        if node.type == "from_instruction":
+            # Extract image name and optional alias
+            image_name = _extract_image_name(node, source)
+            stage_alias = _extract_stage_alias(node, source)
 
-        stage_name = stage_alias if stage_alias else str(stage_counter[0])
-        stage_counter[0] += 1
+            stage_name = stage_alias if stage_alias else str(stage_counter[0])
+            stage_counter[0] += 1
 
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        symbol_id = _make_symbol_id(rel_path, start_line, end_line, stage_name, "stage")
-
-        sym = Symbol(
-            id=symbol_id,
-            stable_id=None,
-            shape_id=None,
-            canonical_name=stage_name,
-            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-            kind="stage",
-            name=stage_name,
-            path=rel_path,
-            language="dockerfile",
-            span=Span(
-                start_line=start_line,
-                end_line=end_line,
-                start_col=node.start_point[1],
-                end_col=node.end_point[1],
-            ),
-            origin=PASS_ID,
-            meta={"base_image": image_name} if image_name else None,
-        )
-        symbols.append(sym)
-        stage_registry[stage_name.lower()] = symbol_id
-
-        # Create base_image edge if this FROM references another stage
-        if image_name and image_name.lower() in stage_registry:
-            dst_id = stage_registry[image_name.lower()]
-            edge = Edge(
-                id=_make_edge_id(symbol_id, dst_id, "base_image"),
-                src=symbol_id,
-                dst=dst_id,
-                edge_type="base_image",
-                line=start_line,
-                confidence=0.95,
-                origin=PASS_ID,
-                evidence_type="dockerfile_from",
-            )
-            edges.append(edge)
-
-    elif node.type == "expose_instruction":
-        # Extract exposed port
-        port_node = _find_child_by_type(node, "expose_port")
-        if port_node:
-            port_value = _node_text(port_node, source)
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, port_value, "exposed_port")
+            symbol_id = _make_symbol_id(rel_path, start_line, end_line, stage_name, "stage")
 
             sym = Symbol(
                 id=symbol_id,
                 stable_id=None,
                 shape_id=None,
-                canonical_name=port_value,
+                canonical_name=stage_name,
                 fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="exposed_port",
-                name=port_value,
+                kind="stage",
+                name=stage_name,
                 path=rel_path,
                 language="dockerfile",
                 span=Span(
@@ -263,27 +221,43 @@ def _process_dockerfile_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                meta={"base_image": image_name} if image_name else None,
             )
             symbols.append(sym)
+            stage_registry[stage_name.lower()] = symbol_id
 
-    elif node.type == "env_instruction":
-        # Extract environment variable
-        env_pair = _find_child_by_type(node, "env_pair")
-        if env_pair:
-            var_name = _extract_env_name(env_pair, source)
-            if var_name:
+            # Create base_image edge if this FROM references another stage
+            if image_name and image_name.lower() in stage_registry:
+                dst_id = stage_registry[image_name.lower()]
+                edge = Edge(
+                    id=_make_edge_id(symbol_id, dst_id, "base_image"),
+                    src=symbol_id,
+                    dst=dst_id,
+                    edge_type="base_image",
+                    line=start_line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    evidence_type="dockerfile_from",
+                )
+                edges.append(edge)
+
+        elif node.type == "expose_instruction":
+            # Extract exposed port
+            port_node = _find_child_by_type(node, "expose_port")
+            if port_node:
+                port_value = _node_text(port_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "env_var")
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, port_value, "exposed_port")
 
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=var_name,
+                    canonical_name=port_value,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind="env_var",
-                    name=var_name,
+                    kind="exposed_port",
+                    name=port_value,
                     path=rel_path,
                     language="dockerfile",
                     span=Span(
@@ -296,63 +270,89 @@ def _process_dockerfile_tree(
                 )
                 symbols.append(sym)
 
-    elif node.type == "arg_instruction":
-        # Extract build argument
-        arg_name = _extract_arg_name(node, source)
-        if arg_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, arg_name, "build_arg")
+        elif node.type == "env_instruction":
+            # Extract environment variable
+            env_pair = _find_child_by_type(node, "env_pair")
+            if env_pair:
+                var_name = _extract_env_name(env_pair, source)
+                if var_name:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "env_var")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=arg_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="build_arg",
-                name=arg_name,
-                path=rel_path,
-                language="dockerfile",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
+                    sym = Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=var_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind="env_var",
+                        name=var_name,
+                        path=rel_path,
+                        language="dockerfile",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                    symbols.append(sym)
 
-    elif node.type == "copy_instruction":
-        # Check for --from=stage dependency
-        from_stage = _extract_copy_from(node, source)
-        if from_stage:
-            # Find current stage (last one added)
-            current_stage_id = None
-            for sym in reversed(symbols):
-                if sym.kind == "stage" and sym.path == rel_path:
-                    current_stage_id = sym.id
-                    break
-
-            if current_stage_id and from_stage.lower() in stage_registry:
-                src_stage_id = stage_registry[from_stage.lower()]
+        elif node.type == "arg_instruction":
+            # Extract build argument
+            arg_name = _extract_arg_name(node, source)
+            if arg_name:
                 start_line = node.start_point[0] + 1
-                edge = Edge(
-                    id=_make_edge_id(current_stage_id, src_stage_id, "depends_on"),
-                    src=current_stage_id,
-                    dst=src_stage_id,
-                    edge_type="depends_on",
-                    line=start_line,
-                    confidence=0.95,
-                    origin=PASS_ID,
-                    evidence_type="dockerfile_copy_from",
-                )
-                edges.append(edge)
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, arg_name, "build_arg")
 
-    # Recurse into children
-    for child in node.children:
-        _process_dockerfile_tree(child, source, rel_path, symbols, edges, stage_registry, stage_counter)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=arg_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="build_arg",
+                    name=arg_name,
+                    path=rel_path,
+                    language="dockerfile",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+
+        elif node.type == "copy_instruction":
+            # Check for --from=stage dependency
+            from_stage = _extract_copy_from(node, source)
+            if from_stage:
+                # Find current stage (last one added)
+                current_stage_id = None
+                for sym in reversed(symbols):
+                    if sym.kind == "stage" and sym.path == rel_path:
+                        current_stage_id = sym.id
+                        break
+
+                if current_stage_id and from_stage.lower() in stage_registry:
+                    src_stage_id = stage_registry[from_stage.lower()]
+                    start_line = node.start_point[0] + 1
+                    edge = Edge(
+                        id=_make_edge_id(current_stage_id, src_stage_id, "depends_on"),
+                        src=current_stage_id,
+                        dst=src_stage_id,
+                        edge_type="depends_on",
+                        line=start_line,
+                        confidence=0.95,
+                        origin=PASS_ID,
+                        evidence_type="dockerfile_copy_from",
+                    )
+                    edges.append(edge)
 
 
 def analyze_dockerfiles(repo_root: Path) -> DockerfileAnalysisResult:

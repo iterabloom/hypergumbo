@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -246,7 +247,7 @@ def _extract_symbols_from_file(
             sym.meta = meta  # pragma: no cover
         symbols.append(sym)
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "declaration":
             # Check what kind of declaration this is
             for child in node.children:
@@ -318,11 +319,6 @@ def _extract_symbols_from_file(
                             sig = _extract_lean_signature(child, source)
                             add_symbol(child, name, "function", {"is_abbrev": True}, signature=sig)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
 
 
@@ -342,7 +338,7 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Look for import statements at module level
         # Lean imports look like: import Mathlib.Data.Nat.Basic
         # In the tree: import node with identifier child containing the dotted path
@@ -366,11 +362,6 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

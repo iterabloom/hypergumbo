@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -206,7 +207,7 @@ def _extract_symbols_from_file(
     """
     symbols: list[Symbol] = []
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "list_lit":
             children = node.children
             # Skip parens
@@ -273,12 +274,31 @@ def _extract_symbols_from_file(
                             meta={"visibility": visibility} if visibility == "private" else None,
                         ))
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
+
+
+def _find_enclosing_defn(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    global_symbol_registry: dict[str, Symbol],
+) -> Symbol | None:
+    """Find the enclosing defn/defn- function for a given node."""
+    current = node.parent
+    while current:
+        if current.type == "list_lit":
+            children = current.children
+            inner = [c for c in children if c.type not in ("(", ")")]
+            if inner and inner[0].type == "sym_lit":
+                first_sym = _get_sym_name(inner[0], source)
+                if first_sym in ("defn", "defn-") and len(inner) > 1:
+                    if inner[1].type == "sym_lit":
+                        def_name = _get_sym_name(inner[1], source)
+                        sym = local_symbols.get(def_name) or global_symbol_registry.get(def_name)
+                        if sym:
+                            return sym
+        current = current.parent
+    return None
 
 
 def _extract_edges_from_file(
@@ -301,31 +321,13 @@ def _extract_edges_from_file(
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
-    # Track enclosing function for call edges
-    function_stack: list[Symbol] = []
-
-    def find_enclosing_function() -> Symbol | None:
-        """Get the innermost enclosing function."""
-        return function_stack[-1] if function_stack else None
-
-    def walk(node: "tree_sitter.Node") -> None:
-        is_def = False
-
+    for node in iter_tree(tree.root_node):
         if node.type == "list_lit":
             children = node.children
             inner = [c for c in children if c.type not in ("(", ")")]
 
             if inner and inner[0].type == "sym_lit":
                 first_sym = _get_sym_name(inner[0], source)
-
-                # Track function context
-                if first_sym in ("defn", "defn-") and len(inner) > 1:
-                    if inner[1].type == "sym_lit":
-                        def_name = _get_sym_name(inner[1], source)
-                        sym = local_symbols.get(def_name) or global_symbol_registry.get(def_name)
-                        if sym:
-                            function_stack.append(sym)
-                            is_def = True
 
                 # Handle ns :require
                 if first_sym == "ns":
@@ -372,7 +374,7 @@ def _extract_edges_from_file(
 
                 # Handle function calls (not def forms)
                 elif not _is_def_form(first_sym):
-                    caller = find_enclosing_function()
+                    caller = _find_enclosing_defn(node, source, local_symbols, global_symbol_registry)
                     if caller:
                         callee_name = first_sym
                         callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
@@ -389,15 +391,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-        # Pop function context
-        if is_def:
-            function_stack.pop()
-
-    walk(tree.root_node)
     return edges
 
 

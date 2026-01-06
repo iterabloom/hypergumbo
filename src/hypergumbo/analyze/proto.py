@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -168,6 +169,68 @@ def _extract_package_name(root: "tree_sitter.Node", source: bytes) -> Optional[s
     return None
 
 
+def _make_proto_symbol(
+    file_path: str,
+    run_id: str,
+    package_name: Optional[str],
+    node: "tree_sitter.Node",
+    source: bytes,
+    name: str,
+    kind: str,
+    prefix: Optional[str] = None,
+    signature: Optional[str] = None,
+) -> Symbol:
+    """Create a Symbol from a tree-sitter node."""
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    start_col = node.start_point[1]
+    end_col = node.end_point[1]
+
+    # Build canonical name with package prefix
+    name_parts = []
+    if package_name:
+        name_parts.append(package_name)
+    if prefix:
+        name_parts.append(prefix)
+    name_parts.append(name)
+    canonical_name = ".".join(name_parts)
+
+    span = Span(
+        start_line=start_line,
+        end_line=end_line,
+        start_col=start_col,
+        end_col=end_col,
+    )
+    sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+    return Symbol(
+        id=sym_id,
+        name=name,
+        canonical_name=canonical_name,
+        kind=kind,
+        language="proto",
+        path=file_path,
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        signature=signature,
+    )
+
+
+def _get_parent_message_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up parents to find enclosing message name for nested messages/enums."""
+    current = node.parent
+    while current:
+        if current.type == "message_body":
+            # The message_body's parent should be the message
+            msg = current.parent
+            if msg and msg.type == "message":
+                name_node = _find_child_by_type(msg, "message_name")
+                if name_node:
+                    return _node_text(name_node, source).strip()
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _extract_symbols_and_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -181,104 +244,80 @@ def _extract_symbols_and_edges(
     root = tree.root_node
     package_name = _extract_package_name(root, source)
 
-    def make_symbol(
-        node: "tree_sitter.Node",
-        name: str,
-        kind: str,
-        prefix: Optional[str] = None,
-        signature: Optional[str] = None,
-    ) -> Symbol:
-        """Create a Symbol from a tree-sitter node."""
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        start_col = node.start_point[1]
-        end_col = node.end_point[1]
+    # Track service symbols for creating contains edges
+    service_symbols: dict[str, Symbol] = {}
 
-        # Build canonical name with package prefix
-        name_parts = []
-        if package_name:
-            name_parts.append(package_name)
-        if prefix:
-            name_parts.append(prefix)
-        name_parts.append(name)
-        canonical_name = ".".join(name_parts)
-
-        span = Span(
-            start_line=start_line,
-            end_line=end_line,
-            start_col=start_col,
-            end_col=end_col,
-        )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
-        return Symbol(
-            id=sym_id,
-            name=name,
-            canonical_name=canonical_name,
-            kind=kind,
-            language="proto",
-            path=file_path,
-            span=span,
-            origin=PASS_ID,
-            origin_run_id=run_id,
-            signature=signature,
-        )
-
-    def process_node(node: "tree_sitter.Node", parent_name: Optional[str] = None) -> None:
-        """Process a node and extract symbols."""
+    for node in iter_tree(root):
         if node.type == "service":
             # Extract service name
             service_name_node = _find_child_by_type(node, "service_name")
             if service_name_node:
                 service_name = _node_text(service_name_node, source).strip()
-                service_sym = make_symbol(node, service_name, "service")
+                service_sym = _make_proto_symbol(
+                    file_path, run_id, package_name, node, source,
+                    service_name, "service"
+                )
                 symbols.append(service_sym)
+                service_symbols[service_name] = service_sym
 
-                # Extract RPC methods
-                for child in node.children:
-                    if child.type == "rpc":
-                        rpc_name_node = _find_child_by_type(child, "rpc_name")
-                        if rpc_name_node:
-                            rpc_name = _node_text(rpc_name_node, source).strip()
-                            rpc_sig = _extract_rpc_signature(child, source)
-                            rpc_sym = make_symbol(
-                                child, rpc_name, "rpc",
-                                prefix=service_name,
-                                signature=rpc_sig
-                            )
-                            symbols.append(rpc_sym)
+        elif node.type == "rpc":
+            # Extract RPC - need to find parent service
+            rpc_name_node = _find_child_by_type(node, "rpc_name")
+            if rpc_name_node:
+                rpc_name = _node_text(rpc_name_node, source).strip()
+                rpc_sig = _extract_rpc_signature(node, source)
 
-                            # Create contains edge from service to rpc
-                            edges.append(Edge(
-                                id=_make_edge_id(),
-                                src=service_sym.id,
-                                dst=rpc_sym.id,
-                                edge_type="contains",
-                                line=rpc_sym.span.start_line,
-                            ))
+                # Find parent service name
+                service_name = None
+                current = node.parent
+                while current:
+                    if current.type == "service":
+                        svc_name_node = _find_child_by_type(current, "service_name")
+                        if svc_name_node:
+                            service_name = _node_text(svc_name_node, source).strip()
+                        break
+                    current = current.parent  # pragma: no cover - defensive
+
+                rpc_sym = _make_proto_symbol(
+                    file_path, run_id, package_name, node, source,
+                    rpc_name, "rpc",
+                    prefix=service_name,
+                    signature=rpc_sig
+                )
+                symbols.append(rpc_sym)
+
+                # Create contains edge from service to rpc
+                if service_name and service_name in service_symbols:
+                    edges.append(Edge(
+                        id=_make_edge_id(),
+                        src=service_symbols[service_name].id,
+                        dst=rpc_sym.id,
+                        edge_type="contains",
+                        line=rpc_sym.span.start_line,
+                    ))
 
         elif node.type == "message":
             # Extract message name
             message_name_node = _find_child_by_type(node, "message_name")
             if message_name_node:
                 message_name = _node_text(message_name_node, source).strip()
-                message_sym = make_symbol(node, message_name, "message", prefix=parent_name)
+                parent_name = _get_parent_message_name(node, source)
+                message_sym = _make_proto_symbol(
+                    file_path, run_id, package_name, node, source,
+                    message_name, "message", prefix=parent_name
+                )
                 symbols.append(message_sym)
-
-                # Check for nested messages in message_body
-                message_body = _find_child_by_type(node, "message_body")
-                if message_body:
-                    for child in message_body.children:
-                        if child.type == "message":
-                            process_node(child, parent_name=message_name)
-                        elif child.type == "enum":
-                            process_node(child, parent_name=message_name)
 
         elif node.type == "enum":
             # Extract enum name
             enum_name_node = _find_child_by_type(node, "enum_name")
             if enum_name_node:
                 enum_name = _node_text(enum_name_node, source).strip()
-                enum_sym = make_symbol(node, enum_name, "enum", prefix=parent_name)
+                parent_name = _get_parent_message_name(node, source)
+                enum_sym = _make_proto_symbol(
+                    file_path, run_id, package_name, node, source,
+                    enum_name, "enum", prefix=parent_name
+                )
                 symbols.append(enum_sym)
 
         elif node.type == "import":
@@ -294,10 +333,6 @@ def _extract_symbols_and_edges(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                 ))
-
-    # Walk top-level nodes
-    for child in root.children:
-        process_node(child)
 
     return symbols, edges
 

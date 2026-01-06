@@ -11,6 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-01-05 20:00
+
+#### Refactoring
+- **Iterative tree traversal migration**: Migrated all 64 tree-sitter analyzers from recursive to iterative traversal using `iter_tree()` from `base.py`. This prevents `RecursionError` on deeply nested ASTs (Python's ~1000-level recursion limit was exceeded on TensorFlow's codebase). Key changes:
+  - Added `iter_tree()` generator in `base.py` for stack-based pre-order traversal
+  - Converted `walk(node)` recursive functions to `for node in iter_tree(root)` loops
+  - Added parent-walking helpers (e.g., `_get_enclosing_class()`) that walk `node.parent`
+  - Fixed bug where `id(node)` != `id(node.parent)` (tree-sitter returns new Python objects) - changed to byte-position keys `(node.start_byte, node.end_byte)`
+
 ### 2026-01-05 16:00
 
 #### Refactoring

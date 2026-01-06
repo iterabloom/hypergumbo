@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -210,12 +211,7 @@ def _extract_symbols(
     """
     symbols: list[Symbol] = []
 
-    # Use a stack for iterative traversal (avoids RecursionError)
-    stack: list["tree_sitter.Node"] = [tree.root_node]
-
-    while stack:
-        node = stack.pop()
-
+    for node in iter_tree(tree.root_node):
         # Function definitions
         if node.type == "function_definition":
             name = _get_function_name(node, source)
@@ -241,7 +237,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Function declarations (prototypes)
-        if node.type == "declaration":
+        elif node.type == "declaration":
             # Check if this is a function declaration
             for child in node.children:
                 if child.type == "function_declarator":
@@ -268,7 +264,7 @@ def _extract_symbols(
                         symbols.append(symbol)
 
         # Struct declarations
-        if node.type == "struct_specifier":
+        elif node.type == "struct_specifier":
             name = _find_identifier_in_children(node, source)
             if name:
                 span = Span(
@@ -290,7 +286,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Enum declarations
-        if node.type == "enum_specifier":
+        elif node.type == "enum_specifier":
             name = _find_identifier_in_children(node, source)
             if name:
                 span = Span(
@@ -312,7 +308,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Typedef declarations
-        if node.type == "type_definition":
+        elif node.type == "type_definition":
             # Find the typedef name (last identifier usually)
             name = None
             for child in node.children:
@@ -337,10 +333,26 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Add children to stack for iterative traversal
-        stack.extend(reversed(node.children))
-
     return symbols
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up to find the enclosing function definition."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            name = _get_function_name(current, source)
+            if name and name in global_symbols:
+                func_sym = global_symbols[name]
+                if func_sym.path == str(file_path):
+                    return func_sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_edges(
@@ -357,26 +369,10 @@ def _extract_edges(
     """
     edges: list[Edge] = []
 
-    # Stack entries: (node, current_function_context)
-    stack: list[tuple["tree_sitter.Node", Optional[Symbol]]] = [(tree.root_node, None)]
-
-    while stack:
-        node, current_function = stack.pop()
-
-        # Track current function context
-        if node.type == "function_definition":
-            name = _get_function_name(node, source)
-            if name and name in global_symbols:
-                func_sym = global_symbols[name]
-                # Only use if it's from this file
-                if func_sym.path == str(file_path):
-                    # Add children with this function as context
-                    for child in reversed(node.children):
-                        stack.append((child, func_sym))
-                    continue
-
+    for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols)
             if current_function:
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
@@ -395,10 +391,6 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
-
-        # Add children to stack with current function context
-        for child in reversed(node.children):
-            stack.append((child, current_function))
 
     return edges
 

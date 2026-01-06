@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -135,6 +136,38 @@ def _extract_method_signature(method_node: "tree_sitter.Node", source: bytes) ->
     return sig
 
 
+def _get_struct_prefix(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to build the prefix for nested structs.
+
+    Returns the prefix if this struct is nested inside other structs.
+    """
+    parts: list[str] = []
+    current = node.parent
+    while current is not None:
+        # If parent is "nested_struct", its parent is "field", and field's parent is "struct"
+        if current.type == "struct":
+            name_node = _find_child_by_type(current, "type_identifier")
+            if name_node:
+                parts.append(_node_text(name_node, source).strip())
+        current = current.parent
+    if parts:
+        # Reverse because we walked up the tree
+        return ".".join(reversed(parts))
+    return None  # pragma: no cover - defensive
+
+
+def _get_interface_name_for_method(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up to find the interface containing this method."""
+    current = node.parent
+    while current is not None:
+        if current.type == "interface":
+            name_node = _find_child_by_type(current, "type_identifier")
+            if name_node:
+                return _node_text(name_node, source).strip()
+        current = current.parent  # pragma: no cover - loop continuation
+    return None  # pragma: no cover - defensive
+
+
 def _extract_symbols_and_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -145,7 +178,8 @@ def _extract_symbols_and_edges(
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
-    root = tree.root_node
+    # Track interface symbols for creating contains edges
+    interface_symbols: dict[str, Symbol] = {}
 
     def make_symbol(
         node: "tree_sitter.Node",
@@ -186,105 +220,75 @@ def _extract_symbols_and_edges(
             signature=signature,
         )
 
-    def process_struct(node: "tree_sitter.Node", prefix: Optional[str] = None) -> None:
-        """Process a struct definition, including nested structs."""
-        # Find the type_identifier child for the struct name
-        name_node = _find_child_by_type(node, "type_identifier")
-        if name_node:
-            struct_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, struct_name, "struct", prefix=prefix))
+    # Process all nodes using iterative traversal
+    for node in iter_tree(tree.root_node):
+        if node.type == "struct":
+            name_node = _find_child_by_type(node, "type_identifier")
+            if name_node:
+                struct_name = _node_text(name_node, source).strip()
+                prefix = _get_struct_prefix(node, source)
+                symbols.append(make_symbol(node, struct_name, "struct", prefix=prefix))
 
-            # Process nested structs inside fields
-            # Structure: field > nested_struct > struct
-            new_prefix = f"{prefix}.{struct_name}" if prefix else struct_name
+        elif node.type == "interface":
+            name_node = _find_child_by_type(node, "type_identifier")
+            if name_node:
+                interface_name = _node_text(name_node, source).strip()
+                interface_sym = make_symbol(node, interface_name, "interface")
+                symbols.append(interface_sym)
+                interface_symbols[interface_name] = interface_sym
+
+        elif node.type == "method":
+            method_name_node = _find_child_by_type(node, "method_identifier")
+            if method_name_node:
+                method_name = _node_text(method_name_node, source).strip()
+                interface_name = _get_interface_name_for_method(node, source)
+                method_sig = _extract_method_signature(node, source)
+                method_sym = make_symbol(
+                    node, method_name, "method",
+                    prefix=interface_name,
+                    signature=method_sig
+                )
+                symbols.append(method_sym)
+
+                # Create contains edge from interface to method
+                if interface_name and interface_name in interface_symbols:
+                    interface_sym = interface_symbols[interface_name]
+                    edges.append(Edge(
+                        id=_make_edge_id(),
+                        src=interface_sym.id,
+                        dst=method_sym.id,
+                        edge_type="contains",
+                        line=method_sym.span.start_line,
+                    ))
+
+        elif node.type == "enum":
+            name_node = _find_child_by_type(node, "enum_identifier")
+            if name_node:
+                enum_name = _node_text(name_node, source).strip()
+                symbols.append(make_symbol(node, enum_name, "enum"))
+
+        elif node.type == "const":
+            name_node = _find_child_by_type(node, "const_identifier")
+            if name_node:
+                const_name = _node_text(name_node, source).strip()
+                symbols.append(make_symbol(node, const_name, "const"))
+
+        elif node.type == "using_directive":
+            # Structure: using_directive > import_using > import_path > string_fragment
             for child in node.children:
-                if child.type == "field":
-                    for field_child in child.children:
-                        if field_child.type == "nested_struct":
-                            for nested_child in field_child.children:
-                                if nested_child.type == "struct":
-                                    process_struct(nested_child, prefix=new_prefix)
-
-    def process_interface(node: "tree_sitter.Node") -> None:
-        """Process an interface definition with its methods."""
-        # Find the type_identifier child for the interface name
-        name_node = _find_child_by_type(node, "type_identifier")
-        if name_node:
-            interface_name = _node_text(name_node, source).strip()
-            interface_sym = make_symbol(node, interface_name, "interface")
-            symbols.append(interface_sym)
-
-            # Extract methods
-            for child in node.children:
-                if child.type == "method":
-                    method_name_node = _find_child_by_type(child, "method_identifier")
-                    if method_name_node:
-                        method_name = _node_text(method_name_node, source).strip()
-                        method_sig = _extract_method_signature(child, source)
-                        method_sym = make_symbol(
-                            child, method_name, "method",
-                            prefix=interface_name,
-                            signature=method_sig
-                        )
-                        symbols.append(method_sym)
-
-                        # Create contains edge from interface to method
-                        edges.append(Edge(
-                            id=_make_edge_id(),
-                            src=interface_sym.id,
-                            dst=method_sym.id,
-                            edge_type="contains",
-                            line=method_sym.span.start_line,
-                        ))
-
-    def process_enum(node: "tree_sitter.Node") -> None:
-        """Process an enum definition."""
-        # Enums use enum_identifier, not type_identifier
-        name_node = _find_child_by_type(node, "enum_identifier")
-        if name_node:
-            enum_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, enum_name, "enum"))
-
-    def process_const(node: "tree_sitter.Node") -> None:
-        """Process a const definition."""
-        # const_identifier is used for constant names
-        name_node = _find_child_by_type(node, "const_identifier")
-        if name_node:
-            const_name = _node_text(name_node, source).strip()
-            symbols.append(make_symbol(node, const_name, "const"))
-
-    def process_using_directive(node: "tree_sitter.Node") -> None:
-        """Process a using directive that imports another file."""
-        # Structure: using_directive > import_using > import_path > string_fragment
-        for child in node.children:
-            if child.type == "import_using":
-                for import_child in child.children:
-                    if import_child.type == "import_path":
-                        # Find string_fragment inside import_path
-                        for path_child in import_child.children:
-                            if path_child.type == "string_fragment":
-                                import_path = _node_text(path_child, source).strip()
-                                edges.append(Edge(
-                                    id=_make_edge_id(),
-                                    src=_make_file_id(file_path),
-                                    dst=f"capnp:{import_path}:1-1:file:file",
-                                    edge_type="imports",
-                                    line=node.start_point[0] + 1,
-                                ))
-
-    # Process children of root (message node)
-    # The root_node itself is of type "message"
-    for child in root.children:
-        if child.type == "struct":
-            process_struct(child)
-        elif child.type == "interface":
-            process_interface(child)
-        elif child.type == "enum":
-            process_enum(child)
-        elif child.type == "const":
-            process_const(child)
-        elif child.type == "using_directive":
-            process_using_directive(child)
+                if child.type == "import_using":
+                    for import_child in child.children:
+                        if import_child.type == "import_path":
+                            for path_child in import_child.children:
+                                if path_child.type == "string_fragment":
+                                    import_path = _node_text(path_child, source).strip()
+                                    edges.append(Edge(
+                                        id=_make_edge_id(),
+                                        src=_make_file_id(file_path),
+                                        dst=f"capnp:{import_path}:1-1:file:file",
+                                        edge_type="imports",
+                                        line=node.start_point[0] + 1,
+                                    ))
 
     return symbols, edges
 

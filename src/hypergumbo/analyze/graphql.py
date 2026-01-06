@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -136,7 +137,7 @@ def _extract_graphql_signature(
 
 
 def _process_graphql_tree(
-    node: "tree_sitter.Node",
+    tree: "tree_sitter.Tree",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
@@ -146,7 +147,7 @@ def _process_graphql_tree(
     """Process GraphQL AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        tree: Tree-sitter tree to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
@@ -163,136 +164,133 @@ def _process_graphql_tree(
         "union_type_definition": "union",
     }
 
-    if node.type in type_kinds:
-        kind = type_kinds[node.type]
-        type_name = _get_name(node, source)
-        if type_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, type_name, kind)
+    for node in iter_tree(tree.root_node):
+        if node.type in type_kinds:
+            kind = type_kinds[node.type]
+            type_name = _get_name(node, source)
+            if type_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, type_name, kind)
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=type_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind=kind,
-                name=type_name,
-                path=rel_path,
-                language="graphql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            type_registry[type_name.lower()] = symbol_id
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=type_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind=kind,
+                    name=type_name,
+                    path=rel_path,
+                    language="graphql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                type_registry[type_name.lower()] = symbol_id
 
-    elif node.type == "directive_definition":
-        directive_name = _get_name(node, source)
-        if directive_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, directive_name, "directive")
+        elif node.type == "directive_definition":
+            directive_name = _get_name(node, source)
+            if directive_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, directive_name, "directive")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=f"@{directive_name}",
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="directive",
-                name=directive_name,
-                path=rel_path,
-                language="graphql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=f"@{directive_name}",
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="directive",
+                    name=directive_name,
+                    path=rel_path,
+                    language="graphql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
 
-    elif node.type == "fragment_definition":
-        # Fragment name is in fragment_name > name
-        frag_name = None
-        for child in node.children:
-            if child.type == "fragment_name":
-                frag_name = _get_name(child, source)
-                break
-        if frag_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, frag_name, "fragment")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=frag_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="fragment",
-                name=frag_name,
-                path=rel_path,
-                language="graphql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-
-    elif node.type == "operation_definition":
-        # Query, Mutation, or Subscription operation
-        op_name = _get_name(node, source)
-        if op_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            # Determine operation type
-            op_type = "operation"
+        elif node.type == "fragment_definition":
+            # Fragment name is in fragment_name > name
+            frag_name = None
             for child in node.children:
-                if child.type == "operation_type":
-                    op_type = _node_text(child, source).lower()
+                if child.type == "fragment_name":
+                    frag_name = _get_name(child, source)
                     break
+            if frag_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, frag_name, "fragment")
 
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, op_name, op_type)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=frag_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="fragment",
+                    name=frag_name,
+                    path=rel_path,
+                    language="graphql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
 
-            # Extract signature (variable definitions)
-            signature = _extract_graphql_signature(node, source)
+        elif node.type == "operation_definition":
+            # Query, Mutation, or Subscription operation
+            op_name = _get_name(node, source)
+            if op_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                # Determine operation type
+                op_type = "operation"
+                for child in node.children:
+                    if child.type == "operation_type":
+                        op_type = _node_text(child, source).lower()
+                        break
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=op_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind=op_type,
-                name=op_name,
-                path=rel_path,
-                language="graphql",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                signature=signature,
-            )
-            symbols.append(sym)
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, op_name, op_type)
 
-    # Recurse into children
-    for child in node.children:
-        _process_graphql_tree(child, source, rel_path, symbols, edges, type_registry)
+                # Extract signature (variable definitions)
+                signature = _extract_graphql_signature(node, source)
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=op_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind=op_type,
+                    name=op_name,
+                    path=rel_path,
+                    language="graphql",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=signature,
+                )
+                symbols.append(sym)
 
 
 def analyze_graphql_files(repo_root: Path) -> GraphQLAnalysisResult:
@@ -345,7 +343,7 @@ def analyze_graphql_files(repo_root: Path) -> GraphQLAnalysisResult:
 
             # Process this file
             _process_graphql_tree(
-                tree.root_node,
+                tree,
                 source,
                 rel_path,
                 symbols,
