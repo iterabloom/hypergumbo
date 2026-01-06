@@ -13,7 +13,7 @@
 #
 # Examples:
 #   ./scripts/find-uncovered                    # Full run + summary
-#   ./scripts/find-uncovered --report           # Query saved .coverage.txt
+#   ./scripts/find-uncovered --report           # Query saved coverage-report.txt
 #   ./scripts/find-uncovered --report js_ts     # Filter for js_ts analyzer
 #   ./scripts/find-uncovered --lines            # List as file:line for navigation
 #   ./scripts/find-uncovered --context          # Show code snippets
@@ -54,21 +54,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-COVERAGE_TXT=".coverage.txt"
+COVERAGE_TXT="coverage-report.txt"
 
-# Run pytest if not report-only
-if [ "$REPORT_ONLY" = false ] && [ "$LINES_MODE" = false ] && [ "$CONTEXT_MODE" = false ]; then
+# Determine if we need to run tests
+need_coverage_run() {
+    # Run if:
+    # 1. File doesn't exist, OR
+    # 2. Not in report-only mode
+    if [ ! -f "$COVERAGE_TXT" ]; then
+        return 0  # true - need to run
+    fi
+    if [ "$REPORT_ONLY" = true ]; then
+        return 1  # false - don't run (use saved data)
+    fi
+    # For --lines and --context without --report, use saved data if it exists
+    if [ "$LINES_MODE" = true ] || [ "$CONTEXT_MODE" = true ]; then
+        return 1  # false - use existing data
+    fi
+    return 0  # true - run tests (default mode)
+}
+
+# Run pytest if needed
+if need_coverage_run; then
     echo "🔍 Running coverage analysis (this takes ~2-3 mins)..."
     pytest --cov=src --cov-report=term-missing -q 2>&1 > "$COVERAGE_TXT" || true
     echo "   Coverage data saved to $COVERAGE_TXT"
-elif [ "$LINES_MODE" = true ] || [ "$CONTEXT_MODE" = true ]; then
-    # --lines and --context imply --report (don't re-run)
-    REPORT_ONLY=true
 fi
 
+# Verify we have coverage data
 if [ ! -f "$COVERAGE_TXT" ]; then
-    echo "❌ No coverage data found. Run without --report first."
+    echo "❌ No coverage data found."
+    echo ""
+    echo "Run tests first with:  ./scripts/find-uncovered"
+    echo "Then query with:       ./scripts/find-uncovered --lines"
     exit 1
+fi
+
+# Check for stale data (warn if coverage file is older than any .py file in src/)
+newest_src=$(find src -name '*.py' -newer "$COVERAGE_TXT" -print -quit 2>/dev/null || true)
+if [ -n "$newest_src" ]; then
+    echo "⚠️  Warning: coverage data may be stale (source files modified since last run)"
+    echo "   Consider re-running without --report to refresh"
+    echo ""
 fi
 
 # Function to expand line ranges like "162-170, 180" into individual lines

@@ -180,6 +180,8 @@ class Symbol:
         lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
         signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
             Only populated for callable symbols (functions, methods). None for classes, etc.
+        modifiers: List of semantic modifiers (e.g., ["native", "public", "static"]).
+            Used by linkers for cross-language matching (e.g., JNI needs 'native').
     """
 
     id: str
@@ -202,6 +204,7 @@ class Symbol:
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
     signature: Optional[str] = None
+    modifiers: List[str] = field(default_factory=list)
 
     # Keep line/end_line for backwards compatibility during transition
     @property
@@ -238,6 +241,7 @@ class Symbol:
             "cyclomatic_complexity": self.cyclomatic_complexity,
             "lines_of_code": self.lines_of_code,
             "signature": self.signature,
+            "modifiers": self.modifiers,
         }
 
 

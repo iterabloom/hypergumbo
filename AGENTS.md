@@ -52,12 +52,14 @@ When coverage is below 100%, use `./scripts/find-uncovered` to efficiently locat
 ./scripts/find-uncovered --context analyze/
 ```
 
-The script saves coverage data to `.coverage.txt`, allowing multiple queries without re-running the full test suite. This is especially useful when iteratively fixing coverage gaps.
+The script saves coverage data to `coverage-report.txt`, allowing multiple queries without re-running the full test suite. This is especially useful when iteratively fixing coverage gaps.
 
-**Agent-friendly modes:**
+**Key features:**
 - `--lines` outputs `file:line` format for easy navigation with Read tool
 - `--context` shows actual code snippets for each uncovered line
-- Both modes imply `--report` (no re-running tests)
+- Both modes auto-run tests if no coverage data exists
+- Warns if coverage data is stale (source files modified since last run)
+- Renamed from `.coverage.txt` to visible `coverage-report.txt`
 
 **Workflow for fixing coverage:**
 1. Run `./scripts/find-uncovered` once (takes ~2-3 min)

@@ -95,6 +95,22 @@ LinkerFunc = Callable[[LinkerContext], LinkerResult]
 
 
 @dataclass
+class LinkerRequirement:
+    """A requirement for a linker to produce useful edges.
+
+    Attributes:
+        name: Short identifier (e.g., "java_native", "c_jni_functions")
+        description: Human-readable description (e.g., "Java native methods")
+        check: Function that takes LinkerContext and returns count of available items.
+            Return 0 to indicate the requirement is unmet.
+    """
+
+    name: str
+    description: str
+    check: Callable[[LinkerContext], int]
+
+
+@dataclass
 class RegisteredLinker:
     """Metadata for a registered linker.
 
@@ -104,12 +120,14 @@ class RegisteredLinker:
         priority: Execution order (lower = earlier). Default 50.
             Early linkers (JNI) run first; late linkers (dependency) run last.
         description: Human-readable description
+        requirements: List of requirements the linker needs to produce useful edges.
     """
 
     name: str
     func: LinkerFunc
     priority: int = 50
     description: str = ""
+    requirements: list[LinkerRequirement] = field(default_factory=list)
 
 
 # Global registry of linkers
@@ -120,6 +138,7 @@ def register_linker(
     name: str,
     priority: int = 50,
     description: str = "",
+    requirements: list[LinkerRequirement] | None = None,
 ) -> Callable[[LinkerFunc], LinkerFunc]:
     """Decorator to register a linker function.
 
@@ -127,6 +146,8 @@ def register_linker(
         name: Unique identifier for this linker (e.g., "jni", "http")
         priority: Execution order (lower = earlier).
         description: Human-readable description of what the linker does.
+        requirements: List of requirements the linker needs. When requirements
+            are unmet (check returns 0), the linker may produce no edges.
 
     Returns:
         Decorator that registers the function and returns it unchanged.
@@ -143,6 +164,7 @@ def register_linker(
             func=func,
             priority=priority,
             description=description,
+            requirements=requirements or [],
         )
         return func
 
@@ -217,3 +239,93 @@ def clear_registry() -> None:
 def list_registered() -> list[str]:
     """List all registered linker names. For debugging."""
     return list(_LINKER_REGISTRY.keys())
+
+
+@dataclass
+class RequirementStatus:
+    """Status of a single linker requirement.
+
+    Attributes:
+        name: Requirement identifier
+        description: Human-readable description
+        count: Number of matching items found (0 = unmet)
+        met: True if count > 0
+    """
+
+    name: str
+    description: str
+    count: int
+    met: bool
+
+
+@dataclass
+class LinkerDiagnostics:
+    """Diagnostics for a linker's requirements.
+
+    Attributes:
+        linker_name: Name of the linker
+        linker_description: Description of what the linker does
+        requirements: Status of each requirement
+        all_met: True if all requirements are met
+    """
+
+    linker_name: str
+    linker_description: str
+    requirements: list[RequirementStatus]
+    all_met: bool
+
+
+def check_linker_requirements(ctx: LinkerContext) -> list[LinkerDiagnostics]:
+    """Check which linkers have met/unmet requirements.
+
+    This helps users understand why a linker produced no edges.
+    For example, the JNI linker requires both Java native methods
+    AND C JNI functions - if either is missing, it produces no edges.
+
+    Args:
+        ctx: LinkerContext with symbols, edges, etc.
+
+    Returns:
+        List of LinkerDiagnostics, one per linker with requirements.
+        Linkers without requirements are omitted.
+
+    Example output:
+        LinkerDiagnostics(
+            linker_name="jni",
+            linker_description="Java/C JNI bridge",
+            requirements=[
+                RequirementStatus(name="java_native", description="Java native methods", count=0, met=False),
+                RequirementStatus(name="c_jni_functions", description="C JNI functions", count=5, met=True),
+            ],
+            all_met=False,
+        )
+    """
+    diagnostics = []
+
+    for linker in get_all_linkers():
+        if not linker.requirements:
+            continue
+
+        statuses = []
+        all_met = True
+
+        for req in linker.requirements:
+            count = req.check(ctx)
+            met = count > 0
+            statuses.append(RequirementStatus(
+                name=req.name,
+                description=req.description,
+                count=count,
+                met=met,
+            ))
+            if not met:
+                all_met = False
+
+        diagnostics.append(LinkerDiagnostics(
+            linker_name=linker.name,
+            linker_description=linker.description,
+            requirements=statuses,
+            all_met=all_met,
+        ))
+
+    return diagnostics

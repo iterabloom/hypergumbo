@@ -70,8 +70,17 @@ class TestJniLinker:
         kind: str = "method",
         is_native: bool = False,
         path: str = "Test.java",
+        modifiers: list[str] | None = None,
     ) -> Symbol:
-        """Create a test Java symbol."""
+        """Create a test Java symbol.
+
+        Args:
+            name: Symbol name
+            kind: Symbol kind
+            is_native: Whether to set meta.is_native (legacy approach)
+            path: File path
+            modifiers: List of modifiers (new approach, e.g., ["native", "public"])
+        """
         run = AnalysisRun.create(pass_id="test", version="test")
         meta = {"is_native": True} if is_native else {}
         return Symbol(
@@ -84,6 +93,7 @@ class TestJniLinker:
             origin="java-v1",
             origin_run_id=run.execution_id,
             meta=meta,
+            modifiers=modifiers if modifiers else [],
         )
 
     def _make_c_symbol(
@@ -145,6 +155,30 @@ class TestJniLinker:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.edge_type == "native_bridge"
+
+    def test_links_via_modifiers_field(self) -> None:
+        """Links Java native method detected via modifiers field (not meta.is_native)."""
+        from hypergumbo.linkers.jni import link_jni
+
+        java_symbols = [
+            self._make_java_symbol(
+                "MyClass.nativeMethod",
+                "method",
+                is_native=False,  # Not using legacy meta.is_native
+                modifiers=["public", "native"],  # Using new modifiers field
+            ),
+        ]
+        c_symbols = [
+            self._make_c_symbol("Java_MyClass_nativeMethod"),
+        ]
+
+        result = link_jni(java_symbols, c_symbols)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.edge_type == "native_bridge"
+        assert "MyClass.nativeMethod" in edge.src
+        assert "Java_MyClass_nativeMethod" in edge.dst
 
     def test_no_link_for_non_native_method(self) -> None:
         """Does not link non-native Java methods."""
@@ -283,6 +317,164 @@ JNIEXPORT jint JNICALL Java_Native_getValue(
         # Should have created native_bridge edges
         assert link_result.run is not None
         # Edges may or may not be created depending on native detection
+
+
+class TestJniLinkerRegistry:
+    """Tests for JNI linker registry integration."""
+
+    def test_jni_linker_registered(self) -> None:
+        """JNI linker is registered in the linker registry."""
+        # Import the jni module to trigger registration
+        import hypergumbo.linkers.jni  # noqa: F401
+        from hypergumbo.linkers.registry import get_linker
+
+        linker = get_linker("jni")
+        assert linker is not None
+        assert linker.name == "jni"
+        assert linker.priority == 10  # Early priority
+        assert "JNI" in linker.description or "native" in linker.description.lower()
+
+    def test_jni_linker_has_requirements(self) -> None:
+        """JNI linker declares its requirements."""
+        import hypergumbo.linkers.jni  # noqa: F401
+        from hypergumbo.linkers.registry import get_linker
+
+        linker = get_linker("jni")
+        assert linker is not None
+        assert len(linker.requirements) == 2
+
+        req_names = [r.name for r in linker.requirements]
+        assert "java_native_methods" in req_names
+        assert "c_jni_functions" in req_names
+
+    def test_jni_linker_via_registry(self) -> None:
+        """JNI linker works via registry dispatch."""
+        import hypergumbo.linkers.jni  # noqa: F401
+        from pathlib import Path
+        from hypergumbo.linkers.registry import LinkerContext, run_linker
+
+        # Create symbols
+        run = AnalysisRun.create(pass_id="test", version="test")
+        java_sym = Symbol(
+            id="java:Test.java:1-10:MyClass.processData:method",
+            name="MyClass.processData",
+            kind="method",
+            language="java",
+            path="Test.java",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="java-v1",
+            origin_run_id=run.execution_id,
+            modifiers=["native", "public"],
+        )
+        c_sym = Symbol(
+            id="c:native.c:1-10:Java_MyClass_processData:function",
+            name="Java_MyClass_processData",
+            kind="function",
+            language="c",
+            path="native.c",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="c-v1",
+            origin_run_id=run.execution_id,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[java_sym, c_sym],
+        )
+
+        result = run_linker("jni", ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "native_bridge"
+
+    def test_jni_requirements_check_with_matching_symbols(self) -> None:
+        """JNI requirements report as met when matching symbols exist."""
+        import hypergumbo.linkers.jni  # noqa: F401
+        from pathlib import Path
+        from hypergumbo.linkers.registry import LinkerContext, check_linker_requirements
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        # Java native method
+        java_sym = Symbol(
+            id="java:Test.java:1-10:MyClass.nativeMethod:method",
+            name="MyClass.nativeMethod",
+            kind="method",
+            language="java",
+            path="Test.java",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="java-v1",
+            origin_run_id=run.execution_id,
+            modifiers=["native"],
+        )
+
+        # C JNI function
+        c_sym = Symbol(
+            id="c:native.c:1-10:Java_MyClass_nativeMethod:function",
+            name="Java_MyClass_nativeMethod",
+            kind="function",
+            language="c",
+            path="native.c",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="c-v1",
+            origin_run_id=run.execution_id,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[java_sym, c_sym],
+        )
+
+        diagnostics = check_linker_requirements(ctx)
+
+        # Find JNI linker diagnostics
+        jni_diag = next((d for d in diagnostics if d.linker_name == "jni"), None)
+        assert jni_diag is not None
+        assert jni_diag.all_met is True
+        assert all(r.met for r in jni_diag.requirements)
+
+    def test_jni_requirements_check_missing_java_native(self) -> None:
+        """JNI requirements report unmet when Java native methods missing."""
+        import hypergumbo.linkers.jni  # noqa: F401
+        from pathlib import Path
+        from hypergumbo.linkers.registry import LinkerContext, check_linker_requirements
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        # Only C JNI function, no Java native method
+        c_sym = Symbol(
+            id="c:native.c:1-10:Java_MyClass_nativeMethod:function",
+            name="Java_MyClass_nativeMethod",
+            kind="function",
+            language="c",
+            path="native.c",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="c-v1",
+            origin_run_id=run.execution_id,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[c_sym],
+        )
+
+        diagnostics = check_linker_requirements(ctx)
+
+        jni_diag = next((d for d in diagnostics if d.linker_name == "jni"), None)
+        assert jni_diag is not None
+        assert jni_diag.all_met is False
+
+        # Java native requirement should be unmet
+        java_req = next((r for r in jni_diag.requirements if r.name == "java_native_methods"), None)
+        assert java_req is not None
+        assert java_req.met is False
+        assert java_req.count == 0
+
+        # C JNI requirement should be met
+        c_req = next((r for r in jni_diag.requirements if r.name == "c_jni_functions"), None)
+        assert c_req is not None
+        assert c_req.met is True
+        assert c_req.count == 1
         # This test verifies no crashes and proper integration
 
 

@@ -187,6 +187,34 @@ def _has_native_modifier(node: "tree_sitter.Node", source: bytes) -> bool:
     return False
 
 
+# Java modifiers that can appear on methods
+JAVA_METHOD_MODIFIERS = {
+    "public", "private", "protected",
+    "static", "final", "abstract",
+    "native", "synchronized", "strictfp",
+}
+
+
+def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract all modifiers from a method/constructor declaration.
+
+    Returns a list of modifier strings like ["public", "static", "native"].
+
+    Tree-sitter-java uses modifier keywords as node types directly (e.g., "public",
+    "static", "native"), so we can match against the node type.
+    """
+    del source  # unused - modifiers are captured via node types
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            # The modifiers node contains individual modifier nodes
+            for mod_child in child.children:
+                # tree-sitter-java uses modifier keywords as node types
+                if mod_child.type in JAVA_METHOD_MODIFIERS:
+                    modifiers.append(mod_child.type)
+    return modifiers
+
+
 # Spring Boot route annotation mappings
 SPRING_MAPPING_ANNOTATIONS = {
     "GetMapping": "GET",
@@ -532,6 +560,9 @@ def _extract_symbols(
                 # Check for native modifier
                 is_native = _has_native_modifier(node, source)
 
+                # Extract all modifiers for the modifiers field
+                modifiers = _extract_modifiers(node, source)
+
                 # Check for Spring Boot route annotations
                 http_method, route_path = _detect_spring_boot_route(node, source)
 
@@ -570,6 +601,7 @@ def _extract_symbols(
                     meta=meta,
                     stable_id=stable_id,
                     signature=signature,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -588,6 +620,9 @@ def _extract_symbols(
                 # Extract signature (constructors have no return type)
                 signature = _extract_java_signature(node, source, is_constructor=True)
 
+                # Extract modifiers for constructors too
+                modifiers = _extract_modifiers(node, source)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "constructor"),
                     name=full_name,
@@ -598,6 +633,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
