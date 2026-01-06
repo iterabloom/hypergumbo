@@ -503,6 +503,21 @@ class TestIsTestPath:
         """Empty path returns False."""
         assert not _is_test_path("")
 
+    def test_gradle_test_fixtures(self):
+        """Gradle test fixtures directory detected."""
+        assert _is_test_path("src/testFixtures/java/Utils.java")
+        assert _is_test_path("lib/testfixtures/Helper.kt")
+
+    def test_gradle_integration_tests(self):
+        """Gradle integration test directories detected."""
+        assert _is_test_path("src/intTest/java/IntegrationTest.java")
+        assert _is_test_path("src/integrationTest/kotlin/ApiTest.kt")
+
+    def test_typescript_type_tests(self):
+        """TypeScript type definition test files detected."""
+        assert _is_test_path("types/index.test-d.ts")
+        assert _is_test_path("src/types/api.test-d.tsx")
+
 
 class TestGetImportanceThreshold:
     """Tests for get_importance_threshold function."""

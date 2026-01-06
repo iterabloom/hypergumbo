@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 from .ir import Symbol, Edge
-from .ranking import compute_centrality, apply_tier_weights
+from .ranking import compute_centrality, apply_tier_weights, _is_test_path
 
 
 # Symbol kinds to exclude from tiered output
@@ -68,31 +68,6 @@ EXCLUDED_KINDS = frozenset({
     "class_selector",   # CSS class selectors
     "id_selector",      # CSS id selectors
 })
-
-# Path patterns indicating test files
-TEST_PATH_PATTERNS = (
-    "/tests/",
-    "/test/",
-    "/__tests__/",
-    "_test.go",
-    "_test.py",
-    ".test.ts",
-    ".test.js",
-    ".test.tsx",
-    ".test.jsx",
-    ".spec.ts",
-    ".spec.js",
-    ".spec.tsx",
-    ".spec.jsx",
-    ".test-d.ts",
-    ".test-d.tsx",
-    "test_",           # Python test files: test_foo.py
-    "/testfixtures/",  # Gradle test fixtures (case-insensitive match)
-    "/inttest/",       # Gradle integration test source set
-    "/integrationtest/",  # Alternative integration test naming
-    "tests.java",      # Java test files: FooTests.java
-    "test.java",       # Java test files: FooTest.java (but not TestFoo.java utilities)
-)
 
 # Path patterns indicating example/demo code
 # Include both /examples/ and examples/ to handle absolute and relative paths
@@ -126,19 +101,6 @@ def _is_example_path(path: str) -> bool:
     return path_lower.startswith(("examples/", "example/", "demos/", "demo/",
                                    "samples/", "sample/", "playground/",
                                    "tutorial/", "tutorials/"))
-
-
-def _is_test_path(path: str) -> bool:
-    """Check if a path represents a test file.
-
-    Args:
-        path: File path to check.
-
-    Returns:
-        True if the path appears to be a test file.
-    """
-    path_lower = path.lower()
-    return any(pattern in path_lower for pattern in TEST_PATH_PATTERNS)
 
 
 @dataclass
