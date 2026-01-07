@@ -1860,3 +1860,130 @@ class TestPythonSignatureExtraction:
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
         assert funcs[0]["signature"] == "() -> Tuple[int, int]"
+
+
+class TestModulePseudoNode:
+    """Tests for <module> pseudo-node creation for script-only files."""
+
+    def test_module_node_created_for_script_with_calls(self, tmp_path: Path) -> None:
+        """Script files with function calls get a module pseudo-node."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "import os\n"
+            "print('hello')\n"
+            "x = os.getcwd()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+        assert modules[0]["name"] == "<module:script.py>"
+        assert modules[0]["span"]["start_line"] == 1
+        assert modules[0]["span"]["end_line"] == 3
+
+    def test_module_node_created_for_script_with_if_main(self, tmp_path: Path) -> None:
+        """Scripts with if __name__ == '__main__' get a module pseudo-node."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "import sys\n"
+            "\n"
+            "def main():\n"
+            "    print('hello')\n"
+            "\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+        assert modules[0]["name"] == "<module:main.py>"
+
+    def test_no_module_node_for_pure_definitions(self, tmp_path: Path) -> None:
+        """Files with only imports/defs don't get a module pseudo-node."""
+        py_file = tmp_path / "lib.py"
+        py_file.write_text(
+            "import os\n"
+            "\n"
+            "def helper():\n"
+            "    return os.getcwd()\n"
+            "\n"
+            "class MyClass:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+    def test_module_node_created_for_assignment(self, tmp_path: Path) -> None:
+        """Files with module-level assignments get a module pseudo-node."""
+        py_file = tmp_path / "config.py"
+        py_file.write_text(
+            "import os\n"
+            "CONFIG = {'debug': True}\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+        assert modules[0]["name"] == "<module:config.py>"
+
+    def test_no_module_node_for_docstring_only(self, tmp_path: Path) -> None:
+        """Files with only docstring don't get a module pseudo-node."""
+        py_file = tmp_path / "empty.py"
+        py_file.write_text(
+            '"""This module does nothing."""\n'
+            "\n"
+            "import os\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+    def test_no_module_node_for_pass_only(self, tmp_path: Path) -> None:
+        """Files with only pass statements don't get a module pseudo-node."""
+        py_file = tmp_path / "stub.py"
+        py_file.write_text(
+            '"""Stub module."""\n'
+            "pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+    def test_no_module_node_for_type_annotation_only(self, tmp_path: Path) -> None:
+        """Files with only type annotations don't get a module pseudo-node."""
+        py_file = tmp_path / "types.py"
+        py_file.write_text(
+            '"""Type stubs."""\n'
+            "x: int\n"
+            "y: str\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0

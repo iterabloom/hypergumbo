@@ -267,6 +267,51 @@ def _combine_prefix_and_path(prefix: str | None, path: str | None) -> str | None
     return prefix + path
 
 
+def _has_module_level_code(tree: ast.Module) -> bool:
+    """Check if a module has executable code at module level.
+
+    Returns True if the module has statements that aren't just imports,
+    function/class definitions, or docstrings. These files need a <module>
+    pseudo-node so module-level code has an enclosing scope for edges.
+
+    Examples of module-level code:
+    - producer.produce(topic, value)  # Function calls
+    - config = load_config()          # Assignments
+    - if __name__ == '__main__': ...  # Control flow
+    """
+    for i, node in enumerate(tree.body):
+        # Skip docstrings (first constant string expression)
+        if i == 0 and isinstance(node, ast.Expr):
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                continue
+
+        # Skip imports
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+
+        # Skip function/class definitions
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+
+        # Skip pass statements
+        if isinstance(node, ast.Pass):
+            continue
+
+        # Skip type aliases and annotations
+        if isinstance(node, ast.AnnAssign):
+            continue
+
+        # Any other statement is executable module-level code
+        return True
+
+    return False
+
+
+def _get_file_end_line(source: str) -> int:
+    """Get the last line number of a source file."""
+    return len(source.splitlines())
+
+
 def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, str | None]]:
     """Extract Django URL patterns from path(), re_path(), url() calls.
 
@@ -783,6 +828,31 @@ def _extract_file_analysis(
 
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
+
+    # Create <module> pseudo-node for files with module-level executable code.
+    # This provides an enclosing scope for linker synthetic nodes at module level,
+    # enabling slice traversal for script-only files (no functions/classes).
+    if _has_module_level_code(tree):
+        end_line = _get_file_end_line(source)
+        module_name = py_file.name  # e.g., "producer_ccsr.py"
+        module_span = Span(
+            start_line=1,
+            end_line=end_line,
+            start_col=0,
+            end_col=0,
+        )
+        module_symbol = Symbol(
+            id=_make_symbol_id(str(py_file), 1, end_line, f"<module:{module_name}>", "module"),
+            name=f"<module:{module_name}>",
+            kind="module",
+            language="python",
+            path=str(py_file),
+            span=module_span,
+            origin="",
+            origin_run_id="",
+        )
+        symbols.append(module_symbol)
+        symbol_by_name["<module>"] = module_symbol
 
     # Extract router prefixes (e.g., APIRouter(prefix='/api/v1'))
     router_prefixes = _extract_router_prefixes(tree)
