@@ -468,3 +468,92 @@ window.addEventListener('message', handler);
         # Should only have edges for named channel
         for edge in result.edges:
             assert edge.meta.get("channel") == "named-channel"
+
+
+class TestIpcLinkerRequirements:
+    """Tests for IPC linker registry requirements."""
+
+    def test_count_js_ts_files(self, tmp_path: Path) -> None:
+        """Counts JavaScript/TypeScript files in the repository."""
+        from hypergumbo.linkers.ipc import _count_js_ts_files
+        from hypergumbo.linkers.registry import LinkerContext
+
+        (tmp_path / "app.js").write_text("const x = 1;")
+        (tmp_path / "component.tsx").write_text("export default () => <div/>;")
+        (tmp_path / "util.py").write_text("print('hello')")
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        count = _count_js_ts_files(ctx)
+
+        assert count == 2
+
+    def test_count_electron_patterns_in_symbols(self, tmp_path: Path) -> None:
+        """Counts Electron IPC patterns in symbols."""
+        from hypergumbo.ir import Span, Symbol
+        from hypergumbo.linkers.ipc import _count_electron_patterns_in_code
+        from hypergumbo.linkers.registry import LinkerContext
+
+        sym_ipc = Symbol(
+            id="js:main.js:1-10:ipcHandler:function",
+            name="ipcHandler",
+            kind="function",
+            language="javascript",
+            path="main.js",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+        sym_electron = Symbol(
+            id="js:preload.js:1-10:electronBridge:variable",
+            name="electronBridge",
+            kind="variable",
+            language="typescript",
+            path="preload.js",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+        sym_other = Symbol(
+            id="js:utils.js:1-10:formatDate:function",
+            name="formatDate",
+            kind="function",
+            language="javascript",
+            path="utils.js",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[sym_ipc, sym_electron, sym_other],
+        )
+        count = _count_electron_patterns_in_code(ctx)
+
+        assert count == 2  # ipcHandler and electronBridge
+
+
+class TestIpcLinkerRegistration:
+    """Tests for IPC linker registry integration."""
+
+    def test_linker_is_registered(self) -> None:
+        """IPC linker is registered with the registry."""
+        import hypergumbo.linkers.ipc  # noqa: F401
+        from hypergumbo.linkers.registry import get_linker
+
+        linker = get_linker("ipc")
+        assert linker is not None
+        assert linker.name == "ipc"
+        assert linker.priority == 40
+
+    def test_ipc_linker_returns_result(self, tmp_path: Path) -> None:
+        """ipc_linker function returns LinkerResult."""
+        from hypergumbo.linkers.ipc import ipc_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = ipc_linker(ctx)
+
+        assert result is not None
+        assert hasattr(result, "symbols")
+        assert hasattr(result, "edges")

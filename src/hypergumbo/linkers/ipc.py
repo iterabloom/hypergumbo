@@ -39,6 +39,12 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import (
+    LinkerContext,
+    LinkerRequirement,
+    LinkerResult,
+    register_linker,
+)
 
 PASS_ID = "ipc-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -306,3 +312,65 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return IpcLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# ---------------------------------------------------------------------------
+# Linker Registry Integration
+# ---------------------------------------------------------------------------
+
+
+def _count_js_ts_files(ctx: LinkerContext) -> int:
+    """Count JavaScript/TypeScript files in the repository."""
+    count = 0
+    for _ in _find_js_files(ctx.repo_root):
+        count += 1
+    return count
+
+
+def _count_electron_patterns_in_code(ctx: LinkerContext) -> int:
+    """Count files that might contain Electron IPC patterns.
+
+    Looks for ipcRenderer or ipcMain in JS/TS symbols from analyzers.
+    """
+    count = 0
+    for sym in ctx.symbols:
+        if sym.language in ("javascript", "typescript"):
+            # Look for Electron-related patterns
+            name_lower = sym.name.lower()
+            if "ipc" in name_lower or "electron" in name_lower:
+                count += 1
+    return count
+
+
+IPC_REQUIREMENTS = [
+    LinkerRequirement(
+        name="js_ts_files",
+        description="JavaScript/TypeScript files",
+        check=_count_js_ts_files,
+    ),
+    LinkerRequirement(
+        name="electron_patterns",
+        description="Electron IPC patterns in code",
+        check=_count_electron_patterns_in_code,
+    ),
+]
+
+
+@register_linker(
+    "ipc",
+    priority=40,  # Run after analyzers
+    description="Electron IPC and postMessage pattern linking",
+    requirements=IPC_REQUIREMENTS,
+)
+def ipc_linker(ctx: LinkerContext) -> LinkerResult:
+    """IPC linker for registry-based dispatch.
+
+    This wraps link_ipc() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_ipc(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )
