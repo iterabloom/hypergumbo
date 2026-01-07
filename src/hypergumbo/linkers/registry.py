@@ -146,7 +146,7 @@ class LinkerContext:
         self,
         path: str,
         line: int,
-        kinds: tuple[str, ...] = ("function", "method", "class"),
+        kinds: tuple[str, ...] = ("function", "method", "class", "module"),
     ) -> "Symbol | None":
         """Find the symbol that encloses a given line.
 
@@ -156,11 +156,12 @@ class LinkerContext:
         Args:
             path: File path (can be absolute or relative, matches suffix)
             line: Line number to find enclosing symbol for
-            kinds: Symbol kinds to consider (default: function, method, class)
+            kinds: Symbol kinds to consider (default: function, method, class, module)
+                   Module nodes are created for script-only Python files.
 
         Returns:
             The smallest enclosing symbol, or None if no match.
-            Prefers more specific symbols (method over class, smaller span).
+            Prefers more specific symbols (method > function > class > module).
         """
         self._ensure_indexes()
         assert self._symbols_by_path is not None  # for type checker
@@ -192,10 +193,10 @@ class LinkerContext:
             return None
 
         # Return the smallest (most specific) enclosing symbol
-        # Prefer function/method over class
+        # Prefer function/method over class over module
         def specificity(s: "Symbol") -> tuple[int, int]:
             # Lower is better: (kind_priority, span_size)
-            kind_priority = {"method": 0, "function": 1, "class": 2}.get(s.kind, 3)
+            kind_priority = {"method": 0, "function": 1, "class": 2, "module": 3}.get(s.kind, 4)
             span_size = (s.span.end_line - s.span.start_line) if s.span else 9999
             return (kind_priority, span_size)
 
