@@ -557,3 +557,128 @@ class TestIpcLinkerRegistration:
         assert result is not None
         assert hasattr(result, "symbols")
         assert hasattr(result, "edges")
+
+
+class TestVariableChannelPatterns:
+    """Tests for variable-based channel detection."""
+
+    def test_detect_variable_send_channel(self) -> None:
+        """Detects ipcRenderer.send with variable channel."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+const CHANNEL = 'open-file';
+ipcRenderer.send(CHANNEL, { path: '/tmp/file.txt' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "CHANNEL"
+        assert patterns[0]["channel_type"] == "variable"
+
+    def test_detect_variable_receive_channel(self) -> None:
+        """Detects ipcMain.on with variable channel."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+const OPEN_FILE_CHANNEL = 'open-file';
+ipcMain.on(OPEN_FILE_CHANNEL, (event, data) => {
+    console.log('Opening file:', data.path);
+});
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "OPEN_FILE_CHANNEL"
+        assert patterns[0]["channel_type"] == "variable"
+
+    def test_detect_attribute_access_channel(self) -> None:
+        """Detects channel with attribute access like config.channel."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcRenderer.invoke(config.ipcChannel, { data: 'test' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "config.ipcChannel"
+        assert patterns[0]["channel_type"] == "variable"
+
+    def test_literal_channel_has_literal_type(self) -> None:
+        """Verifies literal channels have channel_type='literal'."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcRenderer.send('user-login', { user: 'test' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "user-login"
+        assert patterns[0]["channel_type"] == "literal"
+
+    def test_variable_channel_linking(self, tmp_path: Path) -> None:
+        """Links variable channels when using same variable name."""
+        from hypergumbo.linkers.ipc import link_ipc
+
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+const OPEN_CHANNEL = 'open-file';
+ipcRenderer.send(OPEN_CHANNEL, { path: '/tmp/test.txt' });
+""")
+
+        main = tmp_path / "main.js"
+        main.write_text("""
+const OPEN_CHANNEL = 'open-file';
+ipcMain.on(OPEN_CHANNEL, (event, data) => {
+    console.log('Opening:', data.path);
+});
+""")
+
+        result = link_ipc(tmp_path)
+
+        assert len(result.edges) >= 1
+        # Find edges between variable-matched patterns
+        var_edges = [e for e in result.edges if e.evidence_type == "variable_match"]
+        assert len(var_edges) >= 1
+        assert var_edges[0].confidence == 0.65  # Lower confidence for variable match
+        assert var_edges[0].meta.get("channel_type") == "variable"
+
+    def test_symbol_has_channel_type_metadata(self, tmp_path: Path) -> None:
+        """Symbols include channel_type in metadata."""
+        from hypergumbo.linkers.ipc import link_ipc
+
+        js_file = tmp_path / "test.js"
+        js_file.write_text("""
+ipcRenderer.send(CHANNEL_VAR, { data: 'test' });
+ipcMain.on(CHANNEL_VAR, handler);
+""")
+
+        result = link_ipc(tmp_path)
+
+        # Should have both sender and receiver symbols
+        assert len(result.symbols) >= 1
+        for sym in result.symbols:
+            assert "channel_type" in sym.meta
+            assert sym.meta["channel_type"] == "variable"
+
+    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path) -> None:
+        """Literal channel doesn't match different variable name."""
+        from hypergumbo.linkers.ipc import link_ipc
+
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+ipcRenderer.send('open-file', { path: '/tmp/test.txt' });
+""")
+
+        main = tmp_path / "main.js"
+        main.write_text("""
+const CHANNEL = 'open-file';  // Same value, different identifier
+ipcMain.on(CHANNEL, handler);
+""")
+
+        result = link_ipc(tmp_path)
+
+        # No edges: literal 'open-file' != variable 'CHANNEL'
+        assert len(result.edges) == 0

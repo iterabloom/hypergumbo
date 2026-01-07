@@ -7,7 +7,9 @@ Detected Patterns
 -----------------
 Socket.io (JavaScript):
 - socket.emit('event', data) -> message_send
+- socket.emit(eventVar, data) -> message_send (variable event)
 - socket.on('event', handler) -> message_receive
+- socket.on(eventVar, handler) -> message_receive (variable event)
 - io.on('connection', handler) -> websocket_endpoint
 
 Native WebSocket API (JavaScript):
@@ -22,6 +24,7 @@ ws (Node.js package):
 Django Channels (Python):
 - @app.websocket_route('/path') -> websocket_endpoint
 - channel_layer.send('channel', message) -> message_send
+- channel_layer.send(channel_var, message) -> message_send (variable channel)
 - channel_layer.group_send('group', message) -> message_send
 - async for message in websocket.receive() -> message_receive
 - await self.send(message) -> message_send
@@ -32,18 +35,29 @@ FastAPI WebSocket (Python):
 - websocket.send_json() / send_text() -> message_send
 - websocket.accept() -> websocket_endpoint
 
+Event Detection Strategy
+------------------------
+Patterns can use either string literals or variables for event names:
+- Literal: socket.emit('user-login', data) -> exact event 'user-login'
+- Variable: socket.emit(EVENT_NAME, data) -> variable name 'EVENT_NAME'
+
+For variable-based events, we use heuristic matching:
+- If emitter uses `LOGIN_EVENT` and listener uses `LOGIN_EVENT`, link them
+- Confidence is lower for variable-based matches (0.65 vs 0.85)
+
 How It Works
 ------------
 1. Find all JavaScript/TypeScript/Python files in the repository
 2. Scan each file for WebSocket patterns using regex
-3. Extract event names from emit/on patterns
-4. Create edges linking files with matching events
+3. Extract event names (literals) or variable names from patterns
+4. Create edges linking files with matching events/variables
 5. Create websocket_endpoint symbols for connection handlers
 
 Why This Design
 ---------------
 - Regex-based detection is fast and doesn't require tree-sitter
 - Event-based matching enables cross-file WebSocket graph construction
+- Variable detection catches patterns missed by literal-only matching
 - Separate linker keeps language analyzers focused on their language
 - Consistent with IPC linker pattern for uniformity
 """
@@ -67,10 +81,11 @@ class WebSocketPattern:
     """Represents a detected WebSocket pattern."""
 
     type: str  # 'send', 'receive', or 'endpoint'
-    event: str  # Event name (e.g., 'connection', 'message', custom event)
+    event: str  # Event name (literal value or variable name)
     line: int  # Line number in source
     file_path: str  # Source file path
-    pattern_type: str  # 'socketio', 'native', 'ws'
+    pattern_type: str  # 'socketio', 'native', 'ws', 'fastapi', 'django_channels'
+    event_type: str = "literal"  # 'literal' or 'variable'
 
 
 @dataclass
@@ -82,17 +97,52 @@ class WebSocketLinkResult:
     run: AnalysisRun | None = None
 
 
+# ============================================================================
+# Common patterns for variable detection (shared with MQ/IPC linker pattern)
+# ============================================================================
+
+# Identifier pattern: matches variable names, constants, and simple attribute access
+_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+
+# Event argument pattern: matches either a string literal OR an identifier
+# Group 1: string literal content (if literal)
+# Group 2: identifier/variable name (if variable)
+_EVENT_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+
+
+def _extract_event_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
+    """Extract event and event_type from a regex match.
+
+    Args:
+        match: Regex match object
+        literal_group: Group index for string literal content
+        var_group: Group index for variable name
+
+    Returns:
+        tuple of (event_value, event_type) where event_type is 'literal' or 'variable'
+    """
+    literal = match.group(literal_group)
+    variable = match.group(var_group)
+
+    if literal:
+        return (literal, "literal")
+    elif variable:
+        return (variable, "variable")
+    else:
+        return ("unknown", "variable")  # pragma: no cover
+
+
 # Regex patterns for WebSocket detection
 
-# Socket.io emit patterns (message_send)
+# Socket.io emit patterns (message_send) - matches both literals and variables
 SOCKETIO_EMIT_PATTERN = re.compile(
-    r"(?:socket|io)\s*\.\s*emit\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:socket|io)\s*\.\s*emit\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
-# Socket.io on patterns (message_receive)
+# Socket.io on patterns (message_receive) - matches both literals and variables
 SOCKETIO_ON_PATTERN = re.compile(
-    r"(?:socket|io)\s*\.\s*on\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:socket|io)\s*\.\s*on\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
@@ -102,9 +152,9 @@ NATIVE_WEBSOCKET_PATTERN = re.compile(
     re.MULTILINE,
 )
 
-# ws/wss.on patterns (Node.js ws package)
+# ws/wss.on patterns (Node.js ws package) - matches both literals and variables
 WS_ON_PATTERN = re.compile(
-    r"(?:ws|wss|server)\s*\.\s*on\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:ws|wss|server)\s*\.\s*on\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
@@ -142,15 +192,15 @@ PYTHON_WEBSOCKET_ACCEPT = re.compile(
     re.MULTILINE,
 )
 
-# Django Channels: channel_layer.send('channel', message)
+# Django Channels: channel_layer.send('channel', message) - matches both literals and variables
 DJANGO_CHANNEL_SEND = re.compile(
-    r"channel_layer\s*\.\s*(?:send|group_send)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"channel_layer\s*\.\s*(?:send|group_send)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
-# Django Channels: async_to_sync(channel_layer.send)
+# Django Channels: async_to_sync(channel_layer.send) - matches both literals and variables
 DJANGO_ASYNC_SEND = re.compile(
-    r"async_to_sync\s*\(\s*channel_layer\s*\.\s*(?:send|group_send)\s*\)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"async_to_sync\s*\(\s*channel_layer\s*\.\s*(?:send|group_send)\s*\)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
@@ -216,29 +266,33 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
         return len(lines)
 
     # Socket.io emit (message_send)
+    # Groups: 1=literal event, 2=variable event
     for match in SOCKETIO_EMIT_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match, 1, 2)
         patterns.append(WebSocketPattern(
             type="send",
             event=event_name,
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="socketio",
+            event_type=event_type,
         ))
 
     # Socket.io on (message_receive)
+    # Groups: 1=literal event, 2=variable event
     for match in SOCKETIO_ON_PATTERN.finditer(content):
-        event_name = match.group(1)
-        pattern_type = "endpoint" if event_name == "connection" else "receive"
+        event_name, event_type = _extract_event_from_match(match, 1, 2)
+        ws_type = "endpoint" if event_name == "connection" else "receive"
         patterns.append(WebSocketPattern(
-            type=pattern_type,
+            type=ws_type,
             event=event_name,
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="socketio",
+            event_type=event_type,
         ))
 
-    # Native WebSocket constructor
+    # Native WebSocket constructor (still literal-only for URLs)
     for match in NATIVE_WEBSOCKET_PATTERN.finditer(content):
         url = match.group(1)
         patterns.append(WebSocketPattern(
@@ -247,21 +301,24 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="native",
+            event_type="literal",
         ))
 
     # ws package on patterns
+    # Groups: 1=literal event, 2=variable event
     for match in WS_ON_PATTERN.finditer(content):
-        event_name = match.group(1)
-        pattern_type = "endpoint" if event_name == "connection" else "receive"
+        event_name, event_type = _extract_event_from_match(match, 1, 2)
+        ws_type = "endpoint" if event_name == "connection" else "receive"
         patterns.append(WebSocketPattern(
-            type=pattern_type,
+            type=ws_type,
             event=event_name,
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="ws",
+            event_type=event_type,
         ))
 
-    # WebSocket send
+    # WebSocket send (no specific event, generic message)
     for match in WEBSOCKET_SEND_PATTERN.finditer(content):
         patterns.append(WebSocketPattern(
             type="send",
@@ -269,6 +326,7 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="native",
+            event_type="literal",
         ))
 
     return patterns
@@ -296,7 +354,7 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
                 return i
         return len(lines)
 
-    # FastAPI @app.websocket('/path') decorator
+    # FastAPI @app.websocket('/path') decorator (literal paths only)
     for match in FASTAPI_WEBSOCKET_DECORATOR.finditer(content):
         path = match.group(1)
         patterns.append(WebSocketPattern(
@@ -305,9 +363,10 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="fastapi",
+            event_type="literal",
         ))
 
-    # FastAPI websocket.receive_*()
+    # FastAPI websocket.receive_*() (generic message, literal)
     for match in PYTHON_WEBSOCKET_RECEIVE.finditer(content):
         patterns.append(WebSocketPattern(
             type="receive",
@@ -315,9 +374,10 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="fastapi",
+            event_type="literal",
         ))
 
-    # FastAPI websocket.send_*()
+    # FastAPI websocket.send_*() (generic message, literal)
     for match in PYTHON_WEBSOCKET_SEND.finditer(content):
         patterns.append(WebSocketPattern(
             type="send",
@@ -325,6 +385,7 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="fastapi",
+            event_type="literal",
         ))
 
     # FastAPI websocket.accept()
@@ -335,31 +396,36 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="fastapi",
+            event_type="literal",
         ))
 
     # Django Channels: channel_layer.send/group_send
+    # Groups: 1=literal channel, 2=variable channel
     for match in DJANGO_CHANNEL_SEND.finditer(content):
-        channel = match.group(1)
+        channel, event_type = _extract_event_from_match(match, 1, 2)
         patterns.append(WebSocketPattern(
             type="send",
             event=channel,
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="django_channels",
+            event_type=event_type,
         ))
 
     # Django Channels: async_to_sync(channel_layer.send)
+    # Groups: 1=literal channel, 2=variable channel
     for match in DJANGO_ASYNC_SEND.finditer(content):
-        channel = match.group(1)
+        channel, event_type = _extract_event_from_match(match, 1, 2)
         patterns.append(WebSocketPattern(
             type="send",
             event=channel,
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="django_channels",
+            event_type=event_type,
         ))
 
-    # Django Channels: WebsocketConsumer class
+    # Django Channels: WebsocketConsumer class (literal class names)
     for match in DJANGO_WEBSOCKET_CONSUMER.finditer(content):
         class_name = match.group(1)
         patterns.append(WebSocketPattern(
@@ -368,6 +434,7 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="django_channels",
+            event_type="literal",
         ))
 
     return patterns
@@ -438,7 +505,10 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             span=Span(start_line=ep.line, end_line=ep.line, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            meta={"pattern_type": ep.pattern_type},
+            meta={
+                "pattern_type": ep.pattern_type,
+                "event_type": ep.event_type,
+            },
         ))
 
     # Collect all files involved in WebSocket messaging for file symbol creation
@@ -475,16 +545,27 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                 for recv_pat in receives[event]:
                     # Don't link same file to itself for simple patterns
                     if send_pat.file_path != recv_pat.file_path:
-                        edges.append(Edge.create(
+                        # Confidence depends on whether events are literal or variable
+                        is_variable_match = (
+                            send_pat.event_type == "variable" or recv_pat.event_type == "variable"
+                        )
+                        confidence = 0.65 if is_variable_match else 0.85
+                        evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
+                        edge = Edge.create(
                             src=_make_file_id(send_pat.file_path),
                             dst=_make_file_id(recv_pat.file_path),
                             edge_type="websocket_message",
                             line=send_pat.line,
-                            evidence_type=f"{send_pat.pattern_type}_emit",
-                            confidence=0.85,
+                            evidence_type=evidence_type,
+                            confidence=confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                        ))
+                        )
+                        edge.meta = {
+                            "event": event,
+                            "event_type": "variable" if is_variable_match else "literal",
+                        }
+                        edges.append(edge)
 
     # Create edges for endpoint connections
     for ep in endpoints:
