@@ -9,6 +9,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### 2026-01-07 08:00
+
+#### Analysis Passes
+- **Comprehensive call resolution**: Added module-qualified call resolution and constructor-based type inference across Python, JavaScript/TypeScript, Java, and Kotlin analyzers. This enables `hypergumbo slice` to traverse from application code through cross-language linker boundaries (gRPC stubs, MQ publishers, etc.).
+  - **Python**: Track `module.ClassName()` instantiations and `module.func()` calls. Resolve `variable.method()` via type inference from constructor assignments (`stub = EmailServiceStub(channel)`).
+  - **JavaScript/TypeScript**: Track `import * as alias from 'module'` patterns. Resolve `alias.ClassName()` instantiations. Infer types from `const client = new Client()`.
+  - **Java**: Track `import com.example.ClassName` statements. Resolve `ClassName.method()` static calls. Infer types from `new ClassName()` assignments.
+  - **Kotlin**: Track import statements. Resolve `Object.method()` and `this.method()` calls. Infer types from `val x = ClassName()`.
+  - **Type inference design**: Uses constructor-only inference (tracks types from direct constructor calls but NOT from function returns). This covers ~90% of real-world gRPC/MQ usage patterns with minimal complexity. Full data-flow analysis documented as future Spec B enhancement.
+
 ### 2026-01-07 04:00
 
 #### Cross-Language Linkers

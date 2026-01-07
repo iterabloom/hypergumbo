@@ -1987,3 +1987,348 @@ class TestModulePseudoNode:
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
         assert len(modules) == 0
+
+
+class TestModuleQualifiedCalls:
+    """Tests for module-qualified call resolution (module.func(), module.Class())."""
+
+    def test_module_qualified_function_call(self, tmp_path: Path) -> None:
+        """Module-qualified function calls (module.func()) should emit calls edges."""
+        # Create a utility module
+        utils_file = tmp_path / "utils.py"
+        utils_file.write_text(
+            "def helper():\n"
+            "    pass\n"
+        )
+
+        # Create main module that uses 'import utils' and calls utils.helper()
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import utils\n"
+            "\n"
+            "def run():\n"
+            "    utils.helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        assert len(call_edges) >= 1, "Expected at least one call edge"
+
+        # Verify the call edge: run -> helper
+        run_helper_edge = next(
+            (e for e in call_edges if "run" in e["src"] and "helper" in e["dst"]),
+            None
+        )
+        assert run_helper_edge is not None, "Expected call edge from run to helper"
+        assert "utils.py" in run_helper_edge["dst"]
+
+    def test_module_qualified_class_instantiation(self, tmp_path: Path) -> None:
+        """Module-qualified instantiation (module.Class()) should emit instantiates edges."""
+        # Create a module with a class
+        models_file = tmp_path / "models.py"
+        models_file.write_text(
+            "class User:\n"
+            "    def __init__(self):\n"
+            "        pass\n"
+        )
+
+        # Create main module that uses 'import models' and instantiates models.User()
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import models\n"
+            "\n"
+            "def create_user():\n"
+            "    user = models.User()\n"
+            "    return user\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Find instantiates edges
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        assert len(inst_edges) >= 1, "Expected at least one instantiates edge"
+
+        # Verify the instantiates edge: create_user -> User
+        create_user_edge = next(
+            (e for e in inst_edges if "create_user" in e["src"] and "User" in e["dst"]),
+            None
+        )
+        assert create_user_edge is not None, "Expected instantiates edge from create_user to User"
+        assert "models.py" in create_user_edge["dst"]
+        assert create_user_edge["meta"]["evidence_type"] == "ast_new"
+
+    def test_aliased_module_import(self, tmp_path: Path) -> None:
+        """Aliased module imports (import X as Y) should resolve calls correctly."""
+        # Create a utility module
+        utils_file = tmp_path / "utils.py"
+        utils_file.write_text(
+            "def helper():\n"
+            "    pass\n"
+        )
+
+        # Create main module with aliased import
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import utils as u\n"
+            "\n"
+            "def run():\n"
+            "    u.helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        run_helper_edge = next(
+            (e for e in call_edges if "run" in e["src"] and "helper" in e["dst"]),
+            None
+        )
+        assert run_helper_edge is not None, "Expected call edge from run to helper via alias"
+
+
+class TestVariableMethodCalls:
+    """Tests for variable method call resolution with type inference."""
+
+    def test_variable_method_call_with_type_inference(self, tmp_path: Path) -> None:
+        """Variable method calls (stub.method()) should resolve using constructor type."""
+        # Create a client class with a method
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "class ServiceClient:\n"
+            "    def __init__(self):\n"
+            "        pass\n"
+            "\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+        )
+
+        # Create main module that instantiates and calls method
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import ServiceClient\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = ServiceClient()\n"
+            "    stub.send_request()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have both instantiates and calls edges
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Verify instantiates edge
+        inst_edge = next(
+            (e for e in inst_edges if "make_request" in e["src"] and "ServiceClient" in e["dst"]),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for ServiceClient"
+
+        # Verify calls edge from stub.send_request() to ServiceClient.send_request
+        method_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "send_request" in e["dst"]),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for send_request method"
+        assert "client.py" in method_edge["dst"]
+
+    def test_module_qualified_instantiation_with_method_call(self, tmp_path: Path) -> None:
+        """Module.Class() instantiation followed by method call should resolve."""
+        # Create a service module with a stub class
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class EmailServiceStub:\n"
+            "    def __init__(self, channel):\n"
+            "        pass\n"
+            "\n"
+            "    def SendEmail(self, request):\n"
+            "        pass\n"
+        )
+
+        # Create main module using import service pattern
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import service\n"
+            "\n"
+            "def send_confirmation():\n"
+            "    stub = service.EmailServiceStub(None)\n"
+            "    stub.SendEmail({})\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Verify instantiates edge
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        inst_edge = next(
+            (e for e in inst_edges if "send_confirmation" in e["src"] and "EmailServiceStub" in e["dst"]),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for EmailServiceStub"
+
+        # Verify calls edge for SendEmail
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        method_edge = next(
+            (e for e in call_edges if "send_confirmation" in e["src"] and "SendEmail" in e["dst"]),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for SendEmail method"
+
+    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
+        """Type inference only works for constructor assignments, not function returns."""
+        # Create a client class
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "class ServiceClient:\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_client():\n"
+            "    return ServiceClient()\n"
+        )
+
+        # Create main module using function return (NOT tracked)
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import get_client\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = get_client()  # NOT tracked - function return\n"
+            "    stub.send_request()  # Should NOT be resolved\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have a call edge for get_client()
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        get_client_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "get_client" in e["dst"]),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for get_client"
+
+        # Should NOT have a call edge for send_request (type not tracked from function return)
+        send_request_edge = next(
+            (e for e in call_edges if "send_request" in e["dst"]),
+            None
+        )
+        assert send_request_edge is None, "Should NOT resolve stub.send_request() from function return"
+
+    def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
+        """Module-level code with module.func() calls should emit edges from <module> node."""
+        # Create a utility module
+        utils_file = tmp_path / "utils.py"
+        utils_file.write_text(
+            "def configure():\n"
+            "    pass\n"
+        )
+
+        # Create a script that calls utils.configure() at module level
+        script_file = tmp_path / "script.py"
+        script_file.write_text(
+            "import utils\n"
+            "\n"
+            "utils.configure()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have a <module> pseudo-node
+        module_nodes = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(module_nodes) == 1
+        assert module_nodes[0]["name"] == "<module:script.py>"
+
+        # Should have a call edge from <module:script.py> to utils.configure
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        module_call_edge = next(
+            (e for e in call_edges if "<module:script.py>" in e["src"] and "configure" in e["dst"]),
+            None
+        )
+        assert module_call_edge is not None, "Expected call edge from <module> to configure"
+
+    def test_local_class_instantiation_with_method_call(self, tmp_path: Path) -> None:
+        """Local class instantiation followed by method call should resolve."""
+        # Single file with class and usage in same file
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "class LocalClient:\n"
+            "    def process(self):\n"
+            "        pass\n"
+            "\n"
+            "def run():\n"
+            "    client = LocalClient()\n"
+            "    client.process()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have instantiates edge
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        inst_edge = next(
+            (e for e in inst_edges if "run" in e["src"] and "LocalClient" in e["dst"]),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for LocalClient"
+
+        # Should have calls edge for process method
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        method_edge = next(
+            (e for e in call_edges if "run" in e["src"] and "process" in e["dst"]),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for process method"
+
+    def test_unresolved_variable_method_call(self, tmp_path: Path) -> None:
+        """Unresolved variable method calls should not emit edges."""
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "def run(external_client):\n"
+            "    # external_client type is unknown, can't be resolved\n"
+            "    external_client.unknown_method()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have no calls edges (method call can't be resolved)
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        assert len(call_edges) == 0, "Should not have calls edges for unresolved variable"
+
+    def test_unresolved_constructor_no_type_tracking(self, tmp_path: Path) -> None:
+        """Unresolved constructor calls should not track variable type."""
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "def run():\n"
+            "    # unknown_factory is not defined - type can't be tracked\n"
+            "    stub = unknown_factory()\n"
+            "    stub.do_something()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have no edges (neither instantiates nor calls)
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        assert len(call_edges) == 0, "Should not have calls edges for unresolved constructor"
+        assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"

@@ -362,7 +362,7 @@ class TestKotlinFileReadErrors:
         kt_file.write_text("fun test() {}")
 
         with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(kt_file, parser, {}, {}, run)
+            result = _extract_edges_from_file(kt_file, parser, {}, {}, {}, run)
 
         assert result == []
 
@@ -418,3 +418,199 @@ class TestKotlinHelperFunctions:
 
         result = _find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
+
+
+class TestKotlinObjectMethodCalls:
+    """Tests for Object.method() call resolution."""
+
+    def test_object_method_call_resolved(self, tmp_path: Path) -> None:
+        """Object method calls are resolved to target symbols."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Service.kt"
+        kt_file.write_text("""
+object Helper {
+    fun greet() {
+        println("Hello")
+    }
+}
+
+fun main() {
+    Helper.greet()
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        assert result.run is not None
+
+        # Find symbols
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        greet_method = next(
+            (s for s in result.symbols if "greet" in s.name), None
+        )
+
+        assert main_func is not None
+        assert greet_method is not None
+
+        # Should have edge from main to Helper.greet
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == greet_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None
+        assert call_edge.evidence_type == "ast_call_static"
+        assert call_edge.confidence == 0.95
+
+
+class TestKotlinVariableTypeInference:
+    """Tests for type inference from constructor assignments."""
+
+    def test_variable_method_call_resolved_via_type_inference(
+        self, tmp_path: Path
+    ) -> None:
+        """Variable method calls resolved via constructor-based type inference."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "App.kt"
+        kt_file.write_text("""
+class Helper {
+    fun doWork() {
+        println("working")
+    }
+}
+
+fun main() {
+    val h = Helper()
+    h.doWork()
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        assert result.run is not None
+
+        # Find symbols
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        dowork_method = next(
+            (s for s in result.symbols if "doWork" in s.name), None
+        )
+
+        assert main_func is not None
+        assert dowork_method is not None
+
+        # Should have edge from main to Helper.doWork via type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == dowork_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None
+        assert call_edge.evidence_type == "ast_call_type_inferred"
+        assert call_edge.confidence == 0.85
+
+
+class TestKotlinThisMethodCalls:
+    """Tests for this.method() call resolution."""
+
+    def test_this_method_call_resolved(self, tmp_path: Path) -> None:
+        """this.method() calls are resolved to enclosing class methods."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Service.kt"
+        kt_file.write_text("""
+class Service {
+    fun helper() {
+        println("helping")
+    }
+
+    fun run() {
+        this.helper()
+    }
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        assert result.run is not None
+
+        # Find symbols
+        run_method = next(
+            (s for s in result.symbols if "run" in s.name), None
+        )
+        helper_method = next(
+            (s for s in result.symbols if "helper" in s.name), None
+        )
+
+        assert run_method is not None
+        assert helper_method is not None
+
+        # Should have edge from Service.run to Service.helper
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == helper_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None
+        assert call_edge.evidence_type == "ast_call_this"
+        assert call_edge.confidence == 0.90
+
+
+class TestKotlinImportExtraction:
+    """Tests for import extraction and tracking."""
+
+    def test_imports_extracted_to_file_analysis(self, tmp_path: Path) -> None:
+        """Import statements are extracted and tracked in FileAnalysis."""
+        from hypergumbo.analyze.kotlin import (
+            _extract_symbols_from_file,
+            is_kotlin_tree_sitter_available,
+        )
+        from hypergumbo.ir import AnalysisRun
+
+        if not is_kotlin_tree_sitter_available():
+            pytest.skip("tree-sitter-kotlin not available")
+
+        import tree_sitter_kotlin
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_kotlin.language())
+        parser = tree_sitter.Parser(lang)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        kt_file = tmp_path / "Main.kt"
+        kt_file.write_text("""
+import com.example.Helper
+import java.io.File
+
+fun main() {
+    println("hello")
+}
+""")
+
+        analysis = _extract_symbols_from_file(kt_file, parser, run)
+
+        # Check imports are extracted
+        assert "Helper" in analysis.imports
+        assert analysis.imports["Helper"] == "com.example.Helper"
+        assert "File" in analysis.imports
+        assert analysis.imports["File"] == "java.io.File"
