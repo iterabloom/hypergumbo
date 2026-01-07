@@ -59,6 +59,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = "message-queue-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -516,3 +517,27 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
     run.files_analyzed = files_scanned
 
     return MessageQueueLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+@register_linker(
+    "message_queue",
+    priority=55,  # Run after core linkers, with other messaging patterns
+    description="Message queue linking (Kafka, RabbitMQ, SQS, Redis pub/sub)",
+)
+def message_queue_linker(ctx: LinkerContext) -> LinkerResult:
+    """Message queue linker for registry-based dispatch.
+
+    This wraps link_message_queues() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_message_queues(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )

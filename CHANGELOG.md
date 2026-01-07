@@ -9,6 +9,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### 2026-01-07 02:00
+
+#### Cross-Language Linkers
+- **Complete linker registry migration**: Migrated all remaining linkers to the `@register_linker` pattern: websocket (priority 50), phoenix_ipc (priority 40), swift_objc (priority 30), message_queue (priority 55), event_sourcing (priority 55), database_query (priority 70). Database query linker uses `LinkerRequirement` to declare dependency on table symbols. Removed ~60 lines of legacy explicit linker calls from cli.py - all linkers now run via `run_all_linkers()`.
+
 ### 2026-01-07 00:30
 
 #### Cross-Language Linkers

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = "swift-objc-linker-v1"
 PASS_VERSION = "1.0.0"
@@ -212,4 +213,28 @@ def link_swift_objc(root: Path) -> SwiftObjCLinkerResult:
         symbols=all_symbols,
         edges=all_edges,
         run=run,
+    )
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+@register_linker(
+    "swift_objc",
+    priority=30,  # Run early, interop bridging is foundational
+    description="Swift/Objective-C bridging (@objc, NSObject, bridging headers)",
+)
+def swift_objc_linker(ctx: LinkerContext) -> LinkerResult:
+    """Swift/Objective-C linker for registry-based dispatch.
+
+    This wraps link_swift_objc() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_swift_objc(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
     )

@@ -71,6 +71,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = "websocket-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -587,4 +588,28 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
         edges=edges,
         symbols=symbols,
         run=run,
+    )
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+@register_linker(
+    "websocket",
+    priority=50,
+    description="WebSocket communication pattern linking (Socket.io, ws, Django Channels)",
+)
+def websocket_linker(ctx: LinkerContext) -> LinkerResult:
+    """WebSocket linker for registry-based dispatch.
+
+    This wraps link_websocket() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_websocket(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
     )

@@ -60,6 +60,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = "event-sourcing-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -569,3 +570,27 @@ def link_events(root: Path) -> EventSourcingLinkResult:
     run.files_analyzed = files_scanned
 
     return EventSourcingLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+@register_linker(
+    "event_sourcing",
+    priority=55,  # Run after core linkers, with other event patterns
+    description="Event sourcing linking (EventEmitter, Django signals, Spring events)",
+)
+def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
+    """Event sourcing linker for registry-based dispatch.
+
+    This wraps link_events() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_events(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )
