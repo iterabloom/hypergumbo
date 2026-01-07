@@ -447,3 +447,207 @@ class TestEventSourcingLinker:
         assert result.symbols == []
         assert result.edges == []
         assert result.run is not None
+
+
+class TestVariableEventPatterns:
+    """Tests for variable event name detection."""
+
+    def test_js_emit_with_variable(self, tmp_path: Path):
+        """Detects emitter.emit(EVENT_NAME) with variable event."""
+        code = dedent('''
+            const EVENT_NAME = 'user:created';
+            emitter.emit(EVENT_NAME, data);
+        ''')
+        file = tmp_path / "events.js"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+
+        publishers = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(publishers) == 1
+        assert publishers[0].event_name == "EVENT_NAME"
+        assert publishers[0].event_type == "variable"
+
+    def test_js_emit_with_literal(self, tmp_path: Path):
+        """Verifies literal event names have event_type='literal'."""
+        code = dedent('''
+            emitter.emit('user:created', data);
+        ''')
+        file = tmp_path / "events.js"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+
+        publishers = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(publishers) == 1
+        assert publishers[0].event_name == "user:created"
+        assert publishers[0].event_type == "literal"
+
+    def test_js_on_with_variable(self, tmp_path: Path):
+        """Detects emitter.on(EVENT_NAME, handler) with variable event."""
+        code = dedent('''
+            const EVENT = 'user:created';
+            emitter.on(EVENT, handleUser);
+        ''')
+        file = tmp_path / "handlers.js"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+
+        subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subscribers) == 1
+        assert subscribers[0].event_name == "EVENT"
+        assert subscribers[0].event_type == "variable"
+
+    def test_js_add_event_listener_with_variable(self, tmp_path: Path):
+        """Detects addEventListener(EVENT, handler) with variable event."""
+        code = dedent('''
+            const CLICK = 'click';
+            button.addEventListener(CLICK, handleClick);
+        ''')
+        file = tmp_path / "dom.js"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+
+        subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subscribers) == 1
+        assert subscribers[0].event_name == "CLICK"
+        assert subscribers[0].event_type == "variable"
+
+    def test_js_dotted_variable(self, tmp_path: Path):
+        """Detects emitter.emit(events.USER_CREATED) with dotted variable."""
+        code = dedent('''
+            emitter.emit(events.USER_CREATED, data);
+        ''')
+        file = tmp_path / "events.js"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+
+        publishers = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(publishers) == 1
+        assert publishers[0].event_name == "events.USER_CREATED"
+        assert publishers[0].event_type == "variable"
+
+    def test_python_event_bus_with_variable(self, tmp_path: Path):
+        """Detects EventBus.publish(EVENT_NAME) with variable event."""
+        code = dedent('''
+            EVENT_NAME = 'user:created'
+            EventBus.publish(EVENT_NAME, data)
+        ''')
+        file = tmp_path / "publisher.py"
+        file.write_text(code)
+        patterns = _scan_python_events(file, code)
+
+        publishers = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(publishers) == 1
+        assert publishers[0].event_name == "EVENT_NAME"
+        assert publishers[0].event_type == "variable"
+
+    def test_python_event_bus_with_literal(self, tmp_path: Path):
+        """Verifies literal event names have event_type='literal'."""
+        code = dedent('''
+            EventBus.publish('user:created', data)
+        ''')
+        file = tmp_path / "publisher.py"
+        file.write_text(code)
+        patterns = _scan_python_events(file, code)
+
+        publishers = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(publishers) == 1
+        assert publishers[0].event_name == "user:created"
+        assert publishers[0].event_type == "literal"
+
+    def test_python_subscribe_with_variable(self, tmp_path: Path):
+        """Detects EventBus.subscribe(EVENT) with variable event."""
+        code = dedent('''
+            EventBus.subscribe(USER_CREATED, handler)
+        ''')
+        file = tmp_path / "subscriber.py"
+        file.write_text(code)
+        patterns = _scan_python_events(file, code)
+
+        subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subscribers) == 1
+        assert subscribers[0].event_name == "USER_CREATED"
+        assert subscribers[0].event_type == "variable"
+
+    def test_python_decorator_with_variable(self, tmp_path: Path):
+        """Detects @on_event(EVENT) with variable event."""
+        code = dedent('''
+            @on_event(USER_CREATED)
+            def handle(event):
+                pass
+        ''')
+        file = tmp_path / "handlers.py"
+        file.write_text(code)
+        patterns = _scan_python_events(file, code)
+
+        subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subscribers) == 1
+        assert subscribers[0].event_name == "USER_CREATED"
+        assert subscribers[0].event_type == "variable"
+
+    def test_django_signals_always_variable(self, tmp_path: Path):
+        """Django signals use identifiers, so always event_type='variable'."""
+        code = dedent('''
+            post_save.send(sender=User)
+        ''')
+        file = tmp_path / "signals.py"
+        file.write_text(code)
+        patterns = _scan_python_events(file, code)
+
+        publishers = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(publishers) == 1
+        assert publishers[0].event_name == "post_save"
+        assert publishers[0].event_type == "variable"
+
+    def test_symbol_includes_event_type(self, tmp_path: Path):
+        """Verifies event_type is included in symbol meta."""
+        file = tmp_path / "events.js"
+        file.write_text("emitter.emit(EVENT_NAME, data);")
+
+        result = link_events(tmp_path)
+
+        assert len(result.symbols) == 1
+        assert result.symbols[0].meta["event_type"] == "variable"
+
+    def test_edge_includes_event_type(self, tmp_path: Path):
+        """Verifies event types are included in edge meta."""
+        pub = tmp_path / "publisher.js"
+        pub.write_text("emitter.emit(EVENT, data);")
+
+        sub = tmp_path / "subscriber.js"
+        sub.write_text("emitter.on(EVENT, handler);")
+
+        result = link_events(tmp_path)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["publisher_event_type"] == "variable"
+        assert result.edges[0].meta["subscriber_event_type"] == "variable"
+        assert result.edges[0].confidence == 0.65
+
+    def test_literal_event_higher_confidence(self, tmp_path: Path):
+        """Verifies literal events have higher confidence than variables."""
+        pub = tmp_path / "publisher.js"
+        pub.write_text("emitter.emit('user:created', data);")
+
+        sub = tmp_path / "subscriber.js"
+        sub.write_text("emitter.on('user:created', handler);")
+
+        result = link_events(tmp_path)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["publisher_event_type"] == "literal"
+        assert result.edges[0].meta["subscriber_event_type"] == "literal"
+        assert result.edges[0].confidence == 0.85
+
+    def test_mixed_literal_variable_lower_confidence(self, tmp_path: Path):
+        """Variable on either side results in lower confidence."""
+        pub = tmp_path / "publisher.js"
+        pub.write_text("emitter.emit('myevent', data);")
+
+        sub = tmp_path / "subscriber.js"
+        sub.write_text("emitter.on(MYEVENT, handler);")
+
+        result = link_events(tmp_path)
+
+        assert len(result.edges) == 1
+        # Subscriber uses variable, so lower confidence
+        assert result.edges[0].confidence == 0.65
