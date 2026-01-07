@@ -42,14 +42,14 @@ from .analyze.all_analyzers import run_all_analyzers
 from .analyze.py import analyze_python  # For cmd_slice fallback
 from .analyze.html import analyze_html  # For cmd_slice fallback
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
-from .linkers.dependency import link_dependencies
-from .linkers.graphql import link_graphql
-from .linkers.graphql_resolver import link_graphql_resolvers
-from .linkers.http import link_http
 from .linkers.phoenix_ipc import link_phoenix_ipc
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo.linkers.dependency as _dependency_linker  # noqa: F401
+import hypergumbo.linkers.graphql as _graphql_linker  # noqa: F401
+import hypergumbo.linkers.graphql_resolver as _graphql_resolver_linker  # noqa: F401
 import hypergumbo.linkers.grpc as _grpc_linker  # noqa: F401
+import hypergumbo.linkers.http as _http_linker  # noqa: F401
 import hypergumbo.linkers.ipc as _ipc_linker  # noqa: F401
 import hypergumbo.linkers.jni as _jni_linker  # noqa: F401
 from .linkers.swift_objc import link_swift_objc
@@ -1512,41 +1512,8 @@ def run_behavior_map(
         all_symbols.extend(mq_result.symbols)
         all_edges.extend(mq_result.edges)
 
-    # HTTP linker: connect fetch/requests calls to route handlers
-    # Include both kind="route" (Ruby/Go/Rust) and symbols with meta.route_path (Python/JS)
-    route_symbols = [
-        s for s in all_symbols
-        if s.kind == "route" or (s.meta and s.meta.get("route_path"))
-    ]
-    http_result = link_http(repo_root, route_symbols)
-    if http_result.run is not None:
-        analysis_runs.append(http_result.run.to_dict())
-        all_symbols.extend(http_result.symbols)
-        all_edges.extend(http_result.edges)
-
-    # GraphQL linker: connect client queries to schema definitions
-    # Get GraphQL operation symbols (query, mutation, subscription)
-    graphql_ops = [
-        s for s in all_symbols
-        if s.language == "graphql" and s.kind in ("query", "mutation", "subscription", "operation")
-    ]
-    graphql_link_result = link_graphql(repo_root, graphql_ops)
-    if graphql_link_result.run is not None:
-        analysis_runs.append(graphql_link_result.run.to_dict())
-        all_symbols.extend(graphql_link_result.symbols)
-        all_edges.extend(graphql_link_result.edges)
-
-    # GraphQL resolver linker: connect resolver implementations to schema types
-    # Get GraphQL type and field symbols for linking
-    graphql_schema = [
-        s for s in all_symbols
-        if s.language == "graphql" and s.kind in ("type", "field", "interface")
-    ]
-    resolver_result = link_graphql_resolvers(repo_root, graphql_schema)
-    if resolver_result.run is not None:
-        analysis_runs.append(resolver_result.run.to_dict())
-        all_symbols.extend(resolver_result.symbols)
-        all_edges.extend(resolver_result.edges)
+    # Note: HTTP, GraphQL, and GraphQL resolver linkers have been migrated to @register_linker.
+    # They run automatically via run_all_linkers() above.
 
     # Database query linker: connect SQL queries in code to table definitions
     # Get SQL table symbols for linking
@@ -1567,17 +1534,8 @@ def run_behavior_map(
         all_symbols.extend(event_result.symbols)
         all_edges.extend(event_result.edges)
 
-    # Dependency linker: connect import statements to manifest declarations
-    # Get TOML dependency symbols for linking
-    toml_symbols = [s for s in all_symbols if s.language == "toml"]
-    dep_link_result = link_dependencies(
-        toml_symbols=toml_symbols,
-        code_edges=all_edges,
-        code_symbols=all_symbols,
-    )
-    if dep_link_result.run is not None:
-        analysis_runs.append(dep_link_result.run.to_dict())
-        all_edges.extend(dep_link_result.edges)
+    # Note: Dependency linker has been migrated to @register_linker.
+    # It runs automatically via run_all_linkers() above.
 
     # Filter out test files if requested
     if exclude_tests:
