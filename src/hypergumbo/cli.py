@@ -45,12 +45,13 @@ from .catalog import get_default_catalog, is_available, suggest_passes_for_langu
 from .linkers.dependency import link_dependencies
 from .linkers.graphql import link_graphql
 from .linkers.graphql_resolver import link_graphql_resolvers
-from .linkers.grpc import link_grpc
 from .linkers.http import link_http
-from .linkers.ipc import link_ipc
-from .linkers.jni import link_jni
 from .linkers.phoenix_ipc import link_phoenix_ipc
 from .linkers.registry import LinkerContext, run_all_linkers
+# Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo.linkers.grpc as _grpc_linker  # noqa: F401
+import hypergumbo.linkers.ipc as _ipc_linker  # noqa: F401
+import hypergumbo.linkers.jni as _jni_linker  # noqa: F401
 from .linkers.swift_objc import link_swift_objc
 from .linkers.websocket import link_websocket
 from .linkers.message_queue import link_message_queues
@@ -1454,10 +1455,6 @@ def run_behavior_map(
         repo_root, max_files=max_files
     )
 
-    # Extract captured symbols for linkers (JNI needs c_symbols and java_symbols)
-    c_symbols = captured_symbols.get("c", [])
-    java_symbols = captured_symbols.get("java", [])
-
     # Run cross-language linkers
     #
     # Linkers are being migrated to a registry pattern (like analyzers).
@@ -1475,29 +1472,15 @@ def run_behavior_map(
         captured_symbols=captured_symbols,
     )
     for _linker_name, linker_result in run_all_linkers(linker_ctx):
-        # pragma: no cover - loop body not exercised until linkers are migrated
-        if linker_result.run is not None:  # pragma: no cover
-            analysis_runs.append(linker_result.run.to_dict())  # pragma: no cover
-        all_symbols.extend(linker_result.symbols)  # pragma: no cover
-        all_edges.extend(linker_result.edges)  # pragma: no cover
+        if linker_result.run is not None:
+            analysis_runs.append(linker_result.run.to_dict())
+        all_symbols.extend(linker_result.symbols)
+        all_edges.extend(linker_result.edges)
 
     # --- Legacy explicit linker calls (pending migration to registry) ---
-    # These linkers will be migrated one-by-one to use @register_linker.
+    # JNI, gRPC, and IPC linkers have been migrated to @register_linker.
+    # The remaining linkers below will be migrated one-by-one.
     # Until then, they continue to work via direct function calls.
-
-    # JNI linker: connect Java native methods to C implementations
-    if java_symbols and c_symbols:
-        jni_result = link_jni(java_symbols, c_symbols)
-        if jni_result.run is not None:
-            analysis_runs.append(jni_result.run.to_dict())
-            all_edges.extend(jni_result.edges)
-
-    # IPC linker: detect Electron IPC, postMessage, Web Workers
-    ipc_result = link_ipc(repo_root)
-    if ipc_result.run is not None:
-        analysis_runs.append(ipc_result.run.to_dict())
-        all_symbols.extend(ipc_result.symbols)
-        all_edges.extend(ipc_result.edges)
 
     # WebSocket linker: detect Socket.io, native WebSocket, ws package patterns
     ws_result = link_websocket(repo_root)
@@ -1520,12 +1503,7 @@ def run_behavior_map(
         all_symbols.extend(swift_objc_result.symbols)
         all_edges.extend(swift_objc_result.edges)
 
-    # gRPC linker: detect gRPC service definitions, stubs, and servers
-    grpc_result = link_grpc(repo_root)
-    if grpc_result.run is not None:
-        analysis_runs.append(grpc_result.run.to_dict())
-        all_symbols.extend(grpc_result.symbols)
-        all_edges.extend(grpc_result.edges)
+    # Note: gRPC linker has been migrated to @register_linker (runs above)
 
     # Message queue linker: detect Kafka, RabbitMQ, SQS, Redis Pub/Sub patterns
     mq_result = link_message_queues(repo_root)

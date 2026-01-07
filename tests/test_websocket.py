@@ -997,3 +997,143 @@ await websocket.send_json(data)
         (tmp_path / "consumer2.py").write_text("await websocket.receive_json()")
         result = link_websocket(tmp_path)
         assert result.run.files_analyzed >= 2
+
+
+class TestVariableEventPatterns:
+    """Tests for variable-based event detection."""
+
+    def test_detect_variable_emit_event(self, tmp_path: Path) -> None:
+        """Detects socket.emit with variable event name."""
+        from hypergumbo.linkers.websocket import _detect_patterns
+
+        js_file = tmp_path / "sender.js"
+        js_file.write_text("""
+const EVENT_NAME = 'user-login';
+socket.emit(EVENT_NAME, { user: 'test' });
+""")
+        patterns = _detect_patterns(js_file)
+
+        assert len(patterns) == 1
+        assert patterns[0].event == "EVENT_NAME"
+        assert patterns[0].event_type == "variable"
+
+    def test_detect_variable_on_event(self, tmp_path: Path) -> None:
+        """Detects socket.on with variable event name."""
+        from hypergumbo.linkers.websocket import _detect_patterns
+
+        js_file = tmp_path / "receiver.js"
+        js_file.write_text("""
+const LOGIN_EVENT = 'user-login';
+socket.on(LOGIN_EVENT, (data) => {
+    console.log('User logged in:', data);
+});
+""")
+        patterns = _detect_patterns(js_file)
+
+        assert len(patterns) == 1
+        assert patterns[0].event == "LOGIN_EVENT"
+        assert patterns[0].event_type == "variable"
+
+    def test_detect_attribute_access_event(self, tmp_path: Path) -> None:
+        """Detects event with attribute access like config.event."""
+        from hypergumbo.linkers.websocket import _detect_patterns
+
+        js_file = tmp_path / "sender.js"
+        js_file.write_text("""
+io.emit(config.eventName, { data: 'test' });
+""")
+        patterns = _detect_patterns(js_file)
+
+        assert len(patterns) == 1
+        assert patterns[0].event == "config.eventName"
+        assert patterns[0].event_type == "variable"
+
+    def test_literal_event_has_literal_type(self, tmp_path: Path) -> None:
+        """Verifies literal events have event_type='literal'."""
+        from hypergumbo.linkers.websocket import _detect_patterns
+
+        js_file = tmp_path / "sender.js"
+        js_file.write_text("""
+socket.emit('user-login', { user: 'test' });
+""")
+        patterns = _detect_patterns(js_file)
+
+        assert len(patterns) == 1
+        assert patterns[0].event == "user-login"
+        assert patterns[0].event_type == "literal"
+
+    def test_variable_event_linking(self, tmp_path: Path) -> None:
+        """Links variable events when using same variable name."""
+        sender = tmp_path / "sender.js"
+        sender.write_text("""
+const EVENT = 'user-action';
+socket.emit(EVENT, { action: 'click' });
+""")
+
+        receiver = tmp_path / "receiver.js"
+        receiver.write_text("""
+const EVENT = 'user-action';
+socket.on(EVENT, (data) => {
+    console.log('Action:', data.action);
+});
+""")
+
+        result = link_websocket(tmp_path)
+
+        assert len(result.edges) >= 1
+        # Find message edges (not connection edges)
+        msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        assert len(msg_edges) >= 1
+        # Variable matches have lower confidence
+        assert msg_edges[0].confidence == 0.65
+        assert msg_edges[0].evidence_type == "variable_match"
+        assert msg_edges[0].meta.get("event_type") == "variable"
+
+    def test_endpoint_symbol_has_event_type(self, tmp_path: Path) -> None:
+        """Endpoint symbols include event_type in metadata."""
+        js_file = tmp_path / "server.js"
+        js_file.write_text("""
+io.on('connection', handler);
+""")
+
+        result = link_websocket(tmp_path)
+
+        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        assert len(endpoints) >= 1
+        assert "event_type" in endpoints[0].meta
+        assert endpoints[0].meta["event_type"] == "literal"
+
+    def test_django_channels_variable_event(self, tmp_path: Path) -> None:
+        """Detects Django Channels with variable channel name."""
+        from hypergumbo.linkers.websocket import _detect_python_patterns
+
+        py_file = tmp_path / "consumer.py"
+        py_file.write_text("""
+CHANNEL_NAME = 'notifications'
+await channel_layer.send(CHANNEL_NAME, {'type': 'notify'})
+""")
+        patterns = _detect_python_patterns(py_file)
+
+        send_patterns = [p for p in patterns if p.type == "send"]
+        assert len(send_patterns) == 1
+        assert send_patterns[0].event == "CHANNEL_NAME"
+        assert send_patterns[0].event_type == "variable"
+
+    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path) -> None:
+        """Literal event doesn't match different variable name."""
+        sender = tmp_path / "sender.js"
+        sender.write_text("""
+socket.emit('user-login', { user: 'test' });
+""")
+
+        receiver = tmp_path / "receiver.js"
+        receiver.write_text("""
+const EVENT = 'user-login';  // Same value, different identifier
+socket.on(EVENT, handler);
+""")
+
+        result = link_websocket(tmp_path)
+
+        # No message edges: literal 'user-login' != variable 'EVENT'
+        msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        assert len(msg_edges) == 0
