@@ -9,6 +9,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### 2026-01-07 14:00
+
+#### Entrypoint Detection - Comprehensive Audit
+- **Hapi route false positive fix**: Exclude `.tsx`/`.jsx` files (React components use routes/).
+- **Koa route false positive fix**: Same exclusion for React file-based routing.
+- **Tornado handler false positive fix**: Exclude non-web patterns (`*_error_handler.py`, `*_signal_handler.py`, `*_event_handler.py`, `*_exception_handler.py`, `*_logging_handler.py`, `*_log_handler.py`).
+- **GraphQL server false positive fix**: Exclude `.tsx`/`.jsx` and non-GraphQL resolver patterns (`*dns-resolver*`, `*promise-resolver*`, `*dependency-resolver*`, `*path-resolver*`, `*module-resolver*`).
+
+#### Documentation
+- **Entrypoint Detection Improvements (Design)**: Added section 8.7 to `docs/hypergumbo-spec.md` documenting:
+  - Current path-based heuristic approach and its limitations
+  - Implemented exclusion pattern mitigations
+  - Future: Confidence stratification design (verified/path_strong/path_weak/heuristic tiers)
+  - Future: Content verification API design for optional import/annotation checking
+  - Migration path from v0.6.x through v0.8.x
+
 ### 2026-01-07 13:30
 
 #### Entrypoint Detection

@@ -1092,8 +1092,14 @@ def _is_hapi_route_file(path: str, language: str) -> bool:
     Matches:
     - Files ending in routes.js/ts or Routes.js/ts
     - Any .js/.ts file inside a routes/ or plugins/ directory
+
+    Excludes .tsx/.jsx files (React components, not Hapi routes).
     """
     if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude React components - same as Express fix
+    if path.endswith(".tsx") or path.endswith(".jsx"):
         return False
 
     filename = _get_filename(path)
@@ -1183,8 +1189,14 @@ def _is_koa_route_file(path: str, language: str) -> bool:
     - Files with .router. pattern (e.g., user.router.js)
     - Files with .controller. pattern (e.g., user.controller.js)
     - Files with .middleware. pattern (e.g., auth.middleware.js)
+
+    Excludes .tsx/.jsx files (React components, not Koa routes).
     """
     if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude React components - same as Express fix
+    if path.endswith(".tsx") or path.endswith(".jsx"):
         return False
 
     filename = _get_filename(path)
@@ -1279,7 +1291,9 @@ def _is_tornado_handler_file(path: str, language: str) -> bool:
     - Files ending in _handler.py
     - Any .py file inside a handlers/ or views/ directory
 
-    Excludes test files.
+    Excludes:
+    - Test files
+    - Non-web handler patterns (error handlers, signal handlers, event handlers)
     """
     if language != "python":
         return False
@@ -1289,6 +1303,20 @@ def _is_tornado_handler_file(path: str, language: str) -> bool:
         return False
 
     filename = _get_filename(path)
+
+    # Exclude common non-web handler patterns
+    # These are typically internal infrastructure, not HTTP endpoints
+    # Match patterns like error_handler.py, custom_error_handler.py, etc.
+    non_web_handler_patterns = (
+        "error_handler.py",
+        "signal_handler.py",
+        "event_handler.py",
+        "exception_handler.py",
+        "logging_handler.py",
+        "log_handler.py",
+    )
+    if any(filename.endswith(pattern) for pattern in non_web_handler_patterns):
+        return False
 
     # Check for *_handler.py suffix
     if filename.endswith(TORNADO_HANDLER_SUFFIX):
@@ -1502,7 +1530,10 @@ def _is_graphql_server_file(path: str, language: str) -> bool:
     - Files with .resolver.js/ts or .resolvers.js/ts suffix
     - Any .js/.ts file inside a resolvers/ or graphql/ directory
 
-    Excludes test files.
+    Excludes:
+    - Test files
+    - React components (.tsx/.jsx)
+    - Non-GraphQL resolver patterns (dns, promise, dependency resolvers)
     """
     if language not in ("javascript", "typescript"):
         return False
@@ -1511,7 +1542,29 @@ def _is_graphql_server_file(path: str, language: str) -> bool:
     if _is_test_file(path):
         return False
 
+    # Exclude React components - these aren't GraphQL servers
+    if path.endswith(".tsx") or path.endswith(".jsx"):
+        return False
+
     filename = _get_filename(path)
+
+    # Exclude non-GraphQL resolver patterns
+    # These are typically infrastructure utilities, not GraphQL resolvers
+    non_graphql_patterns = (
+        "dns-resolver",
+        "dns_resolver",
+        "promise-resolver",
+        "promise_resolver",
+        "dependency-resolver",
+        "dependency_resolver",
+        "path-resolver",
+        "path_resolver",
+        "module-resolver",
+        "module_resolver",
+    )
+    filename_lower = filename.lower()
+    if any(pattern in filename_lower for pattern in non_graphql_patterns):
+        return False
 
     # Check for GraphQL server file names
     if filename in GRAPHQL_SERVER_FILENAMES:
