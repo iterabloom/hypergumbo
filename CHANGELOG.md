@@ -9,6 +9,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### 2026-01-07 04:00
+
+#### Cross-Language Linkers
+- **Enclosure linker for slice traversal**: Added automatic post-processing in `run_all_linkers()` that connects synthetic nodes (grpc_stub, mq_publisher, websocket_endpoint, etc.) to their enclosing functions via `uses` edges. This enables `hypergumbo slice` to traverse from application code through linker boundaries. Previously, functions like `send_confirmation_email()` that instantiated gRPC stubs had no outgoing edges to those stubs, breaking slice traversal. New `find_enclosing_symbol()` method in `LinkerContext` supports finding the most specific enclosing function/method/class for any line number.
+
 ### 2026-01-07 02:00
 
 #### Cross-Language Linkers
