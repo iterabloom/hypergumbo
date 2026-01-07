@@ -45,6 +45,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "graphql-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -293,3 +294,58 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
     run.files_analyzed = files_scanned
 
     return GraphQLLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+def _get_graphql_operation_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract GraphQL operation symbols from context.
+
+    Operation symbols are from the GraphQL analyzer with:
+    - language="graphql"
+    - kind in ("query", "mutation", "subscription", "operation")
+    """
+    return [
+        s for s in ctx.symbols
+        if s.language == "graphql"
+        and s.kind in ("query", "mutation", "subscription", "operation")
+    ]
+
+
+def _count_graphql_operations(ctx: LinkerContext) -> int:
+    """Count available GraphQL operation symbols for requirement check."""
+    return len(_get_graphql_operation_symbols(ctx))
+
+
+GRAPHQL_REQUIREMENTS = [
+    LinkerRequirement(
+        name="graphql_operations",
+        description="GraphQL operation symbols (query/mutation/subscription)",
+        check=_count_graphql_operations,
+    ),
+]
+
+
+@register_linker(
+    "graphql",
+    priority=60,  # Run after analyzers have produced GraphQL symbols
+    description="GraphQL client-schema linking (gql calls to operations)",
+    requirements=GRAPHQL_REQUIREMENTS,
+)
+def graphql_linker(ctx: LinkerContext) -> LinkerResult:
+    """GraphQL linker for registry-based dispatch.
+
+    This wraps link_graphql() to use the LinkerContext/LinkerResult interface.
+    Extracts GraphQL operation symbols from ctx and delegates to core linking.
+    """
+    operation_symbols = _get_graphql_operation_symbols(ctx)
+    result = link_graphql(ctx.repo_root, operation_symbols)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )

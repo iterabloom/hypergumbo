@@ -9,6 +9,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### 2026-01-07 00:30
+
+#### Cross-Language Linkers
+- **Variable detection for HTTP/event linkers**: Extended HTTP linker to detect URLs in variables (`fetch(API_URL)`, `axios.get(config.apiUrl)`, `requests.get(url_var)`) and event sourcing linker to detect event names in variables (`emitter.emit(EVENT_NAME)`, `EventBus.publish(event_var)`). Variable matches have lower confidence (0.65) than literal matches (0.85-0.9). Added `url_type`/`event_type` fields to track match type.
+- **Linker registry migration**: Migrated HTTP, GraphQL, GraphQL resolver, and dependency linkers to the `@register_linker` pattern. Linkers now use `LinkerContext` for inputs and declare requirements for diagnostics. Reduces boilerplate in cli.py and enables dynamic linker discovery.
+
 ### 2026-01-06 15:00
 
 #### Analysis & IR

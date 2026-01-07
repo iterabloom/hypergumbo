@@ -27,6 +27,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..ir import AnalysisRun, Edge, Symbol
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "dependency-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -169,3 +170,63 @@ def link_dependencies(
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return DependencyLinkResult(edges=edges, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+def _get_toml_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract TOML symbols (dependencies) from context."""
+    return [s for s in ctx.symbols if s.language == "toml"]
+
+
+def _count_toml_dependencies(ctx: LinkerContext) -> int:
+    """Count available TOML dependency symbols for requirement check."""
+    return sum(1 for s in ctx.symbols if s.language == "toml" and s.kind == "dependency")
+
+
+def _count_import_edges(ctx: LinkerContext) -> int:
+    """Count available import edges for requirement check."""
+    return sum(1 for e in ctx.edges if e.edge_type == "imports")
+
+
+DEPENDENCY_REQUIREMENTS = [
+    LinkerRequirement(
+        name="toml_dependencies",
+        description="TOML dependency declarations (Cargo.toml, pyproject.toml)",
+        check=_count_toml_dependencies,
+    ),
+    LinkerRequirement(
+        name="import_edges",
+        description="Import edges from code analyzers",
+        check=_count_import_edges,
+    ),
+]
+
+
+@register_linker(
+    "dependency",
+    priority=80,  # Run late, after all imports have been collected
+    description="Dependency linking (imports to manifest declarations)",
+    requirements=DEPENDENCY_REQUIREMENTS,
+)
+def dependency_linker(ctx: LinkerContext) -> LinkerResult:
+    """Dependency linker for registry-based dispatch.
+
+    This wraps link_dependencies() to use the LinkerContext/LinkerResult interface.
+    Extracts TOML symbols and edges from ctx and delegates to core linking.
+    """
+    toml_symbols = _get_toml_symbols(ctx)
+    result = link_dependencies(
+        toml_symbols=toml_symbols,
+        code_edges=ctx.edges,
+        code_symbols=ctx.symbols,
+    )
+
+    return LinkerResult(
+        symbols=[],  # dependency linker doesn't create symbols
+        edges=result.edges,
+        run=result.run,
+    )

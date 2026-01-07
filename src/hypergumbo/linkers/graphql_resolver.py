@@ -41,6 +41,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "graphql-resolver-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -424,3 +425,58 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
     run.files_analyzed = files_scanned
 
     return ResolverLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+def _get_graphql_schema_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract GraphQL schema symbols from context.
+
+    Schema symbols are from the GraphQL analyzer with:
+    - language="graphql"
+    - kind in ("type", "field", "interface")
+    """
+    return [
+        s for s in ctx.symbols
+        if s.language == "graphql"
+        and s.kind in ("type", "field", "interface")
+    ]
+
+
+def _count_graphql_schema(ctx: LinkerContext) -> int:
+    """Count available GraphQL schema symbols for requirement check."""
+    return len(_get_graphql_schema_symbols(ctx))
+
+
+RESOLVER_REQUIREMENTS = [
+    LinkerRequirement(
+        name="graphql_schema",
+        description="GraphQL schema symbols (type/field/interface)",
+        check=_count_graphql_schema,
+    ),
+]
+
+
+@register_linker(
+    "graphql_resolver",
+    priority=60,  # Run after analyzers have produced GraphQL symbols
+    description="GraphQL resolver linking (resolvers to schema types/fields)",
+    requirements=RESOLVER_REQUIREMENTS,
+)
+def graphql_resolver_linker(ctx: LinkerContext) -> LinkerResult:
+    """GraphQL resolver linker for registry-based dispatch.
+
+    This wraps link_graphql_resolvers() to use the LinkerContext/LinkerResult interface.
+    Extracts GraphQL schema symbols from ctx and delegates to core linking.
+    """
+    schema_symbols = _get_graphql_schema_symbols(ctx)
+    result = link_graphql_resolvers(ctx.repo_root, schema_symbols)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )

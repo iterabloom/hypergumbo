@@ -63,6 +63,7 @@ from urllib.parse import urlparse
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "http-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -482,3 +483,57 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
     run.files_analyzed = files_scanned
 
     return HttpLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract route symbols from context.
+
+    Route symbols are either:
+    - kind="route" (Ruby, Go, Rust analyzers)
+    - have meta.route_path (Python, JS framework analyzers)
+    """
+    return [
+        s for s in ctx.symbols
+        if s.kind == "route" or (s.meta and s.meta.get("route_path"))
+    ]
+
+
+def _count_route_symbols(ctx: LinkerContext) -> int:
+    """Count available route symbols for requirement check."""
+    return len(_get_route_symbols(ctx))
+
+
+HTTP_REQUIREMENTS = [
+    LinkerRequirement(
+        name="route_symbols",
+        description="Route handler symbols (kind=route or meta.route_path)",
+        check=_count_route_symbols,
+    ),
+]
+
+
+@register_linker(
+    "http",
+    priority=60,  # Run after analyzers have produced route symbols
+    description="HTTP client-server linking (fetch, axios, requests to routes)",
+    requirements=HTTP_REQUIREMENTS,
+)
+def http_linker(ctx: LinkerContext) -> LinkerResult:
+    """HTTP linker for registry-based dispatch.
+
+    This wraps link_http() to use the LinkerContext/LinkerResult interface.
+    Extracts route symbols from ctx and delegates to the core linking logic.
+    """
+    route_symbols = _get_route_symbols(ctx)
+    result = link_http(ctx.repo_root, route_symbols)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )
