@@ -1555,6 +1555,110 @@ Supply chain configuration can be customized in `capsule_plan.json`:
 }
 ```
 
+## 8.7) Entrypoint Detection Improvements (Design)
+
+Entrypoint detection uses path-based heuristics to identify HTTP handlers, CLI mains, and other entry sources for slicing. These heuristics are fast but prone to false positives when naming conventions collide across frameworks.
+
+### Current State: Path-Based Heuristics
+
+Each detector matches file paths and names:
+- `_is_express_route_file`: matches `routes/` directory or `routes.js/ts`
+- `_is_tornado_handler_file`: matches `*_handler.py` or `handlers/` directory
+- `_is_micronaut_controller_file`: matches `*Client.java` or `client/` directory
+
+**Problems:**
+1. **Naming collision**: React Router uses `routes/*.tsx`, Express uses `routes/*.js` — same directory, different frameworks
+2. **Overly broad patterns**: `*Client.java` matches gRPC clients, Redis clients, SDK clients — not just Micronaut HTTP clients
+3. **No content verification**: Detection ignores actual file contents (imports, annotations)
+
+### Implemented Mitigations
+
+**Exclusion patterns** for known false positives:
+- Express: Exclude `.tsx/.jsx` files (React components)
+- Hapi/Koa: Same exclusion for React file-based routing
+- Micronaut: Exclude `*ServiceClient`, `*GrpcClient`, `*RpcClient` (gRPC stub wrappers)
+- Tornado: Exclude `*_error_handler.py`, `*_signal_handler.py`, etc. (non-web handlers)
+- GraphQL: Exclude `*dns-resolver*`, `*dependency-resolver*`, etc. (non-GraphQL resolvers)
+
+### Future: Confidence Stratification
+
+**Design goal:** Return confidence levels that reflect detection certainty.
+
+```python
+# Proposed confidence tiers
+CONFIDENCE_TIERS = {
+    "verified": 0.95,      # Content-verified (has framework imports/annotations)
+    "path_strong": 0.85,   # Path match + no exclusions + specific pattern
+    "path_weak": 0.70,     # Path match only, generic pattern
+    "heuristic": 0.50,     # Fallback heuristic match
+}
+```
+
+**Implementation approach:**
+
+1. **Path-only match (current)**: 0.70-0.85 depending on pattern specificity
+2. **Path + exclusion check (implemented)**: Same confidence, fewer false positives
+3. **Content-verified (future)**: 0.90-0.95 when framework markers found in file
+
+**Scoring function for auto-slice entry selection:**
+```python
+score = confidence * (1 + log(1 + outgoing_edges))
+```
+This prefers well-connected entries, producing richer slices.
+
+### Future: Content Verification API
+
+**Design goal:** Optional second-pass verification that checks file contents for framework-specific markers.
+
+```python
+# Proposed API (not implemented)
+@dataclass
+class ContentVerifier:
+    """Framework-specific content verification."""
+
+    # Patterns that indicate this framework
+    import_patterns: list[str]  # e.g., ["from fastapi import", "import fastapi"]
+    annotation_patterns: list[str]  # e.g., ["@app.route", "@router.get"]
+
+    def verify(self, file_content: str) -> bool:
+        """Check if content matches expected framework patterns."""
+        ...
+
+# Usage in detector
+def _is_express_route_file(path: str, language: str, content: Optional[str] = None) -> bool:
+    if not _path_matches_express(path, language):
+        return False
+
+    if content is not None:
+        # Upgrade to verified confidence
+        return EXPRESS_VERIFIER.verify(content)
+
+    return True  # Path-only match (lower confidence)
+```
+
+**Trade-offs:**
+- **Pro**: Eliminates false positives
+- **Con**: Requires file I/O (slower for large repos)
+- **Mitigation**: Make content verification opt-in (`--verify-entrypoints` flag)
+
+**Framework markers for verification:**
+
+| Framework | Import Pattern | Code Pattern |
+|-----------|---------------|--------------|
+| Express | `require('express')` | `app.get(`, `router.post(` |
+| FastAPI | `from fastapi import` | `@app.get(`, `@router.post(` |
+| Flask | `from flask import` | `@app.route(` |
+| Tornado | `from tornado import` | `class *Handler(RequestHandler)` |
+| Micronaut | `import io.micronaut` | `@Client(` annotation |
+| NestJS | `@nestjs/common` | `@Controller(`, `@Get(` |
+| Spring | `org.springframework` | `@RequestMapping(`, `@GetMapping(` |
+
+### Migration Path
+
+1. **v0.6.x (current)**: Path-based heuristics with exclusion patterns
+2. **v0.7.x (planned)**: Confidence stratification (path-only vs path+exclusions)
+3. **v0.8.x (future)**: Optional content verification for high-confidence detection
+
 ## 9) Testing & quality bar
 
 ### Test fixtures

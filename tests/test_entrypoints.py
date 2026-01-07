@@ -2064,6 +2064,16 @@ class TestHapiEntrypoints:
         hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
         assert len(hapi_eps) == 0
 
+    def test_hapi_tsx_files_not_detected(self) -> None:
+        """TSX files in routes/ are React components, not Hapi routes."""
+        sym = make_symbol("Dashboard", path="frontend/src/routes/dashboard.tsx", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 0
+
 
 class TestFastifyEntrypoints:
     """Tests for Fastify (Node.js) route detection."""
@@ -2273,6 +2283,16 @@ class TestKoaEntrypoints:
     def test_koa_non_route_file_not_detected(self) -> None:
         """Non-route JS files are not detected as Koa."""
         sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 0
+
+    def test_koa_tsx_files_not_detected(self) -> None:
+        """TSX files with .controller. pattern are React, not Koa."""
+        sym = make_symbol("UserController", path="src/components/user.controller.tsx", language="typescript")
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
@@ -2519,6 +2539,22 @@ class TestTornadoEntrypoints:
             make_symbol("spec_func", path="app/handlers/spec_user.py", language="python"),
             # Cover _spec.py suffix pattern: file ending in _handler.py but also _spec.py
             make_symbol("describe", path="app/user_handler_spec.py", language="python"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 0
+
+    def test_tornado_non_web_handlers_not_detected(self) -> None:
+        """Non-web handler patterns are excluded (error, signal, event handlers)."""
+        syms = [
+            make_symbol("ErrorHandler", path="app/error_handler.py", language="python"),
+            make_symbol("SignalHandler", path="app/signal_handler.py", language="python"),
+            make_symbol("EventHandler", path="app/event_handler.py", language="python"),
+            make_symbol("ExceptionHandler", path="app/exception_handler.py", language="python"),
+            make_symbol("LoggingHandler", path="app/logging_handler.py", language="python"),
+            make_symbol("LogHandler", path="app/log_handler.py", language="python"),
         ]
 
         entrypoints = detect_entrypoints(syms, [])
@@ -3061,6 +3097,31 @@ class TestGraphQLServerEntrypoints:
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_tsx_files_not_detected(self) -> None:
+        """TSX files in graphql/ are React components, not GraphQL servers."""
+        sym = make_symbol("GraphQLProvider", path="src/graphql/Provider.tsx", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_non_graphql_resolvers_not_detected(self) -> None:
+        """Non-GraphQL resolver patterns are excluded (dns, promise, dependency)."""
+        syms = [
+            make_symbol("DnsResolver", path="src/dns-resolver.js", language="javascript"),
+            make_symbol("resolve", path="src/promise_resolver.ts", language="typescript"),
+            make_symbol("DependencyResolver", path="src/dependency-resolver.js", language="javascript"),
+            make_symbol("resolve", path="src/path_resolver.js", language="javascript"),
+            make_symbol("ModuleResolver", path="src/module-resolver.ts", language="typescript"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
 
         graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
         assert len(graphql_eps) == 0
