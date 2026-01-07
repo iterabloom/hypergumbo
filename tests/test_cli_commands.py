@@ -1056,6 +1056,96 @@ def test_cmd_slice_auto_entry_no_entrypoints(tmp_path: Path, capsys) -> None:
     assert "No entrypoints detected" in err
 
 
+def test_cmd_slice_auto_entry_prefers_connected(tmp_path: Path, capsys) -> None:
+    """Test --entry auto prefers well-connected entries over isolated ones.
+
+    When multiple entries have similar confidence, the one with more
+    outgoing edges produces a richer slice and should be preferred.
+    """
+    # Create two potential entries (both match cli_main pattern)
+    # Entry 1: main() with 5 outgoing edges (well-connected)
+    # Entry 2: run() with 0 outgoing edges (isolated)
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/app.py:1-10:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/app.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/runner.py:1-5:run:function",
+                "name": "run",
+                "kind": "function",
+                "language": "python",
+                "path": "src/runner.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-5:helper1:function",
+                "name": "helper1",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:6-10:helper2:function",
+                "name": "helper2",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            # main calls helper1, helper2, and itself (well-connected)
+            {
+                "id": "edge1",
+                "src": "python:src/app.py:1-10:main:function",
+                "dst": "python:src/utils.py:1-5:helper1:function",
+                "type": "calls",
+                "confidence": 0.95,
+            },
+            {
+                "id": "edge2",
+                "src": "python:src/app.py:1-10:main:function",
+                "dst": "python:src/utils.py:6-10:helper2:function",
+                "type": "calls",
+                "confidence": 0.95,
+            },
+            # run has NO outgoing edges (isolated)
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # main should be selected because it has more outgoing edges
+    assert "main" in out
+    assert "connectivity" in out  # Should mention connectivity
+    assert "2 outgoing edges" in out  # Should report edge count
+
+
 def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
     """Test --reverse flag finds callers instead of callees."""
     # Create a behavior map where caller -> callee

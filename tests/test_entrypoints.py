@@ -555,6 +555,30 @@ class TestExpressEntrypoints:
         express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
         assert len(express_eps) == 0
 
+    def test_express_tsx_files_not_detected(self) -> None:
+        """TSX files in routes directory are React components, not Express routes.
+
+        React file-based routing (TanStack Router, Next.js app router) uses
+        routes/*.tsx for components, which should not be detected as Express routes.
+        """
+        sym = make_symbol("Dashboard", path="frontend/src/routes/index.tsx", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
+
+    def test_express_jsx_files_not_detected(self) -> None:
+        """JSX files in routes directory are React components, not Express routes."""
+        sym = make_symbol("App", path="frontend/src/routes/App.jsx", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
+
 
 class TestNestJSEntrypoints:
     """Tests for NestJS controller detection.
@@ -2825,6 +2849,40 @@ class TestMicronautEntrypoints:
     def test_micronaut_non_client_file_not_detected(self) -> None:
         """Non-client Java files are not detected as Micronaut."""
         sym = make_symbol("Helper", path="src/utils/Helper.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_grpc_service_client_not_detected(self) -> None:
+        """gRPC stub wrappers (*ServiceClient) are NOT Micronaut clients.
+
+        Files like AdServiceClient.java are typically gRPC stub wrappers,
+        not Micronaut HTTP clients. They should be excluded.
+        """
+        sym = make_symbol("AdServiceClient", path="src/AdServiceClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_grpc_client_not_detected(self) -> None:
+        """*GrpcClient.java files are NOT Micronaut clients."""
+        sym = make_symbol("UserGrpcClient", path="src/UserGrpcClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_rpc_client_not_detected(self) -> None:
+        """*RpcClient.java files are NOT Micronaut clients."""
+        sym = make_symbol("OrderRpcClient", path="src/OrderRpcClient.kt", language="kotlin")
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
