@@ -9,6 +9,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### 2026-01-07 13:30
+
+#### Entrypoint Detection
+- **Express route false positive fix**: Exclude `.tsx`/`.jsx` files from Express route detection. React file-based routing (TanStack Router, Next.js) uses `routes/*.tsx` for components, not Express routes.
+- **Micronaut controller false positive fix**: Exclude common gRPC/RPC patterns (`*ServiceClient.java`, `*GrpcClient.java`, `*RpcClient.java`) from Micronaut HTTP client detection.
+
+#### Slice Command
+- **Connectivity-aware entry selection**: Auto-slice (`--entry auto`) now factors in graph connectivity when selecting the entry point. Previously selected by highest confidence only, which could pick isolated nodes. Now uses `score = confidence * (1 + log(1 + outgoing_edges))` to prefer well-connected entries that produce richer slices. Displays connectivity info when selected.
+
 ### 2026-01-07 08:00
 
 #### Analysis Passes

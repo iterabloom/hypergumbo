@@ -454,10 +454,18 @@ def _is_express_route_file(path: str, language: str) -> bool:
     """Check if a file path matches Express route patterns.
 
     Matches:
-    - Files named routes.js/ts or router.js/ts
-    - Any .js/.ts file inside a routes/ or routers/ directory
+    - Files named routes.js/ts or router.js/ts (not .tsx)
+    - Any .js/.ts file inside a routes/ or routers/ directory (not .tsx)
+
+    Excludes .tsx files because they're typically React file-based routing
+    (TanStack Router, Next.js app router, etc.), not Express routes.
     """
     if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude .tsx/.jsx files - these are React components, not Express routes
+    # React file-based routing (TanStack Router, Next.js) uses routes/*.tsx
+    if path.endswith(".tsx") or path.endswith(".jsx"):
         return False
 
     filename = _get_filename(path)
@@ -1433,11 +1441,22 @@ def _is_micronaut_controller_file(path: str, language: str) -> bool:
     Matches:
     - Files ending in Client.java/kt (Micronaut declarative HTTP clients)
     - Any .java/.kt file inside a client/ directory
+
+    Excludes common false positives:
+    - *ServiceClient.java/kt (usually gRPC stub wrappers)
+    - *GrpcClient.java/kt (gRPC clients)
+    - *RpcClient.java/kt (RPC clients)
     """
     if language not in ("java", "kotlin"):
         return False
 
     filename = _get_filename(path)
+
+    # Exclude common false positives: gRPC/RPC clients
+    # These patterns are typically gRPC stub wrappers, not Micronaut HTTP clients
+    non_micronaut_patterns = ("ServiceClient.", "GrpcClient.", "RpcClient.")
+    if any(pattern in filename for pattern in non_micronaut_patterns):
+        return False
 
     # Check for Client suffix
     if any(filename.endswith(suffix) for suffix in MICRONAUT_CLIENT_SUFFIXES):

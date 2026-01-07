@@ -33,6 +33,7 @@ Why This Design
 """
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -383,11 +384,30 @@ def cmd_slice(args: argparse.Namespace) -> int:
             print("Error: No entrypoints detected. Use --entry to specify manually.",
                   file=sys.stderr)
             return 1
-        # Use the highest confidence entrypoint
-        best = max(entrypoints, key=lambda e: e.confidence)
+
+        # Score entries by both confidence and graph connectivity
+        # Well-connected entries produce richer slices
+        edge_src_counts: Dict[str, int] = {}
+        for e in edges:
+            edge_src_counts[e.src] = edge_src_counts.get(e.src, 0) + 1
+
+        def entry_score(ep: Any) -> float:
+            """Score = confidence * connectivity_boost.
+
+            connectivity_boost = 1 + log(1 + outgoing_edges)
+            This favors well-connected entries while still respecting confidence.
+            """
+            out_edges = edge_src_counts.get(ep.symbol_id, 0)
+            connectivity_boost = 1 + math.log(1 + out_edges)
+            return ep.confidence * connectivity_boost
+
+        best = max(entrypoints, key=entry_score)
         entry = best.symbol_id
+        out_edges = edge_src_counts.get(entry, 0)
         print(f"[hypergumbo slice] Auto-detected entry: {best.label}")
         print(f"  {entry}")
+        if out_edges > 0:
+            print(f"  (selected for connectivity: {out_edges} outgoing edges)")
 
     # Build slice query
     max_tier = getattr(args, "max_tier", None)
