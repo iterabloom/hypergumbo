@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f92de17371e5
+  commit: 83774fd8927f
   hypergumbo: 0.6.0
   python: 3.12.3
 -->
@@ -13,9 +13,9 @@ GENERATION METADATA (for drift detection):
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **101** Python modules (68 analyzers, 13 linkers)
-- **1381** symbols (functions, classes, methods)
-- **5419** edges (calls, imports, instantiates)
+- **105** Python modules (68 analyzers, 14 linkers)
+- **1638** symbols (functions, classes, methods)
+- **5966** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 104 files · ~42,918 LOC
+Python (100%) · 109 files · ~45,031 LOC
 
 ## Structure
 
@@ -31,7 +31,7 @@ Python (100%) · 104 files · ~42,918 LOC
 
 ## Domain Vocabulary
 
-*Key terms: line, symbol, symbols, sitter, source, files, edges, find, cover, pragma, edge, extract*
+*Key terms: symbols, symbol, line, source, sitter, files, edges, find, cover, pragma, edge, extract*
 
 ## Source Files
 
@@ -65,7 +65,7 @@ Python (100%) · 104 files · ~42,918 LOC
 - `hypergumbo/analyze/groovy.py`
 - `hypergumbo/analyze/registry.py`
 - `hypergumbo/analyze/xml_config.py`
-- ... and 74 more files
+- ... and 79 more files
 
 ## Entry Points
 
@@ -80,32 +80,38 @@ Python (100%) · 104 files · ~42,918 LOC
 - `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
 - `Edge` (class) — A relationship between two symbols (e.g., function calls).
 
-### `hypergumbo/catalog.py`
-- `Pass` (class) — An analysis pass that can be applied to source code.
+### `hypergumbo/analyze/base.py`
+- `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
+- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text content for a tree-sitter node.
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
 
-### `hypergumbo/entrypoints.py`
-- `Entrypoint` (class) — A detected entrypoint in the codebase.
-- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+### `hypergumbo/catalog.py`
+- `Pass` (class) — An analysis pass that can be applied to source code.
 
 ### `hypergumbo/analyze/julia.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 - `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
 
+### `hypergumbo/entrypoints.py`
+- `Entrypoint` (class) — A detected entrypoint in the codebase.
+- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+
 ### `hypergumbo/analyze/rust.py`
 - `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
 
-### `hypergumbo/analyze/base.py`
-- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text content for a tree-sitter node.
-- `find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find a child node by field name.
+### `hypergumbo/analyze/js_ts.py`
+- `_make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind…` (function) — Generate location-based ID.
 
-(... and 1272 more symbols across 80 other files)
+### `hypergumbo/linkers/registry.py`
+- `LinkerResult` (class) — Result from running a linker.
+
+(... and 1499 more symbols across 87 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 9 appearances of `_node_text`
-- `_find_child_by_type` - we omitted 6 appearances
+- `_node_text` - we omitted 8 appearances of `_node_text`
+- `_find_child_by_type` - we omitted 5 appearances
 
 ## All Files
 
@@ -167,12 +173,7 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `hypergumbo/analyze/ruby.py`
 - `hypergumbo/analyze/rust.py`
 - `hypergumbo/analyze/scala.py`
-- `hypergumbo/analyze/solidity.py`
-- `hypergumbo/analyze/sql.py`
-- `hypergumbo/analyze/starlark.py`
-- `hypergumbo/analyze/swift.py`
-- `hypergumbo/analyze/thrift.py`
-- ... and 41 more files
+- ... and 51 more files
 ```
 
 ## Data Flow
@@ -187,7 +188,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1381 Symbols + 5419 Edges
+│  analyzers  │────▶│     IR      │  1638 Symbols + 5966 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -209,15 +210,15 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 330 | ir.py |
-| `Span` | class | 321 | ir.py |
-| `find_files` | function | 146 | discovery.py |
-| `Edge` | class | 125 | ir.py |
-| `AnalysisRun` | class | 90 | ir.py |
+| `Symbol` | class | 333 | ir.py |
+| `Span` | class | 322 | ir.py |
+| `iter_tree` | function | 160 | base.py |
+| `find_files` | function | 147 | discovery.py |
+| `Edge` | class | 127 | ir.py |
+| `node_text` | function | 98 | base.py |
+| `AnalysisRun` | class | 92 | ir.py |
 | `Pass` | class | 66 | catalog.py |
-| `_find_child_by_type` | function | 29 | julia.py |
-| `Entrypoint` | class | 29 | entrypoints.py |
-| `_node_text` | function | 27 | js_ts.py |
+| `_find_child_by_type` | function | 30 | julia.py |
 
 ## Module Reference
 
@@ -234,6 +235,9 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`metrics`**: Metrics computation for behavior map output.
 - **`profile`**: Repo profile detection - language and framework heuristics.
 - **`ranking`**: Symbol and file ranking utilities for hypergumbo output.
+- **`selection.filters`**: Path classification and symbol kind filtering for selection.
+- **`selection.language_proportional`**: Language-proportional symbol selection utilities.
+- **`selection.token_budget`**: Token estimation and budget management for LLM-aware output.
 - **`slice`**: Graph slicing for LLM context extraction.
 - **`supply_chain`**: Supply chain classification for code analysis.
 - **`user_config`**: User configuration management for hypergumbo.
@@ -319,9 +323,10 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`linkers.grpc`**: gRPC/Protobuf linker for detecting RPC communication patterns.
 - **`linkers.http`**: HTTP client-server linker for detecting cross-language API calls.
 - **`linkers.ipc`**: IPC linker for detecting inter-process communication patterns.
-- **`linkers.jni`**: JNI linker for connecting Java native methods to C implementations.
+- **`linkers.jni`**: JNI linker for connecting Java native methods to C/C++ implementati...
 - **`linkers.message_queue`**: Message queue linker for detecting pub/sub communication patterns.
 - **`linkers.phoenix_ipc`**: Phoenix Channels IPC linker for detecting Elixir IPC patterns.
+- **`linkers.registry`**: Linker registry for dynamic dispatch.
 - **`linkers.swift_objc`**: Swift/Objective-C bridging linker.
 - **`linkers.websocket`**: WebSocket linker for detecting WebSocket communication patterns.
 
