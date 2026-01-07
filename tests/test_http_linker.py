@@ -434,3 +434,142 @@ class TestLinkHttp:
 
         assert result.run is not None
         assert result.run.pass_id == "http-linker-v1"
+
+
+class TestVariableUrlPatterns:
+    """Tests for variable URL detection in HTTP calls."""
+
+    def test_python_requests_with_variable(self):
+        """Detects requests.get(API_URL) with variable URL."""
+        code = dedent('''
+            import requests
+            API_URL = "/api/users"
+            response = requests.get(API_URL)
+        ''')
+        calls = _scan_python_file(Path("test.py"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "API_URL"
+        assert calls[0].url_type == "variable"
+
+    def test_python_requests_with_literal(self):
+        """Verifies literal URLs have url_type='literal'."""
+        code = dedent('''
+            import requests
+            response = requests.get("/api/users")
+        ''')
+        calls = _scan_python_file(Path("test.py"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_python_requests_with_dotted_variable(self):
+        """Detects requests.post(config.api_url) with dotted variable."""
+        code = dedent('''
+            import requests
+            response = requests.post(config.api_url)
+        ''')
+        calls = _scan_python_file(Path("test.py"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "config.api_url"
+        assert calls[0].url_type == "variable"
+
+    def test_js_fetch_with_variable(self):
+        """Detects fetch(API_URL) with variable URL."""
+        code = dedent('''
+            const API_URL = '/api/users';
+            fetch(API_URL);
+        ''')
+        calls = _scan_javascript_file(Path("test.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "API_URL"
+        assert calls[0].url_type == "variable"
+
+    def test_js_fetch_with_literal(self):
+        """Verifies literal URLs have url_type='literal'."""
+        code = dedent('''
+            fetch('/api/users');
+        ''')
+        calls = _scan_javascript_file(Path("test.js"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_js_axios_with_variable(self):
+        """Detects axios.get(API_ENDPOINT) with variable URL."""
+        code = dedent('''
+            const API_ENDPOINT = '/api/users';
+            axios.get(API_ENDPOINT);
+        ''')
+        calls = _scan_javascript_file(Path("test.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "API_ENDPOINT"
+        assert calls[0].url_type == "variable"
+
+    def test_js_axios_with_dotted_variable(self):
+        """Detects axios.post(config.apiUrl) with dotted variable."""
+        code = dedent('''
+            axios.post(config.apiUrl, data);
+        ''')
+        calls = _scan_javascript_file(Path("test.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "config.apiUrl"
+        assert calls[0].url_type == "variable"
+
+    def test_symbol_includes_url_type(self, tmp_path):
+        """Verifies url_type is included in symbol meta."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text("fetch(API_URL);")
+
+        result = link_http(tmp_path, [])
+
+        assert len(result.symbols) == 1
+        assert result.symbols[0].meta["url_type"] == "variable"
+
+    def test_edge_includes_url_type(self, tmp_path):
+        """Verifies url_type is included in edge meta."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text("fetch(API_URL);")
+
+        route_symbol = Symbol(
+            id="server.js::getUsers",
+            name="getUsers",
+            kind="route",
+            path=str(tmp_path / "server.js"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="javascript",
+            stable_id="GET",
+            meta={"route_path": "API_URL", "http_method": "GET"},
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["url_type"] == "variable"
+        assert result.edges[0].confidence == 0.65
+
+    def test_literal_url_higher_confidence(self, tmp_path):
+        """Verifies literal URLs have higher confidence than variables."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users");')
+
+        route_symbol = Symbol(
+            id="server.js::getUsers",
+            name="getUsers",
+            kind="route",
+            path=str(tmp_path / "server.js"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="javascript",
+            stable_id="GET",
+            meta={"route_path": "/api/users", "http_method": "GET"},
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["url_type"] == "literal"
+        assert result.edges[0].confidence == 0.9  # Same language, literal URL
