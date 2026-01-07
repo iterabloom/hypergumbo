@@ -345,7 +345,7 @@ class TestJniLinkerRegistry:
 
         req_names = [r.name for r in linker.requirements]
         assert "java_native_methods" in req_names
-        assert "c_jni_functions" in req_names
+        assert "c_cpp_jni_functions" in req_names
 
     def test_jni_linker_via_registry(self) -> None:
         """JNI linker works via registry dispatch."""
@@ -470,8 +470,8 @@ class TestJniLinkerRegistry:
         assert java_req.met is False
         assert java_req.count == 0
 
-        # C JNI requirement should be met
-        c_req = next((r for r in jni_diag.requirements if r.name == "c_jni_functions"), None)
+        # C/C++ JNI requirement should be met
+        c_req = next((r for r in jni_diag.requirements if r.name == "c_cpp_jni_functions"), None)
         assert c_req is not None
         assert c_req.met is True
         assert c_req.count == 1
@@ -720,3 +720,49 @@ class TestJniLinkerEdgeCases:
         result = parse_jni_function_name("Java_a_1")
 
         assert result is None
+
+    def test_cpp_jni_symbols_linked(self) -> None:
+        """C++ JNI functions are linked to Java native methods.
+
+        This is critical for Android NDK projects which commonly use .cpp files
+        for JNI implementations.
+        """
+        from hypergumbo.linkers.jni import link_jni
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        java_symbols = [
+            Symbol(
+                id="java:Test.java:1-10:NativeClass.processData:method",
+                name="NativeClass.processData",
+                kind="method",
+                language="java",
+                path="Test.java",
+                span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+                origin="java-v1",
+                origin_run_id=run.execution_id,
+                modifiers=["native", "public"],
+            ),
+        ]
+
+        # C++ symbol (language="cpp") with JNI function
+        cpp_symbols = [
+            Symbol(
+                id="cpp:native.cpp:1-10:Java_NativeClass_processData:function",
+                name="Java_NativeClass_processData",
+                kind="function",
+                language="cpp",  # C++, not C
+                path="native.cpp",
+                span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+                origin="cpp-v1",
+                origin_run_id=run.execution_id,
+            ),
+        ]
+
+        result = link_jni(java_symbols, cpp_symbols)
+
+        # Should link C++ JNI function to Java native method
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "native_bridge"
+        assert result.edges[0].src == java_symbols[0].id
+        assert result.edges[0].dst == cpp_symbols[0].id

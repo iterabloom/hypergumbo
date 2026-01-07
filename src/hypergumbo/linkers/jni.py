@@ -1,21 +1,24 @@
-"""JNI linker for connecting Java native methods to C implementations.
+"""JNI linker for connecting Java native methods to C/C++ implementations.
 
 This linker creates native_bridge edges between Java native method declarations
-and their corresponding C JNI function implementations.
+and their corresponding C/C++ JNI function implementations.
 
 How It Works
 ------------
-1. Find all Java method symbols marked as native (meta.is_native = True)
-2. Find all C function symbols with JNI naming pattern (Java_Package_Class_Method)
+1. Find all Java method symbols marked as native (via modifiers field)
+2. Find all C/C++ function symbols with JNI naming pattern (Java_Package_Class_Method)
 3. Parse JNI function names to extract package, class, and method components
-4. Match Java native methods to C JNI functions by fully qualified name
+4. Match Java native methods to C/C++ JNI functions by fully qualified name
 5. Create native_bridge edges for matched pairs
+
+JNI implementations can be written in either C (.c) or C++ (.cpp) files.
+Android NDK projects commonly use C++ for their JNI implementations.
 
 JNI Naming Convention
 ---------------------
 Java class: com.example.MyClass
 Java native method: processData
-C function: Java_com_example_MyClass_processData
+C/C++ function: Java_com_example_MyClass_processData
 
 Special encodings in JNI names:
 - Underscore (_) in Java names becomes _1 in C
@@ -62,11 +65,15 @@ def _count_java_native_methods(ctx: LinkerContext) -> int:
     return count
 
 
-def _count_c_jni_functions(ctx: LinkerContext) -> int:
-    """Count C functions with JNI naming convention (Java_...)."""
+def _count_c_cpp_jni_functions(ctx: LinkerContext) -> int:
+    """Count C/C++ functions with JNI naming convention (Java_...).
+
+    JNI implementations can be written in either C or C++ files. In practice,
+    many Android NDK projects use .cpp files for their JNI implementations.
+    """
     count = 0
     for sym in ctx.symbols:
-        if sym.language == "c" and sym.kind == "function" and sym.name.startswith("Java_"):
+        if sym.language in ("c", "cpp") and sym.kind == "function" and sym.name.startswith("Java_"):
             count += 1
     return count
 
@@ -79,9 +86,9 @@ JNI_REQUIREMENTS = [
         check=_count_java_native_methods,
     ),
     LinkerRequirement(
-        name="c_jni_functions",
-        description="C JNI implementation functions (Java_*)",
-        check=_count_c_jni_functions,
+        name="c_cpp_jni_functions",
+        description="C/C++ JNI implementation functions (Java_*)",
+        check=_count_c_cpp_jni_functions,
     ),
 ]
 
@@ -166,18 +173,20 @@ def parse_jni_function_name(name: str) -> Optional[dict[str, str]]:
     }
 
 
-def _build_jni_lookup(c_symbols: list[Symbol]) -> dict[str, Symbol]:
-    """Build a lookup table from JNI-style names to C symbols.
+def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, Symbol]:
+    """Build a lookup table from JNI-style names to C/C++ symbols.
 
-    Maps Java method names to their C implementations. Creates entries for both
+    Maps Java method names to their C/C++ implementations. Creates entries for both
     fully qualified names (com.example.MyClass.method) and short names
     (MyClass.method) to support matching regardless of whether the Java analyzer
     includes package information.
+
+    JNI implementations can be in .c or .cpp files - Android NDK commonly uses C++.
     """
     lookup: dict[str, Symbol] = {}
 
-    for sym in c_symbols:
-        if sym.language != "c" or sym.kind != "function":
+    for sym in native_symbols:
+        if sym.language not in ("c", "cpp") or sym.kind != "function":
             continue
 
         parsed = parse_jni_function_name(sym.name)
@@ -196,12 +205,12 @@ def _build_jni_lookup(c_symbols: list[Symbol]) -> dict[str, Symbol]:
     return lookup
 
 
-def link_jni(java_symbols: list[Symbol], c_symbols: list[Symbol]) -> JniLinkResult:
-    """Link Java native methods to their C JNI implementations.
+def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLinkResult:
+    """Link Java native methods to their C/C++ JNI implementations.
 
     Args:
         java_symbols: Symbols from Java analyzer
-        c_symbols: Symbols from C analyzer
+        native_symbols: Symbols from C and C++ analyzers (JNI can use either)
 
     Returns:
         JniLinkResult with native_bridge edges.
@@ -211,10 +220,10 @@ def link_jni(java_symbols: list[Symbol], c_symbols: list[Symbol]) -> JniLinkResu
 
     edges: list[Edge] = []
 
-    # Build lookup table for C JNI functions
-    jni_lookup = _build_jni_lookup(c_symbols)
+    # Build lookup table for C/C++ JNI functions
+    jni_lookup = _build_jni_lookup(native_symbols)
 
-    # Find Java native methods and link to C implementations
+    # Find Java native methods and link to C/C++ implementations
     for sym in java_symbols:
         if sym.language != "java":
             continue
@@ -228,13 +237,13 @@ def link_jni(java_symbols: list[Symbol], c_symbols: list[Symbol]) -> JniLinkResu
         if not (is_native_via_modifiers or is_native_via_meta):
             continue
 
-        # Look up the corresponding C function
+        # Look up the corresponding C/C++ function
         # sym.name is like "MyClass.processData" or "com.example.MyClass.processData"
         if sym.name in jni_lookup:
-            c_sym = jni_lookup[sym.name]
+            native_sym = jni_lookup[sym.name]
             edge = Edge.create(
                 src=sym.id,
-                dst=c_sym.id,
+                dst=native_sym.id,
                 edge_type="native_bridge",
                 line=sym.span.start_line if sym.span else 0,
                 confidence=0.95,
@@ -253,19 +262,20 @@ def link_jni(java_symbols: list[Symbol], c_symbols: list[Symbol]) -> JniLinkResu
 @register_linker(
     "jni",
     priority=10,  # Early priority - JNI linking should happen before other linkers
-    description="Java/C JNI bridge - links native method declarations to C implementations",
+    description="Java/C/C++ JNI bridge - links native method declarations to C/C++ implementations",
     requirements=JNI_REQUIREMENTS,
 )
 def jni_linker(ctx: LinkerContext) -> LinkerResult:
     """JNI linker for registry-based dispatch.
 
     This wraps link_jni() to use the LinkerContext/LinkerResult interface.
+    JNI implementations can be in either C (.c) or C++ (.cpp) files.
     """
-    # Separate Java and C symbols
+    # Separate Java and C/C++ symbols
     java_symbols = [s for s in ctx.symbols if s.language == "java"]
-    c_symbols = [s for s in ctx.symbols if s.language == "c"]
+    native_symbols = [s for s in ctx.symbols if s.language in ("c", "cpp")]
 
-    result = link_jni(java_symbols, c_symbols)
+    result = link_jni(java_symbols, native_symbols)
 
     return LinkerResult(
         symbols=[],
