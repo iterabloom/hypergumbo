@@ -95,18 +95,26 @@ class LinkerContext:
     _symbols_by_name: dict[str, list["Symbol"]] | None = field(
         default=None, init=False, repr=False
     )
+    _symbols_by_path: dict[str, list["Symbol"]] | None = field(
+        default=None, init=False, repr=False
+    )
 
     def _ensure_indexes(self) -> None:
         """Build symbol indexes if not already built."""
         if self._symbol_by_id is None:
             self._symbol_by_id = {s.id: s for s in self.symbols}
             self._symbols_by_name = {}
+            self._symbols_by_path = {}
             for s in self.symbols:
                 # Index by short name (last component)
                 short_name = s.name.split(".")[-1] if "." in s.name else s.name
                 if short_name not in self._symbols_by_name:
                     self._symbols_by_name[short_name] = []
                 self._symbols_by_name[short_name].append(s)
+                # Index by path for enclosing symbol lookups
+                if s.path not in self._symbols_by_path:
+                    self._symbols_by_path[s.path] = []
+                self._symbols_by_path[s.path].append(s)
 
     def get_symbol_by_id(self, symbol_id: str) -> "Symbol | None":
         """Look up a symbol by its ID.
@@ -133,6 +141,65 @@ class LinkerContext:
         self._ensure_indexes()
         assert self._symbols_by_name is not None  # for type checker
         return self._symbols_by_name.get(name, [])
+
+    def find_enclosing_symbol(
+        self,
+        path: str,
+        line: int,
+        kinds: tuple[str, ...] = ("function", "method", "class"),
+    ) -> "Symbol | None":
+        """Find the symbol that encloses a given line.
+
+        Used by linkers to connect synthetic nodes (grpc_stub, mq_publisher)
+        to the functions that contain them, enabling slice traversal.
+
+        Args:
+            path: File path (can be absolute or relative, matches suffix)
+            line: Line number to find enclosing symbol for
+            kinds: Symbol kinds to consider (default: function, method, class)
+
+        Returns:
+            The smallest enclosing symbol, or None if no match.
+            Prefers more specific symbols (method over class, smaller span).
+        """
+        self._ensure_indexes()
+        assert self._symbols_by_path is not None  # for type checker
+
+        # Try exact path match first
+        candidates = self._symbols_by_path.get(path, [])
+
+        # If no match, try suffix matching (handles absolute vs relative paths)
+        if not candidates:
+            for p, syms in self._symbols_by_path.items():
+                if p.endswith(path) or path.endswith(p):
+                    candidates = syms
+                    break
+
+        if not candidates:
+            return None
+
+        # Filter by kind and find enclosing symbols
+        enclosing = []
+        for sym in candidates:
+            if sym.kind not in kinds:
+                continue
+            if sym.span is None:  # pragma: no cover - defensive for malformed symbols
+                continue
+            if sym.span.start_line <= line <= sym.span.end_line:
+                enclosing.append(sym)
+
+        if not enclosing:
+            return None
+
+        # Return the smallest (most specific) enclosing symbol
+        # Prefer function/method over class
+        def specificity(s: "Symbol") -> tuple[int, int]:
+            # Lower is better: (kind_priority, span_size)
+            kind_priority = {"method": 0, "function": 1, "class": 2}.get(s.kind, 3)
+            span_size = (s.span.end_line - s.span.start_line) if s.span else 9999
+            return (kind_priority, span_size)
+
+        return min(enclosing, key=specificity)
 
     def get_unresolved_edges(
         self,
@@ -329,6 +396,10 @@ def run_linker(
 def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     """Run all registered linkers in priority order.
 
+    After all linkers run, a post-processing pass connects synthetic nodes
+    (grpc_stub, mq_publisher, etc.) to their enclosing functions. This
+    enables slice traversal from application code through linker boundaries.
+
     Args:
         ctx: LinkerContext with all inputs
 
@@ -336,10 +407,102 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
         List of (name, result) tuples in execution order.
     """
     results = []
+    all_linker_symbols: list[Symbol] = []
+
+    # Run all registered linkers
     for linker in get_all_linkers():
         result = linker.func(ctx)
         results.append((linker.name, result))
+        all_linker_symbols.extend(result.symbols)
+
+    # Post-process: connect synthetic nodes to enclosing functions
+    enclosure_edges = _connect_synthetic_to_enclosing(ctx, all_linker_symbols)
+    if enclosure_edges:
+        from ..ir import AnalysisRun
+        run = AnalysisRun.create(  # nosec B106 - pass_id is not a password
+            pass_id="enclosure-linker-v1",
+            version="hypergumbo-0.1.0",
+        )
+        results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=run)))
+
     return results
+
+
+# Synthetic node kinds that should be connected to enclosing functions
+SYNTHETIC_KINDS = frozenset({
+    "grpc_stub",
+    "grpc_server",
+    "mq_publisher",
+    "mq_subscriber",
+    "websocket_endpoint",
+    "websocket_emitter",
+    "websocket_listener",
+    "event_publisher",
+    "event_subscriber",
+    "ipc_publisher",
+    "ipc_subscriber",
+    "db_query",
+    "http_client",
+})
+
+
+def _connect_synthetic_to_enclosing(
+    ctx: LinkerContext,
+    linker_symbols: list["Symbol"],
+) -> list["Edge"]:
+    """Connect synthetic nodes to their enclosing functions.
+
+    This post-processing pass enables slice traversal from application code
+    through linker-created synthetic nodes (grpc_stub, mq_publisher, etc.).
+
+    Args:
+        ctx: LinkerContext with analyzer symbols for enclosing lookup
+        linker_symbols: Symbols created by linkers in this run
+
+    Returns:
+        List of 'uses' edges from enclosing functions to synthetic nodes.
+    """
+    from ..ir import Edge
+
+    edges: list[Edge] = []
+    seen_pairs: set[tuple[str, str]] = set()
+
+    for sym in linker_symbols:
+        # Skip non-Symbol objects (e.g., mock data in tests)
+        if not hasattr(sym, "kind"):
+            continue
+
+        # Only process synthetic node kinds
+        if sym.kind not in SYNTHETIC_KINDS:
+            continue
+
+        # Need span to find enclosing function
+        if sym.span is None:  # pragma: no cover - defensive for malformed symbols
+            continue
+
+        # Find enclosing function/method/class
+        enclosing = ctx.find_enclosing_symbol(sym.path, sym.span.start_line)
+        if enclosing is None:
+            continue
+
+        # Avoid duplicate edges
+        pair = (enclosing.id, sym.id)
+        if pair in seen_pairs:  # pragma: no cover - rare edge case
+            continue
+        seen_pairs.add(pair)
+
+        # Create edge from enclosing function to synthetic node
+        edges.append(Edge.create(
+            src=enclosing.id,
+            dst=sym.id,
+            edge_type="uses",
+            line=sym.span.start_line,
+            confidence=0.9,
+            origin="enclosure-linker-v1",
+            evidence_type="enclosing_scope",
+        ))
+
+    return edges
 
 
 def clear_registry() -> None:

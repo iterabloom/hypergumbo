@@ -646,3 +646,253 @@ class TestLinkerRequirements:
 
         # Linker without requirements should not appear in diagnostics
         assert len(diagnostics) == 0
+
+
+class TestFindEnclosingSymbol:
+    """Tests for find_enclosing_symbol method."""
+
+    def test_finds_enclosing_function(self):
+        """Finds function that contains a given line."""
+        from hypergumbo.ir import Symbol, Span
+
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+        result = ctx.find_enclosing_symbol("test.py", 15)
+
+        assert result is not None
+        assert result.name == "my_func"
+
+    def test_returns_none_when_no_match(self):
+        """Returns None when no enclosing symbol found."""
+        from hypergumbo.ir import Symbol, Span
+
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+        result = ctx.find_enclosing_symbol("test.py", 5)  # Line outside function
+
+        assert result is None
+
+    def test_prefers_method_over_class(self):
+        """Prefers method (more specific) over class when both enclose the line."""
+        from hypergumbo.ir import Symbol, Span
+
+        cls = Symbol(
+            id="python:test.py:5-30:MyClass:class",
+            name="MyClass",
+            kind="class",
+            language="python",
+            path="test.py",
+            span=Span(start_line=5, end_line=30, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+        method = Symbol(
+            id="python:test.py:10-20:my_method:method",
+            name="my_method",
+            kind="method",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=4, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[cls, method])
+        result = ctx.find_enclosing_symbol("test.py", 15)
+
+        assert result is not None
+        assert result.name == "my_method"  # Method preferred over class
+
+    def test_suffix_matching_for_paths(self):
+        """Matches paths by suffix (handles absolute vs relative)."""
+        from hypergumbo.ir import Symbol, Span
+
+        func = Symbol(
+            id="python:/home/user/project/src/test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="/home/user/project/src/test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+
+        # Should match by suffix
+        result = ctx.find_enclosing_symbol("src/test.py", 15)
+        assert result is not None
+        assert result.name == "my_func"
+
+    def test_filters_by_kinds(self):
+        """Only considers symbols of specified kinds."""
+        from hypergumbo.ir import Symbol, Span
+
+        # A variable (not in default kinds)
+        var = Symbol(
+            id="python:test.py:15-15:x:variable",
+            name="x",
+            kind="variable",
+            language="python",
+            path="test.py",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[var, func])
+
+        # Default kinds should skip variable, return function
+        result = ctx.find_enclosing_symbol("test.py", 15)
+        assert result is not None
+        assert result.name == "my_func"
+
+
+class TestEnclosureLinker:
+    """Tests for enclosure post-processing in run_all_linkers."""
+
+    def test_creates_uses_edges_for_synthetic_nodes(self):
+        """Creates 'uses' edges from enclosing functions to synthetic nodes."""
+        from hypergumbo.ir import Symbol, Span
+
+        # A function in the analyzer output
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="test",
+        )
+
+        # A synthetic gRPC stub created by a linker
+        stub = Symbol(
+            id="grpc:test.py:15:EmailService:grpc_stub",
+            name="EmailService",
+            kind="grpc_stub",
+            language="python",
+            path="test.py",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+        )
+
+        @register_linker("synthetic-test", priority=50)
+        def link_synthetic(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[stub])
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+        results = run_all_linkers(ctx)
+
+        # Should have the linker result AND the enclosure linker result
+        assert len(results) == 2
+        assert results[0][0] == "synthetic-test"
+        assert results[1][0] == "enclosure"
+
+        # Check enclosure edges
+        enclosure_result = results[1][1]
+        assert len(enclosure_result.edges) == 1
+        edge = enclosure_result.edges[0]
+        assert edge.src == func.id
+        assert edge.dst == stub.id
+        assert edge.edge_type == "uses"
+        assert edge.evidence_type == "enclosing_scope"
+
+    def test_skips_non_synthetic_kinds(self):
+        """Doesn't create edges for non-synthetic node kinds."""
+        from hypergumbo.ir import Symbol, Span
+
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="test",
+        )
+
+        # A regular symbol (not synthetic)
+        other = Symbol(
+            id="python:test.py:15:x:variable",
+            name="x",
+            kind="variable",  # Not in SYNTHETIC_KINDS
+            language="python",
+            path="test.py",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
+            origin="other-linker-v1",
+            origin_run_id="test",
+        )
+
+        @register_linker("non-synthetic-test", priority=50)
+        def link_non_synthetic(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[other])
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+        results = run_all_linkers(ctx)
+
+        # Only the linker result, no enclosure result (no synthetic nodes)
+        assert len(results) == 1
+        assert results[0][0] == "non-synthetic-test"
+
+    def test_handles_no_enclosing_function(self):
+        """Gracefully handles synthetic nodes with no enclosing function."""
+        from hypergumbo.ir import Symbol, Span
+
+        # Synthetic node at module level (no enclosing function)
+        stub = Symbol(
+            id="grpc:test.py:5:Service:grpc_stub",
+            name="Service",
+            kind="grpc_stub",
+            language="python",
+            path="test.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+        )
+
+        @register_linker("no-enclosing-test", priority=50)
+        def link_no_enclosing(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[stub])
+
+        # Empty symbols list - no functions to enclose
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[])
+        results = run_all_linkers(ctx)
+
+        # Only the linker result, no enclosure edges created
+        assert len(results) == 1
+        assert results[0][0] == "no-enclosing-test"
