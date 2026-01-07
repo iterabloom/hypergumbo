@@ -25,9 +25,9 @@ QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
 # Load secrets from .env if present
 # ------------------------------------------------------------------
 if [[ -f "$REPO_ROOT/.env" ]]; then
-  set -o allexport
-  source "$REPO_ROOT/.env"
-  set +o allexport
+	set -o allexport
+	source "$REPO_ROOT/.env"
+	set +o allexport
 fi
 
 # ------------------------------------------------------------------
@@ -36,226 +36,240 @@ fi
 
 # Get the number of vPRs in queue
 queue_count() {
-  if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
-    echo 0
-  else
-    wc -l < "$QUEUE_FILE" | tr -d ' '
-  fi
+	if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
+		echo 0
+	else
+		wc -l <"$QUEUE_FILE" | tr -d ' '
+	fi
 }
 
 # Get the tip branch (last queued vPR's branch)
 queue_tip() {
-  if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
-    echo ""
-  else
-    tail -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])"
-  fi
+	if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
+		echo ""
+	else
+		tail -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])"
+	fi
 }
 
 # Queue a vPR
 queue_vpr() {
-  local branch="$1" base="$2" title="$3" desc="$4" sha="$5"
-  local ts vpr_num
+	local branch="$1" base="$2" title="$3" desc="$4" sha="$5"
+	local ts vpr_num
 
-  ts="$(date -Iseconds)"
-  vpr_num=$(($(queue_count) + 1))
+	ts="$(date -Iseconds)"
+	vpr_num=$(($(queue_count) + 1))
 
-  # Escape quotes in title/desc for JSON
-  title="${title//\"/\\\"}"
-  desc="${desc//\"/\\\"}"
+	# Escape quotes in title/desc for JSON
+	title="${title//\"/\\\"}"
+	desc="${desc//\"/\\\"}"
 
-  echo "{\"vpr\":$vpr_num,\"branch\":\"$branch\",\"base\":\"$base\",\"title\":\"$title\",\"desc\":\"$desc\",\"sha\":\"$sha\",\"ts\":\"$ts\"}" >> "$QUEUE_FILE"
+	echo "{\"vpr\":$vpr_num,\"branch\":\"$branch\",\"base\":\"$base\",\"title\":\"$title\",\"desc\":\"$desc\",\"sha\":\"$sha\",\"ts\":\"$ts\"}" >>"$QUEUE_FILE"
 
-  echo ""
-  echo "📥 Queued as vPR #$vpr_num: $branch"
-  echo "   Title: $title"
-  echo ""
-  echo "ℹ️  Queue now has $vpr_num vPR(s). When remote is available:"
-  echo "   ./scripts/auto-pr flush    # Push all as single atomic PR"
-  echo ""
-  echo "⚠️  To add more changes, branch from the queue tip:"
-  echo "   git checkout -b <new-branch> $branch"
+	echo ""
+	echo "📥 Queued as vPR #$vpr_num: $branch"
+	echo "   Title: $title"
+	echo ""
+	echo "ℹ️  Queue now has $vpr_num vPR(s). When remote is available:"
+	echo "   ./scripts/auto-pr flush    # Push all as single atomic PR"
+	echo ""
+	echo "⚠️  To add more changes, branch from the queue tip:"
+	echo "   git checkout -b <new-branch> $branch"
 }
 
 # List queued vPRs
 list_queue() {
-  local count
-  count=$(queue_count)
+	local count
+	count=$(queue_count)
 
-  if [[ "$count" -eq 0 ]]; then
-    echo "📭 No vPRs queued"
-    echo ""
-    echo "When remote is unavailable, auto-pr queues changes as vPRs (virtual PRs)."
-    echo "Use './scripts/auto-pr flush' to push them when remote recovers."
-    return 0
-  fi
+	if [[ "$count" -eq 0 ]]; then
+		echo "📭 No vPRs queued"
+		echo ""
+		echo "When remote is unavailable, auto-pr queues changes as vPRs (virtual PRs)."
+		echo "Use './scripts/auto-pr flush' to push them when remote recovers."
+		return 0
+	fi
 
-  echo "📋 Queued vPRs ($count total):"
-  echo "---------------------------------------------------"
+	echo "📋 Queued vPRs ($count total):"
+	echo "---------------------------------------------------"
 
-  while IFS= read -r line; do
-    local vpr branch title ts
-    vpr=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['vpr'])")
-    branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
-    title=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-    ts=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['ts'])")
-    echo "  vPR #$vpr: $title"
-    echo "       Branch: $branch"
-    echo "       Queued: $ts"
-    echo ""
-  done < "$QUEUE_FILE"
+	while IFS= read -r line; do
+		local vpr branch title ts
+		vpr=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['vpr'])")
+		branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
+		title=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
+		ts=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['ts'])")
+		echo "  vPR #$vpr: $title"
+		echo "       Branch: $branch"
+		echo "       Queued: $ts"
+		echo ""
+	done <"$QUEUE_FILE"
 
-  local tip
-  tip=$(queue_tip)
-  echo "---------------------------------------------------"
-  echo "📍 Queue tip: $tip"
-  echo ""
-  echo "Next steps:"
-  echo "  • Add more changes: git checkout -b <new-branch> $tip"
-  echo "  • Flush to remote:  ./scripts/auto-pr flush"
+	local tip
+	tip=$(queue_tip)
+	echo "---------------------------------------------------"
+	echo "📍 Queue tip: $tip"
+	echo ""
+	echo "Next steps:"
+	echo "  • Add more changes: git checkout -b <new-branch> $tip"
+	echo "  • Flush to remote:  ./scripts/auto-pr flush"
 }
 
 # Show queue status
 show_status() {
-  local count tip
-  count=$(queue_count)
-  tip=$(queue_tip)
+	local count tip
+	count=$(queue_count)
+	tip=$(queue_tip)
 
-  if [[ "$count" -eq 0 ]]; then
-    echo "✅ Queue empty - remote workflow active"
-    echo ""
-    echo "Create a feature branch and run auto-pr normally:"
-    echo "  git checkout -b author/feat/name"
-    echo "  # make changes..."
-    echo "  ./scripts/auto-pr"
-  else
-    echo "📦 Queue has $count vPR(s) - offline workflow active"
-    echo ""
-    echo "Queue tip: $tip"
-    echo ""
-    echo "Options:"
-    echo "  • Add more changes: git checkout -b <new-branch> $tip"
-    echo "  • View queue:       ./scripts/auto-pr list"
-    echo "  • Flush to remote:  ./scripts/auto-pr flush"
-  fi
+	if [[ "$count" -eq 0 ]]; then
+		echo "✅ Queue empty - remote workflow active"
+		echo ""
+		echo "Create a feature branch and run auto-pr normally:"
+		echo "  git checkout -b author/feat/name"
+		echo "  # make changes..."
+		echo "  ./scripts/auto-pr"
+	else
+		echo "📦 Queue has $count vPR(s) - offline workflow active"
+		echo ""
+		echo "Queue tip: $tip"
+		echo ""
+		echo "Options:"
+		echo "  • Add more changes: git checkout -b <new-branch> $tip"
+		echo "  • View queue:       ./scripts/auto-pr list"
+		echo "  • Flush to remote:  ./scripts/auto-pr flush"
+	fi
 }
 
 # Flush all vPRs as a single atomic PR
 flush_queue() {
-  local count
-  count=$(queue_count)
+	local count
+	count=$(queue_count)
 
-  if [[ "$count" -eq 0 ]]; then
-    echo "📭 No vPRs to flush"
-    return 0
-  fi
+	if [[ "$count" -eq 0 ]]; then
+		echo "📭 No vPRs to flush"
+		return 0
+	fi
 
-  USER="${FORGEJO_USER:-}"
-  TOKEN="${FORGEJO_TOKEN:-}"
-  if [[ -z "$USER" ]]; then
-    echo "Error: FORGEJO_USER environment variable is not set."
-    exit 1
-  fi
-  if [[ -z "$TOKEN" ]]; then
-    echo "Error: FORGEJO_TOKEN environment variable is not set."
-    exit 1
-  fi
+	USER="${FORGEJO_USER:-}"
+	TOKEN="${FORGEJO_TOKEN:-}"
+	if [[ -z "$USER" ]]; then
+		echo "Error: FORGEJO_USER environment variable is not set."
+		exit 1
+	fi
+	if [[ -z "$TOKEN" ]]; then
+		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		exit 1
+	fi
 
-  echo "🔄 Flushing $count vPR(s) as single atomic PR..."
-  echo "---------------------------------------------------"
+	echo "🔄 Flushing $count vPR(s) as single atomic PR..."
+	echo "---------------------------------------------------"
 
-  # Get the tip branch (contains all changes due to linear chain)
-  local tip_branch tip_sha base_branch
-  tip_branch=$(queue_tip)
-  tip_sha=$(git rev-parse "$tip_branch")
-  base_branch=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['base'])")
+	# Get the tip branch (contains all changes due to linear chain)
+	local tip_branch tip_sha base_branch
+	tip_branch=$(queue_tip)
+	tip_sha=$(git rev-parse "$tip_branch")
+	base_branch=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['base'])")
 
-  # Build PR title and description
-  local pr_title pr_desc vpr_list=""
+	# Build PR title and description
+	local pr_title pr_desc vpr_list=""
 
-  if [[ "$count" -eq 1 ]]; then
-    # Single vPR - use its title directly
-    pr_title=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-    pr_desc=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('desc', ''))")
-  else
-    # Multiple vPRs - create summary
-    pr_title="flush: $count vPRs from offline queue"
+	if [[ "$count" -eq 1 ]]; then
+		# Single vPR - use its title directly
+		pr_title=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
+		pr_desc=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('desc', ''))")
+	else
+		# Multiple vPRs - create summary
+		pr_title="flush: $count vPRs from offline queue"
 
-    while IFS= read -r line; do
-      local vpr title branch
-      vpr=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['vpr'])")
-      title=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-      branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
-      vpr_list+="- **vPR $vpr/$count**: $title (\`$branch\`)"$'\n'
-    done < "$QUEUE_FILE"
+		while IFS= read -r line; do
+			local vpr title branch
+			vpr=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['vpr'])")
+			title=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
+			branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
+			vpr_list+="- **vPR $vpr/$count**: $title (\`$branch\`)"$'\n'
+		done <"$QUEUE_FILE"
 
-    pr_desc="## Queued Virtual PRs
+		pr_desc="## Queued Virtual PRs
 
 This PR contains $count vPRs created during remote unavailability:
 
 $vpr_list
 Individual commits are preserved in the history."
-  fi
+	fi
 
-  echo "📤 Pushing: $tip_branch → $base_branch"
-  echo "   Title: $pr_title"
-  echo "   Contains: $count vPR(s)"
+	echo "📤 Pushing: $tip_branch → $base_branch"
+	echo "   Title: $pr_title"
+	echo "   Contains: $count vPR(s)"
 
-  # Simulate outage for testing
-  if [[ "${AUTO_PR_SIMULATE_OUTAGE:-}" == "1" ]]; then
-    echo ""
-    echo "⚠️  [SIMULATED OUTAGE] AUTO_PR_SIMULATE_OUTAGE=1"
-    echo "❌ Remote still unavailable (simulated)"
-    echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
-    exit 1
-  fi
+	# Simulate outage for testing
+	if [[ "${AUTO_PR_SIMULATE_OUTAGE:-}" == "1" ]]; then
+		echo ""
+		echo "⚠️  [SIMULATED OUTAGE] AUTO_PR_SIMULATE_OUTAGE=1"
+		echo "❌ Remote still unavailable (simulated)"
+		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		exit 1
+	fi
 
-  # Checkout tip and push
-  git checkout "$tip_branch"
+	# Checkout tip and push
+	git checkout "$tip_branch"
 
-  REMOTE_URL="$(git remote get-url origin)"
-  REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
+	REMOTE_URL="$(git remote get-url origin)"
+	REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
 
-  local max_attempts=3
-  local attempt=1
-  local push_success=false
+	local max_attempts=3
+	local attempt=1
+	local push_success=false
 
-  while [[ $attempt -le $max_attempts ]]; do
-    if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-      push origin "HEAD:refs/for/$base_branch/$tip_branch" \
-      -o title="$pr_title" \
-      -o description="$pr_desc" \
-      -o force-push=true 2>&1; then
-      push_success=true
-      break
-    fi
+	pr_title="${pr_title//$'\n'/ }"
+	pr_title="${pr_title//$'\r'/ }"
+	pr_desc="${pr_desc//$'\r'/}"
+	pr_desc="${pr_desc//$'\n'/'  '}"
 
-    echo ""
-    echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
+	local sha
+	while IFS= read -r line; do
+	  sha=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+	  if ! git merge-base --is-ancestor "$sha" HEAD; then
+	    echo "❌ Queue is not a linear stack; vPR commit $sha is not included in tip $tip_branch."
+	    exit 1
+	  fi
+	done <"$QUEUE_FILE"
 
-    if [[ $attempt -lt $max_attempts ]]; then
-      echo "   Retrying in 10 seconds..."
-      sleep 10
-    fi
-    ((attempt++))
-  done
+	while [[ $attempt -le $max_attempts ]]; do
+		if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+			push origin "HEAD:refs/for/$base_branch/$tip_branch" \
+			-o title="$pr_title" \
+			-o description="$pr_desc" \
+			-o force-push=true 2>&1; then
+			push_success=true
+			break
+		fi
 
-  if [[ "$push_success" != "true" ]]; then
-    echo ""
-    echo "❌ Remote still unavailable after $max_attempts attempts"
-    echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
-    exit 1
-  fi
+		echo ""
+		echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
 
-  echo "---------------------------------------------------"
-  echo "🔍 Identifying Pull Request..."
+		if [[ $attempt -lt $max_attempts ]]; then
+			echo "   Retrying in 10 seconds..."
+			sleep 10
+		fi
+		((attempt++))
+	done
 
-  API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
-  sleep 2
+	if [[ "$push_success" != "true" ]]; then
+		echo ""
+		echo "❌ Remote still unavailable after $max_attempts attempts"
+		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		exit 1
+	fi
 
-  PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
+	echo "---------------------------------------------------"
+	echo "🔍 Identifying Pull Request..."
 
-  PR_INDEX=$(echo "$PR_DATA" | python3 -c "
+	API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+	sleep 2
+
+	PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
+
+	PR_INDEX=$(echo "$PR_DATA" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -268,31 +282,34 @@ try:
         sys.exit(1)
 except Exception:
     sys.exit(1)
-") || { echo "❌ Could not find open PR for commit $tip_sha"; exit 1; }
+") || {
+		echo "❌ Could not find open PR for commit $tip_sha"
+		exit 1
+	}
 
-  PR_NUM=$(echo "$PR_INDEX" | head -n1)
-  HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+	PR_NUM=$(echo "$PR_INDEX" | head -n1)
+	HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
 
-  # Gate file
-  echo "$PR_NUM" > .git/PR_PENDING
+	# Gate file
+	echo "$PR_NUM" >.git/PR_PENDING
 
-  echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
-  echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
+	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
 
-  # Poll CI
-  echo "---------------------------------------------------"
-  echo "⏳ Polling CI Status..."
+	# Poll CI
+	echo "---------------------------------------------------"
+	echo "⏳ Polling CI Status..."
 
-  while true; do
-    STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
+	while true; do
+		STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
 
-    STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
+		STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
 
-    if [[ "$STATE" == "success" ]]; then
-      echo -e "\n✅ CI Passed!"
-      break
-    elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
-      CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
+		if [[ "$STATE" == "success" ]]; then
+			echo -e "\n✅ CI Passed!"
+			break
+		elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
+			CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -306,188 +323,209 @@ try:
 except Exception:
     print('unknown error')
 ")
-      echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
-      echo ""
-      echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
-      exit 1
-    fi
+			echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
+			echo ""
+			echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
+			exit 1
+		fi
 
-    printf "."
-    sleep 10
-  done
+		printf "."
+		sleep 10
+	done
 
-  # Merge
-  echo "---------------------------------------------------"
-  echo "🔀 Merging PR #$PR_NUM..."
+	# Merge
+	echo "---------------------------------------------------"
+	echo "🔀 Merging PR #$PR_NUM..."
 
-  MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-       -H "Authorization: token $TOKEN" \
-       -H "Content-Type: application/json" \
-       -d '{"do": "merge", "delete_branch_after_merge": true}' \
-       "$API_BASE/pulls/$PR_NUM/merge")
+	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+		-H "Authorization: token $TOKEN" \
+		-H "Content-Type: application/json" \
+		-d '{"do": "merge", "delete_branch_after_merge": true}' \
+		"$API_BASE/pulls/$PR_NUM/merge")
 
-  if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
-    echo "✅ Successfully Merged!"
-  else
-    echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
-    sleep 2
-    PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" | \
-      python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
+	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
+		echo "✅ Successfully Merged!"
+	else
+		echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
+		sleep 2
+		PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" |
+			python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
 
-    if [[ "$PR_STATE" == "True" ]]; then
-      echo "✅ Verified: PR was successfully merged!"
-    else
-      echo "❌ Merge failed (HTTP $MERGE_HTTP_CODE)"
-      exit 1
-    fi
-  fi
+		if [[ "$PR_STATE" == "True" ]]; then
+			echo "✅ Verified: PR was successfully merged!"
+		else
+			echo "❌ Merge failed (HTTP $MERGE_HTTP_CODE)"
+			exit 1
+		fi
+	fi
 
-  # Cleanup
-  echo "---------------------------------------------------"
-  echo "🧹 Cleaning up..."
+	# Cleanup
+	echo "---------------------------------------------------"
+	echo "🧹 Cleaning up..."
 
-  rm -f .git/PR_PENDING
+	rm -f .git/PR_PENDING
 
-  # Collect all vPR branches for deletion
-  local branches_to_delete=()
-  while IFS= read -r line; do
-    local branch
-    branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
-    branches_to_delete+=("$branch")
-  done < "$QUEUE_FILE"
+	# Collect all vPR branches for deletion
+	local branches_to_delete=()
+	while IFS= read -r line; do
+		local branch
+		branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
+		branches_to_delete+=("$branch")
+	done <"$QUEUE_FILE"
 
-  # Clear queue
-  rm -f "$QUEUE_FILE"
+	# Clear queue
+	rm -f "$QUEUE_FILE"
 
-  # Switch to base and pull
-  git checkout "$base_branch"
-  git pull origin "$base_branch" || true
+	# Switch to base and pull
+	git checkout "$base_branch"
+	git pull origin "$base_branch" || true
 
-  # Delete local branches
-  for branch in "${branches_to_delete[@]}"; do
-    git branch -D "$branch" 2>/dev/null || true
-  done
+	# Delete local branches
+	for branch in "${branches_to_delete[@]}"; do
+		git branch -D "$branch" 2>/dev/null || true
+	done
 
-  echo ""
-  echo "✅ Flushed $count vPR(s) successfully!"
-  echo "   Queue cleared, local branches deleted."
+	echo ""
+	echo "✅ Flushed $count vPR(s) successfully!"
+	echo "   Queue cleared, local branches deleted."
+}
+
+ensure_stacked_on_tip() {
+	local tip="$1"
+	local branch="$2"
+
+	# Already stacked
+	if git merge-base --is-ancestor "$tip" "$branch" 2>/dev/null; then
+		return 0
+	fi
+
+	# Require clean tree for a safe rebase
+	if ! git diff --quiet || ! git diff --cached --quiet; then
+		echo "❌ Working tree has uncommitted changes; cannot auto-stack onto queue tip."
+		echo "   Commit/stash changes, then rerun."
+		exit 1
+	fi
+
+	echo "🔧 Queue is non-empty; auto-stacking '$branch' onto queue tip '$tip'..."
+	if ! git rebase "$tip"; then
+		echo "❌ Auto-stack rebase failed."
+		echo "   Resolve conflicts, then run: git rebase --continue"
+		echo "   Or abort with: git rebase --abort"
+		exit 1
+	fi
 }
 
 # ------------------------------------------------------------------
 # Main PR workflow (push, poll, merge) - or queue if offline
 # ------------------------------------------------------------------
 do_pr() {
-  USER="${FORGEJO_USER:-}"
-  TOKEN="${FORGEJO_TOKEN:-}"
-  if [[ -z "$USER" ]]; then
-    echo "Error: FORGEJO_USER environment variable is not set."
-    exit 1
-  fi
-  if [[ -z "$TOKEN" ]]; then
-    echo "Error: FORGEJO_TOKEN environment variable is not set."
-    exit 1
-  fi
+	USER="${FORGEJO_USER:-}"
+	TOKEN="${FORGEJO_TOKEN:-}"
+	if [[ -z "$USER" ]]; then
+		echo "Error: FORGEJO_USER environment variable is not set."
+		exit 1
+	fi
+	if [[ -z "$TOKEN" ]]; then
+		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		exit 1
+	fi
 
-  BRANCH="$(git branch --show-current)"
-  BASE_BRANCH="${BASE_BRANCH:-dev}"
-  if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
-    echo "Error: You are on '$BRANCH'. Please create a feature branch first."
-    exit 1
-  fi
+	BRANCH="$(git branch --show-current)"
+	BASE_BRANCH="${BASE_BRANCH:-dev}"
+	if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
+		echo "Error: You are on '$BRANCH'. Please create a feature branch first."
+		exit 1
+	fi
 
-  # Check if queue is non-empty and warn about branching
-  local queue_count_val tip
-  queue_count_val=$(queue_count)
-  if [[ "$queue_count_val" -gt 0 ]]; then
-    tip=$(queue_tip)
-    # Check if current branch is based on queue tip
-    if ! git merge-base --is-ancestor "$tip" HEAD 2>/dev/null; then
-      echo "⚠️  Warning: Queue has $queue_count_val vPR(s), but this branch is not based on queue tip."
-      echo "   Queue tip: $tip"
-      echo "   This may cause merge conflicts when flushing."
-      echo ""
-      echo "   Recommended: git rebase $tip"
-      echo ""
-      read -p "Continue anyway? [y/N] " -n 1 -r REPLY
-      echo ""
-      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-      fi
-    fi
-  fi
+	# Check if queue is non-empty
+	local queue_count_val tip
+	queue_count_val=$(queue_count)
+	if [[ "$queue_count_val" -gt 0 ]]; then
+		tip=$(queue_tip)
+	fi
 
-  REMOTE_URL="$(git remote get-url origin)"
-  REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
-  LOCAL_SHA="$(git rev-parse HEAD)"
+	REMOTE_URL="$(git remote get-url origin)"
+	REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
+	LOCAL_SHA="$(git rev-parse HEAD)"
 
-  TITLE="${1:-$(git log -1 --pretty=%s)}"
-  DESC="${2:-$(git log -1 --pretty=%b | tr '\n' ' ' | sed 's/  */ /g')}"
+	TITLE="${1:-$(git log -1 --pretty=%s)}"
+	DESC="${2:-$(git log -1 --pretty=%b | tr '\n' ' ' | sed 's/  */ /g')}"
 
-  echo "🚀 Target: $REPO_SLUG"
-  echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
-  echo "🔑 Commit: ${LOCAL_SHA:0:7}"
+	TITLE="${TITLE//$'\n'/ }"
+	DESC="${DESC//$'\n'/ }"
+	echo "🚀 Target: $REPO_SLUG"
+	echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
+	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
 
-  # Check if queue is non-empty - if so, queue this too (maintain atomicity)
-  if [[ "$queue_count_val" -gt 0 ]]; then
-    echo ""
-    echo "📦 Queue already has $queue_count_val vPR(s) - adding to queue for atomic flush"
-    queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
-    exit 0
-  fi
+	# Check if queue is non-empty - if so, queue this too (maintain atomicity)
+	if [[ "$queue_count_val" -gt 0 ]]; then
+		echo ""
+		echo "📦 Queue already has $queue_count_val vPR(s) - adding to queue for atomic flush"
 
-  # Try to push directly
-  echo "---------------------------------------------------"
-  echo "📤 Pushing to Codeberg..."
+		# Ensure this branch is stacked on the queue tip so flush is truly atomic
+		tip=$(queue_tip)
+		ensure_stacked_on_tip "$tip" "$BRANCH"
 
-  # Simulate outage for testing
-  if [[ "${AUTO_PR_SIMULATE_OUTAGE:-}" == "1" ]]; then
-    echo "⚠️  [SIMULATED OUTAGE] AUTO_PR_SIMULATE_OUTAGE=1"
-    echo ""
-    echo "❌ Remote unavailable (simulated)"
-    queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
-    exit 0
-  fi
+		# Rebase can change HEAD, so refresh SHA before queueing
+		LOCAL_SHA="$(git rev-parse HEAD)"
 
-  local max_attempts=3
-  local attempt=1
-  local push_success=false
+		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+		exit 0
+	fi
 
-  while [[ $attempt -le $max_attempts ]]; do
-    if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-      push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
-      -o title="$TITLE" \
-      -o description="$DESC" \
-      -o force-push=true 2>&1; then
-      push_success=true
-      break
-    fi
+	# Try to push directly
+	echo "---------------------------------------------------"
+	echo "📤 Pushing to Codeberg..."
 
-    echo ""
-    echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
+	# Simulate outage for testing
+	if [[ "${AUTO_PR_SIMULATE_OUTAGE:-}" == "1" ]]; then
+		echo "⚠️  [SIMULATED OUTAGE] AUTO_PR_SIMULATE_OUTAGE=1"
+		echo ""
+		echo "❌ Remote unavailable (simulated)"
+		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+		exit 0
+	fi
 
-    if [[ $attempt -lt $max_attempts ]]; then
-      echo "   Retrying in 10 seconds..."
-      sleep 10
-    fi
-    ((attempt++))
-  done
+	local max_attempts=3
+	local attempt=1
+	local push_success=false
 
-  if [[ "$push_success" != "true" ]]; then
-    echo ""
-    echo "❌ Remote unavailable after $max_attempts attempts"
-    queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
-    exit 0  # Exit cleanly - vPR is queued
-  fi
+	while [[ $attempt -le $max_attempts ]]; do
+		if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+			push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
+			-o title="$TITLE" \
+			-o description="$DESC" \
+			-o force-push=true 2>&1; then
+			push_success=true
+			break
+		fi
 
-  echo "---------------------------------------------------"
-  echo "🔍 Identifying Pull Request..."
+		echo ""
+		echo "⚠️  Push failed (attempt $attempt/$max_attempts)"
 
-  API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
-  sleep 2
+		if [[ $attempt -lt $max_attempts ]]; then
+			echo "   Retrying in 10 seconds..."
+			sleep 10
+		fi
+		((attempt++))
+	done
 
-  PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
+	if [[ "$push_success" != "true" ]]; then
+		echo ""
+		echo "❌ Remote unavailable after $max_attempts attempts"
+		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+		exit 0 # Exit cleanly - vPR is queued
+	fi
 
-  PR_INDEX=$(echo "$PR_DATA" | python3 -c "
+	echo "---------------------------------------------------"
+	echo "🔍 Identifying Pull Request..."
+
+	API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+	sleep 2
+
+	PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
+
+	PR_INDEX=$(echo "$PR_DATA" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -500,31 +538,34 @@ try:
         sys.exit(1)
 except Exception:
     sys.exit(1)
-") || { echo "❌ Could not find open PR for commit $LOCAL_SHA"; exit 1; }
+") || {
+		echo "❌ Could not find open PR for commit $LOCAL_SHA"
+		exit 1
+	}
 
-  PR_NUM=$(echo "$PR_INDEX" | head -n1)
-  HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+	PR_NUM=$(echo "$PR_INDEX" | head -n1)
+	HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
 
-  # Gate file
-  echo "$PR_NUM" > .git/PR_PENDING
+	# Gate file
+	echo "$PR_NUM" >.git/PR_PENDING
 
-  echo "✅ Found PR #$PR_NUM"
-  echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	echo "✅ Found PR #$PR_NUM"
+	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
 
-  # Poll CI
-  echo "---------------------------------------------------"
-  echo "⏳ Polling CI Status..."
+	# Poll CI
+	echo "---------------------------------------------------"
+	echo "⏳ Polling CI Status..."
 
-  while true; do
-    STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
+	while true; do
+		STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
 
-    STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
+		STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
 
-    if [[ "$STATE" == "success" ]]; then
-      echo -e "\n✅ CI Passed!"
-      break
-    elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
-      CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
+		if [[ "$STATE" == "success" ]]; then
+			echo -e "\n✅ CI Passed!"
+			break
+		elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
+			CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -538,129 +579,130 @@ try:
 except Exception:
     print('unknown error')
 ")
-      echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
-      exit 1
-    fi
+			echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
+			exit 1
+		fi
 
-    printf "."
-    sleep 10
-  done
+		printf "."
+		sleep 10
+	done
 
-  # Merge
-  echo "---------------------------------------------------"
-  echo "🔀 Merging PR #$PR_NUM..."
+	# Merge
+	echo "---------------------------------------------------"
+	echo "🔀 Merging PR #$PR_NUM..."
 
-  MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-       -H "Authorization: token $TOKEN" \
-       -H "Content-Type: application/json" \
-       -d '{"do": "merge", "delete_branch_after_merge": true}' \
-       "$API_BASE/pulls/$PR_NUM/merge")
+	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+		-H "Authorization: token $TOKEN" \
+		-H "Content-Type: application/json" \
+		-d '{"do": "merge", "delete_branch_after_merge": true}' \
+		"$API_BASE/pulls/$PR_NUM/merge")
 
-  if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
-    echo "✅ Successfully Merged!"
-    echo "---------------------------------------------------"
-    echo "🧹 Cleaning up local branch..."
-    cleanup_local "$BRANCH" "$BASE_BRANCH"
-  else
-    echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
-    sleep 2
-    PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" | \
-      python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
+	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
+		echo "✅ Successfully Merged!"
+		echo "---------------------------------------------------"
+		echo "🧹 Cleaning up local branch..."
+		cleanup_local "$BRANCH" "$BASE_BRANCH"
+	else
+		echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
+		sleep 2
+		PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" |
+			python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
 
-    if [[ "$PR_STATE" == "True" ]]; then
-      echo "✅ Verified: PR was successfully merged!"
-      echo "---------------------------------------------------"
-      echo "🧹 Cleaning up local branch..."
-      cleanup_local "$BRANCH" "$BASE_BRANCH"
-    else
-      echo "❌ Merge failed (HTTP $MERGE_HTTP_CODE)"
-      exit 1
-    fi
-  fi
+		if [[ "$PR_STATE" == "True" ]]; then
+			echo "✅ Verified: PR was successfully merged!"
+			echo "---------------------------------------------------"
+			echo "🧹 Cleaning up local branch..."
+			cleanup_local "$BRANCH" "$BASE_BRANCH"
+		else
+			echo "❌ Merge failed (HTTP $MERGE_HTTP_CODE)"
+			exit 1
+		fi
+	fi
 }
 
 # ------------------------------------------------------------------
 # Cleanup function
 # ------------------------------------------------------------------
 cleanup_local() {
-  local branch="$1"
-  local base="$2"
+	local branch="$1"
+	local base="$2"
 
-  rm -f .git/PR_PENDING
+	rm -f .git/PR_PENDING
 
-  git checkout "$base"
+	git checkout "$base"
 
-  local max_attempts=3
-  local attempt=1
+	local max_attempts=3
+	local attempt=1
 
-  while [[ $attempt -le $max_attempts ]]; do
-    if git pull origin "$base"; then
-      git branch -d "$branch" 2>/dev/null || true
-      return 0
-    fi
+	while [[ $attempt -le $max_attempts ]]; do
+		if git pull origin "$base"; then
+			git branch -d "$branch" 2>/dev/null || true
+			return 0
+		fi
 
-    echo ""
-    echo "⚠️  Git pull failed (attempt $attempt/$max_attempts)"
+		echo ""
+		echo "⚠️  Git pull failed (attempt $attempt/$max_attempts)"
 
-    if [[ $attempt -lt $max_attempts ]]; then
-      read -p "Retry? [Y/n] " -n 1 -r REPLY
-      echo ""
-      if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        ((attempt++))
-        continue
-      fi
-    fi
+		if [[ $attempt -lt $max_attempts ]]; then
+			read -p "Retry? [Y/n] " -n 1 -r REPLY
+			echo ""
+			if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+				((attempt++))
+				continue
+			fi
+		fi
 
-    echo "ℹ️  Skipping cleanup. Run manually later:"
-    echo "   git pull origin $base && git branch -D $branch"
-    return 0
-  done
+		echo "ℹ️  Skipping cleanup. Run manually later:"
+		echo "   git pull origin $base && git branch -D $branch"
+		return 0
+	done
 }
 
 # ------------------------------------------------------------------
 # Main dispatch
 # ------------------------------------------------------------------
 case "${1:-}" in
-  list|queue)
-    list_queue
-    ;;
-  flush)
-    flush_queue
-    ;;
-  status)
-    show_status
-    ;;
-  help|--help|-h)
-    echo "auto-pr: Push PRs with offline resilience via vPR queue"
-    echo ""
-    echo "Usage: auto-pr [command] [args]"
-    echo ""
-    echo "Commands:"
-    echo "  (default)     Push branch as PR (queues as vPR if offline)"
-    echo "  list          Show queued vPRs"
-    echo "  flush         Push all vPRs as single atomic PR"
-    echo "  status        Show queue status and recommended next steps"
-    echo ""
-    echo "Arguments (for default command):"
-    echo "  [title]       PR title (default: last commit message)"
-    echo "  [description] PR description (default: commit body)"
-    echo ""
-    echo "Environment:"
-    echo "  FORGEJO_USER            Codeberg username"
-    echo "  FORGEJO_TOKEN           Codeberg API token"
-    echo "  BASE_BRANCH             Target branch (default: dev)"
-    echo "  AUTO_PR_SIMULATE_OUTAGE Set to 1 to simulate remote outage (for testing)"
-    echo ""
-    echo "vPR (Virtual PR) Workflow:"
-    echo "  When remote is unavailable, changes are queued as vPRs."
-    echo "  Multiple vPRs form a linear chain (each branches from previous)."
-    echo "  Flush pushes the entire chain as ONE atomic PR."
-    echo ""
-    echo "  1. Work normally: auto-pr queues if offline"
-    echo "  2. For additional changes: git checkout -b <new> \$(auto-pr status | grep tip)"
-    echo "  3. When remote is back: auto-pr flush"
-    ;;
-  *)
-    do_pr "$@"
-    ;;
+list | queue)
+	list_queue
+	;;
+flush)
+	flush_queue
+	;;
+status)
+	show_status
+	;;
+help | --help | -h)
+	echo "auto-pr: Push PRs with offline resilience via vPR queue"
+	echo ""
+	echo "Usage: auto-pr [command] [args]"
+	echo ""
+	echo "Commands:"
+	echo "  (default)     Push branch as PR (queues as vPR if offline)"
+	echo "  list          Show queued vPRs"
+	echo "  flush         Push all vPRs as single atomic PR"
+	echo "  status        Show queue status and recommended next steps"
+	echo ""
+	echo "Arguments (for default command):"
+	echo "  [title]       PR title (default: last commit message)"
+	echo "  [description] PR description (default: commit body)"
+	echo ""
+	echo "Environment:"
+	echo "  FORGEJO_USER            Codeberg username"
+	echo "  FORGEJO_TOKEN           Codeberg API token"
+	echo "  BASE_BRANCH             Target branch (default: dev)"
+	echo "  AUTO_PR_SIMULATE_OUTAGE Set to 1 to simulate remote outage (for testing)"
+	echo ""
+	echo "vPR (Virtual PR) Workflow:"
+	echo "  When remote is unavailable, changes are queued as vPRs."
+	echo "  Multiple vPRs form a linear chain (each branches from previous)."
+	echo "  Flush pushes the entire chain as ONE atomic PR."
+	echo ""
+	echo "  1. Work normally: auto-pr queues if offline"
+	echo "  2. For additional changes: git checkout -b <new> \$(auto-pr status | grep tip)"
+	echo "  3. When remote is back: auto-pr flush"
+	;;
+*)
+	do_pr "$@"
+	;;
 esac
+
