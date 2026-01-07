@@ -56,6 +56,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "database-query-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -435,3 +436,49 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
     run.files_analyzed = files_scanned
 
     return DatabaseQueryLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+def _get_table_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract table symbols from context for linking."""
+    return [s for s in ctx.symbols if s.kind == "table"]
+
+
+def _count_table_symbols(ctx: LinkerContext) -> int:
+    """Count available table symbols for requirement check."""
+    return sum(1 for s in ctx.symbols if s.kind == "table")
+
+
+DATABASE_QUERY_REQUIREMENTS = [
+    LinkerRequirement(
+        name="table_symbols",
+        description="SQL table symbols from schema files",
+        check=_count_table_symbols,
+    ),
+]
+
+
+@register_linker(
+    "database_query",
+    priority=70,  # Run after SQL analyzer has produced table symbols
+    description="Database query linking (SQL queries in code to schema tables)",
+    requirements=DATABASE_QUERY_REQUIREMENTS,
+)
+def database_query_linker(ctx: LinkerContext) -> LinkerResult:
+    """Database query linker for registry-based dispatch.
+
+    This wraps link_database_queries() to use the LinkerContext/LinkerResult interface.
+    Extracts table symbols from ctx and delegates to core linking.
+    """
+    table_symbols = _get_table_symbols(ctx)
+    result = link_database_queries(ctx.repo_root, table_symbols)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )

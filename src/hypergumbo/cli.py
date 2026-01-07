@@ -42,21 +42,21 @@ from .analyze.all_analyzers import run_all_analyzers
 from .analyze.py import analyze_python  # For cmd_slice fallback
 from .analyze.html import analyze_html  # For cmd_slice fallback
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
-from .linkers.phoenix_ipc import link_phoenix_ipc
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo.linkers.database_query as _database_query_linker  # noqa: F401
 import hypergumbo.linkers.dependency as _dependency_linker  # noqa: F401
+import hypergumbo.linkers.event_sourcing as _event_sourcing_linker  # noqa: F401
 import hypergumbo.linkers.graphql as _graphql_linker  # noqa: F401
 import hypergumbo.linkers.graphql_resolver as _graphql_resolver_linker  # noqa: F401
 import hypergumbo.linkers.grpc as _grpc_linker  # noqa: F401
 import hypergumbo.linkers.http as _http_linker  # noqa: F401
 import hypergumbo.linkers.ipc as _ipc_linker  # noqa: F401
 import hypergumbo.linkers.jni as _jni_linker  # noqa: F401
-from .linkers.swift_objc import link_swift_objc
-from .linkers.websocket import link_websocket
-from .linkers.message_queue import link_message_queues
-from .linkers.database_query import link_database_queries
-from .linkers.event_sourcing import link_events
+import hypergumbo.linkers.message_queue as _message_queue_linker  # noqa: F401
+import hypergumbo.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
+import hypergumbo.linkers.swift_objc as _swift_objc_linker  # noqa: F401
+import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -1476,66 +1476,6 @@ def run_behavior_map(
             analysis_runs.append(linker_result.run.to_dict())
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
-
-    # --- Legacy explicit linker calls (pending migration to registry) ---
-    # JNI, gRPC, and IPC linkers have been migrated to @register_linker.
-    # The remaining linkers below will be migrated one-by-one.
-    # Until then, they continue to work via direct function calls.
-
-    # WebSocket linker: detect Socket.io, native WebSocket, ws package patterns
-    ws_result = link_websocket(repo_root)
-    if ws_result.run is not None:
-        analysis_runs.append(ws_result.run.to_dict())
-        all_symbols.extend(ws_result.symbols)
-        all_edges.extend(ws_result.edges)
-
-    # Phoenix IPC linker: detect Phoenix Channels and LiveView patterns
-    phoenix_result = link_phoenix_ipc(repo_root)
-    if phoenix_result.run is not None:
-        analysis_runs.append(phoenix_result.run.to_dict())
-        all_symbols.extend(phoenix_result.symbols)
-        all_edges.extend(phoenix_result.edges)
-
-    # Swift/Objective-C linker: detect @objc, NSObject, bridging headers
-    swift_objc_result = link_swift_objc(repo_root)
-    if swift_objc_result.run is not None:
-        analysis_runs.append(swift_objc_result.run.to_dict())
-        all_symbols.extend(swift_objc_result.symbols)
-        all_edges.extend(swift_objc_result.edges)
-
-    # Note: gRPC linker has been migrated to @register_linker (runs above)
-
-    # Message queue linker: detect Kafka, RabbitMQ, SQS, Redis Pub/Sub patterns
-    mq_result = link_message_queues(repo_root)
-    if mq_result.run is not None:
-        analysis_runs.append(mq_result.run.to_dict())
-        all_symbols.extend(mq_result.symbols)
-        all_edges.extend(mq_result.edges)
-
-    # Note: HTTP, GraphQL, and GraphQL resolver linkers have been migrated to @register_linker.
-    # They run automatically via run_all_linkers() above.
-
-    # Database query linker: connect SQL queries in code to table definitions
-    # Get SQL table symbols for linking
-    table_symbols = [
-        s for s in all_symbols
-        if s.language == "sql" and s.kind == "table"
-    ]
-    db_query_result = link_database_queries(repo_root, table_symbols)
-    if db_query_result.run is not None:
-        analysis_runs.append(db_query_result.run.to_dict())
-        all_symbols.extend(db_query_result.symbols)
-        all_edges.extend(db_query_result.edges)
-
-    # Event sourcing linker: detect event publishers and subscribers
-    event_result = link_events(repo_root)
-    if event_result.run is not None:
-        analysis_runs.append(event_result.run.to_dict())
-        all_symbols.extend(event_result.symbols)
-        all_edges.extend(event_result.edges)
-
-    # Note: Dependency linker has been migrated to @register_linker.
-    # It runs automatically via run_all_linkers() above.
 
     # Filter out test files if requested
     if exclude_tests:
