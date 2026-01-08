@@ -2332,3 +2332,512 @@ class TestVariableMethodCalls:
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
         assert len(call_edges) == 0, "Should not have calls edges for unresolved constructor"
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
+
+
+# ============================================================================
+# Rich Metadata Extraction Tests (ADR-0003)
+# ============================================================================
+
+
+class TestDecoratorMetadata:
+    """Tests for rich decorator metadata extraction per ADR-0003."""
+
+    def test_simple_decorator_no_args(self, tmp_path: Path) -> None:
+        """Simple decorator like @dataclass should capture name with empty args."""
+        py_file = tmp_path / "models.py"
+        py_file.write_text(
+            "from dataclasses import dataclass\n"
+            "\n"
+            "@dataclass\n"
+            "class User:\n"
+            "    name: str\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        classes = [n for n in data["nodes"] if n["kind"] == "class"]
+        assert len(classes) == 1
+        user_class = classes[0]
+
+        # Should have decorators in meta
+        assert "meta" in user_class
+        assert "decorators" in user_class["meta"]
+        decorators = user_class["meta"]["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "dataclass"
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {}
+
+    def test_decorator_with_positional_arg(self, tmp_path: Path) -> None:
+        """Decorator with positional arg like @app.get('/users')."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "from fastapi import FastAPI\n"
+            "\n"
+            "app = FastAPI()\n"
+            "\n"
+            "@app.get('/users')\n"
+            "def get_users():\n"
+            "    return []\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "get_users")
+
+        assert "meta" in func
+        assert "decorators" in func["meta"]
+        decorators = func["meta"]["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "app.get"
+        assert decorators[0]["args"] == ["/users"]
+        assert decorators[0]["kwargs"] == {}
+
+    def test_decorator_with_kwargs(self, tmp_path: Path) -> None:
+        """Decorator with keyword args like @app.get('/users', tags=['api'])."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "from fastapi import FastAPI\n"
+            "\n"
+            "app = FastAPI()\n"
+            "\n"
+            "@app.get('/users', tags=['api'], summary='Get users')\n"
+            "def get_users():\n"
+            "    return []\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "get_users")
+
+        decorators = func["meta"]["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "app.get"
+        assert decorators[0]["args"] == ["/users"]
+        assert decorators[0]["kwargs"] == {"tags": ["api"], "summary": "Get users"}
+
+    def test_decorator_kwargs_only(self, tmp_path: Path) -> None:
+        """Decorator with only kwargs like @router.post(response_model=User)."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "from fastapi import APIRouter\n"
+            "\n"
+            "router = APIRouter()\n"
+            "\n"
+            "@router.post(response_model=dict)\n"
+            "def create_user():\n"
+            "    return {}\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "create_user")
+
+        decorators = func["meta"]["decorators"]
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {"response_model": "dict"}
+
+    def test_multiple_decorators(self, tmp_path: Path) -> None:
+        """Multiple decorators should all be captured in order."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "@require_auth\n"
+            "@validate_json\n"
+            "@cache(timeout=300)\n"
+            "def protected_endpoint():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = functions[0]
+
+        decorators = func["meta"]["decorators"]
+        assert len(decorators) == 3
+        # Decorators should be in source order (top to bottom)
+        assert decorators[0]["name"] == "require_auth"
+        assert decorators[1]["name"] == "validate_json"
+        assert decorators[2]["name"] == "cache"
+        assert decorators[2]["kwargs"] == {"timeout": 300}
+
+    def test_decorator_with_variable_arg(self, tmp_path: Path) -> None:
+        """Decorator with variable as arg should capture variable name."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "TIMEOUT = 300\n"
+            "\n"
+            "@cache(TIMEOUT)\n"
+            "def cached_func():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "cached_func")
+
+        decorators = func["meta"]["decorators"]
+        # Variable names captured as strings
+        assert decorators[0]["args"] == ["TIMEOUT"]
+
+    def test_decorator_with_dict_arg(self, tmp_path: Path) -> None:
+        """Decorator with dict argument should capture full dict."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "@config({'key': 'value', 'num': 42})\n"
+            "def configured_func():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = functions[0]
+
+        decorators = func["meta"]["decorators"]
+        assert decorators[0]["args"] == [{"key": "value", "num": 42}]
+
+    def test_decorator_with_tuple_arg(self, tmp_path: Path) -> None:
+        """Decorator with tuple argument should capture as list."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "@accepts(('str', 'int'))\n"
+            "def typed_func():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = functions[0]
+
+        decorators = func["meta"]["decorators"]
+        assert decorators[0]["args"] == [["str", "int"]]
+
+    def test_decorator_with_attribute_value(self, tmp_path: Path) -> None:
+        """Decorator with attribute value like SomeClass.field."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "class Config:\n"
+            "    DEBUG = True\n"
+            "\n"
+            "@setting(Config.DEBUG)\n"
+            "def debug_func():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "debug_func")
+
+        decorators = func["meta"]["decorators"]
+        assert decorators[0]["args"] == ["Config.DEBUG"]
+
+    def test_decorator_with_negative_number(self, tmp_path: Path) -> None:
+        """Decorator with negative number argument."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "@offset(-10)\n"
+            "def adjusted_func():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = functions[0]
+
+        decorators = func["meta"]["decorators"]
+        assert decorators[0]["args"] == [-10]
+
+    def test_method_decorators(self, tmp_path: Path) -> None:
+        """Method decorators should be captured."""
+        py_file = tmp_path / "service.py"
+        py_file.write_text(
+            "class UserService:\n"
+            "    @staticmethod\n"
+            "    def utility():\n"
+            "        pass\n"
+            "\n"
+            "    @classmethod\n"
+            "    def factory(cls):\n"
+            "        return cls()\n"
+            "\n"
+            "    @property\n"
+            "    def name(self):\n"
+            "        return 'service'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        methods = [n for n in data["nodes"] if n["kind"] == "method"]
+        method_by_name = {m["name"].split(".")[-1]: m for m in methods}
+
+        # Each method should have its decorator
+        assert method_by_name["utility"]["meta"]["decorators"][0]["name"] == "staticmethod"
+        assert method_by_name["factory"]["meta"]["decorators"][0]["name"] == "classmethod"
+        assert method_by_name["name"]["meta"]["decorators"][0]["name"] == "property"
+
+
+class TestBaseClassMetadata:
+    """Tests for base class metadata extraction per ADR-0003."""
+
+    def test_single_base_class(self, tmp_path: Path) -> None:
+        """Class with single base class should capture it."""
+        py_file = tmp_path / "models.py"
+        py_file.write_text(
+            "from pydantic import BaseModel\n"
+            "\n"
+            "class User(BaseModel):\n"
+            "    name: str\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        classes = [n for n in data["nodes"] if n["kind"] == "class"]
+        user_class = next(c for c in classes if c["name"] == "User")
+
+        assert "meta" in user_class
+        assert "base_classes" in user_class["meta"]
+        assert user_class["meta"]["base_classes"] == ["BaseModel"]
+
+    def test_multiple_base_classes(self, tmp_path: Path) -> None:
+        """Class with multiple base classes (mixins)."""
+        py_file = tmp_path / "views.py"
+        py_file.write_text(
+            "class LoginMixin:\n"
+            "    pass\n"
+            "\n"
+            "class APIView:\n"
+            "    pass\n"
+            "\n"
+            "class UserView(LoginMixin, APIView):\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        classes = [n for n in data["nodes"] if n["kind"] == "class"]
+        user_view = next(c for c in classes if c["name"] == "UserView")
+
+        # Base classes in declaration order
+        assert user_view["meta"]["base_classes"] == ["LoginMixin", "APIView"]
+
+    def test_generic_base_class(self, tmp_path: Path) -> None:
+        """Class with Generic[T] base class."""
+        py_file = tmp_path / "repo.py"
+        py_file.write_text(
+            "from typing import Generic, TypeVar\n"
+            "\n"
+            "T = TypeVar('T')\n"
+            "\n"
+            "class Repository(Generic[T]):\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        classes = [n for n in data["nodes"] if n["kind"] == "class"]
+        repo_class = next(c for c in classes if c["name"] == "Repository")
+
+        assert repo_class["meta"]["base_classes"] == ["Generic[T]"]
+
+    def test_qualified_base_class(self, tmp_path: Path) -> None:
+        """Class with qualified base class like QtWidgets.QWidget."""
+        py_file = tmp_path / "widget.py"
+        py_file.write_text(
+            "from PyQt5 import QtWidgets\n"
+            "\n"
+            "class MyWidget(QtWidgets.QWidget):\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        classes = [n for n in data["nodes"] if n["kind"] == "class"]
+        widget = next(c for c in classes if c["name"] == "MyWidget")
+
+        assert widget["meta"]["base_classes"] == ["QtWidgets.QWidget"]
+
+    def test_no_base_class(self, tmp_path: Path) -> None:
+        """Class with no base class should not have base_classes in meta."""
+        py_file = tmp_path / "models.py"
+        py_file.write_text(
+            "class SimpleClass:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        classes = [n for n in data["nodes"] if n["kind"] == "class"]
+        simple = classes[0]
+
+        # No base_classes key if empty (meta may be None or missing)
+        meta = simple.get("meta") or {}
+        base_classes = meta.get("base_classes", [])
+        assert base_classes == []
+
+
+class TestParameterMetadata:
+    """Tests for structured parameter metadata extraction per ADR-0003."""
+
+    def test_simple_parameters(self, tmp_path: Path) -> None:
+        """Function with simple parameters."""
+        py_file = tmp_path / "funcs.py"
+        py_file.write_text(
+            "def greet(name):\n"
+            "    return f'Hello, {name}'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        greet = funcs[0]
+
+        assert "meta" in greet
+        assert "parameters" in greet["meta"]
+        params = greet["meta"]["parameters"]
+        assert len(params) == 1
+        assert params[0]["name"] == "name"
+        assert params[0]["type"] is None
+        assert params[0]["default"] is False
+
+    def test_typed_parameters(self, tmp_path: Path) -> None:
+        """Function with type annotations."""
+        py_file = tmp_path / "funcs.py"
+        py_file.write_text(
+            "def add(x: int, y: int) -> int:\n"
+            "    return x + y\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        add = funcs[0]
+
+        params = add["meta"]["parameters"]
+        assert len(params) == 2
+        assert params[0] == {"name": "x", "type": "int", "default": False}
+        assert params[1] == {"name": "y", "type": "int", "default": False}
+
+    def test_parameters_with_defaults(self, tmp_path: Path) -> None:
+        """Function with default parameter values."""
+        py_file = tmp_path / "funcs.py"
+        py_file.write_text(
+            "def greet(name: str, greeting: str = 'Hello') -> str:\n"
+            "    return f'{greeting}, {name}'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        greet = funcs[0]
+
+        params = greet["meta"]["parameters"]
+        assert params[0] == {"name": "name", "type": "str", "default": False}
+        assert params[1] == {"name": "greeting", "type": "str", "default": True}
+
+    def test_varargs_and_kwargs(self, tmp_path: Path) -> None:
+        """Function with *args and **kwargs."""
+        py_file = tmp_path / "funcs.py"
+        py_file.write_text(
+            "def flexible(required, *args, **kwargs):\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = funcs[0]
+
+        params = func["meta"]["parameters"]
+        assert len(params) == 3
+        assert params[0]["name"] == "required"
+        assert params[1]["name"] == "*args"
+        assert params[2]["name"] == "**kwargs"
+
+    def test_method_parameters_exclude_self(self, tmp_path: Path) -> None:
+        """Method parameters should exclude self."""
+        py_file = tmp_path / "service.py"
+        py_file.write_text(
+            "class Service:\n"
+            "    def process(self, data: dict) -> bool:\n"
+            "        return True\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        methods = [n for n in data["nodes"] if n["kind"] == "method"]
+        process = methods[0]
+
+        params = process["meta"]["parameters"]
+        # self should be excluded or clearly marked
+        param_names = [p["name"] for p in params]
+        assert "self" not in param_names or params[0].get("is_self", False)
+
+    def test_no_parameters(self, tmp_path: Path) -> None:
+        """Function with no parameters."""
+        py_file = tmp_path / "funcs.py"
+        py_file.write_text(
+            "def noop():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        noop = funcs[0]
+
+        # meta may be None or missing if function has no decorators/params
+        meta = noop.get("meta") or {}
+        params = meta.get("parameters", [])
+        assert params == []

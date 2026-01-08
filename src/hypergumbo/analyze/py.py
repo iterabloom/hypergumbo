@@ -13,6 +13,7 @@ Analysis proceeds in two passes for cross-file resolution:
 - Extract methods nested inside classes
 - Build import mappings for cross-file resolution
 - Compute stable_id (signature-based) and shape_id (structure-based)
+- Extract rich metadata (decorators, base classes, parameters) per ADR-0003
 
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
@@ -36,12 +37,23 @@ ID Schemes
 - **shape_id**: sha256 of AST structure (control flow, nesting).
   Detects clones with different variable names.
 
+Rich Metadata (ADR-0003)
+------------------------
+Symbols include structured metadata in `meta` dict:
+- **decorators**: List of decorator info with name, args, kwargs.
+  Example: `[{"name": "app.get", "args": ["/users"], "kwargs": {"tags": ["api"]}}]`
+- **base_classes**: List of base class names for classes.
+  Example: `["BaseModel", "Generic[T]"]`
+- **parameters**: List of parameter info for functions/methods.
+  Example: `[{"name": "x", "type": "int", "default": False}]`
+
 Why This Design
 ---------------
 - Built-in ast module requires no dependencies and handles all Python syntax
 - Two-pass approach enables cross-file call resolution via imports
 - col_offset == 0 heuristic distinguishes top-level from nested functions
 - Import resolution handles both absolute and relative imports
+- Rich metadata enables future FRAMEWORK_PATTERNS phase for semantic detection
 """
 import ast
 import hashlib
@@ -83,6 +95,129 @@ DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
 # Router constructors that support prefix argument
 ROUTER_CONSTRUCTORS = {"APIRouter", "Blueprint"}
+
+
+def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
+    """Convert an AST expression to a Python value representation.
+
+    For simple literals, returns the actual value.
+    For complex expressions (names, calls, etc.), returns string representation.
+    """
+    if isinstance(node, ast.Constant):
+        return node.value
+    elif isinstance(node, ast.Name):
+        # Variable reference - return name as string
+        return node.id
+    elif isinstance(node, ast.List):
+        return [_ast_value_to_python(elt) for elt in node.elts]
+    elif isinstance(node, ast.Tuple):
+        return [_ast_value_to_python(elt) for elt in node.elts]
+    elif isinstance(node, ast.Dict):
+        result = {}
+        for k, v in zip(node.keys, node.values, strict=True):
+            if k is not None:
+                key = _ast_value_to_python(k)
+                if isinstance(key, str):
+                    result[key] = _ast_value_to_python(v)
+        return result
+    elif isinstance(node, ast.Attribute):
+        # e.g., SomeClass.field -> "SomeClass.field"
+        return _format_annotation(node)
+    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        # Negative number
+        val = _ast_value_to_python(node.operand)
+        if isinstance(val, (int, float)):
+            return -val
+        return f"-{val}"  # pragma: no cover - defensive for non-numeric negation
+    else:
+        # Complex expression - return string representation
+        return _format_annotation(node) or "<complex>"  # pragma: no cover
+
+
+def _extract_decorator_info(dec: ast.expr) -> dict[str, object]:
+    """Extract full decorator information including arguments.
+
+    Returns a dict with:
+        name: Decorator name (e.g., "app.get", "dataclass")
+        args: List of positional arguments
+        kwargs: Dict of keyword arguments
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    if isinstance(dec, ast.Name):
+        # @decorator
+        name = dec.id
+    elif isinstance(dec, ast.Attribute):
+        # @module.decorator (without call)
+        name = _format_annotation(dec)
+    elif isinstance(dec, ast.Call):
+        # @decorator(...) or @module.decorator(...)
+        if isinstance(dec.func, ast.Name):
+            name = dec.func.id
+        elif isinstance(dec.func, ast.Attribute):
+            name = _format_annotation(dec.func)
+        else:
+            name = "<unknown>"  # pragma: no cover - defensive for unusual decorator forms
+
+        # Extract positional arguments
+        for arg in dec.args:
+            args.append(_ast_value_to_python(arg))
+
+        # Extract keyword arguments
+        for kw in dec.keywords:
+            if kw.arg is not None:  # Skip **kwargs unpacking
+                kwargs[kw.arg] = _ast_value_to_python(kw.value)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_parameters_info(
+    args: ast.arguments, exclude_self: bool = False
+) -> list[dict[str, object]]:
+    """Extract structured parameter information from function arguments.
+
+    Args:
+        args: AST arguments node
+        exclude_self: If True, skip 'self' and 'cls' parameters
+
+    Returns:
+        List of dicts with name, type, and default keys
+    """
+    params: list[dict[str, object]] = []
+    defaults_offset = len(args.args) - len(args.defaults)
+
+    for i, arg in enumerate(args.args):
+        if exclude_self and i == 0 and arg.arg in ("self", "cls"):
+            continue
+        has_default = i >= defaults_offset
+        type_str = _format_annotation(arg.annotation) if arg.annotation else None
+        params.append({
+            "name": arg.arg,
+            "type": type_str if type_str else None,
+            "default": has_default,
+        })
+
+    # Handle *args
+    if args.vararg:
+        type_str = _format_annotation(args.vararg.annotation) if args.vararg.annotation else None
+        params.append({
+            "name": f"*{args.vararg.arg}",
+            "type": type_str if type_str else None,
+            "default": False,
+        })
+
+    # Handle **kwargs
+    if args.kwarg:
+        type_str = _format_annotation(args.kwarg.annotation) if args.kwarg.annotation else None
+        params.append({
+            "name": f"**{args.kwarg.arg}",
+            "type": type_str if type_str else None,
+            "default": False,
+        })
+
+    return params
 
 
 def _format_annotation(node: ast.expr) -> str:
@@ -890,6 +1025,22 @@ def _extract_file_analysis(
                 start_col=node.col_offset,
                 end_col=end_col,
             )
+
+            # Build rich metadata for class (ADR-0003)
+            class_meta: dict[str, object] = {}
+
+            # Extract decorators with arguments
+            if node.decorator_list:
+                class_meta["decorators"] = [
+                    _extract_decorator_info(dec) for dec in node.decorator_list
+                ]
+
+            # Extract base classes
+            if node.bases:
+                class_meta["base_classes"] = [
+                    _format_annotation(base) for base in node.bases
+                ]
+
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
@@ -901,6 +1052,7 @@ def _extract_file_analysis(
                 shape_id=_compute_shape_id(node),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 lines_of_code=_compute_lines_of_code(node),
+                meta=class_meta if class_meta else None,
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -924,6 +1076,20 @@ def _extract_file_analysis(
                     if item.name.lower() in HTTP_METHODS:
                         stable_id = item.name.upper()
 
+                    # Build rich metadata for method (ADR-0003)
+                    method_meta: dict[str, object] = {}
+
+                    # Extract decorators with arguments
+                    if item.decorator_list:
+                        method_meta["decorators"] = [
+                            _extract_decorator_info(dec) for dec in item.decorator_list
+                        ]
+
+                    # Extract structured parameters (excluding self/cls)
+                    params = _extract_parameters_info(item.args, exclude_self=True)
+                    if params:
+                        method_meta["parameters"] = params
+
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
@@ -936,6 +1102,7 @@ def _extract_file_analysis(
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         lines_of_code=_compute_lines_of_code(item),
                         signature=_format_function_signature(item),
+                        meta=method_meta if method_meta else None,
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
@@ -958,13 +1125,30 @@ def _extract_file_analysis(
                 )
                 # Check for route decorator to store route_path in meta
                 http_method, route_path = _detect_route_decorator(node, router_prefixes)
+                http_method_upper = None
                 if route_path or http_method:
                     # Uppercase HTTP methods (handle comma-separated for DRF api_view)
                     http_method_upper = ",".join(m.upper() for m in http_method.split(",")) if http_method else None
-                    meta = {"route_path": route_path, "http_method": http_method_upper}
-                else:
-                    http_method_upper = None
-                    meta = None
+
+                # Build rich metadata for function (ADR-0003)
+                func_meta: dict[str, object] = {}
+
+                # Preserve existing route metadata
+                if route_path:
+                    func_meta["route_path"] = route_path
+                if http_method_upper:
+                    func_meta["http_method"] = http_method_upper
+
+                # Extract decorators with arguments
+                if node.decorator_list:
+                    func_meta["decorators"] = [
+                        _extract_decorator_info(dec) for dec in node.decorator_list
+                    ]
+
+                # Extract structured parameters
+                params = _extract_parameters_info(node.args, exclude_self=False)
+                if params:
+                    func_meta["parameters"] = params
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
@@ -976,7 +1160,7 @@ def _extract_file_analysis(
                     # For routes, use HTTP method as stable_id for route discovery
                     stable_id=http_method_upper if http_method_upper else _compute_stable_id(node),
                     shape_id=_compute_shape_id(node),
-                    meta=meta,
+                    meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
                     signature=_format_function_signature(node),
