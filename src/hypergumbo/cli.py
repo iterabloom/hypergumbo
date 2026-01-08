@@ -79,6 +79,7 @@ from .compact import (
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
+from .framework_patterns import enrich_symbols
 
 
 def _find_git_root(start_path: Path) -> Optional[Path]:
@@ -1491,6 +1492,12 @@ def run_behavior_map(
     analysis_runs, all_symbols, all_edges, limits, captured_symbols = run_all_analyzers(
         repo_root, max_files=max_files
     )
+
+    # Enrich symbols with framework concept metadata (ADR-0003 v0.8.x)
+    # This applies YAML-based patterns to add concept info (route, model, etc.)
+    # to symbols based on their decorators, base classes, and annotations.
+    detected_frameworks = set(profile.frameworks)
+    enrich_symbols(all_symbols, detected_frameworks)
 
     # Run cross-language linkers
     #
