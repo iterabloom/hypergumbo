@@ -448,3 +448,19 @@ end
         send_patterns = [p for p in patterns if p["type"] == "send"]
         assert len(send_patterns) >= 1
         assert send_patterns[0]["event"] == "update"
+
+
+class TestPhoenixIPCLinkerRegistered:
+    """Tests for the registered phoenix_ipc_linker function."""
+
+    def test_phoenix_ipc_linker_returns_result(self, tmp_path: Path) -> None:
+        """phoenix_ipc_linker function returns LinkerResult."""
+        from hypergumbo.linkers.phoenix_ipc import phoenix_ipc_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = phoenix_ipc_linker(ctx)
+
+        assert result is not None
+        assert hasattr(result, "symbols")
+        assert hasattr(result, "edges")

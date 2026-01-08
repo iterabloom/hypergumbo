@@ -1507,6 +1507,8 @@ def run_behavior_map(
         symbols=all_symbols,
         edges=all_edges,
         captured_symbols=captured_symbols,
+        detected_frameworks=set(profile.frameworks),
+        detected_languages=set(profile.languages.keys()),
     )
     for _linker_name, linker_result in run_all_linkers(linker_ctx):
         if linker_result.run is not None:
