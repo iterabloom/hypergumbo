@@ -1557,9 +1557,11 @@ Supply chain configuration can be customized in `capsule_plan.json`:
 
 ## 8.7) Entrypoint Detection Improvements (Design)
 
+> **Note:** This section describes the current state and interim mitigations. The long-term architectural direction is defined in [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md), which supersedes the "Future" subsections below.
+
 Entrypoint detection uses path-based heuristics to identify HTTP handlers, CLI mains, and other entry sources for slicing. These heuristics are fast but prone to false positives when naming conventions collide across frameworks.
 
-### Current State: Path-Based Heuristics
+### Current State: Path-Based Heuristics (v0.6.x)
 
 Each detector matches file paths and names:
 - `_is_express_route_file`: matches `routes/` directory or `routes.js/ts`
@@ -1571,7 +1573,7 @@ Each detector matches file paths and names:
 2. **Overly broad patterns**: `*Client.java` matches gRPC clients, Redis clients, SDK clients — not just Micronaut HTTP clients
 3. **No content verification**: Detection ignores actual file contents (imports, annotations)
 
-### Implemented Mitigations
+### Implemented Mitigations (v0.6.x)
 
 **Exclusion patterns** for known false positives:
 - Express: Exclude `.tsx/.jsx` files (React components)
@@ -1580,84 +1582,67 @@ Each detector matches file paths and names:
 - Tornado: Exclude `*_error_handler.py`, `*_signal_handler.py`, etc. (non-web handlers)
 - GraphQL: Exclude `*dns-resolver*`, `*dependency-resolver*`, etc. (non-GraphQL resolvers)
 
-### Future: Confidence Stratification
+This is a whack-a-mole approach that reduces false positives but doesn't address the root cause: path heuristics cannot distinguish frameworks that share naming conventions.
 
-**Design goal:** Return confidence levels that reflect detection certainty.
+### Future: Semantic Entry Detection (ADR-0003)
 
-```python
-# Proposed confidence tiers
-CONFIDENCE_TIERS = {
-    "verified": 0.95,      # Content-verified (has framework imports/annotations)
-    "path_strong": 0.85,   # Path match + no exclusions + specific pattern
-    "path_weak": 0.70,     # Path match only, generic pattern
-    "heuristic": 0.50,     # Fallback heuristic match
-}
+The long-term solution replaces path heuristics with **semantic entry detection** based on enriched symbol metadata. See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the full design.
+
+**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts that should be detected from symbol metadata, not file paths.
+
+**Architecture overview:**
+```
+ANALYZERS (pure language, no framework knowledge)
+  → Capture symbols + rich metadata (decorators, base classes, parameters)
+
+FRAMEWORK_PATTERNS (configured by detected frameworks)
+  → Match patterns against symbol metadata
+  → Enrich symbols with concept metadata (route, task, model, etc.)
+
+ENTRY_KINDS (semantic detection)
+  → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
+  → High confidence (0.95) from semantic match
+  → No path heuristics, no false positives
 ```
 
-**Implementation approach:**
+**Example: React Router false positive eliminated:**
+```
+Current (path heuristics):
+  File: frontend/src/routes/login.tsx
+  Path matches: /routes/*.tsx
+  Result: Flagged as Express route ❌
 
-1. **Path-only match (current)**: 0.70-0.85 depending on pattern specificity
-2. **Path + exclusion check (implemented)**: Same confidence, fewer false positives
-3. **Content-verified (future)**: 0.90-0.95 when framework markers found in file
+Future (semantic detection):
+  File: frontend/src/routes/login.tsx
+  FRAMEWORK_PATTERNS: No Express patterns matched (no app.get decorator)
+  Symbol concepts: {} (empty)
+  Result: Not flagged ✅
+```
 
-**Scoring function for auto-slice entry selection:**
+**Benefits over ContentVerifier approach:**
+- No additional file I/O — metadata already captured by analyzers
+- Framework patterns are data (YAML), not code
+- Entry detection becomes trivial: just query `sym.concepts`
+
+### Scoring for Auto-Slice Entry Selection
+
+**Scoring function** (applies to both current and future approaches):
 ```python
 score = confidence * (1 + log(1 + outgoing_edges))
 ```
 This prefers well-connected entries, producing richer slices.
 
-### Future: Content Verification API
-
-**Design goal:** Optional second-pass verification that checks file contents for framework-specific markers.
-
-```python
-# Proposed API (not implemented)
-@dataclass
-class ContentVerifier:
-    """Framework-specific content verification."""
-
-    # Patterns that indicate this framework
-    import_patterns: list[str]  # e.g., ["from fastapi import", "import fastapi"]
-    annotation_patterns: list[str]  # e.g., ["@app.route", "@router.get"]
-
-    def verify(self, file_content: str) -> bool:
-        """Check if content matches expected framework patterns."""
-        ...
-
-# Usage in detector
-def _is_express_route_file(path: str, language: str, content: Optional[str] = None) -> bool:
-    if not _path_matches_express(path, language):
-        return False
-
-    if content is not None:
-        # Upgrade to verified confidence
-        return EXPRESS_VERIFIER.verify(content)
-
-    return True  # Path-only match (lower confidence)
-```
-
-**Trade-offs:**
-- **Pro**: Eliminates false positives
-- **Con**: Requires file I/O (slower for large repos)
-- **Mitigation**: Make content verification opt-in (`--verify-entrypoints` flag)
-
-**Framework markers for verification:**
-
-| Framework | Import Pattern | Code Pattern |
-|-----------|---------------|--------------|
-| Express | `require('express')` | `app.get(`, `router.post(` |
-| FastAPI | `from fastapi import` | `@app.get(`, `@router.post(` |
-| Flask | `from flask import` | `@app.route(` |
-| Tornado | `from tornado import` | `class *Handler(RequestHandler)` |
-| Micronaut | `import io.micronaut` | `@Client(` annotation |
-| NestJS | `@nestjs/common` | `@Controller(`, `@Get(` |
-| Spring | `org.springframework` | `@RequestMapping(`, `@GetMapping(` |
-
 ### Migration Path
 
-1. **v0.6.x (current)**: Path-based heuristics with exclusion patterns
-2. **v0.7.x (planned)**: Confidence stratification (path-only vs path+exclusions)
-3. **v0.8.x (future)**: Optional content verification for high-confidence detection
+See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-migration-path) for the authoritative migration plan.
+
+| Version | Focus | Entry Detection Impact |
+|---------|-------|------------------------|
+| **v0.6.x** | Path heuristics + exclusions | Current state |
+| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata |
+| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata |
+| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) |
+| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure |
 
 ## 9) Testing & quality bar
 

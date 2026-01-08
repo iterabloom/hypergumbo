@@ -2,308 +2,40 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v0.6.0
+- Released **tool** is at: v0.6.9
 - Released **schema** is at: v0.1.0
 
 This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
 ## [Unreleased]
 
-### 2026-01-07 14:00
 
-#### Entrypoint Detection - Comprehensive Audit
-- **Hapi route false positive fix**: Exclude `.tsx`/`.jsx` files (React components use routes/).
-- **Koa route false positive fix**: Same exclusion for React file-based routing.
-- **Tornado handler false positive fix**: Exclude non-web patterns (`*_error_handler.py`, `*_signal_handler.py`, `*_event_handler.py`, `*_exception_handler.py`, `*_logging_handler.py`, `*_log_handler.py`).
-- **GraphQL server false positive fix**: Exclude `.tsx`/`.jsx` and non-GraphQL resolver patterns (`*dns-resolver*`, `*promise-resolver*`, `*dependency-resolver*`, `*path-resolver*`, `*module-resolver*`).
+## [0.6.9] - 2026-01-07
 
-#### Documentation
-- **Entrypoint Detection Improvements (Design)**: Added section 8.7 to `docs/hypergumbo-spec.md` documenting:
-  - Current path-based heuristic approach and its limitations
-  - Implemented exclusion pattern mitigations
-  - Future: Confidence stratification design (verified/path_strong/path_weak/heuristic tiers)
-  - Future: Content verification API design for optional import/annotation checking
-  - Migration path from v0.6.x through v0.8.x
+### Added
+- **Connectivity-aware auto-slicing:** `hypergumbo slice --entry auto` now prefers well-connected entrypoints (confidence weighted by outgoing edges) for richer, more useful slices.
+- **Improved slice traversal across linker boundaries:** synthetic linker nodes (e.g., gRPC stubs, MQ publishers, websocket endpoints) are now connected to their enclosing function/method via `uses` edges, powered by a new `find_enclosing_symbol()` helper.
+- **Python module pseudo-nodes:** script-style files with module-level executable code now get `<module:...>` nodes so linkers can attach synthetic nodes even when no enclosing function exists.
+- **Stronger cross-file call resolution + lightweight type inference:** analyzers for Python, JS/TS, Java, and Kotlin gained module-qualified call resolution and constructor-only type inference to better resolve calls like `module.func()`, `alias.Class()`, `ClassName.method()`, and `var.method()` when `var` is assigned from `new ClassName(...)` (or equivalent).
+- **Linker diagnostics + registry pattern:** introduced `LinkerRequirement`/requirement checks and expanded the `@register_linker` + `run_all_linkers()` registry flow for standardized linker execution and clearer “why no edges?” diagnostics.
+- **Variable-based linker matching:** HTTP and event-sourcing linkers now detect URLs/event names stored in variables (lower confidence than literals) and annotate matches with `url_type` / `event_type`.
+- **Symbol modifiers metadata:** symbols now include a `modifiers` field (e.g., `public`, `static`, `native`), with Java extraction implemented.
+- **Entrypoint language filtering:** CLI entrypoint detection now avoids shader-language `main` false positives (GLSL/HLSL/WGSL).
+- **Tooling:** `find-uncovered` now auto-runs tests when needed, warns on stale coverage, and uses a visible `coverage-report.txt` cache.
 
-### 2026-01-07 13:30
+### Fixed
+- **Entrypoint false positives reduced across frameworks:**
+  - Excluded `.tsx`/`.jsx` React file-routing paths from Express/Hapi/Koa route detection.
+  - Avoided Tornado “handler” false positives by excluding common non-web handler filename patterns.
+  - Tightened GraphQL server detection by excluding `.tsx`/`.jsx` and common non-resolver “*resolver*” filename patterns (e.g., DNS/promise/dependency/path/module resolvers).
+  - Avoided Micronaut HTTP false positives by excluding common gRPC/RPC client class naming patterns.
 
-#### Entrypoint Detection
-- **Express route false positive fix**: Exclude `.tsx`/`.jsx` files from Express route detection. React file-based routing (TanStack Router, Next.js) uses `routes/*.tsx` for components, not Express routes.
-- **Micronaut controller false positive fix**: Exclude common gRPC/RPC patterns (`*ServiceClient.java`, `*GrpcClient.java`, `*RpcClient.java`) from Micronaut HTTP client detection.
+### Changed
+- **Linker implementation consolidation:** migrated remaining linkers to the registry-based `@register_linker` approach and removed legacy explicit linker calls from `cli.py`, enabling dynamic linker discovery and simpler orchestration.
 
-#### Slice Command
-- **Connectivity-aware entry selection**: Auto-slice (`--entry auto`) now factors in graph connectivity when selecting the entry point. Previously selected by highest confidence only, which could pick isolated nodes. Now uses `score = confidence * (1 + log(1 + outgoing_edges))` to prefer well-connected entries that produce richer slices. Displays connectivity info when selected.
+### Documentation
+- Updated the spec’s section 8.7 to align the migration guidance with ADR-0003 (plan for a significant refactoring) and replaced the prior ContentVerifier API proposal with a semantic entry detection direction.
 
-### 2026-01-07 08:00
-
-#### Analysis Passes
-- **Comprehensive call resolution**: Added module-qualified call resolution and constructor-based type inference across Python, JavaScript/TypeScript, Java, and Kotlin analyzers. This enables `hypergumbo slice` to traverse from application code through cross-language linker boundaries (gRPC stubs, MQ publishers, etc.).
-  - **Python**: Track `module.ClassName()` instantiations and `module.func()` calls. Resolve `variable.method()` via type inference from constructor assignments (`stub = EmailServiceStub(channel)`).
-  - **JavaScript/TypeScript**: Track `import * as alias from 'module'` patterns. Resolve `alias.ClassName()` instantiations. Infer types from `const client = new Client()`.
-  - **Java**: Track `import com.example.ClassName` statements. Resolve `ClassName.method()` static calls. Infer types from `new ClassName()` assignments.
-  - **Kotlin**: Track import statements. Resolve `Object.method()` and `this.method()` calls. Infer types from `val x = ClassName()`.
-  - **Type inference design**: Uses constructor-only inference (tracks types from direct constructor calls but NOT from function returns). This covers ~90% of real-world gRPC/MQ usage patterns with minimal complexity. Full data-flow analysis documented as future Spec B enhancement.
-
-### 2026-01-07 04:00
-
-#### Cross-Language Linkers
-- **Enclosure linker for slice traversal**: Added automatic post-processing in `run_all_linkers()` that connects synthetic nodes (grpc_stub, mq_publisher, websocket_endpoint, etc.) to their enclosing functions via `uses` edges. This enables `hypergumbo slice` to traverse from application code through linker boundaries. Previously, functions like `send_confirmation_email()` that instantiated gRPC stubs had no outgoing edges to those stubs, breaking slice traversal. New `find_enclosing_symbol()` method in `LinkerContext` supports finding the most specific enclosing function/method/class for any line number.
-- **Module pseudo-node for script files**: Python analyzer now creates `<module:filename.py>` pseudo-nodes for files with module-level executable code (assignments, function calls, `if __name__ == '__main__':` blocks). This ensures script-only files that use MQ/gRPC/etc have an enclosing symbol for the enclosure linker to attach synthetic nodes to. Files with only imports, class/function definitions, type annotations, or docstrings do not get module nodes.
-
-### 2026-01-07 02:00
-
-#### Cross-Language Linkers
-- **Complete linker registry migration**: Migrated all remaining linkers to the `@register_linker` pattern: websocket (priority 50), phoenix_ipc (priority 40), swift_objc (priority 30), message_queue (priority 55), event_sourcing (priority 55), database_query (priority 70). Database query linker uses `LinkerRequirement` to declare dependency on table symbols. Removed ~60 lines of legacy explicit linker calls from cli.py - all linkers now run via `run_all_linkers()`.
-
-### 2026-01-07 00:30
-
-#### Cross-Language Linkers
-- **Variable detection for HTTP/event linkers**: Extended HTTP linker to detect URLs in variables (`fetch(API_URL)`, `axios.get(config.apiUrl)`, `requests.get(url_var)`) and event sourcing linker to detect event names in variables (`emitter.emit(EVENT_NAME)`, `EventBus.publish(event_var)`). Variable matches have lower confidence (0.65) than literal matches (0.85-0.9). Added `url_type`/`event_type` fields to track match type.
-- **Linker registry migration**: Migrated HTTP, GraphQL, GraphQL resolver, and dependency linkers to the `@register_linker` pattern. Linkers now use `LinkerContext` for inputs and declare requirements for diagnostics. Reduces boilerplate in cli.py and enables dynamic linker discovery.
-
-### 2026-01-06 15:00
-
-#### Analysis & IR
-- **Symbol modifiers field**: Added `modifiers` field to Symbol for semantic attributes (`native`, `public`, `static`, etc.). Java analyzer extracts modifiers from method/constructor declarations.
-- **Entrypoint language filtering**: CLI entrypoint detection (`main`, `cli`, etc.) now filters by language - excludes shader languages (GLSL/HLSL/WGSL) where `main` is a shader entry point, not a program entry point.
-
-#### Cross-Language Linkers
-- **Linker contracts system**: Added `LinkerRequirement` dataclass and `check_linker_requirements()` for diagnostics. Linkers can declare what they need, and users can see why a linker produced no edges.
-- **JNI linker registry integration**: Refactored JNI linker to use registry pattern with declared requirements (`java_native_methods`, `c_jni_functions`).
-
-#### Tooling
-- **find-uncovered improvements**: Auto-runs tests when `--lines` used without prior data, warns when coverage data is stale, renamed cache to visible `coverage-report.txt`.
-
-### 2026-01-06 09:00
-
-#### Refactoring
-- **Linker registry infrastructure**: Added `linkers/registry.py` with registration system for cross-language linkers, mirroring the pattern used in `analyze/registry.py`. Includes `LinkerContext` (unified inputs), `LinkerResult` (standardized output), `@register_linker` decorator, and `run_all_linkers()` for loop-based dispatch. **Note**: This is purely additive infrastructure - existing linkers work exactly as before. The registry establishes the pattern for future consolidation of the ~150 lines of explicit linker calls in cli.py, but no migration has been done yet. Linkers can be migrated incrementally in future PRs.
-- **Language-proportional selection module**: Extracted language-proportional symbol selection from sketch.py into shared `selection/language_proportional.py`. Updated compact.py to use language-proportional selection by default (`CompactConfig.language_proportional=True`). This ensures multi-language projects get balanced representation across languages rather than being dominated by verbose languages with more symbols.
-- **Selection module consolidation**: Created `selection/` package with shared utilities:
-  - `filters.py`: Path classification (`is_test_path`, `is_example_path`) and symbol filtering (`EXCLUDED_KINDS`)
-  - `token_budget.py`: Token estimation (`estimate_tokens`, `truncate_to_tokens`, `parse_tier_spec`)
-  - `language_proportional.py`: Language-stratified selection (`group_symbols_by_language`, `allocate_language_budget`)
-
-### 2026-01-05 20:00
-
-#### Refactoring
-- **Iterative tree traversal migration**: Migrated all 64 tree-sitter analyzers from recursive to iterative traversal using `iter_tree()` from `base.py`. This prevents `RecursionError` on deeply nested ASTs (Python's ~1000-level recursion limit was exceeded on TensorFlow's codebase). Key changes:
-  - Added `iter_tree()` generator in `base.py` for stack-based pre-order traversal
-  - Converted `walk(node)` recursive functions to `for node in iter_tree(root)` loops
-  - Added parent-walking helpers (e.g., `_get_enclosing_class()`) that walk `node.parent`
-  - Fixed bug where `id(node)` != `id(node.parent)` (tree-sitter returns new Python objects) - changed to byte-position keys `(node.start_byte, node.end_byte)`
-
-### 2026-01-05 16:00
-
-#### Refactoring
-- **Analyzer registry consolidation**: Replaced 65+ individual analyzer imports in cli.py with a single `all_analyzers.py` registry. Reduced `cli.py` from 2590 to 1705 lines (-885 lines, 34% reduction).
-- **Shared base classes**: Created `analyze/base.py` with shared `AnalysisResult`, `FileAnalysis`, and tree-sitter helper functions (`node_text`, `find_child_by_type`, `find_child_by_field`, `is_grammar_available`, `make_symbol_id`).
-- **Go analyzer migration**: Refactored Go analyzer to use shared base classes as pilot, demonstrating the pattern for other analyzers.
-- **Lazy loading for testability**: ANALYZERS list uses lazy module imports via `get_func()` to enable test patching at the source module level.
-
-### 2026-01-05 09:00
-
-#### Analysis Passes
-- **HLSL** (tree-sitter): function, struct, variable. Detects DirectX HLSL shaders: function definitions (vertex/pixel/compute shaders) with signatures, struct definitions (input/output structures), constant buffer declarations (cbuffer), resource declarations (Texture, Sampler, Buffer). Essential for DirectX game development. Complements GLSL/WGSL shader analyzers. Optional: `pip install tree-sitter-language-pack`
-- **Ada** (tree-sitter): package, function, procedure, type, constant. Detects Ada safety-critical code: package specs/bodies, functions/procedures with signatures, record types, constants, with-clause imports. Ada is used in aerospace, defense, medical devices, and embedded systems. Optional: `pip install tree-sitter-language-pack`
-- **D** (tree-sitter): module, function, struct, class, interface. Detects D systems programming code: module declarations, function definitions with signatures, struct/class/interface definitions, import statements. D is a modern C++ alternative combining low-level control with modern features. Optional: `pip install tree-sitter-language-pack`
-- **Nim** (tree-sitter): function, method, type. Detects Nim code: proc/func/method definitions with signatures, type definitions (objects, enums), import statements. Nim combines Python-like syntax with systems programming power, compiling to C/C++/JavaScript. Optional: `pip install tree-sitter-language-pack`
-
-### 2026-01-05 08:00
-
-#### Analysis Passes
-- **GDScript** (tree-sitter): function, variable, signal, class. Detects Godot game engine scripts: functions with signatures, class variables, signals, class_name and inner classes. Function signatures show typed/untyped parameters and return types. preload/load imports for scene/script references. For Godot game development. Optional: `pip install tree-sitter-language-pack`
-- **Starlark** (tree-sitter): function, target, variable. Detects Bazel/Buck build files: function definitions with signatures, build targets (py_binary, cc_library, etc.) with rule type in meta, variable assignments. Load statements create import edges. Target deps create dependency edges. For build system analysis. Optional: `pip install tree-sitter-language-pack`
-- **Fish** (tree-sitter): function, alias, variable. Detects Fish shell scripts: function definitions with argument signatures, alias declarations, global variable assignments (set -g/-gx/-U). Source statements create import edges. Function calls tracked within function bodies. Complements Bash analyzer for shell configuration. Optional: `pip install tree-sitter-language-pack`
-
-### 2026-01-05 07:00
-
-#### Analysis Passes
-- **Thrift** (tree-sitter): service, function, struct, enum, typedef, const. Detects Apache Thrift IDL: services, RPC functions with signatures, structs, enums, typedefs, constants, includes. Function signatures show parameters and return types. Complements Thrift-based microservices analysis. Optional: `pip install tree-sitter-language-pack`
-- **Cap'n Proto** (tree-sitter): struct, interface, method, enum, const. Detects Cap'n Proto IDL: structs, interfaces (RPC services), methods with signatures, enums, constants, imports. Method signatures show parameters and return types. Supports nested structs. Complements Proto/Thrift for microservices analysis. Optional: `pip install tree-sitter-language-pack`
-- **PowerShell** (tree-sitter): function, filter, workflow. Detects PowerShell scripts: functions with verb-noun naming, filters, workflows. Function signatures show parameters with types and defaults. Import-Module and using module imports. Command call edges. For Windows/Azure automation and DevOps. Optional: `pip install tree-sitter-language-pack`
-
-### 2026-01-05 06:00
-
-#### Analysis Passes
-- **Proto** (tree-sitter): service, rpc, message, enum. Detects Protocol Buffers: services (gRPC), RPC methods with request/response types, messages, enums, imports. RPC signatures show request/response types including streaming. Complements gRPC linker for full stack tracing. Optional: `pip install tree-sitter-language-pack`
-
-#### Sketch & Signatures
-- Language-proportional selection: Proportional symbol allocation by language for multi-language projects (enabled by default; disable with `--no-language-proportional`)
-
-### 2026-01-05 03:00
-
-#### Sketch & Signatures
-- Minimum Key Symbols guarantee: Always includes at least 5 symbols even with tight budget
-- Multi-language test detection: Detects Swift (Tests/, *Tests.swift), Go (*_test.go), Java/Kotlin (*Test.java/kt), Rust (*_test.rs) in addition to Python/JS patterns
-- Framework-specific coverage hints: Test summary section suggests appropriate coverage tool (jest --coverage, go test -cover, mvn test jacoco:report, etc.) instead of always suggesting pytest
-
-### 2026-01-05 00:00
-
-#### Cross-Language Linkers
-- **Dependency linker**: Links manifest dependencies (Cargo.toml, pyproject.toml) to code import statements. Matches package names to imports with naming convention handling (e.g., Rust hyphens → underscores). Enables traceability from code usage back to manifest declarations.
-
-### 2026-01-04 15:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts signatures for Clojure defn forms (e.g., `[x, y]`)
-- Vector params: Handles Clojure vector syntax for parameters
-- Signature extraction: Extracts signatures for OCaml let bindings (e.g., `(x, y)`)
-- Multi-param functions: Handles curried parameter style
-- Signature extraction: Extracts signatures for Solidity functions (e.g., `(address to, uint256 amount) returns (bool)`)
-- Return types: Displays return type definition
-- Signature extraction: Extracts signatures for CUDA kernels/functions (e.g., `(int *a, int *b) int`)
-- Return types: Displays non-void return types
-- Signature extraction: Extracts signatures for query/mutation variable definitions (e.g., `($id: ID!)`)
-- Variable definitions: Handles typed GraphQL variables
-- Signature extraction: Extracts signatures for Wolfram function patterns (e.g., `[x_, y_]`)
-- Pattern matching: Handles Wolfram's pattern-matching argument syntax
-- Signature extraction: Extracts signatures for Haskell functions (e.g., `:: Int -> Int -> Int`)
-- Two-pass resolution: Collects type signatures first, then associates with function definitions
-- Signature extraction: Extracts signatures for Dart functions (e.g., `(int x, int y) int`)
-- Optional/named params: Handles optional and named parameters with defaults
-- Signature extraction: Extracts signatures for Lean definitions (e.g., `(n : Nat) : Nat`)
-- Theorem support: Handles theorem/lemma declarations with proof types
-- Signature extraction: Extracts signatures for Agda functions (e.g., `: Nat -> Nat`)
-- Postulate support: Handles postulate declarations
-- Constructor support: Extracts signatures for data constructors
-
-### 2026-01-04 14:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts signatures for CMake functions/macros (e.g., `(ARG1, ARG2, ARG3)`)
-- Function/macro support: Handles both `function()` and `macro()` commands
-- Signature extraction: Extracts signatures for Nix functions (lambdas and formals)
-- Simple lambdas: Curried params (e.g., `(x, y)` for `x: y: body`)
-- Formals patterns: Attrset patterns (e.g., `{ name, greeting }` for `{ name, greeting }: body`)
-- Top-level functions: Uses file basename for module/overlay functions
-
-### 2026-01-04 13:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts signatures for SQL functions (e.g., `(price DECIMAL, qty INT) RETURNS DECIMAL`)
-- Return type: Displays return type after RETURNS keyword
-- Signature extraction: Extracts signatures for Bash functions (always `()` since Bash uses positional args)
-
-### 2026-01-04 06:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts signatures for Zig functions (e.g., `(x: i32, y: i32) i32`)
-- Signature extraction: Extracts signatures for Ruby methods (e.g., `(param, optional = ..., &block)`)
-- Keyword parameters: Handles keyword args with `:` suffix
-- Signature extraction: Extracts signatures for Elixir functions (e.g., `(param1, param2)`)
-- Pattern matching: Handles pattern-matched parameters
-- Signature extraction: Extracts signatures for Erlang functions (e.g., `(Param1, Param2)`)
-- Pattern matching: Handles Erlang pattern-matched parameters
-- Signature extraction: Extracts signatures for Perl subs (e.g., `()` for traditional subs)
-- Signature extraction: Extracts signatures for Lua functions (e.g., `(x, y)`)
-- Method syntax: Handles method-style `Table:method` definitions
-- Signature extraction: Extracts signatures for Groovy methods (e.g., `(String name, int age)`)
-- Signature extraction: Extracts signatures for Elm functions (e.g., `(x, y)`)
-- Signature extraction: Extracts signatures for R functions (e.g., `(x, y)`)
-- Default values: Handles default values (e.g., `greeting = ...`)
-- Signature extraction: Extracts signatures for GLSL functions (e.g., `(float x, float y) float`)
-- Signature extraction: Extracts signatures for WGSL functions (e.g., `(x: f32, y: f32) -> f32`)
-- Return type: Displays return type with `->` arrow syntax
-
-### 2026-01-04 05:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts signatures for C# methods (e.g., `(int x, string name): void`)
-- Signature extraction: Extracts signatures for Swift functions (e.g., `(x: Int, name: String) -> Void`)
-- External/internal params: Handles Swift's external/internal param naming (e.g., `_ x` becomes just `x`)
-- Signature extraction: Extracts signatures for Kotlin functions (e.g., `(x: Int, name: String): String`)
-- Unit handling: Omits Unit return types for cleaner display
-- Signature extraction: Extracts signatures for Scala methods (e.g., `(x: Int, y: Int): Int`)
-- Unit handling: Omits Unit return types for cleaner display
-- Signature extraction: Extracts signatures for PHP methods (e.g., `(int $x, string $name): void`)
-- Signature extraction: Extracts signatures for Objective-C methods (e.g., `(int x, int y): int`)
-- Signature extraction: Extracts signatures for Fortran functions/subroutines (e.g., `(x, y): integer`)
-- Subroutine handling: Subroutines show params without return type
-- Signature extraction: Extracts signatures for F# functions (e.g., `(x: int, y: int): int`)
-- Unit handling: Handles unit parameter patterns
-- Signature extraction: Extracts signatures for Julia functions (e.g., `(x::Int, y::Int)::Int`)
-- Short-form functions: Handles short-form `f(x) = expr` syntax
-
-### 2026-01-04 04:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts signatures for C functions (e.g., `(int x, char* name) int`)
-- Pointer types: Handles pointer params and returns (e.g., `char*`, `int**`)
-- Void handling: Omits void return types for cleaner display
-- Signature extraction: Extracts signatures for C++ functions (e.g., `(const std::string& name) int`)
-- Reference types: Handles reference params (e.g., `const T&`)
-- Qualified types: Handles `std::string`, `::global::Type`
-- Signature extraction: Extracts signatures for Java methods (e.g., `(String name, int age) User`)
-- Constructor signatures: Handles constructors (no return type)
-- Generic types: Handles `List<String>`, `Map<K, V>`
-- Array types: Handles `String[]`, both before and after param name
-- Varargs: Handles `Object... args` spread syntax
-
-### 2026-01-04 03:00
-
-#### Sketch & Signatures
-- Signature extraction: Extracts function signatures for Rust functions/methods (e.g., `(x: i32, y: String) -> bool`)
-- Self parameters: Handles `&self`, `&mut self`, `self` receiver patterns
-- Return types: Displays return type arrows (e.g., `-> Result<T, E>`)
-- Signature extraction: Extracts function signatures for Go functions/methods (e.g., `(x int, y string) error`)
-- Multiple returns: Handles Go multiple return values (e.g., `(int, error)`)
-- Named returns: Supports named return values (e.g., `(result int, err error)`)
-- Parameter grouping: Collapses same-type params (e.g., `a, b int`)
-- Signature extraction: Extracts signatures for TS/JS functions (e.g., `(x: number, y: string): boolean`)
-- Type annotations: Displays TypeScript type annotations
-- Optional params: Shows optional parameters (e.g., `name?: string`)
-- Default values: Shows defaults as ellipsis (e.g., `count = ...`)
-- Rest parameters: Handles `...args` spread syntax
-- Arrow functions: Extracts signatures from arrow function expressions
-
-### 2026-01-01 23:00
-
-#### Added
-- Embedding mode config extraction now uses diminishing returns and intra-file diversity
-  - Prevents any single file (e.g., LICENSE) from dominating the config section
-  - Prioritizes diverse, relevant content across multiple config files
-  - Uses same diminishing returns formula as symbol selection (marginal = score / (1 + α * picks))
-  - Diversity mechanism penalizes chunks similar to already-selected chunks from the same file
-
-### 2025-12-30 21:00
-
-#### Analysis Passes
-- **Perl** (tree-sitter): module, function. Detects Perl code: packages (`package`), subroutines (`sub`), `use` statements, `require` expressions. Method calls via arrow operator (`$obj->method`). Two-pass cross-file resolution with qualified names. For legacy systems and text processing. Optional: `pip install tree-sitter-language-pack`
-
-### 2025-12-30 15:00
-
-#### Analysis Passes
-- **F#** (tree-sitter): module, function, value, record, union. Detects F# code: modules (including nested), functions (`let`), values, record types, discriminated unions, `open` statements. Two-pass cross-file resolution. For .NET functional-first development. Optional: `pip install tree-sitter-language-pack`
-
-### 2025-12-30 14:00
-
-#### Analysis Passes
-- **Erlang** (tree-sitter): module, function, record, macro, type. Detects Erlang code: -module, fun_decl (functions with arity), -record, -define (macros), -type. Function calls (local and remote with module:function syntax), -behaviour and -import edges. Two-pass cross-file resolution. For BEAM VM distributed systems (RabbitMQ, CouchDB). Optional: `pip install tree-sitter-language-pack`
-- **Elm** (tree-sitter): module, function, type, port. Detects Elm code: module declarations, value/function declarations, type aliases, custom types (union types), port declarations (JS interop). Import edges from import clauses. Two-pass cross-file resolution. For functional web frontend development. Optional: `pip install tree-sitter-language-pack`
-
-### 2025-12-30 05:00
-
-#### Analysis Passes
-- **Clojure** (tree-sitter): module, function, variable, macro, protocol, record, multimethod. Detects Clojure code: ns (namespaces), defn/defn- (functions), def (variables), defmacro, defprotocol, defrecord, defmulti. Require/import edges from ns :require. Function call edges. Two-pass cross-file resolution. For JVM functional programming. Optional: `pip install tree-sitter-language-pack`
-
-### 2025-12-30 02:00
-
-#### Sketch & Signatures
-- README extraction: Extracts first descriptive paragraph from README.md/rst/txt, skips badges/images/HTML
-- Title subtitle fallback: Falls back to title subtitle (e.g., "Project: Description here") if no paragraph found
-- Docstring extraction: Extracts first-line docstrings for Python functions/classes in Key Symbols
-- Symbol annotation: Displays docstring as `— Description` after symbol name
-- Signature extraction: Extracts function signatures (parameters + return types) for Python functions/methods
-- Type annotations: Displays typed parameters and return types (e.g., `func(x: int) -> str`)
-- Complex types: Handles `List[T]`, `Dict[K,V]`, `Optional[T]`, `X | Y` unions
-- Default values: Shows defaults as ellipsis (e.g., `config=…`)
-- *args/**kwargs: Properly formats varargs (e.g., `(*args, **kwargs)`)
-- Async functions: Extracts signatures from `async def` functions
-- Vocabulary extraction: Extracts domain-specific terms from source code identifiers
-- Term filtering: Filters out common programming terms and testing vocabulary
-- Compound word splitting: Splits camelCase, PascalCase, and snake_case identifiers
-- Format: Displays as "Key terms: term1, term2, ..." for quick domain understanding
 
 ## [0.6.0] - 2025-12-29
 
@@ -518,11 +250,13 @@ Initial public release with comprehensive static analysis capabilities.
 
 ## Version History
 
-| Version | Date | Highlights |
-|---------|------|------------|
-| 0.6.0 | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation |
-| 0.5.0 | 2025-12-26 | Initial release: 32 analyzers, 12 linkers, sketch generation |
+| Version | Date       | Highlights                                                   |
+| ------- | ---------- | ------------------------------------------------------------ |
+| 0.6.9   | 2026-01-07 | Fewer entrypoint false positives; richer slices across linker boundaries; migration guidance aligned to ADR-0003 |
+| 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
+| 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers, sketch generation |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.0...HEAD
+[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.9...HEAD
+[0.6.9]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9
 [0.6.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.5.0...v0.6.0
 [0.5.0]: https://codeberg.org/iterabloom/hypergumbo/releases/tag/v0.5.0
