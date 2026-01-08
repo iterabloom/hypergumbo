@@ -261,6 +261,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     tiers = getattr(args, "tiers", None)
     exclude_tests = getattr(args, "exclude_tests", False)
     extra_excludes = getattr(args, "extra_excludes", [])
+    frameworks = getattr(args, "frameworks", None)
 
     run_behavior_map(
         repo_root=repo_root,
@@ -272,6 +273,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         tiers=tiers,
         exclude_tests=exclude_tests,
         extra_excludes=extra_excludes,
+        frameworks=frameworks,
     )
     return 0
 
@@ -1103,6 +1105,15 @@ Output files:
         dest="extra_excludes",
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
+    )
+    p_run.add_argument(
+        "--frameworks",
+        type=str,
+        default=None,
+        metavar="SPEC",
+        help="Framework detection mode: 'none' (skip), 'all' (exhaustive), "
+             "or comma-separated list (e.g., 'fastapi,celery'). "
+             "Default: auto-detect based on detected languages.",
     )
     p_run.set_defaults(func=cmd_run)
 
