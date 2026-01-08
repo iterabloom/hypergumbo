@@ -228,3 +228,19 @@ class ProductModel: NSObject {
         # NSObject subclasses are automatically exposed to Objective-C
         bridge_symbols = [s for s in result.symbols if s.kind == "objc_bridge"]
         assert len(bridge_symbols) >= 2
+
+
+class TestSwiftObjCLinkerRegistered:
+    """Tests for the registered swift_objc_linker function."""
+
+    def test_swift_objc_linker_returns_result(self, tmp_path: Path) -> None:
+        """swift_objc_linker function returns LinkerResult."""
+        from hypergumbo.linkers.swift_objc import swift_objc_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = swift_objc_linker(ctx)
+
+        assert result is not None
+        assert hasattr(result, "symbols")
+        assert hasattr(result, "edges")

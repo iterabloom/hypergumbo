@@ -39,7 +39,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
 PASS_ID = "phoenix-ipc-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -352,6 +352,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     "phoenix_ipc",
     priority=40,  # Run with other IPC linkers
     description="Phoenix Channels IPC linking (Elixir channels, LiveView)",
+    activation=LinkerActivation(frameworks=["phoenix"]),
 )
 def phoenix_ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """Phoenix IPC linker for registry-based dispatch.

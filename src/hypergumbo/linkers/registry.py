@@ -88,6 +88,10 @@ class LinkerContext:
     edges: list[Edge] = field(default_factory=list)
     captured_symbols: dict[str, list[Symbol]] = field(default_factory=dict)
 
+    # Framework and language detection results (for linker filtering)
+    detected_frameworks: set[str] = field(default_factory=set)
+    detected_languages: set[str] = field(default_factory=set)
+
     # Cached indexes, built lazily
     _symbol_by_id: dict[str, "Symbol"] | None = field(
         default=None, init=False, repr=False
@@ -485,12 +489,17 @@ def run_linker(
 def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     """Run all registered linkers in priority order.
 
+    Linkers are filtered by their activation conditions:
+    - always=True: Run unconditionally (protocol linkers)
+    - frameworks=[...]: Run if any framework is detected
+    - language_pairs=[...]: Run if both languages in a pair are detected
+
     After all linkers run, a post-processing pass connects synthetic nodes
     (grpc_stub, mq_publisher, etc.) to their enclosing functions. This
     enables slice traversal from application code through linker boundaries.
 
     Args:
-        ctx: LinkerContext with all inputs
+        ctx: LinkerContext with all inputs (including detected_frameworks/languages)
 
     Returns:
         List of (name, result) tuples in execution order.
@@ -498,8 +507,14 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     results = []
     all_linker_symbols: list[Symbol] = []
 
-    # Run all registered linkers
+    # Run linkers that pass activation check
     for linker in get_all_linkers():
+        # Check if linker should run based on detected frameworks/languages
+        if not linker.activation.should_run(
+            ctx.detected_frameworks, ctx.detected_languages
+        ):
+            continue  # Skip inactive linkers
+
         result = linker.func(ctx)
         results.append((linker.name, result))
         all_linker_symbols.extend(result.symbols)
