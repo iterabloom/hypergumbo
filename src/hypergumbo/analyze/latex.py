@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .base import iter_tree
 from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
 
 PASS_ID = "latex"
@@ -88,10 +89,9 @@ def _find_child(node, child_type: str):
 def _find_all_descendants(node, target_types: set):
     """Find all descendant nodes of given types."""
     results = []
-    if node.type in target_types:
-        results.append(node)
-    for child in node.children:
-        results.extend(_find_all_descendants(child, target_types))
+    for n in iter_tree(node):
+        if n.type in target_types:
+            results.append(n)
     return results
 
 

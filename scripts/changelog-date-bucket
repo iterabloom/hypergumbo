@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""
+Rewrite CHANGELOG.md's "## [Unreleased]" into date-grouped subheadings.
+
+Walks git history for CHANGELOG.md, finds the first commit where each bullet
+block appears under Unreleased, and groups items by date (or date+hour).
+
+Usage:
+    ./scripts/changelog-date-bucket              # Preview to stdout
+    ./scripts/changelog-date-bucket --in-place   # Rewrite file (creates .bak)
+    ./scripts/changelog-date-bucket --granularity hour  # Group by hour
+    ./scripts/changelog-date-bucket --granularity auto  # Auto: hour if few dates
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+from collections import OrderedDict, defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+
+# ---------------------
+# Git helpers
+# ---------------------
+
+def git(args: List[str], cwd: Path, check: bool = True) -> str:
+    """Run git command and return stdout."""
+    p = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if check and p.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed:\n{p.stderr}")
+    return p.stdout
+
+
+def git_show_file(commit: str, relpath: str, repo: Path) -> Optional[str]:
+    """Return file content at commit, or None if file doesn't exist there."""
+    p = subprocess.run(
+        ["git", "show", f"{commit}:{relpath}"],
+        cwd=str(repo),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if p.returncode != 0:
+        return None
+    return p.stdout
+
+
+def git_commit_date(commit: str, repo: Path) -> str:
+    """Committer date (YYYY-MM-DD)."""
+    return git(["show", "-s", "--format=%cs", commit], cwd=repo).strip()
+
+
+def git_commit_datetime(commit: str, repo: Path) -> str:
+    """Committer date with hour (YYYY-MM-DD HH:00)."""
+    # %ci = committer date ISO format: "2026-01-04 15:52:43 -0500"
+    raw = git(["show", "-s", "--format=%ci", commit], cwd=repo).strip()
+    # Extract date and hour
+    parts = raw.split()
+    if len(parts) >= 2:
+        date = parts[0]
+        time = parts[1]
+        hour = time.split(":")[0]
+        return f"{date} {hour}:00"
+    return raw[:10]  # fallback to date only
+
+
+# ---------------------
+# Parsing
+# ---------------------
+
+UNRELEASED_HEADER_RE = re.compile(r"^##\s+\[Unreleased\]\s*$")
+H2_RE = re.compile(r"^##\s+")
+H3_RE = re.compile(r"^###\s+(.+?)\s*$")
+
+
+@dataclass(frozen=True)
+class BulletBlock:
+    """A single top-level bullet item including its indented continuation lines."""
+    text: str
+
+
+@dataclass
+class UnreleasedSnapshot:
+    """Sections: ordered mapping of subsection name -> list of bullet blocks."""
+    sections: "OrderedDict[str, List[BulletBlock]]"
+
+
+def _split_unreleased(md: str) -> Tuple[str, str, str]:
+    """
+    Return (before, unreleased_block, after).
+    If no Unreleased section found, unreleased_block is "" and before=md, after="".
+    """
+    lines = md.splitlines(True)
+    start = None
+    for i, line in enumerate(lines):
+        if UNRELEASED_HEADER_RE.match(line.rstrip("\n")):
+            start = i
+            break
+    if start is None:
+        return md, "", ""
+
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if H2_RE.match(lines[j]) and not UNRELEASED_HEADER_RE.match(lines[j].rstrip("\n")):
+            end = j
+            break
+
+    before = "".join(lines[:start])
+    unreleased = "".join(lines[start:end])
+    after = "".join(lines[end:])
+    return before, unreleased, after
+
+
+def _parse_bullet_blocks(section_lines: List[str]) -> List[BulletBlock]:
+    """
+    Parse top-level bullets "- ..." and include continuation lines.
+    """
+    blocks: List[BulletBlock] = []
+    i = 0
+    while i < len(section_lines):
+        line = section_lines[i]
+        if line.startswith("- "):
+            block = [line.rstrip("\n")]
+            i += 1
+            while i < len(section_lines):
+                nxt = section_lines[i]
+                if nxt.startswith("- ") or nxt.startswith("### ") or nxt.startswith("## "):
+                    break
+                if nxt.startswith("  ") or nxt.startswith("\t") or nxt.strip() == "":
+                    block.append(nxt.rstrip("\n"))
+                    i += 1
+                    continue
+                break
+            blocks.append(BulletBlock("\n".join(block).rstrip()))
+        else:
+            i += 1
+    return blocks
+
+
+def extract_unreleased_snapshot(md: str) -> UnreleasedSnapshot:
+    """Extract Unreleased subsections and their bullet blocks."""
+    _, unreleased, _ = _split_unreleased(md)
+    sections: "OrderedDict[str, List[BulletBlock]]" = OrderedDict()
+    if not unreleased:
+        return UnreleasedSnapshot(sections)
+
+    lines = unreleased.splitlines(True)
+    i = 0
+    while i < len(lines) and not UNRELEASED_HEADER_RE.match(lines[i].rstrip("\n")):
+        i += 1
+    i += 1
+
+    current_name: Optional[str] = None
+    current_lines: List[str] = []
+
+    def flush():
+        nonlocal current_name, current_lines
+        if current_name is not None:
+            sections[current_name] = _parse_bullet_blocks(current_lines)
+        current_name = None
+        current_lines = []
+
+    while i < len(lines):
+        line = lines[i].rstrip("\n")
+        m = H3_RE.match(line)
+        if m:
+            flush()
+            current_name = m.group(1).strip()
+        else:
+            if current_name is not None:
+                current_lines.append(lines[i])
+        if i + 1 < len(lines) and lines[i + 1].startswith("## ") and not lines[i + 1].startswith("## [Unreleased]"):
+            break
+        i += 1
+
+    flush()
+    return UnreleasedSnapshot(sections)
+
+
+# ---------------------
+# Rewrite
+# ---------------------
+
+def build_new_unreleased(
+    head: UnreleasedSnapshot,
+    first_seen: Dict[str, Tuple[str, str]],
+    date_desc: bool = True,
+) -> str:
+    """
+    Create new Unreleased block with date as primary grouping.
+    first_seen maps BulletBlock.text -> (timestamp, fullsha)
+
+    Output structure:
+        ## [Unreleased]
+        ### 2026-01-04 15:00
+        #### Added
+        - item 1
+        #### Changed
+        - item 2
+        ### 2026-01-01 23:00
+        #### Added
+        - item 3
+    """
+    out: List[str] = []
+    out.append("## [Unreleased]\n\n")
+
+    # First, group all blocks by date, preserving section info
+    # date -> section_name -> [blocks]
+    date_groups: Dict[str, Dict[str, List[BulletBlock]]] = defaultdict(lambda: defaultdict(list))
+
+    for sec_name, blocks in head.sections.items():
+        for b in blocks:
+            timestamp, _ = first_seen.get(b.text, ("UNKNOWN", "HEAD"))
+            date_groups[timestamp][sec_name].append(b)
+
+    # Sort dates
+    dates = sorted(date_groups.keys(), reverse=date_desc)
+
+    for d in dates:
+        out.append(f"### {d}\n")
+        sections = date_groups[d]
+        # Preserve original section order
+        for sec_name in head.sections.keys():
+            if sec_name in sections and sections[sec_name]:
+                out.append(f"\n#### {sec_name}\n")
+                for b in sections[sec_name]:
+                    out.append(b.text + "\n")
+        out.append("\n")
+
+    return "".join(out).rstrip() + "\n"
+
+
+# ---------------------
+# Main
+# ---------------------
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--repo", default=".", help="Path to git repo (default: .)")
+    ap.add_argument("--path", default="CHANGELOG.md", help="Path to changelog")
+    ap.add_argument("--ref", default="HEAD", help="Ref to treat as current")
+    ap.add_argument("--in-place", action="store_true", help="Rewrite file in place")
+    ap.add_argument("--date-order", choices=["asc", "desc"], default="desc",
+                    help="Date grouping order (default: desc)")
+    ap.add_argument("--granularity", choices=["day", "hour", "auto"], default="auto",
+                    help="Time granularity: day, hour, or auto (default: auto - uses hour if <= 3 days)")
+    args = ap.parse_args()
+
+    repo = Path(args.repo).resolve()
+    relpath = args.path
+
+    changelog_path = repo / relpath
+    head_md = changelog_path.read_text(encoding="utf-8")
+    head_snapshot = extract_unreleased_snapshot(head_md)
+
+    # Build set of bullet texts we want to attribute
+    wanted = set()
+    for blocks in head_snapshot.sections.values():
+        for b in blocks:
+            wanted.add(b.text)
+
+    if not wanted:
+        print("No unreleased items found.")
+        return 0
+
+    # Walk commits that touched CHANGELOG.md (oldest -> newest)
+    commits = git(["rev-list", "--reverse", args.ref, "--", relpath], cwd=repo).splitlines()
+
+    first_seen: Dict[str, Tuple[str, str]] = {}
+    prev_snapshot = UnreleasedSnapshot(OrderedDict())
+
+    for sha in commits:
+        md = git_show_file(sha, relpath, repo)
+        if md is None:
+            continue
+
+        snap = extract_unreleased_snapshot(md)
+
+        prev_sets: Dict[str, set] = {
+            k: set(b.text for b in v) for k, v in prev_snapshot.sections.items()
+        }
+        curr_sets: Dict[str, set] = {
+            k: set(b.text for b in v) for k, v in snap.sections.items()
+        }
+
+        # Store both date and datetime for later granularity decision
+        commit_date = git_commit_date(sha, repo)
+        commit_datetime = git_commit_datetime(sha, repo)
+
+        for sec_name, curr in curr_sets.items():
+            prev = prev_sets.get(sec_name, set())
+            added = curr - prev
+            for item_text in added:
+                if item_text in wanted and item_text not in first_seen:
+                    first_seen[item_text] = (commit_date, commit_datetime, sha)
+
+        prev_snapshot = snap
+
+        if len(first_seen) == len(wanted):
+            break
+
+    # Fallback for items we couldn't attribute
+    for item_text in wanted:
+        if item_text not in first_seen:
+            first_seen[item_text] = ("UNKNOWN", "UNKNOWN", "HEAD")
+
+    # Decide granularity
+    granularity = args.granularity
+    if granularity == "auto":
+        unique_dates = set(v[0] for v in first_seen.values() if v[0] != "UNKNOWN")
+        # Use hour granularity if 3 or fewer unique dates
+        granularity = "hour" if len(unique_dates) <= 3 else "day"
+
+    # Select timestamp based on granularity
+    final_first_seen: Dict[str, Tuple[str, str]] = {}
+    for item_text, (date, datetime, sha) in first_seen.items():
+        timestamp = datetime if granularity == "hour" else date
+        final_first_seen[item_text] = (timestamp, sha)
+
+    before, unreleased_block, after = _split_unreleased(head_md)
+    if not unreleased_block:
+        raise RuntimeError("No '## [Unreleased]' section found.")
+
+    new_unreleased = build_new_unreleased(
+        head_snapshot,
+        final_first_seen,
+        date_desc=(args.date_order == "desc"),
+    )
+
+    new_md = before + new_unreleased + "\n" + after.lstrip("\n")
+
+    if args.in_place:
+        backup = changelog_path.with_suffix(changelog_path.suffix + ".bak")
+        backup.write_text(head_md, encoding="utf-8")
+        changelog_path.write_text(new_md, encoding="utf-8")
+        print(f"Updated {changelog_path} (backup: {backup})")
+    else:
+        print(new_md, end="")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

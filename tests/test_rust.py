@@ -1157,3 +1157,126 @@ class TestReexportResolution:
         call_dsts = {e.dst for e in call_edges}
         assert helper_id in call_dsts, \
             f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+
+
+class TestRustSignatureExtraction:
+    """Tests for extracting function signatures from Rust code."""
+
+    def test_extracts_simple_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with simple parameter types."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn add(x: i32, y: i32) -> i32 {
+    x + y
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x: i32, y: i32) -> i32"
+
+    def test_extracts_signature_with_no_return(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no return type."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn print_hello(name: String) {
+    println!("Hello, {}", name);
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(name: String)"
+
+    def test_extracts_signature_with_no_params(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no parameters."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn get_answer() -> i32 {
+    42
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "() -> i32"
+
+    def test_extracts_signature_with_self(self, tmp_path: Path) -> None:
+        """Extracts signature for method with &self."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Counter {
+    value: i32,
+}
+
+impl Counter {
+    fn get(&self) -> i32 {
+        self.value
+    }
+
+    fn set(&mut self, value: i32) {
+        self.value = value;
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        sigs = {s.name.split("::")[-1]: s.signature for s in methods}
+
+        assert sigs.get("get") == "(&self) -> i32"
+        assert sigs.get("set") == "(&mut self, value: i32)"
+
+    def test_extracts_signature_with_complex_types(self, tmp_path: Path) -> None:
+        """Extracts signature with complex generic types."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn get_items() -> Vec<String> {
+    vec![]
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert sig == "() -> Vec<String>"
+
+    def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
+        """Symbol.to_dict() includes the signature field."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn greet(name: &str) -> String {
+    format!("Hello, {}!", name)
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        as_dict = funcs[0].to_dict()
+        assert "signature" in as_dict
+        assert as_dict["signature"] == "(name: &str) -> String"

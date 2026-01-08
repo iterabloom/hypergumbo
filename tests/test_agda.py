@@ -339,3 +339,70 @@ class TestAgdaAnalyzerSkipsWhenUnavailable:
         # Should return empty but not skipped
         assert len(result.symbols) == 0
         assert len(result.edges) == 0
+
+
+class TestAgdaSignatureExtraction:
+    """Tests for Agda function signature extraction."""
+
+    def test_function_signature(self, tmp_path: Path) -> None:
+        """Extract type signature from function with type annotation."""
+        from hypergumbo.analyze.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """
+module Example where
+
+double : Nat -> Nat
+double x = x + x
+""")
+        result = analyze_agda(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == ": Nat -> Nat"
+
+    def test_infix_operator_signature(self, tmp_path: Path) -> None:
+        """Extract type signature from infix operator."""
+        from hypergumbo.analyze.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """
+module Example where
+
+_+_ : Nat -> Nat -> Nat
+zero + m = m
+suc n + m = suc (n + m)
+""")
+        result = analyze_agda(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "_+_"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == ": Nat -> Nat -> Nat"
+
+    def test_postulate_signature(self, tmp_path: Path) -> None:
+        """Extract type signature from postulate."""
+        from hypergumbo.analyze.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """
+module Example where
+
+postulate
+  axiom1 : A -> A
+""")
+        result = analyze_agda(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "axiom1"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == ": A -> A"
+
+    def test_constructor_signature(self, tmp_path: Path) -> None:
+        """Extract type signature from data constructor."""
+        from hypergumbo.analyze.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """
+module Example where
+
+data Bool : Set where
+  true : Bool
+  false : Bool
+""")
+        result = analyze_agda(tmp_path)
+        # Find constructor 'true'
+        ctors = [s for s in result.symbols if s.kind == "function" and s.name == "true"]
+        assert len(ctors) == 1
+        assert ctors[0].signature == ": Bool"

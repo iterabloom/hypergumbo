@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -101,6 +102,87 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class/struct/enum/protocol name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "protocol_declaration"):
+            name_node = _find_child_by_type(current, "type_identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/method."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name_node = _find_child_by_field(current, "name")
+            if not name_node:  # pragma: no cover - defensive fallback
+                name_node = _find_child_by_type(current, "simple_identifier")
+            if name_node:
+                func_name = _node_text(name_node, source)
+                if func_name in local_symbols:
+                    return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _extract_swift_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Swift function declaration.
+
+    Returns signature like:
+    - "(x: Int, y: Int) -> Int" for regular functions
+    - "(message: String)" for void functions (no return type shown)
+
+    Args:
+        node: The function_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type = None
+    found_closing_paren = False
+
+    # Iterate through children to find parameters and return type
+    for child in node.children:
+        if child.type == "parameter":
+            param_name = None
+            param_type = None
+            for subchild in child.children:
+                if subchild.type == "simple_identifier" and param_name is None:
+                    param_name = _node_text(subchild, source)
+                elif subchild.type in ("user_type", "array_type", "dictionary_type",
+                                        "optional_type", "tuple_type", "function_type"):
+                    param_type = _node_text(subchild, source)
+            if param_name and param_type:
+                params.append(f"{param_name}: {param_type}")
+        elif child.type == ")":
+            found_closing_paren = True
+        # Return type comes after ) and before function_body
+        elif found_closing_paren and child.type in ("user_type", "array_type", "dictionary_type",
+                                                      "optional_type", "tuple_type", "function_type"):
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type:
+        signature += f" -> {return_type}"
+
+    return signature
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -122,11 +204,8 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_type: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_type
-
+    for node in iter_tree(tree.root_node):
         # Function declaration
         if node.type == "function_declaration":
             name_node = _find_child_by_field(node, "name")
@@ -135,8 +214,9 @@ def _extract_symbols_from_file(
 
             if name_node:
                 func_name = _node_text(name_node, source)
-                if current_type:
-                    full_name = f"{current_type}.{func_name}"
+                enclosing_type = _get_enclosing_type(node, source)
+                if enclosing_type:
+                    full_name = f"{enclosing_type}.{func_name}"
                     kind = "method"
                 else:
                     full_name = func_name
@@ -144,6 +224,9 @@ def _extract_symbols_from_file(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract signature
+                signature = _extract_swift_signature(node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
@@ -159,6 +242,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -207,14 +291,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-                # Process body with type context
-                old_type = current_type
-                current_type = type_name
-                for child in node.children:
-                    visit(child)
-                current_type = old_type
-                return
-
         # Standalone protocol declaration (for older grammar versions)
         elif node.type == "protocol_declaration":  # pragma: no cover - grammar fallback
             name_node = _find_child_by_type(node, "type_identifier")
@@ -242,19 +318,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-                # Process body with type context
-                old_type = current_type
-                current_type = type_name
-                for child in node.children:
-                    visit(child)
-                current_type = old_type
-                return
-
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -274,31 +337,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current function for call edges
-        if node.type == "function_declaration":
-            name_node = _find_child_by_field(node, "name")
-            if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "simple_identifier")
-            if name_node:
-                func_name = _node_text(name_node, source)
-                if func_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[func_name]
-
-                    # Process function body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Detect import statements
-        elif node.type == "import_declaration":
+        if node.type == "import_declaration":
             # Get the module being imported
             id_node = _find_child_by_type(node, "identifier")
             if id_node:
@@ -316,6 +358,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
+            current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
                 # Get the function being called
                 callee_node = _find_child_by_type(node, "simple_identifier")
@@ -355,11 +398,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

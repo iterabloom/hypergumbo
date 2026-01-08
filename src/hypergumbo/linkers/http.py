@@ -6,16 +6,23 @@ and links them to server route handlers detected by language analyzers.
 Detected Client Patterns
 ------------------------
 JavaScript/TypeScript:
-- fetch("/api/users") - Fetch API
+- fetch("/api/users") - Fetch API with literal URL
+- fetch(API_URL) - Fetch API with variable URL
 - fetch("/api/users", { method: "POST" }) - with options
-- axios.get("/api/users") - Axios library
-- axios.post("/api/users", data) - Axios with data
+- axios.get("/api/users") - Axios library with literal URL
+- axios.get(config.apiUrl) - Axios with variable URL
 - __request(OpenAPI, { method: 'GET', url: '/api/users' }) - OpenAPI generated clients
 
 Python:
-- requests.get("/api/users") - requests library
-- requests.post("/api/users", json=data) - with data
+- requests.get("/api/users") - requests library with literal URL
+- requests.get(API_URL) - requests library with variable URL
 - httpx.get("/api/users") - httpx library
+
+Variable URL Detection
+----------------------
+URLs stored in variables are detected with lower confidence (0.65 vs 0.9):
+- const API_URL = '/api/users'; fetch(API_URL) -> detected with url_type="variable"
+- Direct literal URLs have url_type="literal" and higher confidence
 
 Server Route Matching
 ---------------------
@@ -32,7 +39,7 @@ How It Works
 ------------
 1. Collect route symbols from language analyzers (kind="route")
 2. Scan source files for HTTP client calls
-3. Extract URL and method from each call
+3. Extract URL and method from each call (literal or variable)
 4. Match to route symbols by method + path pattern
 5. Create http_calls edges linking client to server
 
@@ -42,6 +49,7 @@ Why This Design
 - Regex-based client detection is fast and portable
 - Route matching handles common parameterization patterns
 - Symbols for client calls enable slice traversal from either end
+- Variable URL detection catches patterns where URLs are stored in constants
 """
 
 from __future__ import annotations
@@ -55,6 +63,7 @@ from urllib.parse import urlparse
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "http-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -69,6 +78,7 @@ class HttpClientCall:
     line: int  # Line number in source
     file_path: str  # Source file path
     language: str  # Source language
+    url_type: str = "literal"  # "literal" or "variable"
 
 
 @dataclass
@@ -80,31 +90,38 @@ class HttpLinkResult:
     run: AnalysisRun | None = None
 
 
-# Python HTTP client patterns
+# Pattern for matching variable identifiers (e.g., API_URL, config.apiUrl)
+_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+
+# Combined pattern: matches either quoted string literal or variable identifier
+# Group 1: literal URL, Group 2: variable identifier
+_URL_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+
+# Python HTTP client patterns - supports both literal URLs and variables
 PYTHON_REQUESTS_PATTERN = re.compile(
-    r"""(?:requests|httpx)\.
+    rf"""(?:requests|httpx)\.
         (get|post|put|patch|delete|head|options)
         \s*\(\s*
-        ["']([^"']+)["']""",
+        {_URL_ARG}""",
     re.VERBOSE | re.IGNORECASE,
 )
 
-# JavaScript fetch pattern
+# JavaScript fetch pattern - supports both literal URLs and variables
 JS_FETCH_PATTERN = re.compile(
-    r"""fetch\s*\(\s*["']([^"']+)["']""",
+    rf"""fetch\s*\(\s*{_URL_ARG}""",
     re.VERBOSE,
 )
 
-# JavaScript fetch with method option
+# JavaScript fetch with method option - literal URL only (complex pattern)
 JS_FETCH_METHOD_PATTERN = re.compile(
     r"""fetch\s*\(\s*["']([^"']+)["']\s*,\s*\{[^}]*method\s*:\s*["'](\w+)["']""",
     re.VERBOSE | re.IGNORECASE,
 )
 
-# JavaScript axios pattern
+# JavaScript axios pattern - supports both literal URLs and variables
 JS_AXIOS_PATTERN = re.compile(
-    r"""axios\.(get|post|put|patch|delete|head|options)
-        \s*\(\s*["']([^"']+)["']""",
+    rf"""axios\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*{_URL_ARG}""",
     re.VERBOSE | re.IGNORECASE,
 )
 
@@ -124,6 +141,23 @@ JS_OPENAPI_REQUEST_ALT_PATTERN = re.compile(
         method\s*:\s*["'](\w+)["']""",
     re.VERBOSE | re.IGNORECASE | re.DOTALL,
 )
+
+
+def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: int = 2) -> tuple[str, str]:
+    """Extract URL and url_type from a regex match.
+
+    The _URL_ARG pattern captures:
+    - Group literal_group: string literal (e.g., '/api/users')
+    - Group var_group: variable identifier (e.g., API_URL, config.apiUrl)
+
+    Returns:
+        Tuple of (url, url_type) where url_type is "literal" or "variable".
+    """
+    literal = match.group(literal_group)
+    if literal:
+        return literal, "literal"
+    variable = match.group(var_group)
+    return variable, "variable"
 
 
 def _extract_path_from_url(url: str) -> str | None:
@@ -211,7 +245,8 @@ def _scan_python_file(file_path: Path, content: str) -> list[HttpClientCall]:
 
     for match in PYTHON_REQUESTS_PATTERN.finditer(content):
         method = match.group(1).upper()
-        url = match.group(2)
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -221,6 +256,7 @@ def _scan_python_file(file_path: Path, content: str) -> list[HttpClientCall]:
                 line=line_num,
                 file_path=str(file_path),
                 language="python",
+                url_type=url_type,
             )
         )
 
@@ -231,7 +267,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
     """Scan a JavaScript/TypeScript file for HTTP client calls."""
     calls: list[HttpClientCall] = []
 
-    # Check for fetch with method option first (more specific)
+    # Check for fetch with method option first (more specific, literal URLs only)
     fetch_method_matches = set()
     for match in JS_FETCH_METHOD_PATTERN.finditer(content):
         url = match.group(1)
@@ -245,17 +281,19 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 line=line_num,
                 file_path=str(file_path),
                 language="javascript",
+                url_type="literal",
             )
         )
         fetch_method_matches.add(match.start())
 
-    # Check for simple fetch calls (default to GET)
+    # Check for simple fetch calls (default to GET) - supports variables
     for match in JS_FETCH_PATTERN.finditer(content):
         # Skip if we already captured this with method option
         if match.start() in fetch_method_matches:
             continue
 
-        url = match.group(1)
+        # Groups: 1=literal URL, 2=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -265,13 +303,15 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 line=line_num,
                 file_path=str(file_path),
                 language="javascript",
+                url_type=url_type,
             )
         )
 
-    # Check for axios calls
+    # Check for axios calls - supports variables
     for match in JS_AXIOS_PATTERN.finditer(content):
         method = match.group(1).upper()
-        url = match.group(2)
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -281,10 +321,11 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 line=line_num,
                 file_path=str(file_path),
                 language="javascript",
+                url_type=url_type,
             )
         )
 
-    # Check for OpenAPI-generated __request() calls
+    # Check for OpenAPI-generated __request() calls (literal URLs only)
     openapi_matches = set()
     for match in JS_OPENAPI_REQUEST_PATTERN.finditer(content):
         method = match.group(1).upper()
@@ -298,6 +339,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 line=line_num,
                 file_path=str(file_path),
                 language="javascript",
+                url_type="literal",
             )
         )
         openapi_matches.add(match.start())
@@ -317,6 +359,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 line=line_num,
                 file_path=str(file_path),
                 language="javascript",
+                url_type="literal",
             )
         )
 
@@ -344,6 +387,7 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
             "http_method": call.method,
             "url_path": _extract_path_from_url(call.url) or call.url,
             "raw_url": call.url,
+            "url_type": call.url_type,
         },
     )
 
@@ -406,13 +450,22 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             if _match_route_pattern(call_path, route_path):
                 # Create edge from client to server
                 is_cross_language = client_symbol.language != route.language
+                is_variable_url = call.url_type == "variable"
+
+                # Lower confidence for variable URLs (can't verify at static analysis)
+                if is_variable_url:
+                    base_confidence = 0.65
+                elif is_cross_language:
+                    base_confidence = 0.8
+                else:
+                    base_confidence = 0.9
 
                 edge = Edge.create(
                     src=client_symbol.id,
                     dst=route.id,
                     edge_type="http_calls",
                     line=call.line,
-                    confidence=0.8 if is_cross_language else 0.9,
+                    confidence=base_confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="http_url_match",
@@ -421,6 +474,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                     "http_method": call.method,
                     "url_path": call_path,
                     "cross_language": is_cross_language,
+                    "url_type": call.url_type,
                 }
                 edges.append(edge)
                 break  # Only link to first matching route
@@ -429,3 +483,57 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
     run.files_analyzed = files_scanned
 
     return HttpLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract route symbols from context.
+
+    Route symbols are either:
+    - kind="route" (Ruby, Go, Rust analyzers)
+    - have meta.route_path (Python, JS framework analyzers)
+    """
+    return [
+        s for s in ctx.symbols
+        if s.kind == "route" or (s.meta and s.meta.get("route_path"))
+    ]
+
+
+def _count_route_symbols(ctx: LinkerContext) -> int:
+    """Count available route symbols for requirement check."""
+    return len(_get_route_symbols(ctx))
+
+
+HTTP_REQUIREMENTS = [
+    LinkerRequirement(
+        name="route_symbols",
+        description="Route handler symbols (kind=route or meta.route_path)",
+        check=_count_route_symbols,
+    ),
+]
+
+
+@register_linker(
+    "http",
+    priority=60,  # Run after analyzers have produced route symbols
+    description="HTTP client-server linking (fetch, axios, requests to routes)",
+    requirements=HTTP_REQUIREMENTS,
+)
+def http_linker(ctx: LinkerContext) -> LinkerResult:
+    """HTTP linker for registry-based dispatch.
+
+    This wraps link_http() to use the LinkerContext/LinkerResult interface.
+    Extracts route symbols from ctx and delegates to the core linking logic.
+    """
+    route_symbols = _get_route_symbols(ctx)
+    result = link_http(ctx.repo_root, route_symbols)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )

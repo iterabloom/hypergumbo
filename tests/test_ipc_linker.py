@@ -468,3 +468,217 @@ window.addEventListener('message', handler);
         # Should only have edges for named channel
         for edge in result.edges:
             assert edge.meta.get("channel") == "named-channel"
+
+
+class TestIpcLinkerRequirements:
+    """Tests for IPC linker registry requirements."""
+
+    def test_count_js_ts_files(self, tmp_path: Path) -> None:
+        """Counts JavaScript/TypeScript files in the repository."""
+        from hypergumbo.linkers.ipc import _count_js_ts_files
+        from hypergumbo.linkers.registry import LinkerContext
+
+        (tmp_path / "app.js").write_text("const x = 1;")
+        (tmp_path / "component.tsx").write_text("export default () => <div/>;")
+        (tmp_path / "util.py").write_text("print('hello')")
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        count = _count_js_ts_files(ctx)
+
+        assert count == 2
+
+    def test_count_electron_patterns_in_symbols(self, tmp_path: Path) -> None:
+        """Counts Electron IPC patterns in symbols."""
+        from hypergumbo.ir import Span, Symbol
+        from hypergumbo.linkers.ipc import _count_electron_patterns_in_code
+        from hypergumbo.linkers.registry import LinkerContext
+
+        sym_ipc = Symbol(
+            id="js:main.js:1-10:ipcHandler:function",
+            name="ipcHandler",
+            kind="function",
+            language="javascript",
+            path="main.js",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+        sym_electron = Symbol(
+            id="js:preload.js:1-10:electronBridge:variable",
+            name="electronBridge",
+            kind="variable",
+            language="typescript",
+            path="preload.js",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+        sym_other = Symbol(
+            id="js:utils.js:1-10:formatDate:function",
+            name="formatDate",
+            kind="function",
+            language="javascript",
+            path="utils.js",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[sym_ipc, sym_electron, sym_other],
+        )
+        count = _count_electron_patterns_in_code(ctx)
+
+        assert count == 2  # ipcHandler and electronBridge
+
+
+class TestIpcLinkerRegistration:
+    """Tests for IPC linker registry integration."""
+
+    def test_linker_is_registered(self) -> None:
+        """IPC linker is registered with the registry."""
+        import hypergumbo.linkers.ipc  # noqa: F401
+        from hypergumbo.linkers.registry import get_linker
+
+        linker = get_linker("ipc")
+        assert linker is not None
+        assert linker.name == "ipc"
+        assert linker.priority == 40
+
+    def test_ipc_linker_returns_result(self, tmp_path: Path) -> None:
+        """ipc_linker function returns LinkerResult."""
+        from hypergumbo.linkers.ipc import ipc_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = ipc_linker(ctx)
+
+        assert result is not None
+        assert hasattr(result, "symbols")
+        assert hasattr(result, "edges")
+
+
+class TestVariableChannelPatterns:
+    """Tests for variable-based channel detection."""
+
+    def test_detect_variable_send_channel(self) -> None:
+        """Detects ipcRenderer.send with variable channel."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+const CHANNEL = 'open-file';
+ipcRenderer.send(CHANNEL, { path: '/tmp/file.txt' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "CHANNEL"
+        assert patterns[0]["channel_type"] == "variable"
+
+    def test_detect_variable_receive_channel(self) -> None:
+        """Detects ipcMain.on with variable channel."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+const OPEN_FILE_CHANNEL = 'open-file';
+ipcMain.on(OPEN_FILE_CHANNEL, (event, data) => {
+    console.log('Opening file:', data.path);
+});
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "OPEN_FILE_CHANNEL"
+        assert patterns[0]["channel_type"] == "variable"
+
+    def test_detect_attribute_access_channel(self) -> None:
+        """Detects channel with attribute access like config.channel."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcRenderer.invoke(config.ipcChannel, { data: 'test' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "config.ipcChannel"
+        assert patterns[0]["channel_type"] == "variable"
+
+    def test_literal_channel_has_literal_type(self) -> None:
+        """Verifies literal channels have channel_type='literal'."""
+        from hypergumbo.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcRenderer.send('user-login', { user: 'test' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+
+        assert len(patterns) == 1
+        assert patterns[0]["channel"] == "user-login"
+        assert patterns[0]["channel_type"] == "literal"
+
+    def test_variable_channel_linking(self, tmp_path: Path) -> None:
+        """Links variable channels when using same variable name."""
+        from hypergumbo.linkers.ipc import link_ipc
+
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+const OPEN_CHANNEL = 'open-file';
+ipcRenderer.send(OPEN_CHANNEL, { path: '/tmp/test.txt' });
+""")
+
+        main = tmp_path / "main.js"
+        main.write_text("""
+const OPEN_CHANNEL = 'open-file';
+ipcMain.on(OPEN_CHANNEL, (event, data) => {
+    console.log('Opening:', data.path);
+});
+""")
+
+        result = link_ipc(tmp_path)
+
+        assert len(result.edges) >= 1
+        # Find edges between variable-matched patterns
+        var_edges = [e for e in result.edges if e.evidence_type == "variable_match"]
+        assert len(var_edges) >= 1
+        assert var_edges[0].confidence == 0.65  # Lower confidence for variable match
+        assert var_edges[0].meta.get("channel_type") == "variable"
+
+    def test_symbol_has_channel_type_metadata(self, tmp_path: Path) -> None:
+        """Symbols include channel_type in metadata."""
+        from hypergumbo.linkers.ipc import link_ipc
+
+        js_file = tmp_path / "test.js"
+        js_file.write_text("""
+ipcRenderer.send(CHANNEL_VAR, { data: 'test' });
+ipcMain.on(CHANNEL_VAR, handler);
+""")
+
+        result = link_ipc(tmp_path)
+
+        # Should have both sender and receiver symbols
+        assert len(result.symbols) >= 1
+        for sym in result.symbols:
+            assert "channel_type" in sym.meta
+            assert sym.meta["channel_type"] == "variable"
+
+    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path) -> None:
+        """Literal channel doesn't match different variable name."""
+        from hypergumbo.linkers.ipc import link_ipc
+
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+ipcRenderer.send('open-file', { path: '/tmp/test.txt' });
+""")
+
+        main = tmp_path / "main.js"
+        main.write_text("""
+const CHANNEL = 'open-file';  // Same value, different identifier
+ipcMain.on(CHANNEL, handler);
+""")
+
+        result = link_ipc(tmp_path)
+
+        # No edges: literal 'open-file' != variable 'CHANNEL'
+        assert len(result.edges) == 0

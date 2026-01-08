@@ -146,6 +146,72 @@ def _make_symbol_id(
     return f"zig:{path}:{start_line}-{end_line}:{name}:{kind}"
 
 
+def _extract_zig_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a function_declaration node.
+
+    Returns signature in format: (param: Type, param2: Type2) ReturnType
+    Omits void return types.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    # Find parameters node
+    params_node = _find_child_by_type(node, "parameters")
+    if params_node:
+        for child in params_node.children:
+            if child.type == "parameter":
+                param_name = None
+                param_type = None
+                for pc in child.children:
+                    if pc.type == "identifier":
+                        param_name = _node_text(pc, source)
+                    elif pc.type in (
+                        "primitive_type",
+                        "type_identifier",
+                        "pointer_type",
+                        "optional_type",
+                        "error_union_type",
+                        "builtin_type",
+                        "array_type",
+                        "slice_type",
+                    ):
+                        param_type = _node_text(pc, source)
+                if param_name and param_type:
+                    params.append(f"{param_name}: {param_type}")
+                elif param_name == "self":  # pragma: no cover - self always has type
+                    # Handle self parameter (just "self" without type annotation)
+                    params.append("self")
+
+    # Find return type - look for type after parameters
+    found_params = False
+    for child in node.children:
+        if child.type == "parameters":
+            found_params = True
+            continue
+        if found_params and child.type in (
+            "primitive_type",
+            "type_identifier",
+            "pointer_type",
+            "optional_type",
+            "error_union_type",
+            "builtin_type",
+            "array_type",
+            "slice_type",
+        ):
+            return_type = _node_text(child, source)
+            break
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
 def _extract_symbols_from_tree(
     root_node: "tree_sitter.Node",
     source: bytes,
@@ -197,6 +263,7 @@ def _extract_symbols_from_tree(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=_extract_zig_signature(node, source),
                 )
                 symbols.append(sym)
                 symbol_table[qualified_name] = sym

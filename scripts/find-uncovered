@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# Find uncovered lines in the codebase
+#
+# This script helps agents (and humans) quickly locate uncovered lines
+# without repeatedly running the full test suite.
+#
+# Usage:
+#   ./scripts/find-uncovered              # Run tests + show uncovered lines
+#   ./scripts/find-uncovered --report     # Show from saved data (no re-run)
+#   ./scripts/find-uncovered --lines      # Output file:line format (agent-friendly)
+#   ./scripts/find-uncovered --context    # Show actual code for each line
+#   ./scripts/find-uncovered PATTERN      # Filter for files matching PATTERN
+#
+# Examples:
+#   ./scripts/find-uncovered                    # Full run + summary
+#   ./scripts/find-uncovered --report           # Query saved coverage-report.txt
+#   ./scripts/find-uncovered --report js_ts     # Filter for js_ts analyzer
+#   ./scripts/find-uncovered --lines            # List as file:line for navigation
+#   ./scripts/find-uncovered --context          # Show code snippets
+#   ./scripts/find-uncovered --context cli      # Show code for cli.py uncovered lines
+#
+# Workflow for fixing coverage:
+#   1. Run ./scripts/find-uncovered once (takes ~2-3 min)
+#   2. Use --report or --lines to query without re-running
+#   3. Fix uncovered lines or add # pragma: no cover
+#   4. Run full test suite to verify: pytest --cov=src --cov-fail-under=100
+
+set -e
+
+# Parse arguments
+REPORT_ONLY=false
+LINES_MODE=false
+CONTEXT_MODE=false
+PATTERN=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --report)
+            REPORT_ONLY=true
+            shift
+            ;;
+        --lines)
+            LINES_MODE=true
+            shift
+            ;;
+        --context)
+            CONTEXT_MODE=true
+            shift
+            ;;
+        *)
+            PATTERN="$1"
+            shift
+            ;;
+    esac
+done
+
+COVERAGE_TXT="coverage-report.txt"
+
+# Determine if we need to run tests
+need_coverage_run() {
+    # Run if:
+    # 1. File doesn't exist, OR
+    # 2. Not in report-only mode
+    if [ ! -f "$COVERAGE_TXT" ]; then
+        return 0  # true - need to run
+    fi
+    if [ "$REPORT_ONLY" = true ]; then
+        return 1  # false - don't run (use saved data)
+    fi
+    # For --lines and --context without --report, use saved data if it exists
+    if [ "$LINES_MODE" = true ] || [ "$CONTEXT_MODE" = true ]; then
+        return 1  # false - use existing data
+    fi
+    return 0  # true - run tests (default mode)
+}
+
+# Run pytest if needed
+if need_coverage_run; then
+    echo "🔍 Running coverage analysis (this takes ~2-3 mins)..."
+    pytest --cov=src --cov-report=term-missing -q 2>&1 > "$COVERAGE_TXT" || true
+    echo "   Coverage data saved to $COVERAGE_TXT"
+fi
+
+# Verify we have coverage data
+if [ ! -f "$COVERAGE_TXT" ]; then
+    echo "❌ No coverage data found."
+    echo ""
+    echo "Run tests first with:  ./scripts/find-uncovered"
+    echo "Then query with:       ./scripts/find-uncovered --lines"
+    exit 1
+fi
+
+# Check for stale data (warn if coverage file is older than any .py file in src/)
+newest_src=$(find src -name '*.py' -newer "$COVERAGE_TXT" -print -quit 2>/dev/null || true)
+if [ -n "$newest_src" ]; then
+    echo "⚠️  Warning: coverage data may be stale (source files modified since last run)"
+    echo "   Consider re-running without --report to refresh"
+    echo ""
+fi
+
+# Function to expand line ranges like "162-170, 180" into individual lines
+expand_lines() {
+    local input="$1"
+    # Remove spaces, split by comma
+    echo "$input" | tr -d ' ' | tr ',' '\n' | while read -r item; do
+        if [[ "$item" == *-* ]]; then
+            # It's a range like 162-170
+            local start="${item%-*}"
+            local end="${item#*-}"
+            seq "$start" "$end"
+        else
+            # Single line number
+            echo "$item"
+        fi
+    done
+}
+
+# Function to extract uncovered files and their line numbers
+# Returns: filepath|line_numbers (one per file with uncovered lines)
+extract_uncovered() {
+    local pattern="$1"
+    # Coverage format: src/file.py    100   2   98%   123, 456-789
+    # Match: filename, stmts, miss, cover%, missing lines
+    local regex="^(src/[^ ]+)\s+[0-9]+\s+[0-9]+\s+[0-9]+%\s+(.+)$"
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ $regex ]]; then
+            local filepath="${BASH_REMATCH[1]}"
+            local missing="${BASH_REMATCH[2]}"
+
+            # Apply pattern filter if specified
+            if [ -n "$pattern" ] && [[ ! "$filepath" == *"$pattern"* ]]; then
+                continue
+            fi
+
+            echo "${filepath}|${missing}"
+        fi
+    done < "$COVERAGE_TXT"
+}
+
+# --lines mode: output file:line format for easy navigation
+if [ "$LINES_MODE" = true ]; then
+    extract_uncovered "$PATTERN" | while IFS='|' read -r filepath missing; do
+        expand_lines "$missing" | while read -r line_num; do
+            echo "${filepath}:${line_num}"
+        done
+    done
+    exit 0
+fi
+
+# --context mode: show actual code snippets
+if [ "$CONTEXT_MODE" = true ]; then
+    echo ""
+    extract_uncovered "$PATTERN" | while IFS='|' read -r filepath missing; do
+        echo "━━━ $filepath ━━━"
+        expand_lines "$missing" | while read -r line_num; do
+            if [ -f "$filepath" ]; then
+                # Show line number and code
+                code=$(sed -n "${line_num}p" "$filepath")
+                printf "%4d: %s\n" "$line_num" "$code"
+            fi
+        done
+        echo ""
+    done
+
+    # Show summary
+    total=$(extract_uncovered "$PATTERN" | while IFS='|' read -r _ missing; do
+        expand_lines "$missing"
+    done | wc -l)
+    echo "━━━ Total: $total uncovered lines ━━━"
+    exit 0
+fi
+
+# Default mode: show summary table
+echo ""
+echo "📋 Uncovered lines:"
+echo "-------------------"
+
+# Fixed regex: matches Stmts, Miss, Cover%, Missing
+# Format: src/file.py    100   2   98%   123, 456
+if [ -n "$PATTERN" ]; then
+    grep -E "^src/.*\s+[0-9]+\s+[0-9]+\s+[0-9]+%\s+[0-9]" "$COVERAGE_TXT" | \
+        grep "$PATTERN" || echo "No uncovered lines matching '$PATTERN'"
+else
+    grep -E "^src/.*\s+[0-9]+\s+[0-9]+\s+[0-9]+%\s+[0-9]" "$COVERAGE_TXT" || {
+        echo "✅ 100% coverage - no uncovered lines!"
+    }
+fi
+
+echo ""
+echo "-------------------"
+# Show TOTAL line from coverage output
+grep "^TOTAL" "$COVERAGE_TXT" || true
+
+echo ""
+echo "💡 Tips:"
+echo "   --lines    Output as file:line for easy navigation"
+echo "   --context  Show actual code for each uncovered line"
+echo "   --report   Query saved data without re-running tests"

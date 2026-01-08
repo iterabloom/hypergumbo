@@ -334,3 +334,45 @@ class TestHaskellAnalyzeFallback:
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "haskell-v1"
+
+
+class TestHaskellSignatureExtraction:
+    """Tests for Haskell function signature extraction."""
+
+    def test_simple_type_signature(self, tmp_path: Path) -> None:
+        """Extract type signature from function with type annotation."""
+        from hypergumbo.analyze.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+add :: Int -> Int -> Int
+add x y = x + y
+""")
+        result = analyze_haskell(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == ":: Int -> Int -> Int"
+
+    def test_io_type_signature(self, tmp_path: Path) -> None:
+        """Extract type signature with IO monad."""
+        from hypergumbo.analyze.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+greet :: String -> IO ()
+greet name = putStrLn name
+""")
+        result = analyze_haskell(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "greet"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == ":: String -> IO ()"
+
+    def test_no_signature(self, tmp_path: Path) -> None:
+        """Function without type signature has None signature."""
+        from hypergumbo.analyze.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+helper x = x + 1
+""")
+        result = analyze_haskell(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "helper"]
+        assert len(funcs) == 1
+        assert funcs[0].signature is None

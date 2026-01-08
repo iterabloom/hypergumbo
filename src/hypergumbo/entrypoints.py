@@ -154,6 +154,17 @@ CLI_NAME_PATTERNS = {
     "main", "cli", "run", "execute", "start",
 }
 
+# Languages where CLI_NAME_PATTERNS (like "main") indicate program entry points.
+# Excludes shader languages (GLSL/HLSL/WGSL), hardware description (Verilog/VHDL),
+# and config/data languages where "main" has no CLI meaning.
+CLI_CAPABLE_LANGUAGES = {
+    "c", "cpp", "python", "go", "java", "rust",
+    "javascript", "typescript", "kotlin", "swift",
+    "ruby", "php", "csharp", "fsharp", "scala",
+    "perl", "lua", "nim", "zig", "d", "haskell",
+    "ocaml", "elixir", "erlang", "crystal", "julia",
+}
+
 # Electron file patterns (only specific patterns to avoid false positives)
 # Note: renderer.js/ts and index.js are too generic - many frameworks use these names
 ELECTRON_MAIN_FILES = {"electron.js", "electron.ts", "electron-main.js", "electron-main.ts"}
@@ -307,19 +318,45 @@ def _is_test_file(path: str) -> bool:
 
     Excludes:
     - Files starting with test_ or ending with _test.py
-    - Files in tests/, test/, spec/ directories
+    - Go test files (*_test.go)
+    - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
+    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
     """
     filename = _get_filename(path)
+    filename_lower = filename.lower()
 
-    # Check filename patterns
+    # Check filename patterns - Python tests
     if filename.startswith("test_") or filename.endswith("_test.py"):
         return True
     if filename.startswith("spec_") or filename.endswith("_spec.py"):
         return True
 
-    # Check directory patterns
+    # Check filename patterns - Go tests
+    if filename.endswith("_test.go"):
+        return True
+
+    # Check filename patterns - Mock/fake files (any language)
+    name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
+    if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
+        return True
+    if name_without_ext.startswith("mock_") or name_without_ext.startswith("fake_"):
+        return True
+
+    # Check directory patterns - test and mock directories
     path_parts = path.replace("\\", "/").split("/")
-    return any(part in {"tests", "test", "spec", "__tests__"} for part in path_parts)
+    test_dirs = {
+        "tests", "test", "spec", "__tests__",  # Test directories
+        "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
+        "fixtures", "testdata", "testutils",  # Test support directories
+    }
+    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
+    for part in path_parts:
+        part_lower = part.lower()
+        if part_lower in test_dirs:
+            return True
+        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
+            return True
+    return False
 
 
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
@@ -361,7 +398,9 @@ def _detect_cli_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         # Check for name patterns (lower confidence)
-        if sym.name.lower() in CLI_NAME_PATTERNS:
+        # Only match CLI patterns for languages where "main" means program entry point
+        # (excludes shaders like GLSL/HLSL/WGSL, HDL like Verilog/VHDL, etc.)
+        if sym.language in CLI_CAPABLE_LANGUAGES and sym.name.lower() in CLI_NAME_PATTERNS:
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.CLI_MAIN,
@@ -415,10 +454,18 @@ def _is_express_route_file(path: str, language: str) -> bool:
     """Check if a file path matches Express route patterns.
 
     Matches:
-    - Files named routes.js/ts or router.js/ts
-    - Any .js/.ts file inside a routes/ or routers/ directory
+    - Files named routes.js/ts or router.js/ts (not .tsx)
+    - Any .js/.ts file inside a routes/ or routers/ directory (not .tsx)
+
+    Excludes .tsx files because they're typically React file-based routing
+    (TanStack Router, Next.js app router, etc.), not Express routes.
     """
     if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude .tsx/.jsx files - these are React components, not Express routes
+    # React file-based routing (TanStack Router, Next.js) uses routes/*.tsx
+    if path.endswith(".tsx") or path.endswith(".jsx"):
         return False
 
     filename = _get_filename(path)
@@ -1045,8 +1092,14 @@ def _is_hapi_route_file(path: str, language: str) -> bool:
     Matches:
     - Files ending in routes.js/ts or Routes.js/ts
     - Any .js/.ts file inside a routes/ or plugins/ directory
+
+    Excludes .tsx/.jsx files (React components, not Hapi routes).
     """
     if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude React components - same as Express fix
+    if path.endswith(".tsx") or path.endswith(".jsx"):
         return False
 
     filename = _get_filename(path)
@@ -1136,8 +1189,14 @@ def _is_koa_route_file(path: str, language: str) -> bool:
     - Files with .router. pattern (e.g., user.router.js)
     - Files with .controller. pattern (e.g., user.controller.js)
     - Files with .middleware. pattern (e.g., auth.middleware.js)
+
+    Excludes .tsx/.jsx files (React components, not Koa routes).
     """
     if language not in ("javascript", "typescript"):
+        return False
+
+    # Exclude React components - same as Express fix
+    if path.endswith(".tsx") or path.endswith(".jsx"):
         return False
 
     filename = _get_filename(path)
@@ -1232,7 +1291,9 @@ def _is_tornado_handler_file(path: str, language: str) -> bool:
     - Files ending in _handler.py
     - Any .py file inside a handlers/ or views/ directory
 
-    Excludes test files.
+    Excludes:
+    - Test files
+    - Non-web handler patterns (error handlers, signal handlers, event handlers)
     """
     if language != "python":
         return False
@@ -1242,6 +1303,20 @@ def _is_tornado_handler_file(path: str, language: str) -> bool:
         return False
 
     filename = _get_filename(path)
+
+    # Exclude common non-web handler patterns
+    # These are typically internal infrastructure, not HTTP endpoints
+    # Match patterns like error_handler.py, custom_error_handler.py, etc.
+    non_web_handler_patterns = (
+        "error_handler.py",
+        "signal_handler.py",
+        "event_handler.py",
+        "exception_handler.py",
+        "logging_handler.py",
+        "log_handler.py",
+    )
+    if any(filename.endswith(pattern) for pattern in non_web_handler_patterns):
+        return False
 
     # Check for *_handler.py suffix
     if filename.endswith(TORNADO_HANDLER_SUFFIX):
@@ -1394,11 +1469,22 @@ def _is_micronaut_controller_file(path: str, language: str) -> bool:
     Matches:
     - Files ending in Client.java/kt (Micronaut declarative HTTP clients)
     - Any .java/.kt file inside a client/ directory
+
+    Excludes common false positives:
+    - *ServiceClient.java/kt (usually gRPC stub wrappers)
+    - *GrpcClient.java/kt (gRPC clients)
+    - *RpcClient.java/kt (RPC clients)
     """
     if language not in ("java", "kotlin"):
         return False
 
     filename = _get_filename(path)
+
+    # Exclude common false positives: gRPC/RPC clients
+    # These patterns are typically gRPC stub wrappers, not Micronaut HTTP clients
+    non_micronaut_patterns = ("ServiceClient.", "GrpcClient.", "RpcClient.")
+    if any(pattern in filename for pattern in non_micronaut_patterns):
+        return False
 
     # Check for Client suffix
     if any(filename.endswith(suffix) for suffix in MICRONAUT_CLIENT_SUFFIXES):
@@ -1444,7 +1530,10 @@ def _is_graphql_server_file(path: str, language: str) -> bool:
     - Files with .resolver.js/ts or .resolvers.js/ts suffix
     - Any .js/.ts file inside a resolvers/ or graphql/ directory
 
-    Excludes test files.
+    Excludes:
+    - Test files
+    - React components (.tsx/.jsx)
+    - Non-GraphQL resolver patterns (dns, promise, dependency resolvers)
     """
     if language not in ("javascript", "typescript"):
         return False
@@ -1453,7 +1542,29 @@ def _is_graphql_server_file(path: str, language: str) -> bool:
     if _is_test_file(path):
         return False
 
+    # Exclude React components - these aren't GraphQL servers
+    if path.endswith(".tsx") or path.endswith(".jsx"):
+        return False
+
     filename = _get_filename(path)
+
+    # Exclude non-GraphQL resolver patterns
+    # These are typically infrastructure utilities, not GraphQL resolvers
+    non_graphql_patterns = (
+        "dns-resolver",
+        "dns_resolver",
+        "promise-resolver",
+        "promise_resolver",
+        "dependency-resolver",
+        "dependency_resolver",
+        "path-resolver",
+        "path_resolver",
+        "module-resolver",
+        "module_resolver",
+    )
+    filename_lower = filename.lower()
+    if any(pattern in filename_lower for pattern in non_graphql_patterns):
+        return False
 
     # Check for GraphQL server file names
     if filename in GRAPHQL_SERVER_FILENAMES:

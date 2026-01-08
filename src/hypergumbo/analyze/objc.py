@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -94,6 +95,66 @@ def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: 
 def _make_file_id(path: str) -> str:
     """Generate ID for an Objective-C file node (used as import edge source)."""
     return f"objc:{path}:1-1:file:file"
+
+
+def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract type name from a type_name node, handling pointers."""
+    parts: list[str] = []
+    for child in node.children:
+        if child.type in ("primitive_type", "type_identifier"):
+            parts.append(_node_text(child, source))
+        elif child.type == "abstract_pointer_declarator":
+            parts.append("*")
+    return "".join(parts)
+
+
+def _extract_objc_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract method signature from an Objective-C method declaration/definition.
+
+    Returns signature like:
+    - "(int x, int y): int" for methods with return type
+    - "(NSString* message)" for void methods (void omitted)
+    - "(): NSString*" for no-params methods with return type
+
+    Args:
+        node: The method_declaration or method_definition node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    for child in node.children:
+        if child.type == "method_type":
+            # This is the return type
+            type_name_node = _find_child_by_type(child, "type_name")
+            if type_name_node:
+                return_type = _extract_type_name(type_name_node, source)
+        elif child.type == "method_parameter":
+            # Extract parameter type and name
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type == "method_type":
+                    type_name_node = _find_child_by_type(subchild, "type_name")
+                    if type_name_node:
+                        param_type = _extract_type_name(type_name_node, source)
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                params.append(f"{param_type} {param_name}")
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "void":
+        signature += f": {return_type}"
+
+    return signature
 
 
 @dataclass
@@ -186,12 +247,27 @@ def _is_class_method(node: "tree_sitter.Node") -> bool:  # pragma: no cover - un
     return False  # default to instance
 
 
+def _get_enclosing_class_objc(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Walk up the tree to find enclosing class/implementation name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_interface", "class_implementation"):
+            return _extract_class_name(current, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
 ) -> FileAnalysis:
-    """Extract symbols from a single Objective-C file."""
+    """Extract symbols from a single Objective-C file.
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
     analysis = FileAnalysis()
     rel_path = str(file_path)
 
@@ -201,18 +277,11 @@ def _extract_symbols_from_file(
         return analysis
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    current_class: str | None = None
-    current_class_symbol: Symbol | None = None
-
-    def process_node(node: "tree_sitter.Node") -> None:
-        nonlocal current_class, current_class_symbol
-
+    for node in iter_tree(tree.root_node):
         if node.type in ("class_interface", "class_implementation"):
             class_name = _extract_class_name(node, source)
             if class_name:
-                current_class = class_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, class_name, "class")
@@ -234,7 +303,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
-                current_class_symbol = symbol
 
         elif node.type == "protocol_declaration":
             protocol_name = _extract_protocol_name(node, source)
@@ -267,10 +335,14 @@ def _extract_symbols_from_file(
             method_name = _extract_method_name(node, source)
             if method_name:
                 # Prefix with class name if inside a class
+                current_class = _get_enclosing_class_objc(node, source)
                 full_name = f"{current_class}.{method_name}" if current_class else method_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, full_name, "method")
+
+                # Extract signature
+                signature = _extract_objc_signature(node, source)
 
                 symbol = Symbol(
                     id=symbol_id,
@@ -286,6 +358,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.methods_by_name[method_name] = symbol
@@ -293,6 +366,7 @@ def _extract_symbols_from_file(
         elif node.type == "property_declaration":
             prop_name = _extract_property_name(node, source)
             if prop_name:
+                current_class = _get_enclosing_class_objc(node, source)
                 full_name = f"{current_class}.{prop_name}" if current_class else prop_name
                 start_line = node.start_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, start_line, full_name, "property")
@@ -314,15 +388,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
 
-        # Check for @end to reset current class context
-        if node.type == "@end":
-            current_class = None
-            current_class_symbol = None
-
-        for child in node.children:
-            process_node(child)
-
-    process_node(root)
     return analysis
 
 
@@ -379,6 +444,22 @@ def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | 
     return None  # pragma: no cover
 
 
+def _get_enclosing_method_objc(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_methods: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find enclosing method definition."""
+    current = node.parent
+    while current is not None:
+        if current.type == "method_definition":
+            method_name = _extract_method_name(current, source)
+            if method_name and method_name in local_methods:
+                return local_methods[method_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -386,7 +467,10 @@ def _extract_edges_from_file(
     global_methods: dict[str, Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract edges from a file using global symbol knowledge."""
+    """Extract edges from a file using global symbol knowledge.
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
     edges: list[Edge] = []
     rel_path = str(file_path)
     file_id = _make_file_id(rel_path)
@@ -397,24 +481,8 @@ def _extract_edges_from_file(
         return edges
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    current_method: Symbol | None = None
-    current_method_end: int = 0
-
-    def process_node(node: "tree_sitter.Node") -> None:
-        nonlocal current_method, current_method_end
-
-        if node.start_point[0] >= current_method_end:
-            current_method = None
-
-        # Track current method context
-        if node.type == "method_definition":
-            method_name = _extract_method_name(node, source)
-            if method_name and method_name in local_methods:
-                current_method = local_methods[method_name]
-                current_method_end = node.end_point[0]
-
+    for node in iter_tree(tree.root_node):
         # Handle imports
         if node.type == "preproc_include":
             # Check if it's #import (not #include)
@@ -435,8 +503,9 @@ def _extract_edges_from_file(
                     ))
 
         # Handle message expressions (method calls)
-        if node.type == "message_expression":
+        elif node.type == "message_expression":
             selector = _extract_message_selector(node, source)
+            current_method = _get_enclosing_method_objc(node, source, local_methods)
             if selector and current_method is not None:
                 line = node.start_point[0] + 1
 
@@ -466,10 +535,6 @@ def _extract_edges_from_file(
                         origin_run_id=run.execution_id,
                     ))
 
-        for child in node.children:
-            process_node(child)
-
-    process_node(root)
     return edges
 
 

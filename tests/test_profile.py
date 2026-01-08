@@ -1024,3 +1024,20 @@ def test_detects_ethersjs_framework(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "ethers" in data["profile"]["frameworks"]
+
+
+def test_extra_excludes_filters_files(tmp_path: Path) -> None:
+    """Extra excludes should filter out files from language detection."""
+    from hypergumbo.profile import detect_profile
+
+    # Create Python files
+    (tmp_path / "app.py").write_text("def main():\n    pass\n")
+    (tmp_path / "generated.py").write_text("def generated():\n    pass\n")
+
+    # Without extra excludes - should see 2 Python files
+    profile = detect_profile(tmp_path)
+    assert profile.languages.get("python", {}).files == 2
+
+    # With extra excludes - should exclude generated.py
+    profile = detect_profile(tmp_path, extra_excludes=["generated.py"])
+    assert profile.languages.get("python", {}).files == 1

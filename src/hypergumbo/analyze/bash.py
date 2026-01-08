@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -180,9 +181,8 @@ def _extract_symbols_from_file(
         return analysis
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    def process_node(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
             func_name = _extract_function_name(node, source)
             if func_name:
@@ -190,6 +190,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
 
+                # Bash functions don't have formal parameters - they use $1, $2, etc.
+                # Signature is always "()" since there's no parameter declaration syntax
                 symbol = Symbol(
                     id=symbol_id,
                     name=func_name,
@@ -204,6 +206,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature="()",
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -266,10 +269,6 @@ def _extract_symbols_from_file(
                             )
                             analysis.symbols.append(symbol)
 
-        for child in node.children:
-            process_node(child)
-
-    process_node(root)
     return analysis
 
 
@@ -291,24 +290,20 @@ def _extract_edges_from_file(
         return edges
 
     tree = parser.parse(source)
-    root = tree.root_node
 
-    current_function: Symbol | None = None
-    current_function_end: int = 0
+    def _get_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
+        """Walk up the tree to find enclosing function."""
+        current = node.parent
+        while current is not None:
+            if current.type == "function_definition":
+                func_name = _extract_function_name(current, source)
+                if func_name and func_name in local_symbols:
+                    return local_symbols[func_name]
+            current = current.parent
+        return None  # pragma: no cover - defensive
 
-    def process_node(node: "tree_sitter.Node") -> None:
-        nonlocal current_function, current_function_end
-
-        if node.start_point[0] >= current_function_end:
-            current_function = None
-
-        if node.type == "function_definition":
-            func_name = _extract_function_name(node, source)
-            if func_name and func_name in local_symbols:
-                current_function = local_symbols[func_name]
-                current_function_end = node.end_point[0]
-
-        elif node.type == "command":
+    for node in iter_tree(tree.root_node):
+        if node.type == "command":
             cmd_name_node = _find_child_by_type(node, "command_name")
             if cmd_name_node:
                 word_node = _find_child_by_type(cmd_name_node, "word")
@@ -335,36 +330,34 @@ def _extract_edges_from_file(
                             ))
 
                     # Track function calls
-                    elif current_function is not None:
-                        if cmd_name in local_symbols:
-                            callee = local_symbols[cmd_name]
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=line,
-                                evidence_type="function_call",
-                                confidence=0.95,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
-                        elif cmd_name in global_symbols:
-                            callee = global_symbols[cmd_name]
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=line,
-                                evidence_type="cross_file_call",
-                                confidence=0.80,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                    else:
+                        current_function = _get_enclosing_function(node)
+                        if current_function is not None:
+                            if cmd_name in local_symbols:
+                                callee = local_symbols[cmd_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=line,
+                                    evidence_type="function_call",
+                                    confidence=0.95,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                            elif cmd_name in global_symbols:
+                                callee = global_symbols[cmd_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=line,
+                                    evidence_type="cross_file_call",
+                                    confidence=0.80,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
 
-        for child in node.children:
-            process_node(child)
-
-    process_node(root)
     return edges
 
 

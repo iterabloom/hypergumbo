@@ -36,6 +36,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -142,182 +143,160 @@ def _find_pair_value(table_node, key: str) -> str | None:
     return None  # pragma: no cover - key not found
 
 
-def _process_toml_node(
-    node,
+def _process_toml_tree(
+    root,
     symbols: list[Symbol],
     edges: list[Edge],
     rel_path: str,
     content: str,
     is_cargo: bool,
     is_pyproject: bool,
-    parent_table: str | None = None,
 ) -> None:
-    """Process a TOML AST node and extract symbols and edges.
+    """Process a TOML AST tree iteratively and extract symbols and edges."""
+    for node in iter_tree(root):
+        if node.type == "table":
+            table_name = _extract_table_name(node)
 
-    This is a module-level function to avoid closure issues with loop variables.
-    """
-    if node.type == "table":
-        table_name = _extract_table_name(node)
+            # Determine kind based on table name
+            kind = "table"
+            name = table_name
 
-        # Determine kind based on table name
-        kind = "table"
-        name = table_name
+            if table_name == "workspace":
+                kind = "workspace"
+            elif table_name == "lib":
+                kind = "library"
+                # Try to get library name
+                lib_name = _find_pair_value(node, "name")
+                if lib_name:
+                    name = lib_name
+            elif table_name == "project" and is_pyproject:
+                kind = "project"
+                proj_name = _find_pair_value(node, "name")
+                if proj_name:
+                    name = proj_name
+            elif table_name == "package" and is_cargo:
+                kind = "package"
+                pkg_name = _find_pair_value(node, "name")
+                if pkg_name:
+                    name = pkg_name
 
-        if table_name == "workspace":
-            kind = "workspace"
-        elif table_name == "lib":
-            kind = "library"
-            # Try to get library name
-            lib_name = _find_pair_value(node, "name")
-            if lib_name:
-                name = lib_name
-        elif table_name == "project" and is_pyproject:
-            kind = "project"
-            proj_name = _find_pair_value(node, "name")
-            if proj_name:
-                name = proj_name
-        elif table_name == "package" and is_cargo:
-            kind = "package"
-            pkg_name = _find_pair_value(node, "name")
-            if pkg_name:
-                name = pkg_name
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
+            node_bytes = content[node.start_byte : node.end_byte].encode()
 
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
-        node_bytes = content[node.start_byte : node.end_byte].encode()
-
-        symbols.append(
-            Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
-                kind=kind,
-                name=name,
-                path=rel_path,
-                language="toml",
-                span=Span(
-                    start_line=start_line,
-                    start_col=node.start_point[1],
-                    end_line=end_line,
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-        )
-
-        # Process dependencies if this is a dependency table
-        if is_cargo and table_name in (
-            "dependencies",
-            "dev-dependencies",
-            "build-dependencies",
-        ):
-            _extract_cargo_dependencies(node, rel_path, symbols, content)
-        elif is_cargo and table_name.endswith(".dependencies"):  # pragma: no cover - nested deps
-            _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
-        elif is_pyproject and table_name == "project":
-            _extract_pyproject_dependencies(node, rel_path, symbols, content)
-
-        # Recurse into table children
-        for child in node.children:
-            _process_toml_node(
-                child, symbols, edges, rel_path, content, is_cargo, is_pyproject, table_name
-            )
-
-    elif node.type == "table_array_element":
-        table_name = _extract_table_name(node)
-
-        # Determine kind based on table array name
-        kind = "table_array"
-        name = table_name
-        target_path = None  # Source file path for build targets
-
-        if table_name == "bin" and is_cargo:
-            kind = "binary"
-            bin_name = _find_pair_value(node, "name")
-            if bin_name:
-                name = bin_name
-            target_path = _find_pair_value(node, "path")
-        elif table_name == "test" and is_cargo:
-            kind = "test"
-            test_name = _find_pair_value(node, "name")
-            if test_name:
-                name = test_name
-            target_path = _find_pair_value(node, "path")
-        elif table_name == "example" and is_cargo:
-            kind = "example"
-            ex_name = _find_pair_value(node, "name")
-            if ex_name:
-                name = ex_name
-            target_path = _find_pair_value(node, "path")
-        elif table_name == "bench" and is_cargo:
-            kind = "benchmark"
-            bench_name = _find_pair_value(node, "name")
-            if bench_name:
-                name = bench_name
-            target_path = _find_pair_value(node, "path")
-
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
-        node_bytes = content[node.start_byte : node.end_byte].encode()
-
-        # Build meta with path if present
-        meta = None
-        if target_path:
-            meta = {"path": target_path}
-
-        symbols.append(
-            Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=name,
-                fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
-                kind=kind,
-                name=name,
-                path=rel_path,
-                language="toml",
-                span=Span(
-                    start_line=start_line,
-                    start_col=node.start_point[1],
-                    end_line=end_line,
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                meta=meta,
-            )
-        )
-
-        # Create edge from build target to source file
-        if target_path:
-            edge_id = _make_edge_id(symbol_id, target_path, "defines_target")
-            edges.append(
-                Edge(
-                    id=edge_id,
-                    src=symbol_id,
-                    dst=target_path,
-                    edge_type="defines_target",
-                    line=start_line,
-                    confidence=1.0,
+            symbols.append(
+                Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                    kind=kind,
+                    name=name,
+                    path=rel_path,
+                    language="toml",
+                    span=Span(
+                        start_line=start_line,
+                        start_col=node.start_point[1],
+                        end_line=end_line,
+                        end_col=node.end_point[1],
+                    ),
                     origin=PASS_ID,
                 )
             )
 
-        # Recurse
-        for child in node.children:
-            _process_toml_node(
-                child, symbols, edges, rel_path, content, is_cargo, is_pyproject, table_name
+            # Process dependencies if this is a dependency table
+            if is_cargo and table_name in (
+                "dependencies",
+                "dev-dependencies",
+                "build-dependencies",
+            ):
+                _extract_cargo_dependencies(node, rel_path, symbols, content)
+            elif is_cargo and table_name.endswith(".dependencies"):  # pragma: no cover - nested deps
+                _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
+            elif is_pyproject and table_name == "project":
+                _extract_pyproject_dependencies(node, rel_path, symbols, content)
+
+        elif node.type == "table_array_element":
+            table_name = _extract_table_name(node)
+
+            # Determine kind based on table array name
+            kind = "table_array"
+            name = table_name
+            target_path = None  # Source file path for build targets
+
+            if table_name == "bin" and is_cargo:
+                kind = "binary"
+                bin_name = _find_pair_value(node, "name")
+                if bin_name:
+                    name = bin_name
+                target_path = _find_pair_value(node, "path")
+            elif table_name == "test" and is_cargo:
+                kind = "test"
+                test_name = _find_pair_value(node, "name")
+                if test_name:
+                    name = test_name
+                target_path = _find_pair_value(node, "path")
+            elif table_name == "example" and is_cargo:
+                kind = "example"
+                ex_name = _find_pair_value(node, "name")
+                if ex_name:
+                    name = ex_name
+                target_path = _find_pair_value(node, "path")
+            elif table_name == "bench" and is_cargo:
+                kind = "benchmark"
+                bench_name = _find_pair_value(node, "name")
+                if bench_name:
+                    name = bench_name
+                target_path = _find_pair_value(node, "path")
+
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
+            node_bytes = content[node.start_byte : node.end_byte].encode()
+
+            # Build meta with path if present
+            meta = None
+            if target_path:
+                meta = {"path": target_path}
+
+            symbols.append(
+                Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                    kind=kind,
+                    name=name,
+                    path=rel_path,
+                    language="toml",
+                    span=Span(
+                        start_line=start_line,
+                        start_col=node.start_point[1],
+                        end_line=end_line,
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    meta=meta,
+                )
             )
 
-    else:
-        # Recurse for other node types
-        for child in node.children:
-            _process_toml_node(
-                child, symbols, edges, rel_path, content, is_cargo, is_pyproject, parent_table
-            )
+            # Create edge from build target to source file
+            if target_path:
+                edge_id = _make_edge_id(symbol_id, target_path, "defines_target")
+                edges.append(
+                    Edge(
+                        id=edge_id,
+                        src=symbol_id,
+                        dst=target_path,
+                        edge_type="defines_target",
+                        line=start_line,
+                        confidence=1.0,
+                        origin=PASS_ID,
+                    )
+                )
 
 
 def analyze_toml_files(root: Path) -> TomlAnalysisResult:
@@ -364,8 +343,8 @@ def analyze_toml_files(root: Path) -> TomlAnalysisResult:
             is_cargo = toml_file.name == "Cargo.toml"
             is_pyproject = toml_file.name == "pyproject.toml"
 
-            # Process the tree using module-level function
-            _process_toml_node(
+            # Process the tree using iterative traversal
+            _process_toml_tree(
                 tree.root_node, symbols, edges, rel_path, content, is_cargo, is_pyproject
             )
 

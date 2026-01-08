@@ -5,21 +5,69 @@ from typing import Iterator
 
 # Default exclude patterns (gitignore-style)
 DEFAULT_EXCLUDES = [
+    # Dependency directories
     "node_modules",
-    "vendor",  # PHP dependencies (Composer)
+    "vendor",  # PHP (Composer), Go
     "venv",
     ".venv",
+    "env",
+    ".eggs",
+    # Build output
     "dist",
     "build",
+    "_build",  # Sphinx docs
+    "out",
+    "target",  # Rust, Maven
+    # VCS and IDE
     ".git",
+    ".svn",
+    ".hg",
+    # Caches
     "__pycache__",
     ".pytest_cache",
     ".mypy_cache",
+    ".ruff_cache",
     ".tox",
+    ".nox",
+    ".cache",
     "*.egg-info",
-    # Hypergumbo output artifacts - exclude to prevent sketch/analysis pollution
+    # Coverage and test reports
+    "htmlcov",  # Python (pytest-cov)
+    "coverage",  # Generic (Ruby, JS)
+    ".coverage",  # Python coverage.py
+    "coverage.xml",  # Python, generic (Cobertura format)
+    ".nyc_output",  # JavaScript (nyc/Istanbul)
+    "lcov-report",  # JavaScript/C++ (LCOV HTML)
+    "lcov.info",  # JavaScript/C++ (LCOV data)
+    ".c8_output",  # JavaScript (c8)
+    "coverage.out",  # Go
+    "cover.out",  # Go (alternate name)
+    "cover.html",  # Go (HTML report)
+    "tarpaulin-report",  # Rust (cargo-tarpaulin)
+    "TestResults",  # .NET (dotnet test)
+    "coverlet",  # .NET (Coverlet)
+    "gcov-reports",  # C/C++ (gcov)
+    "jest-coverage",  # JavaScript (Jest)
+    ".jest",  # JavaScript (Jest cache)
+    # Documentation output
+    "site",  # mkdocs
+    "_site",  # Jekyll
+    "public",  # Hugo (common but may have false positives)
+    # Hypergumbo output artifacts
     ".hypergumbo",
     "hypergumbo.results.json",
+    # Lock files - generated, inflate LOC counts
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "Pipfile.lock",
+    "Gemfile.lock",
+    "composer.lock",
+    "Cargo.lock",
+    "go.sum",
+    "pubspec.lock",  # Dart/Flutter
+    "packages.lock.json",  # NuGet (.NET)
 ]
 
 

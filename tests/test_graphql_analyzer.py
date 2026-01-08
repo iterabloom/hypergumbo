@@ -328,3 +328,58 @@ fragment UserFields on User {
     assert "type" in kinds
     assert "input" in kinds
     assert "fragment" in kinds
+
+
+class TestGraphQLSignatureExtraction:
+    """Tests for GraphQL operation signature extraction."""
+
+    def test_query_with_variables(self, tmp_path):
+        """Extract signature from query with variable definitions."""
+        graphql_file = tmp_path / "queries.graphql"
+        graphql_file.write_text("""
+query GetUser($id: ID!, $includeEmail: Boolean) {
+    user(id: $id) {
+        name
+        email @include(if: $includeEmail)
+    }
+}
+""")
+        result = analyze_graphql_files(tmp_path)
+        queries = [s for s in result.symbols if s.kind == "query" and s.name == "GetUser"]
+        assert len(queries) == 1
+        assert queries[0].signature is not None
+        assert "$id: ID!" in queries[0].signature
+        assert "$includeEmail: Boolean" in queries[0].signature
+
+    def test_mutation_with_variables(self, tmp_path):
+        """Extract signature from mutation with variables."""
+        graphql_file = tmp_path / "mutations.graphql"
+        graphql_file.write_text("""
+mutation CreateUser($name: String!, $email: String!) {
+    createUser(name: $name, email: $email) {
+        id
+    }
+}
+""")
+        result = analyze_graphql_files(tmp_path)
+        mutations = [s for s in result.symbols if s.kind == "mutation" and s.name == "CreateUser"]
+        assert len(mutations) == 1
+        assert mutations[0].signature is not None
+        assert "$name: String!" in mutations[0].signature
+
+    def test_operation_without_variables(self, tmp_path):
+        """Operation without variables has no signature."""
+        graphql_file = tmp_path / "queries.graphql"
+        graphql_file.write_text("""
+query AllUsers {
+    users {
+        id
+        name
+    }
+}
+""")
+        result = analyze_graphql_files(tmp_path)
+        queries = [s for s in result.symbols if s.kind == "query" and s.name == "AllUsers"]
+        assert len(queries) == 1
+        # No variables = no signature
+        assert queries[0].signature is None

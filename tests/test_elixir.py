@@ -464,3 +464,57 @@ end
             result = _get_function_name(call_node, source)
             # Either returns None or a string, shouldn't crash
             assert result is None or isinstance(result, str)
+
+
+class TestElixirSignatureExtraction:
+    """Tests for Elixir function signature extraction."""
+
+    def test_positional_params(self, tmp_path: Path) -> None:
+        """Extracts signature with positional parameters."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "calc.ex").write_text("""
+defmodule Calc do
+  def add(a, b) do
+    a + b
+  end
+end
+""")
+        result = analyze_elixir(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "add" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(a, b)"
+
+    def test_no_params_function(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no parameters."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "simple.ex").write_text("""
+defmodule Simple do
+  def answer do
+    42
+  end
+end
+""")
+        result = analyze_elixir(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and "answer" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_macro_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from macro definition."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "macros.ex").write_text("""
+defmodule Macros do
+  defmacro debug(expr) do
+    quote do
+      IO.inspect(unquote(expr))
+    end
+  end
+end
+""")
+        result = analyze_elixir(tmp_path)
+        macros = [s for s in result.symbols if s.kind == "macro" and "debug" in s.name]
+        assert len(macros) == 1
+        assert macros[0].signature == "(expr)"

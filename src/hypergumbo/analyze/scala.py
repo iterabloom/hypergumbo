@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -95,6 +96,86 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class/object/trait name."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_definition", "object_definition", "trait_definition"):
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function/method."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                func_name = _node_text(name_node, source)
+                if func_name in local_symbols:
+                    return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _extract_scala_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a Scala function definition.
+
+    Returns signature like:
+    - "(x: Int, y: Int): Int" for regular functions
+    - "(message: String)" for Unit functions (Unit omitted)
+
+    Args:
+        node: The function_definition or function_declaration node.
+        source: The source code bytes.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type = None
+    found_params = False
+
+    # Iterate through children to find parameters and return type
+    for child in node.children:
+        if child.type == "parameters":
+            found_params = True
+            for subchild in child.children:
+                if subchild.type == "parameter":
+                    param_name = None
+                    param_type = None
+                    for pc in subchild.children:
+                        if pc.type == "identifier" and param_name is None:
+                            param_name = _node_text(pc, source)
+                        elif pc.type in ("type_identifier", "generic_type", "tuple_type",
+                                         "function_type", "infix_type"):
+                            param_type = _node_text(pc, source)
+                    if param_name and param_type:
+                        params.append(f"{param_name}: {param_type}")
+        # Return type is a type_identifier that comes after parameters
+        elif found_params and child.type in ("type_identifier", "generic_type",
+                                              "tuple_type", "function_type", "infix_type"):
+            return_type = _node_text(child, source)
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type and return_type != "Unit":
+        signature += f": {return_type}"
+
+    return signature
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -116,19 +197,17 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_type: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_type
-
+    for node in iter_tree(tree.root_node):
         # Function definition (def name(...))
         if node.type == "function_definition":
             name_node = _find_child_by_type(node, "identifier")
 
             if name_node:
                 func_name = _node_text(name_node, source)
-                if current_type:
-                    full_name = f"{current_type}.{func_name}"
+                enclosing_type = _get_enclosing_type(node, source)
+                if enclosing_type:
+                    full_name = f"{enclosing_type}.{func_name}"
                     kind = "method"
                 else:
                     full_name = func_name
@@ -136,6 +215,9 @@ def _extract_symbols_from_file(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract signature
+                signature = _extract_scala_signature(node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
@@ -151,6 +233,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -162,13 +245,17 @@ def _extract_symbols_from_file(
 
             if name_node:
                 func_name = _node_text(name_node, source)
-                if current_type:
-                    full_name = f"{current_type}.{func_name}"
+                enclosing_type = _get_enclosing_type(node, source)
+                if enclosing_type:
+                    full_name = f"{enclosing_type}.{func_name}"
                 else:
                     full_name = func_name  # pragma: no cover - abstract methods are in traits
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract signature
+                signature = _extract_scala_signature(node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
@@ -184,6 +271,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -216,14 +304,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-                # Process body with type context
-                old_type = current_type
-                current_type = type_name
-                for child in node.children:
-                    visit(child)
-                current_type = old_type
-                return
-
         # Object definition
         elif node.type == "object_definition":
             name_node = _find_child_by_type(node, "identifier")
@@ -250,14 +330,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
-
-                # Process body with type context
-                old_type = current_type
-                current_type = type_name
-                for child in node.children:
-                    visit(child)
-                current_type = old_type
-                return
 
         # Trait definition
         elif node.type == "trait_definition":
@@ -286,19 +358,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-                # Process body with type context
-                old_type = current_type
-                current_type = type_name
-                for child in node.children:
-                    visit(child)
-                current_type = old_type
-                return
-
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -318,29 +377,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current function for call edges
-        if node.type == "function_definition":
-            name_node = _find_child_by_type(node, "identifier")
-            if name_node:
-                func_name = _node_text(name_node, source)
-                if func_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[func_name]
-
-                    # Process function body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Detect import statements
-        elif node.type == "import_declaration":
+        if node.type == "import_declaration":
             # Build full import path from identifier children
             identifiers = [child for child in node.children if child.type == "identifier"]
             if identifiers:
@@ -358,6 +398,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
+            current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
                 # Get the function being called
                 callee_node = _find_child_by_type(node, "identifier")
@@ -397,11 +438,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

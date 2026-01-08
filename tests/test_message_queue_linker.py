@@ -338,6 +338,215 @@ class TestRedisPubSubPatterns:
         assert patterns[0].type == "subscribe"
         assert patterns[0].topic == "notifications:*"
 
+    def test_js_redis_subscribe(self, tmp_path: Path):
+        """Detect JavaScript redis.subscribe('channel') pattern."""
+        code = dedent('''
+            const Redis = require('ioredis');
+            const client = new Redis();
+            client.subscribe('notifications');
+        ''')
+        file = tmp_path / "subscriber.js"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].type == "subscribe"
+        assert patterns[0].topic == "notifications"
+        assert patterns[0].queue_type == "redis"
+
+    def test_js_redis_subscribe_generic_object(self, tmp_path: Path):
+        """Detect generic .subscribe() for Redis in JS (not pubsub/redis/client prefix)."""
+        # This tests the REDIS_SUBSCRIBE_JS_PATTERN when the specific pattern doesn't match
+        code = dedent('''
+            const subscriber = getRedisSubscriber();
+            subscriber.subscribe('events');
+        ''')
+        file = tmp_path / "subscriber.js"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].type == "subscribe"
+        assert patterns[0].topic == "events"
+        assert patterns[0].queue_type == "redis"
+
+
+class TestVariableTopicPatterns:
+    """Tests for variable-based topic detection."""
+
+    def test_python_kafka_producer_with_variable(self, tmp_path: Path):
+        """Detect producer.produce(topic_var, ...) pattern with variable."""
+        code = dedent('''
+            from confluent_kafka import Producer
+            topic = "orders"
+            producer.produce(topic, key='key', value='value')
+        ''')
+        file = tmp_path / "producer.py"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].type == "publish"
+        assert patterns[0].topic == "topic"
+        assert patterns[0].topic_type == "variable"
+        assert patterns[0].queue_type == "kafka"
+
+    def test_python_kafka_consumer_with_variable(self, tmp_path: Path):
+        """Detect consumer.subscribe([topic_var]) pattern with variable."""
+        code = dedent('''
+            from kafka import KafkaConsumer
+            EVENTS_TOPIC = "events"
+            consumer.subscribe([EVENTS_TOPIC])
+        ''')
+        file = tmp_path / "consumer.py"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].type == "subscribe"
+        assert patterns[0].topic == "EVENTS_TOPIC"
+        assert patterns[0].topic_type == "variable"
+
+    def test_js_kafka_with_variable(self, tmp_path: Path):
+        """Detect JavaScript Kafka with variable topic."""
+        code = dedent('''
+            const { Kafka } = require('kafkajs');
+            const topicName = 'user-events';
+            await producer.send({
+                topic: topicName,
+                messages: [{ value: 'hello' }]
+            });
+        ''')
+        file = tmp_path / "producer.js"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].topic == "topicName"
+        assert patterns[0].topic_type == "variable"
+
+    def test_java_kafka_template_with_variable(self, tmp_path: Path):
+        """Detect Java KafkaTemplate.send(topicVar, ...) with variable."""
+        code = dedent('''
+            @Service
+            public class Producer {
+                private static final String TOPIC = "events";
+                public void send() {
+                    kafkaTemplate.send(TOPIC, message);
+                }
+            }
+        ''')
+        file = tmp_path / "Producer.java"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].topic == "TOPIC"
+        assert patterns[0].topic_type == "variable"
+
+    def test_attribute_access_variable(self, tmp_path: Path):
+        """Detect config.topic style attribute access."""
+        code = dedent('''
+            from confluent_kafka import Producer
+            producer.produce(config.topic_name, value='msg')
+        ''')
+        file = tmp_path / "producer.py"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].topic == "config.topic_name"
+        assert patterns[0].topic_type == "variable"
+
+    def test_literal_topic_type(self, tmp_path: Path):
+        """Verify literal topics have topic_type='literal'."""
+        code = dedent('''
+            from kafka import KafkaProducer
+            producer.send('user-events', value=b'hello')
+        ''')
+        file = tmp_path / "producer.py"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        assert len(patterns) == 1
+        assert patterns[0].topic == "user-events"
+        assert patterns[0].topic_type == "literal"
+
+    def test_variable_linking_same_name(self, tmp_path: Path):
+        """Links variable topics when using same variable name."""
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from confluent_kafka import Producer
+            TOPIC = "orders"
+            producer.produce(TOPIC, value='order')
+        '''))
+
+        consumer = tmp_path / "consumer.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            TOPIC = "orders"
+            consumer.subscribe([TOPIC])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert len(result.symbols) == 2
+        assert len(result.edges) == 1
+        # Variable matches have lower confidence
+        assert result.edges[0].confidence == 0.65
+        assert result.edges[0].evidence_type == "variable_match"
+        assert result.edges[0].meta["topic_type"] == "variable"
+
+    def test_cross_language_variable_linking(self, tmp_path: Path):
+        """Cross-language variable topic linking has reduced confidence."""
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from confluent_kafka import Producer
+            EVENTS_TOPIC = "events"
+            producer.produce(EVENTS_TOPIC, value='msg')
+        '''))
+
+        consumer = tmp_path / "Consumer.java"
+        consumer.write_text(dedent('''
+            @Component
+            public class Consumer {
+                private static final String EVENTS_TOPIC = "events";
+                @KafkaListener(topics = EVENTS_TOPIC)
+                public void listen(String msg) {}
+            }
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert len(result.edges) == 1
+        # Variable + cross-language: 0.65 - 0.1 = 0.55
+        assert result.edges[0].confidence == 0.55
+        assert result.edges[0].meta["cross_language"] is True
+        assert result.edges[0].meta["topic_type"] == "variable"
+
+    def test_symbol_has_topic_type_metadata(self, tmp_path: Path):
+        """Symbols include topic_type in metadata."""
+        file = tmp_path / "test.py"
+        file.write_text("producer.produce(topic_var, value=b'msg')")
+
+        result = link_message_queues(tmp_path)
+
+        assert len(result.symbols) == 1
+        symbol = result.symbols[0]
+        assert symbol.meta["topic_type"] == "variable"
+
+    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path):
+        """Literal 'topic' doesn't match variable 'topic' (different values)."""
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from kafka import KafkaProducer
+            producer.send('orders', value=b'order')
+        '''))
+
+        consumer = tmp_path / "consumer.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            topic = "orders"
+            consumer.subscribe([topic])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        # No edges: literal 'orders' != variable 'topic'
+        assert len(result.edges) == 0
+
 
 class TestMessageQueueLinker:
     """Tests for the full linker integration."""

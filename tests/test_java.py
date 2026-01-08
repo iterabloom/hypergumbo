@@ -1019,3 +1019,406 @@ public class ResourceController {
         assert len(methods) == 5
         http_methods = {m.stable_id for m in methods}
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+
+class TestJavaModifiersCapture:
+    """Tests for Java method modifier capture in the modifiers field."""
+
+    def test_native_modifier_captured(self, tmp_path: Path) -> None:
+        """Native methods should have 'native' in modifiers list."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Native.java"
+        java_file.write_text("""
+public class Native {
+    public native void processData(byte[] data);
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "processData" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert "native" in method.modifiers
+
+    def test_public_static_modifiers_captured(self, tmp_path: Path) -> None:
+        """Public static methods should have both modifiers in list."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Utils.java"
+        java_file.write_text("""
+public class Utils {
+    public static int max(int a, int b) {
+        return a > b ? a : b;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "max" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert "public" in method.modifiers
+        assert "static" in method.modifiers
+
+    def test_all_modifiers_captured(self, tmp_path: Path) -> None:
+        """All method modifiers should be captured."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "JNIBridge.java"
+        java_file.write_text("""
+public class JNIBridge {
+    public static native void nativeCall();
+    private synchronized void syncMethod() {}
+    protected final void finalMethod() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Native static method
+        native_methods = [s for s in result.symbols if s.kind == "method" and "nativeCall" in s.name]
+        assert len(native_methods) == 1
+        assert "native" in native_methods[0].modifiers
+        assert "static" in native_methods[0].modifiers
+        assert "public" in native_methods[0].modifiers
+
+        # Synchronized method
+        sync_methods = [s for s in result.symbols if s.kind == "method" and "syncMethod" in s.name]
+        assert len(sync_methods) == 1
+        assert "synchronized" in sync_methods[0].modifiers
+        assert "private" in sync_methods[0].modifiers
+
+        # Final method
+        final_methods = [s for s in result.symbols if s.kind == "method" and "finalMethod" in s.name]
+        assert len(final_methods) == 1
+        assert "final" in final_methods[0].modifiers
+        assert "protected" in final_methods[0].modifiers
+
+
+class TestJavaSignatureExtraction:
+    """Tests for Java function signature extraction."""
+
+    def test_basic_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a basic method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Calculator.java"
+        java_file.write_text("""
+public class Calculator {
+    public int add(int a, int b) {
+        return a + b;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(int a, int b) int"
+
+    def test_void_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from void method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Logger.java"
+        java_file.write_text("""
+public class Logger {
+    public void log(String message) {
+        System.out.println(message);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "log" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String message)"
+
+    def test_no_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method with no parameters."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Counter.java"
+        java_file.write_text("""
+public class Counter {
+    public int getCount() {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "() int"
+
+    def test_generic_type_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with generic types."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Container.java"
+        java_file.write_text("""
+public class Container {
+    public List<String> getItems(Map<String, Integer> config) {
+        return null;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "getItems" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(Map<String, Integer> config) List<String>"
+
+    def test_constructor_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from constructor."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Person.java"
+        java_file.write_text("""
+public class Person {
+    private String name;
+    private int age;
+
+    public Person(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        constructors = [s for s in result.symbols if s.kind == "constructor"]
+        assert len(constructors) == 1
+        constructor = constructors[0]
+
+        # Constructors have no return type
+        assert constructor.signature == "(String name, int age)"
+
+    def test_array_type_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with array types."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Processor.java"
+        java_file.write_text("""
+public class Processor {
+    public byte[] process(String[] inputs) {
+        return null;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "process" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String[] inputs) byte[]"
+
+    def test_varargs_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with varargs parameters."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Formatter.java"
+        java_file.write_text("""
+public class Formatter {
+    public String format(String pattern, Object... args) {
+        return null;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "format" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String pattern, Object... args) String"
+
+    def test_array_notation_after_name(self, tmp_path: Path) -> None:
+        """Extracts signature with array notation after variable name (C-style)."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Legacy.java"
+        # C-style array declaration: String args[]
+        java_file.write_text("""
+public class Legacy {
+    public void process(String args[]) {
+        return;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method" and "process" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        assert method.signature == "(String[] args)"
+
+
+class TestJavaStaticImportSkip:
+    """Tests for static import handling."""
+
+    def test_static_imports_skipped(self, tmp_path: Path) -> None:
+        """Static imports are skipped (we only track class imports)."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Consumer.java"
+        java_file.write_text("""
+import static java.lang.System.out;
+import static com.example.Utils.helper;
+
+public class Consumer {
+    public void test() {
+        out.println("hello");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Analysis should succeed without crashing on static imports
+        assert result.run is not None
+        assert result.run.files_analyzed == 1
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert any(c.name == "Consumer" for c in classes)
+
+
+class TestJavaVariableTypeInference:
+    """Tests for type inference from constructor assignments."""
+
+    def test_variable_method_call_resolved_via_type_inference(
+        self, tmp_path: Path
+    ) -> None:
+        """Variable method calls resolved via constructor-based type inference."""
+        from hypergumbo.analyze.java import analyze_java
+
+        # Define a helper class with a method
+        (tmp_path / "Helper.java").write_text("""
+public class Helper {
+    public void doWork() {
+        System.out.println("working");
+    }
+}
+""")
+        # Caller creates Helper instance and calls method on it
+        (tmp_path / "Caller.java").write_text("""
+public class Caller {
+    public void run() {
+        Helper h = new Helper();
+        h.doWork();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find the Caller.run -> Helper.doWork edge
+        edges = result.edges
+        caller_run = next(
+            (s for s in result.symbols if "run" in s.name and "Caller" in s.id), None
+        )
+        helper_dowork = next(
+            (s for s in result.symbols if "doWork" in s.name), None
+        )
+
+        assert caller_run is not None
+        assert helper_dowork is not None
+
+        # Should have edge from Caller.run to Helper.doWork via type inference
+        call_edge = next(
+            (
+                e
+                for e in edges
+                if e.src == caller_run.id
+                and e.dst == helper_dowork.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None
+        assert call_edge.evidence_type == "ast_call_type_inferred"
+        assert call_edge.confidence == 0.85
+
+
+class TestJavaImportResolution:
+    """Tests for import-based method call resolution."""
+
+    def test_imported_class_static_method_resolution(self, tmp_path: Path) -> None:
+        """Method calls resolved via import mapping."""
+        from hypergumbo.analyze.java import analyze_java
+
+        # Define utils in a package
+        (tmp_path / "Utils.java").write_text("""
+package com.example;
+
+public class Utils {
+    public static int compute(int x) {
+        return x * 2;
+    }
+}
+""")
+        # Caller imports Utils and calls static method
+        (tmp_path / "Main.java").write_text("""
+import com.example.Utils;
+
+public class Main {
+    public static void main(String[] args) {
+        int result = Utils.compute(42);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        main_method = next(
+            (s for s in result.symbols if "Main.main" in s.name), None
+        )
+        compute_method = next(
+            (s for s in result.symbols if "compute" in s.name), None
+        )
+
+        assert main_method is not None
+        assert compute_method is not None
+
+        # Should have edge from Main.main to Utils.compute
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_method.id
+                and e.dst == compute_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None

@@ -446,3 +446,243 @@ class TestGrpcNormalizeServiceName:
         assert _normalize_service_name("UserStub") == "User"
         assert _normalize_service_name("UserClient") == "User"
         assert _normalize_service_name("UserServer") == "User"
+
+
+class TestGrpcLinkerRequirements:
+    """Tests for gRPC linker registry requirements."""
+
+    def test_count_proto_files(self, tmp_path: Path) -> None:
+        """Counts .proto files in the repository."""
+        from hypergumbo.linkers.grpc import _count_proto_files
+        from hypergumbo.linkers.registry import LinkerContext
+
+        # Create some proto files
+        (tmp_path / "user.proto").write_text("service UserService {}")
+        (tmp_path / "order.proto").write_text("service OrderService {}")
+        (tmp_path / "app.py").write_text("print('hello')")
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        count = _count_proto_files(ctx)
+
+        assert count == 2
+
+    def test_count_grpc_patterns_go_registration(self, tmp_path: Path) -> None:
+        """Counts Go gRPC registration patterns in symbols."""
+        from hypergumbo.ir import Span, Symbol
+        from hypergumbo.linkers.grpc import _count_grpc_patterns_in_symbols
+        from hypergumbo.linkers.registry import LinkerContext
+
+        go_sym = Symbol(
+            id="go:test.go:1-10:RegisterUserServer:function",
+            name="RegisterUserServer",
+            kind="function",
+            language="go",
+            path="test.go",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[go_sym])
+
+        count = _count_grpc_patterns_in_symbols(ctx)
+        assert count == 1
+
+    def test_count_grpc_patterns_python_servicer(self, tmp_path: Path) -> None:
+        """Counts Python gRPC servicer patterns in symbols."""
+        from hypergumbo.ir import Span, Symbol
+        from hypergumbo.linkers.grpc import _count_grpc_patterns_in_symbols
+        from hypergumbo.linkers.registry import LinkerContext
+
+        py_sym = Symbol(
+            id="python:test.py:1-10:UserServiceServicer:class",
+            name="UserServiceServicer",
+            kind="class",
+            language="python",
+            path="test.py",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[py_sym])
+
+        count = _count_grpc_patterns_in_symbols(ctx)
+        assert count == 1
+
+    def test_count_grpc_patterns_java_impl_base(self, tmp_path: Path) -> None:
+        """Counts Java gRPC ImplBase patterns in symbols."""
+        from hypergumbo.ir import Span, Symbol
+        from hypergumbo.linkers.grpc import _count_grpc_patterns_in_symbols
+        from hypergumbo.linkers.registry import LinkerContext
+
+        java_sym = Symbol(
+            id="java:Test.java:1-10:UserServiceImpl:class",
+            name="UserServiceImpl",
+            kind="class",
+            language="java",
+            path="Test.java",
+            span=Span(1, 10, 0, 0),
+            origin="test",
+            origin_run_id="test",
+            meta={"extends": "UserServiceGrpc.UserServiceImplBase"},
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[java_sym])
+
+        count = _count_grpc_patterns_in_symbols(ctx)
+        assert count == 1
+
+
+class TestGrpcLinkerRegistration:
+    """Tests for gRPC linker registry integration."""
+
+    def test_linker_is_registered(self) -> None:
+        """gRPC linker is registered with the registry."""
+        # Import the module to trigger registration
+        import hypergumbo.linkers.grpc  # noqa: F401
+        from hypergumbo.linkers.registry import get_linker
+
+        linker = get_linker("grpc")
+        assert linker is not None
+        assert linker.name == "grpc"
+        assert linker.priority == 30
+
+    def test_grpc_linker_returns_result(self, tmp_path: Path) -> None:
+        """grpc_linker function returns LinkerResult."""
+        from hypergumbo.linkers.grpc import grpc_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = grpc_linker(ctx)
+
+        assert result is not None
+        assert hasattr(result, "symbols")
+        assert hasattr(result, "edges")
+
+
+class TestGrpcUnresolvedEdgeResolution:
+    """Tests for resolving unresolved gRPC edges."""
+
+    def test_resolves_unresolved_register_server_edge(self, tmp_path: Path) -> None:
+        """Resolves unresolved edges to RegisterXxxServer functions."""
+        from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
+        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo.linkers.registry import LinkerContext
+
+        # Create an unresolved edge from Go analyzer
+        unresolved_edge = Edge.create(
+            src="go:main.go:10-20:main:function",
+            dst="go:github.com/pkg/pb:0-0:RegisterUserServer:unresolved",
+            edge_type="calls",
+            line=15,
+            confidence=0.5,
+            origin="go-analyzer",
+            origin_run_id="test",
+            evidence_type="unresolved_method_call",
+        )
+
+        # Create a symbol that can resolve the edge
+        register_sym = Symbol(
+            id="grpc:user_grpc.pb.go:100:UserService:grpc_server",
+            name="RegisterUserServer",
+            kind="grpc_server",
+            language="go",
+            path=str(tmp_path / "pkg/pb/user_grpc.pb.go"),
+            span=Span(100, 110, 0, 0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            edges=[unresolved_edge],
+            symbols=[],
+        )
+        run = AnalysisRun.create("grpc-linker-v1", "test")
+
+        resolved = _resolve_unresolved_grpc_edges(ctx, [register_sym], run)
+
+        assert len(resolved) == 1
+        assert resolved[0].src == unresolved_edge.src
+        assert resolved[0].dst == register_sym.id
+        assert resolved[0].edge_type == "calls"
+
+    def test_ignores_non_grpc_unresolved_edges(self, tmp_path: Path) -> None:
+        """Ignores unresolved edges that don't match gRPC patterns."""
+        from hypergumbo.ir import AnalysisRun, Edge
+        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo.linkers.registry import LinkerContext
+
+        # Create an unresolved edge that's NOT a gRPC pattern
+        unresolved_edge = Edge.create(
+            src="go:main.go:10-20:main:function",
+            dst="go:github.com/pkg:0-0:SomeOtherFunc:unresolved",
+            edge_type="calls",
+            line=15,
+            confidence=0.5,
+            origin="go-analyzer",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            edges=[unresolved_edge],
+            symbols=[],
+        )
+        run = AnalysisRun.create("grpc-linker-v1", "test")
+
+        resolved = _resolve_unresolved_grpc_edges(ctx, [], run)
+
+        # Should not resolve non-gRPC patterns
+        assert len(resolved) == 0
+
+    def test_prefers_package_matching_candidate(self, tmp_path: Path) -> None:
+        """Prefers symbol whose path matches the package hint."""
+        from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
+        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo.linkers.registry import LinkerContext
+
+        # The package hint contains 'checkout/pb' which should match path
+        unresolved_edge = Edge.create(
+            src="go:main.go:10-20:main:function",
+            dst="go:checkout/pb:0-0:RegisterCheckoutServer:unresolved",
+            edge_type="calls",
+            line=15,
+            confidence=0.5,
+            origin="go-analyzer",
+            origin_run_id="test",
+        )
+
+        # Two candidates with same name but different paths
+        wrong_sym = Symbol(
+            id="grpc:frontend/pb/grpc.pb.go:100:Checkout:grpc_server",
+            name="RegisterCheckoutServer",
+            kind="grpc_server",
+            language="go",
+            path=str(tmp_path / "frontend/pb/grpc.pb.go"),
+            span=Span(100, 110, 0, 0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+        )
+        correct_sym = Symbol(
+            id="grpc:checkout/pb/grpc.pb.go:100:Checkout:grpc_server",
+            name="RegisterCheckoutServer",
+            kind="grpc_server",
+            language="go",
+            path=str(tmp_path / "checkout/pb/grpc.pb.go"),
+            span=Span(100, 110, 0, 0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            edges=[unresolved_edge],
+            symbols=[],
+        )
+        run = AnalysisRun.create("grpc-linker-v1", "test")
+
+        # Pass wrong_sym first to ensure we're not just picking first match
+        resolved = _resolve_unresolved_grpc_edges(ctx, [wrong_sym, correct_sym], run)
+
+        assert len(resolved) == 1
+        # Should prefer the one matching package hint (checkout/pb)
+        assert resolved[0].dst == correct_sym.id

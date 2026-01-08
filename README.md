@@ -5,10 +5,12 @@ Get a quick overview of any codebase, sized to fit your context window.
 **Requires Python 3.10+**
 
 ```bash
-pip install hypergumbo              # from PyPI (after release)
+pip install hypergumbo              # from PyPI
 pip install git+https://codeberg.org/iterabloom/hypergumbo.git  # from source
 hypergumbo .
 ```
+
+**Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](docs/INTEL_MAC.md) for a Docker-based workaround.
 
 Output:
 ```markdown
@@ -69,7 +71,7 @@ hypergumbo build-grammars    # build Lean/Wolfram grammars from source
 **Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
 - **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
 - **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
-- **Cross-language edges**: 12 linkers connect symbols across language boundaries (see table below)
+- **Cross-language edges**: 13 linkers connect symbols across language boundaries (see table below)
 
 **LLM-assisted init** (`hypergumbo init --assistant llm`) demonstrates LLM integration
 patterns but provides no practical advantage over the default template-based approach.
@@ -78,26 +80,26 @@ passes. This feature exists as a technical scaffold showing how to integrate Ope
 OpenAI, or local models via the [llm](https://pypi.org/project/llm/) package. It may be
 removed in a future release.
 
-### Supported Languages (51 Analyzers)
+### Supported Languages (54 Analyzers)
 
 | Category | Languages |
 |----------|-----------|
-| **Application** | Python, JavaScript, TypeScript, Java, C#, Go, Rust, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
+| **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
 | **Systems** | C, C++, Zig, Objective-C, CUDA, Fortran |
 | **Smart Contracts** | Solidity |
 | **Hardware** | Verilog, VHDL, GLSL, WGSL |
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
 | **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
-| **Frontend** | Vue, Svelte, HTML |
+| **Frontend** | Elm, Vue, Svelte, HTML |
 | **Proof/Formal** | Agda, Lean*, Wolfram* |
 | **Legacy/Academic** | COBOL, LaTeX |
 
 \* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI).
 Run `hypergumbo build-grammars` to enable these analyzers.
 
-All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [STATUS.md](STATUS.md) for details.
+All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [CHANGELOG.md](CHANGELOG.md) for details.
 
-### Cross-Language Linkers (12 Linkers)
+### Cross-Language Linkers (13 Linkers)
 
 Linkers run automatically during `hypergumbo run` to connect symbols across language boundaries:
 
@@ -115,6 +117,7 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 | Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
 | Database Query | SQL in app code → table definitions in schema files |
 | Event Sourcing | EventEmitter, Django signals, Spring events |
+| Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
 
 ## Development
 
@@ -134,7 +137,7 @@ pytest
 All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
 (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
 
-See [STATUS.md](STATUS.md) for implementation progress.
+See [CHANGELOG.md](CHANGELOG.md) for implementation progress.
 
 ## Security
 
@@ -145,4 +148,5 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 [AGPL-3.0-or-later](LICENSE)
 
 ![Hypergumbo logo](docs/hypergumbo%20FINAL%20halfres.jpg)
+
 

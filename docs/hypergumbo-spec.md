@@ -5,20 +5,33 @@ Status: draft, living document.
 - Spec A: MVP behavior map + capsules (current focus of this repo).
 - Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
 
+## Implementation Status Legend
+
+| Icon | Status | Meaning |
+|------|--------|---------|
+| ⬜ | todo | Planned, not yet started |
+| 🟨 | in progress | Currently being worked on |
+| 🟧 | blocked | Blocked on external dependency or decision |
+| 🟩 | done | Implemented and tested |
+| 🟪 | needs design | Requires more design thinking before implementation |
+| ⬛ | won't do | Decided against / out of scope |
+
+*Use `grep "🟨"` to find in-progress items, etc.*
+
 # Spec A — hypergumbo MVP
 
 ## 0) One-sentence summary
 A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer capsule** from pre-approved building blocks (optionally LLM-assisted), and (3) runs that capsule to emit a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
 
 ## 1) Goals
-* **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
-* **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
-* **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
-* **Capsule Plan composition**: `hypergumbo init` generates a validated `capsule_plan.json` selecting from pre-approved passes/packs/rules in a `catalog.json`. LLM may assist with plan generation **(optional)**, but `hypergumbo run` stays deterministic and offline-by-default.
-* **Portable analyzer artifact**: `.hypergumbo/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
-* **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
-* **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
-* **Local-first execution**: analysis runs offline by default (no network, no API keys required).
+* 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
+* 🟩 **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
+* 🟩 **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
+* 🟩 **Capsule Plan composition**: `hypergumbo init` generates a validated `capsule_plan.json` selecting from pre-approved passes/packs/rules in a `catalog.json`. LLM may assist with plan generation **(optional)**, but `hypergumbo run` stays deterministic and offline-by-default.
+* 🟩 **Portable analyzer artifact**: `.hypergumbo/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
+* 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
+* 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
+* 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
 
 ## 2) Non-goals (for MVP)
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
@@ -42,12 +55,12 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 * `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` (future language packs)
 
 ### Commands
-**`hypergumbo [path] [-t tokens]`** (default mode)
+🟩 **`hypergumbo [path] [-t tokens]`** (default mode)
 Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
 * If no subcommand is given, assumes sketch mode.
 * `-t N` limits output to approximately N tokens.
 
-** `hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
+🟩 **`hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
 Creates `.hypergumbo/` containing:
 * `capsule.json` (manifest: format version, requirements, capabilities, security defaults)
 * `capsule_plan.json` (validated composition plan)
@@ -65,13 +78,13 @@ Sets security defaults: `trust: local_only`, `network: deny`, `sandbox: recommen
 * If `--assistant llm`, generate `capsule_plan.json` using an LLM **but always validate** against the local catalog; on failure, fall back to template plan.
 * If `--assistant template` (default), generate the plan without any LLM.
 
-**`hypergumbo run [path] [--out hypergumbo.results.json]`**
+🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Runs the analyzer capsule on the repo. If no capsule exists, auto-generates a default one with a warning.
 
-**`hypergumbo slice --entry <symbol|file|route> [--out slice.json]`**
+🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.json]`**
 Produces a reduced subgraph suitable for LLM context.
 
-**`hypergumbo catalog [--show-all]`**
+🟩 **`hypergumbo catalog [--show-all]`**
 Displays available passes, packs, and rule templates. Use `--show-all` to include optional extras requiring additional dependencies (e.g., tree-sitter language packs).
 
 Example output:
@@ -87,7 +100,7 @@ Available Packs:
   - react-nextjs: Component tree + route mapping
 ```
 
-**`hypergumbo export-capsule --shareable [--out capsule.tar.gz]`**
+🟩 **`hypergumbo export-capsule --shareable [--out capsule.tar.gz]`**
 
 Exports the analyzer capsule in a privacy-safe format suitable for sharing or publishing to a registry.
 
@@ -125,13 +138,13 @@ Exports the analyzer capsule in a privacy-safe format suitable for sharing or pu
 Initialization may use language detection; **analysis execution requires no network or API keys** (by default). The capsule should be deterministic and reproducible given the same repo state.
 
 ## 4) Supported stacks (MVP)
-* **Python** (best-effort call edges via `ast`)
-* **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
-* **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
-* **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
-* **C** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[c]`)
-* **Java** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[java]`)
-* **HTML** (script tag/linking edges only; always available, limited to pattern matching)
+* 🟩 **Python** (best-effort call edges via `ast`)
+* 🟩 **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
+* 🟩 **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
+* 🟩 **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
+* 🟩 **C** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[c]`)
+* 🟩 **Java** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[java]`)
+* 🟩 **HTML** (script tag/linking edges only; always available, limited to pattern matching)
 > The analyzer is "best-effort, explicitly limited," but produces consistent structures.
 
 ### Dependency strategy
@@ -292,9 +305,9 @@ def authenticate(username: str, password: str) -> User:
   - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
   - Purpose: Cache invalidation, provenance tracking
 Public outputs are **compiled views** from this IR:
-* `behavior_map.json` (v0.1 default)
-* `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
-* Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
+* 🟩 `behavior_map.json` (v0.1 default)
+* 🟩 `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
+* 🟪 Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
 
@@ -324,18 +337,18 @@ class AnalysisPass(Protocol):
 ```
 
 **MVP ships 9 language passes:**
-* `python-ast-v1` — Python AST parser
-* `javascript-ts-v1` — Tree-sitter JS/TS/Svelte/Vue (optional)
-* `php-ts-v1` — Tree-sitter PHP (optional)
-* `c-ts-v1` — Tree-sitter C (optional)
-* `java-ts-v1` — Tree-sitter Java (optional)
-* `elixir-ts-v1` — Tree-sitter Elixir (optional)
-* `rust-ts-v1` — Tree-sitter Rust (optional)
-* `html-pattern-v1` — HTML script tag parser
+* 🟩 `python-ast-v1` — Python AST parser
+* 🟩 `javascript-ts-v1` — Tree-sitter JS/TS/Svelte/Vue (optional)
+* 🟩 `php-ts-v1` — Tree-sitter PHP (optional)
+* 🟩 `c-ts-v1` — Tree-sitter C (optional)
+* 🟩 `java-ts-v1` — Tree-sitter Java (optional)
+* 🟩 `elixir-ts-v1` — Tree-sitter Elixir (optional)
+* 🟩 `rust-ts-v1` — Tree-sitter Rust (optional)
+* 🟩 `html-pattern-v1` — HTML script tag parser
 
 **MVP ships 2 cross-language linkers:**
-* `jni-linker-v1` — Java↔C native method matching
-* `ipc-linker-v1` — Message channel matching:
+* 🟩 `jni-linker-v1` — Java↔C native method matching
+* 🟩 `ipc-linker-v1` — Message channel matching:
   - Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`)
   - Socket.io (`socket.emit`, `socket.on`, `io.emit`)
   - Phoenix Channels (`broadcast!`, `push`, `handle_in`)
@@ -400,10 +413,10 @@ Declares execution requirements and security policy:
   - `prompt_hash`: (optional) Hash of prompt used
 
 **Format types** (MVP implements `python_script` only):
-- `python_script` — Single file, minimal deps (MVP)
-- `toolchain_bundle` — Bundled with language server (future)
-- `container` — Docker/OCI image (future)
-- `daemon` — Long-running process (future)
+- 🟩 `python_script` — Single file, minimal deps (MVP)
+- 🟪 `toolchain_bundle` — Bundled with language server (future)
+- 🟪 `container` — Docker/OCI image (future)
+- 🟪 `daemon` — Long-running process (future)
 
 **Runner dispatch contract (v0.1.0):**
 - The hypergumbo CLI MUST select the execution runner based on `capsule.json.format`.
@@ -982,11 +995,11 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
 Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces.
 
 **Contents (in priority order for truncation):**
-1. Header: repo name, language breakdown, LOC estimate (always included)
-2. Entry points: detected routes, CLI mains, etc.
-3. Structure: top-level directory overview
-4. Build: detected build system (CMake, npm, etc.)
-5. Dependencies: key frameworks
+1. 🟩 Header: repo name, language breakdown, LOC estimate (always included)
+2. 🟩 Entry points: detected routes, CLI mains, etc.
+3. 🟩 Structure: top-level directory overview
+4. 🟩 Build: detected build system (CMake, npm, etc.)
+5. 🟩 Dependencies: key frameworks
 
 **Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections.
 
@@ -1014,23 +1027,23 @@ CMake, Emscripten
 
 ### Entry sources
 
-* **Detected endpoints** (FastAPI/Flask/Express heuristics):
+* 🟩 **Detected endpoints** (FastAPI/Flask/Express heuristics):
   * `@app.route`, `@app.get`, `app.get(`, `app.post(`
-* **Electron main/renderer hints**:
+* 🟩 **Electron main/renderer hints**:
   * File names: `main.js`, `renderer.js`, `preload.js`
   * IPC patterns: `ipcMain.on`, `ipcRenderer.send`
-* **CLI entrypoints**:
+* 🟩 **CLI entrypoints**:
   * Python: `if __name__ == "__main__"`
   * JavaScript: `process.argv` parsing patterns
 
 ### Slicing algorithm
 
-* **Method**: BFS or DFS on relationships
-* **Limits**:
+* 🟩 **Method**: BFS or DFS on relationships
+* 🟩 **Limits**:
   * Hop limit (default: 3)
   * File count limit (default: 20)
   * Configurable via `--max-hops`, `--max-files`
-* **Edge filtering**: Optionally exclude tests, exclude low-confidence edges
+* 🟩 **Edge filtering**: Optionally exclude tests, exclude low-confidence edges
 
 ### Slice identity and reproducibility
 
@@ -1299,12 +1312,12 @@ The solution is not to exclude dependencies entirely—sometimes tracing into th
 
 Code is classified into four tiers based on its relationship to the project:
 
-| Tier | Name | Description | Examples |
-|------|------|-------------|----------|
-| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` |
-| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks |
-| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` |
-| 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files |
+| Tier | Name | Description | Examples | Status |
+|------|------|-------------|----------|--------|
+| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` | 🟩 |
+| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks | 🟩 |
+| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` | 🟩 |
+| 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1542,31 +1555,120 @@ Supply chain configuration can be customized in `capsule_plan.json`:
 }
 ```
 
+## 8.7) Entrypoint Detection Improvements (Design)
+
+> **Note:** This section describes the current state and interim mitigations. The long-term architectural direction is defined in [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md), which supersedes the "Future" subsections below.
+
+Entrypoint detection uses path-based heuristics to identify HTTP handlers, CLI mains, and other entry sources for slicing. These heuristics are fast but prone to false positives when naming conventions collide across frameworks.
+
+### Current State: Path-Based Heuristics (v0.6.x)
+
+Each detector matches file paths and names:
+- `_is_express_route_file`: matches `routes/` directory or `routes.js/ts`
+- `_is_tornado_handler_file`: matches `*_handler.py` or `handlers/` directory
+- `_is_micronaut_controller_file`: matches `*Client.java` or `client/` directory
+
+**Problems:**
+1. **Naming collision**: React Router uses `routes/*.tsx`, Express uses `routes/*.js` — same directory, different frameworks
+2. **Overly broad patterns**: `*Client.java` matches gRPC clients, Redis clients, SDK clients — not just Micronaut HTTP clients
+3. **No content verification**: Detection ignores actual file contents (imports, annotations)
+
+### Implemented Mitigations (v0.6.x)
+
+**Exclusion patterns** for known false positives:
+- Express: Exclude `.tsx/.jsx` files (React components)
+- Hapi/Koa: Same exclusion for React file-based routing
+- Micronaut: Exclude `*ServiceClient`, `*GrpcClient`, `*RpcClient` (gRPC stub wrappers)
+- Tornado: Exclude `*_error_handler.py`, `*_signal_handler.py`, etc. (non-web handlers)
+- GraphQL: Exclude `*dns-resolver*`, `*dependency-resolver*`, etc. (non-GraphQL resolvers)
+
+This is a whack-a-mole approach that reduces false positives but doesn't address the root cause: path heuristics cannot distinguish frameworks that share naming conventions.
+
+### Future: Semantic Entry Detection (ADR-0003)
+
+The long-term solution replaces path heuristics with **semantic entry detection** based on enriched symbol metadata. See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the full design.
+
+**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts that should be detected from symbol metadata, not file paths.
+
+**Architecture overview:**
+```
+ANALYZERS (pure language, no framework knowledge)
+  → Capture symbols + rich metadata (decorators, base classes, parameters)
+
+FRAMEWORK_PATTERNS (configured by detected frameworks)
+  → Match patterns against symbol metadata
+  → Enrich symbols with concept metadata (route, task, model, etc.)
+
+ENTRY_KINDS (semantic detection)
+  → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
+  → High confidence (0.95) from semantic match
+  → No path heuristics, no false positives
+```
+
+**Example: React Router false positive eliminated:**
+```
+Current (path heuristics):
+  File: frontend/src/routes/login.tsx
+  Path matches: /routes/*.tsx
+  Result: Flagged as Express route ❌
+
+Future (semantic detection):
+  File: frontend/src/routes/login.tsx
+  FRAMEWORK_PATTERNS: No Express patterns matched (no app.get decorator)
+  Symbol concepts: {} (empty)
+  Result: Not flagged ✅
+```
+
+**Benefits over ContentVerifier approach:**
+- No additional file I/O — metadata already captured by analyzers
+- Framework patterns are data (YAML), not code
+- Entry detection becomes trivial: just query `sym.concepts`
+
+### Scoring for Auto-Slice Entry Selection
+
+**Scoring function** (applies to both current and future approaches):
+```python
+score = confidence * (1 + log(1 + outgoing_edges))
+```
+This prefers well-connected entries, producing richer slices.
+
+### Migration Path
+
+See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-migration-path) for the authoritative migration plan.
+
+| Version | Focus | Entry Detection Impact |
+|---------|-------|------------------------|
+| **v0.6.x** | Path heuristics + exclusions | Current state |
+| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata |
+| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata |
+| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) |
+| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure |
+
 ## 9) Testing & quality bar
 
 ### Test fixtures
 
-* Small controlled fixtures in `tests/fixtures/*` for property testing
-* Synthetic code samples with known structure (e.g., "3 functions" → expect 3 function nodes)
+* 🟩 Small controlled fixtures in `tests/fixtures/*` for property testing
+* 🟩 Synthetic code samples with known structure (e.g., "3 functions" → expect 3 function nodes)
 
 ### Property-based testing (current approach)
 
 **Rationale:** Golden file testing assumes we know the "correct" output a priori. For complex real-world repos, this is infeasible—we can't manually verify every node and edge. Instead, we verify *invariants* that must hold regardless of the specific output.
 
 **Invariants tested:**
-- Every edge's source/target references a valid node ID
-- Confidence scores are in range [0.0, 1.0]
-- Every symbol has a non-empty name
-- Output matches the JSON schema
-- Analysis completes without errors
-- Determinism: same input → same output
+- 🟩 Every edge's source/target references a valid node ID
+- 🟩 Confidence scores are in range [0.0, 1.0]
+- 🟩 Every symbol has a non-empty name
+- 🟩 Output matches the JSON schema
+- 🟩 Analysis completes without errors
+- 🟩 Determinism: same input → same output
 
 **Benefits:**
 - No need to know "correct" answer upfront
 - Tests remain valid as analysis improves
 - Catches structural bugs (dangling references, invalid values)
 
-### Future: Longitudinal analysis ("slow thinking")
+### 🟪 Future: Longitudinal analysis ("slow thinking")
 
 **Problem:** Property tests provide immediate pass/fail feedback ("fast thinking"). But some insights only emerge from patterns across many CI runs:
 - Did node count suddenly drop 40%? (regression)
@@ -1597,45 +1699,45 @@ def test_observatory(capsys):
 This is a fundamentally different paradigm than pytest's immediate feedback. Defer to future work.
 
 ### Unit tests
-* Parsing to nodes/edges (per language)
-* Stability of IDs across runs (same code → same IDs)
-* **ID survival across refactors**: `stable_id` unchanged when code renamed/moved (if signature unchanged)
-* ID collision handling (multiple definitions at same location)
-* Fingerprint changes when code changes
-* Slicing correctness (known entry → expected subgraph)
-* Exclude behavior (respects patterns)
-* Confidence calculation determinism
-* Provenance tracking (correct origin fields, execution_id/run_signature hashing)
-* IR → view compilation correctness
-* **Capsule Plan validation**: invalid plans rejected, valid plans execute correctly
-* **Catalog loading**: building blocks (packs) discovered and merged correctly, schema validation
-* Plan validation: unknown pass/pack rejected in strict mode
-* Pack schema validation: invalid pack.json rejected
-* LLM plan output must validate or fall back to template
+* 🟩 Parsing to nodes/edges (per language)
+* 🟩 Stability of IDs across runs (same code → same IDs)
+* 🟩 **ID survival across refactors**: `stable_id` unchanged when code renamed/moved (if signature unchanged)
+* 🟩 ID collision handling (multiple definitions at same location)
+* 🟩 Fingerprint changes when code changes
+* 🟩 Slicing correctness (known entry → expected subgraph)
+* 🟩 Exclude behavior (respects patterns)
+* 🟩 Confidence calculation determinism
+* 🟩 Provenance tracking (correct origin fields, execution_id/run_signature hashing)
+* 🟩 IR → view compilation correctness
+* 🟩 **Capsule Plan validation**: invalid plans rejected, valid plans execute correctly
+* 🟩 **Catalog loading**: building blocks (packs) discovered and merged correctly, schema validation
+* 🟩 Plan validation: unknown pass/pack rejected in strict mode
+* 🟩 Pack schema validation: invalid pack.json rejected
+* 🟩 LLM plan output must validate or fall back to template
 ### Schema validation tests
-* Output validates against published JSON Schema
-* Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
-* Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)
-* ID format conformance (both `id` and `stable_id` when present)
-* Evidence type presence in all edges
-* Toolchain capture in analysis_runs
+* 🟩 Output validates against published JSON Schema
+* 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
+* 🟩 Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)
+* 🟩 ID format conformance (both `id` and `stable_id` when present)
+* 🟩 Evidence type presence in all edges
+* 🟩 Toolchain capture in analysis_runs
 ### Smoke test
-* `hypergumbo init` then `hypergumbo run` on a fixture repo
-* Yields valid JSON schema
-* All expected nodes/edges present
-* No crashes, warnings logged appropriately
-* `hypergumbo catalog` displays building blocks
+* 🟩 `hypergumbo init` then `hypergumbo run` on a fixture repo
+* 🟩 Yields valid JSON schema
+* 🟩 All expected nodes/edges present
+* 🟩 No crashes, warnings logged appropriately
+* 🟩 `hypergumbo catalog` displays building blocks
 ### Performance benchmarks
-* Small repo (<100 files): <5 seconds end-to-end
-* Medium repo (~500 files): <30 seconds
-* Caching: second run on unchanged repo <2 seconds
+* 🟩 Small repo (<100 files): <5 seconds end-to-end
+* 🟩 Medium repo (~500 files): <30 seconds
+* ⬜ Caching: second run on unchanged repo <2 seconds
 
 ## 9.5) Error handling
 
 ### Parse errors
 
-* **Behavior**: Log warning, skip file, continue analysis
-* **Output**: Add to `limits.failed_files[]`:
+* 🟩 **Behavior**: Log warning, skip file, continue analysis
+* 🟩 **Output**: Add to `limits.failed_files[]`:
   ```json
   {
     "path": "malformed.py",
@@ -1646,13 +1748,13 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ### Circular imports
 
-* **Behavior**: Detect cycle, log warning, break at arbitrary point
-* **Output**: Add to `warnings[]` in `analysis_runs[]`
+* 🟩 **Behavior**: Detect cycle, log warning, break at arbitrary point
+* 🟩 **Output**: Add to `warnings[]` in `analysis_runs[]`
 
 ### Missing dependencies
 
-* **Behavior**: If pass requires unavailable extra (e.g., tree-sitter), skip pass
-* **Output**: Add to `analysis_runs[].skipped_passes[]`:
+* 🟩 **Behavior**: If pass requires unavailable extra (e.g., tree-sitter), skip pass
+* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]`:
   ```json
   {
     "pass": "javascript-ts-v1",
@@ -1662,19 +1764,19 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ### Analyzer crashes
 
-* **Behavior**: Catch exception, log stack trace to `.hypergumbo/error.log`, continue
-* **Output**: Set `analysis_incomplete: true` in top-level, add to `warnings[]`
+* 🟩 **Behavior**: Catch exception, log stack trace to `.hypergumbo/error.log`, continue
+* 🟩 **Output**: Set `analysis_incomplete: true` in top-level, add to `warnings[]`
 
 ### Partial results guarantee
 
-* **All output is valid JSON** even if analysis is incomplete
-* `analysis_incomplete: true` flag signals partial results
-* `limits.partial_results_reason` documents what went wrong
-* Agents can decide whether partial results are sufficient
+* 🟩 **All output is valid JSON** even if analysis is incomplete
+* 🟩 `analysis_incomplete: true` flag signals partial results
+* 🟩 `limits.partial_results_reason` documents what went wrong
+* 🟩 Agents can decide whether partial results are sufficient
 
 ## 9.6) Known Analysis Limitations
 
-This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `STATUS.md` for per-language implementation status.
+This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `CHANGELOG.md` for per-language implementation status.
 
 ### Re-export Resolution
 
@@ -1738,9 +1840,9 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 * Generate decision report: Go/No-Go for Week 1
 
 **Decision gates:**
-1. ✅ Tree-sitter packaging: Success on 3/4 platforms (Linux, macOS x2, Windows), OR Python-only fallback accepted
-2. ✅ Capsule Plan: Validation works, composition pipeline functional
-3. ✅ LLM: Generated plans valid >80% of time, cost <$0.10/repo, OR defer to template-only
+1. Tree-sitter packaging: Success on 3/4 platforms (Linux, macOS x2, Windows), OR Python-only fallback accepted
+2. Capsule Plan: Validation works, composition pipeline functional
+3. LLM: Generated plans valid >80% of time, cost <$0.10/repo, OR defer to template-only
 **If gates fail**: Adjust Week 1 scope (e.g., skip LLM, defer JS/TS to v0.1.1).
 ### Week 1: Foundation + IR layer + Composition system
 * Schema definition (behavior_map view with execution_id, run_signature, evidence_lang, evidence_spans, origin_run_signature)
@@ -1822,44 +1924,44 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 ## 12) Success criteria
 ### Technical
-* ✅ Analyzes Python repo (100 files) in <10 seconds
-* ✅ Generates valid behavior map JSON 100% of runs
-* ✅ Stable node IDs (same code → same IDs across runs)
-* ✅ **Stable IDs survive refactors**: Renamed/moved functions retain stable_id (when signature unchanged)
-* ✅ Capsule runs without network/API keys (unless --assistant llm used for init)
-* ✅ Catalog displays all available building blocks
-* ✅ Template-based plans work without LLM
-* ✅ Shareable capsules export without leaking repo structure
+* 🟩 Analyzes Python repo (100 files) in <10 seconds
+* 🟩 Generates valid behavior map JSON 100% of runs
+* 🟩 Stable node IDs (same code → same IDs across runs)
+* 🟩 **Stable IDs survive refactors**: Renamed/moved functions retain stable_id (when signature unchanged)
+* 🟩 Capsule runs without network/API keys (unless --assistant llm used for init)
+* 🟩 Catalog displays all available building blocks
+* 🟩 Template-based plans work without LLM
+* 🟩 Shareable capsules export without leaking repo structure
 
 ### Adoption (measured over 3 months post-launch)
-* ✅ 5+ agent projects using output (OR 3+ with detailed case studies)
-* ✅ 100+ repos analyzed
-* ✅ 3+ community-contributed capsule plans or packs published
+* ⬜ 5+ agent projects using output (OR 3+ with detailed case studies)
+* ⬜ 100+ repos analyzed
+* ⬜ 3+ community-contributed capsule plans or packs published
 
 ### Agent validation (objective metrics)
 
 **Measured during 3-month validation period after v0.1.0 ships:**
 
 **Metric 1: Token reduction**
-* Measure: Tokens in hypergumbo slice vs. naïve approach (full files)
+* ⬜ Measure: Tokens in hypergumbo slice vs. naïve approach (full files)
 * Method: A/B test on 50 edit tasks across 3+ agents
 * Target: >30% reduction (median)
 * Collection: Agents log token counts, submit anonymized data
 
 **Metric 2: Edit correctness**
-* Measure: Human evaluation of agent-generated edits
+* ⬜ Measure: Human evaluation of agent-generated edits
 * Method: Blind review of 50 edits (25 with hypergumbo, 25 without)
 * Target: ≥80% correct with hypergumbo (same or better than baseline)
 * Evaluators: 2 independent developers (not project team)
 
 **Metric 3: Hallucination rate**
-* Measure: Fabricated symbols/calls in agent output
+* ⬜ Measure: Fabricated symbols/calls in agent output
 * Method: Parse agent responses, check if symbols exist in hypergumbo nodes
 * Target: <20% hallucination rate (vs. >40% without hypergumbo baseline)
 * Collection: Automated parsing of agent logs
 
 **Metric 4: Error cases (qualitative → quantitative)**
-* Measure: Documented cases where AST-only analysis failed
+* ⬜ Measure: Documented cases where AST-only analysis failed
 * Collection: GitHub issues, agent developer reports, user feedback
 * Target: 20+ specific cases with reproduction steps
 * Analysis: Categorize by type (false positive, false negative, missing edge)
@@ -1871,15 +1973,15 @@ Prevents cherry-picking results.
 **Use:** These metrics feed into decision whether to proceed with advanced capabilities.
 
 ### Benchmark validation (if research continues)
-* ✅ **Precision**: >0.85 on call graph edges (ground truth from 20 hand-verified repos)
-* ✅ **Recall**: >0.70 on detectable edges (AST-visible calls, not dynamic dispatch)
-* ✅ **Confidence calibration**: Edges with confidence >0.9 have <5% false positive rate
+* ⬜ **Precision**: >0.85 on call graph edges (ground truth from 20 hand-verified repos)
+* ⬜ **Recall**: >0.70 on detectable edges (AST-visible calls, not dynamic dispatch)
+* ⬜ **Confidence calibration**: Edges with confidence >0.9 have <5% false positive rate
 
 Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval before collecting results.
 
 ### Quality
-* ✅ Zero crashes on 50+ real-world repos
-* ✅ Documentation clarity: new user can run analysis in <10 minutes
+* 🟩 Zero crashes on 50+ real-world repos
+* ⬜ Documentation clarity: new user can run analysis in <10 minutes
 
 ## 13) Spec A Validation (Prerequisite for Future Enhancements)
 
@@ -1888,27 +1990,27 @@ Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval befor
 **Decision meeting:** Review evidence, decide whether to invest in advanced capabilities
 
 **Quantitative requirements (all must pass):**
-* ✅ Agent adoption: 5+ named projects using hypergumbo in production
+* ⬜ Agent adoption: 5+ named projects using hypergumbo in production
   - OR: 3+ projects with detailed case studies (>500 words each)
-* ✅ Quality improvement: >20% improvement vs. no-hypergumbo baseline
+* ⬜ Quality improvement: >20% improvement vs. no-hypergumbo baseline
   - Measured via: Token reduction, OR edit correctness, OR hallucination reduction
   - A/B test with ≥50 tasks
-* ✅ Stability: <5% crash rate on 100+ repos
+* ⬜ Stability: <5% crash rate on 100+ repos
   - Measured via: CI runs, user reports, agent telemetry
-* ✅ Market signal: 10+ requests for features requiring higher-fidelity analysis
+* ⬜ Market signal: 10+ requests for features requiring higher-fidelity analysis
   - Logged in: GitHub issues, agent developer discussions, design partner feedback
 
 **Qualitative requirements (2 of 3 must pass):**
-* ✅ Agent developers: "hypergumbo is critical, we'd pay for upgrades"
+* ⬜ Agent developers: "hypergumbo is critical, we'd pay for upgrades"
   - Survey or direct quotes from 3+ organizations
-* ✅ Design partners: 3+ orgs pledge engineering time for co-development
+* ⬜ Design partners: 3+ orgs pledge engineering time for co-development
   - Written commitment (not just verbal interest)
-* ✅ Specific gaps: 20+ documented cases where AST analysis failed
+* ⬜ Specific gaps: 20+ documented cases where AST analysis failed
   - With reproduction steps, expected behavior, impact assessment
 
 **Funding secured:**
-* ✅ Research budget: 4-6 engineers × 6-8 months
-* ✅ Commitment: If research succeeds, funding for full development available
+* ⬜ Research budget: 4-6 engineers × 6-8 months
+* ⬜ Commitment: If research succeeds, funding for full development available
 
 **Decision outcomes:**
 1. **Go:** All quantitative + 2/3 qualitative + funding secured → Start research phase
@@ -1917,10 +2019,10 @@ Pre-register evaluation protocol at https://hypergumbo.iterabloom.com/eval befor
 4. **Focus on iteration:** Evidence weak or absent → Improve current capabilities (more languages, better performance)
 
 **No-go triggers (any of these → don't start research):**
-* ❌ Spec A has fundamental adoption blockers (agents abandon after trying)
-* ❌ Competition ships full typed analysis first (market opportunity lost)
-* ❌ Team capacity unavailable (engineers exhausted, need break)
-* ❌ No demonstrated need for higher fidelity (AST analysis "good enough")
+* **Would HALT:** Spec A has fundamental adoption blockers (agents abandon after trying)
+* **Would HALT:** Competition ships full typed analysis first (market opportunity lost)
+* **Would HALT:** Team capacity unavailable (engineers exhausted, need break)
+* **Would HALT:** No demonstrated need for higher fidelity (AST analysis "good enough")
 
 **Decision makers:**
 * Founder (final decision)
@@ -2334,11 +2436,13 @@ hypergumbo init --upgrade  # Gets new capabilities
 
 ---
 
-# Spec B — "Multi-Fidelity Analysis Platform"
+# 🟪 Spec B — "Multi-Fidelity Analysis Platform"
 
 ## 0) One-sentence summary
 
 A multi-phase code understanding platform that produces typed IR + behavior maps, an agent context router for token-efficient editing, and an optional registry for sharing analyzers — built incrementally with explicit validation gates after Spec A proves market fit.
+
+*All of Spec B is future work requiring design validation. See §1 Prerequisites.*
 
 ## 1) Goals and Prerequisites
 
@@ -2401,18 +2505,18 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 * 1 independent technical advisor (advisory)
 
 **Quantitative requirements (all must pass):**
-* ✅ Agent adoption: 5+ named projects using hypergumbo
+* Agent adoption: 5+ named projects using hypergumbo
   - OR: 3+ projects with detailed case studies (>500 words each)
-* ✅ Quality improvement: >20% improvement vs. no-hypergumbo baseline
+* Quality improvement: >20% improvement vs. no-hypergumbo baseline
   - Token reduction, OR edit correctness, OR hallucination reduction
   - A/B test with ≥50 tasks
-* ✅ Stability: <5% crash rate on 100+ repos
-* ✅ Market signal: 10+ requests for higher-fidelity analysis features
+* Stability: <5% crash rate on 100+ repos
+* Market signal: 10+ requests for higher-fidelity analysis features
 
 **Qualitative requirements (2 of 3 must pass):**
-* ✅ Agent developers: "hypergumbo is critical, we'd pay for upgrades"
-* ✅ Design partners: 3+ orgs commit to B0 co-development (written agreements)
-* ✅ Error database: 20+ cases where AST analysis failed (with reproduction steps)
+* Agent developers: "hypergumbo is critical, we'd pay for upgrades"
+* Design partners: 3+ orgs commit to B0 co-development (written agreements)
+* Error database: 20+ cases where AST analysis failed (with reproduction steps)
 
 **Decision outcomes:**
 1. **Go:** All quant + 2/3 qual + funding → Start B0 (8 months)
@@ -2421,10 +2525,10 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 4. **No-go:** Focus on Spec A iteration (more languages, better performance)
 
 **No-go triggers:**
-* ❌ Agents abandon Spec A after trying (fundamental flaw)
-* ❌ Competition ships typed analysis first
-* ❌ Team exhausted, needs break
-* ❌ No demonstrated need for higher fidelity
+* **Would HALT:** Agents abandon Spec A after trying (fundamental flaw)
+* **Would HALT:** Competition ships typed analysis first
+* **Would HALT:** Team exhausted, needs break
+* **Would HALT:** No demonstrated need for higher fidelity
 
 ---
 
@@ -2433,11 +2537,11 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 **Timing:** After B0 Month 8 (evaluation complete)
 
 **Prerequisites (all must pass):**
-* ✅ TypeScript prototype: >0.80 precision on benchmark
-* ✅ Context Router: >30% token reduction in agent A/B test
-* ✅ HTTP linker: <20% FP rate with annotations
-* ✅ Independent evaluation: Report confirms results
-* ✅ Design partners: 3+ still committed for B1 (15 months)
+* TypeScript prototype: >0.80 precision on benchmark
+* Context Router: >30% token reduction in agent A/B test
+* HTTP linker: <20% FP rate with annotations
+* Independent evaluation: Report confirms results
+* Design partners: 3+ still committed for B1 (15 months)
 
 **Decision outcomes:**
 1. **Go:** All gates passed → Start B1 (15 months, 3-5 engineers)
@@ -2450,11 +2554,11 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 
 | TypeScript | Context Router | HTTP Linker | Decision |
 |------------|---------------|-------------|----------|
-| ✅ >0.80 | ✅ >30% | ✅ <20% FP | **Full B1** (all features) |
-| ✅ >0.80 | ✅ >30% | ❌ >30% FP | **B1 minus HTTP** (defer linker) |
-| ✅ >0.80 | ❌ <30% | any | **B1 without smart context** (basic slicing only) |
-| ❌ <0.80 | any | any | **Investigate why** 2-month deep-dive, decide: Fix or pivot to Python-only |
-| ❌ <0.60 | ❌ <20% | ❌ >40% FP | **Stop B entirely** (fundamental approach flawed) |
+| >0.80 | >30% | <20% FP | **Full B1** (all features) |
+| >0.80 | >30% | **Would HALT:** >30% FP | **B1 minus HTTP** (defer linker) |
+| >0.80 | **Would HALT:** <30% | any | **B1 without smart context** (basic slicing only) |
+| **Would HALT:** <0.80 | any | any | **Investigate why** 2-month deep-dive, decide: Fix or pivot to Python-only |
+| **Would HALT:** <0.60 | **Would HALT:** <20% | **Would HALT:** >40% FP | **Stop B entirely** (fundamental approach flawed) |
 
 ---
 
@@ -2463,13 +2567,13 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 **Timing:** 6 months after B1 ships (B1 in production)
 
 **Prerequisites (all must pass):**
-* ✅ B1 stable: 6+ months in production, <2% crash rate
-* ✅ Agent demand: 5+ requests for "smarter context" features (logged)
-* ✅ Evidence B1 insufficient: Quantitative gap demonstrated
+* B1 stable: 6+ months in production, <2% crash rate
+* Agent demand: 5+ requests for "smarter context" features (logged)
+* Evidence B1 insufficient: Quantitative gap demonstrated
   - Example: Agents still have >X% hallucination rate, analysis shows better slicing would help
   - Example: 30+ edit tasks failed due to missing dataflow info
-* ✅ Design partners: 3+ orgs commit to B1.5 co-development (18 months)
-* ✅ B0 dataflow prototype: Showed >0.7 precision (look back at B0 results)
+* Design partners: 3+ orgs commit to B1.5 co-development (18 months)
+* B0 dataflow prototype: Showed >0.7 precision (look back at B0 results)
 
 **Decision outcomes:**
 1. **Go:** All gates passed → Start B1.5 (18 months)
@@ -2492,20 +2596,20 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 **Timing:** After B1 (or B1.5) ships + 3 months production use
 
 **Prerequisites (all must pass):**
-* ✅ **B0 reusability validation passed:** Analyzers reusable >70% of time (see B0 Month 5-6 test)
+* **B0 reusability validation passed:** Analyzers reusable >70% of time (see B0 Month 5-6 test)
   - **Critical:** If B0 showed analyzers too bespoke, B2 full registry is not justified
-* ✅ Community activity: 100+ repos analyzed, 20+ custom capsules created
-* ✅ Sharing behavior: 5+ users informally sharing capsules (GitHub gists, etc.)
-* ✅ Demand: 10+ requests for "find analyzer for X" (logged)
+* Community activity: 100+ repos analyzed, 20+ custom capsules created
+* Sharing behavior: 5+ users informally sharing capsules (GitHub gists, etc.)
+* Demand: 10+ requests for "find analyzer for X" (logged)
 
 **Decision outcomes:**
 
 | B0 Reusability | Community Activity | Decision |
 |----------------|-------------------|----------|
-| >70% success | ✅ Active (100+ repos) | **Full B2 registry** (10-12 months) |
-| 50-70% | ✅ Active | **Lightweight GitHub repo** (1 month) |
+| >70% success | Active (100+ repos) | **Full B2 registry** (10-12 months) |
+| 50-70% | Active | **Lightweight GitHub repo** (1 month) |
 | <50% | any | **No registry** (analyzers too bespoke, not worth infrastructure) |
-| any | ❌ Low activity | **Wait 6 months** (registry premature, no demand yet) |
+| any | **Would HALT:** Low activity | **Wait 6 months** (registry premature, no demand yet) |
 
 **Lightweight alternative (if <70% reusability):**
 * GitHub repo: `hypergumbo-community/capsule-examples`
@@ -2537,11 +2641,11 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
    - Published publicly (transparency)
 **Commitment:** Follow the process. If gate fails, **do not proceed.**
 ### Objectives
-* **High-fidelity IR** across common stacks (typed call graph + optional dataflow + cross-language edges).
-* **Agent-grade context provider** ("give me the smallest set of code + invariants to safely edit X").
-* **Optional analyzer registry** (capsules + rule packs + fingerprints + benchmarks).
-* **Amortize LLM cost** via nearest-neighbor reuse + retrieval-augmented generation.
-* **Local-first privacy**, optional opt-in sharing of sanitized metadata only.
+* 🟪 **High-fidelity IR** across common stacks (typed call graph + optional dataflow + cross-language edges).
+* 🟪 **Agent-grade context provider** ("give me the smallest set of code + invariants to safely edit X").
+* 🟪 **Optional analyzer registry** (capsules + rule packs + fingerprints + benchmarks).
+* 🟪 **Amortize LLM cost** via nearest-neighbor reuse + retrieval-augmented generation.
+* 🟪 **Local-first privacy**, optional opt-in sharing of sanitized metadata only.
 
 ## 2) Non-goals
 * "Prove programs correct" in the formal methods sense.
@@ -2551,50 +2655,50 @@ Each phase has explicit go/no-go gates. **Do not proceed without meeting prerequ
 * IDE integration (LSP server) or autonomous code editing.
 
 ### Don't build in B1
-* ❌ **Full incremental daemon** (use simple file-change → re-analyze)
-* ❌ **Formal verification** or proof generation
-* ❌ **Code generation** or autonomous editing
-* ❌ **Real-time collaboration** features
-* ❌ **IDE integration** (LSP server)
-* ❌ **Support for >5 languages** (focus on TypeScript, Python, Go, Rust, Java)
-* ❌ **Natural language query parsing** (B1.5 only)
-* ❌ **Dataflow slicing** (B1.5 only, with strict timeouts)
-* ❌ **Impact prediction** ("what could break" inference — B1.5 only)
-* ❌ **SQL/Protobuf/GraphQL linkers** (defer to B1.5 or later)
+* **Would HALT:** Full incremental daemon** (use simple file-change → re-analyze)
+* **Would HALT:** Formal verification** or proof generation
+* **Would HALT:** Code generation** or autonomous editing
+* **Would HALT:** Real-time collaboration** features
+* **Would HALT:** IDE integration** (LSP server)
+* **Would HALT:** Support for >5 languages** (focus on TypeScript, Python, Go, Rust, Java)
+* **Would HALT:** Natural language query parsing** (B1.5 only)
+* **Would HALT:** Dataflow slicing** (B1.5 only, with strict timeouts)
+* **Would HALT:** Impact prediction** ("what could break" inference — B1.5 only)
+* **Would HALT:** SQL/Protobuf/GraphQL linkers** (defer to B1.5 or later)
 ### Don't build in B2
-* ❌ **Social features** (comments, likes, follows)
-* ❌ **Marketplace monetization** (paid capsules)
-* ❌ **Hosted analysis** (SaaS offering)
-* ❌ **Training custom models** per-repo
-* ❌ **Complex recommendation engines** (simple similarity search only)
-* ❌ **Real-time capsule updates** (periodic refresh is sufficient)
+* **Would HALT:** Social features** (comments, likes, follows)
+* **Would HALT:** Marketplace monetization** (paid capsules)
+* **Would HALT:** Hosted analysis** (SaaS offering)
+* **Would HALT:** Training custom models** per-repo
+* **Would HALT:** Complex recommendation engines** (simple similarity search only)
+* **Would HALT:** Real-time capsule updates** (periodic refresh is sufficient)
 
 ## 3) System architecture
 ### 3.1 Core: Multi-pass analysis engine
 #### Frontends (parsers / symbolizers)
-* **tree-sitter** for universal syntax (inherited from Spec A)
-* **Language-native engines** (optional, high-fidelity):
-  * **TypeScript**: `tsserver` (type checker + language service)
-  * **Python**: `pyright` or `mypy` (type inference)
-  * **Rust**: `rust-analyzer` (full semantic analysis)
-  * **Go**: `gopls` (language server)
-  * **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
+* 🟩 **tree-sitter** for universal syntax (inherited from Spec A)
+* 🟪 **Language-native engines** (optional, high-fidelity):
+  * 🟪 **TypeScript**: `tsserver` (type checker + language service)
+  * 🟪 **Python**: `pyright` or `mypy` (type inference)
+  * 🟪 **Rust**: `rust-analyzer` (full semantic analysis)
+  * 🟪 **Go**: `gopls` (language server)
+  * 🟪 **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
 #### Runner types and execution models
 Different analyzers require different execution environments. The capsule manifest declares required runner type.
 
-**`python_script` (Spec A, B1)**:
+🟩 **`python_script` (Spec A, B1)**:
 - Single Python file, minimal dependencies
 - Runs in same Python environment as hypergumbo CLI
 - Fastest, simplest, most portable
 - **Limitations**: Can't bundle complex toolchains
 
-**`toolchain_bundle` (B1)**:
+🟪 **`toolchain_bundle` (B1)**:
 - Ships with language server or type checker
 - Example: tsserver, pyright, gopls bundled as subprocess
 - Heavier (100MB+ downloads), but high fidelity
 - **Security**: Runs in restricted sandbox, no network by default
 
-**`container_image` (B2)**:
+🟪 **`container_image` (B2)**:
 - OCI/Docker image with full environment
 - Maximum isolation and reproducibility
 - **Security**: Runs in container runtime (Docker/Podman)
@@ -2602,7 +2706,7 @@ Different analyzers require different execution environments. The capsule manife
 - **Use case**: CI environments (GitHub Actions, GitLab CI)
 - **Not recommended**: Local development (too heavy)
 
-**`daemon_process` (Future, not in current specs)**:
+🟪 **`daemon_process` (Future, not in current specs)**:
 - Long-running incremental analysis
 - Watches file changes, maintains indexed state
 - Example: Language server protocol (LSP) integration
@@ -2660,14 +2764,14 @@ Different analyzers require different execution environments. The capsule manife
 * Public view schemas evolve slowly; IR can evolve rapidly
 
 #### Cross-language linkers
-* **HTTP**: route patterns ↔ client calls ↔ handlers
+* 🟩 **HTTP**: route patterns ↔ client calls ↔ handlers (server-side route detection done in Spec A)
   * Example: FastAPI `@app.get("/users/{id}")` ↔ Axios `GET /users/123`
-* **IPC (Electron)**: main ↔ renderer message channels
+* 🟩 **IPC (Electron)**: main ↔ renderer message channels (done in Spec A)
   * Example: `ipcMain.on("login")` ↔ `ipcRenderer.send("login")`
-* **SQL**: query ↔ table/column mapping (best-effort, annotation-assisted)
+* 🟪 **SQL**: query ↔ table/column mapping (best-effort, annotation-assisted)
   * Example: `SELECT * FROM users WHERE id = ?` ↔ `users` table schema
-* **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
-* **GraphQL/OpenAPI**: schema ↔ resolvers ↔ clients
+* 🟪 **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
+* 🟪 **GraphQL/OpenAPI**: schema ↔ resolvers ↔ clients
 
 **Implementation strategy:** Start with **annotation-assisted** linking (developer hints) before attempting full inference.
 
@@ -2682,7 +2786,7 @@ def get_user_by_email(email: str):
 
 ### 3.2 Agent Context Router
 
-**⚠️ COMPLEXITY WARNING: This subsection describes research-hard capabilities**
+**Caution:** COMPLEXITY WARNING - This subsection describes research-hard capabilities
 
 Full Context Router as specified here is delivered in **B1.5** (separate from B1).
 B0 validates feasibility, B1 delivers basic slicing only, B1.5 delivers full capability.
@@ -2727,9 +2831,12 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
 - Deterministic ordering: Sort by (edge confidence, distance from entry)
 - No ML-based ranking (defer to B1.5)
 
-**Future B1.5:**
-- Learned relevance models
-- Agent feedback loop (which code was actually edited?)
+**🟪 Future B1.5:**
+- 🟪 Learned relevance models
+- 🟪 Agent feedback loop (which code was actually edited?)
+- 🟪 **Embedding-based context expansion**: Use embedding selections as a scaffold, then expand context around them as token budget allows. At line level: grow ±N lines around selected chunks. At word level: grow ±N words around selected phrases. No recomputation of embeddings needed—just expand around already-selected items. Applicable to Key Symbols (once embeddings are used there) and config extraction.
+- 🟪 **Coverage report parsing for test summary**: Parse coverage reports (coverage.xml, lcov.info, etc.) to extract coverage percentages for the sketch test summary section. E.g., "103 test files · pytest · 85% coverage". Requires detecting and parsing various coverage report formats without executing tests (static parsing of existing reports).
+- 🟪 **Multi-language documentation summarization**: Detect and collapse multi-language documentation directories (e.g., `docs/de/`, `docs/en/`, `docs/es/`) into a single summary line like "Documentation in 12 languages (de, en, es, fr, ...)". Reduces noise in sketches for documentation-heavy projects where translated docs dominate the file count. Detection via parallel directory structures with language codes (ISO 639-1) or common patterns like `docs/{lang}/` or `{lang}/docs/`.
 
 #### Complexity warning
 * **Natural language query parsing** (step 1) requires embedding models + semantic search
@@ -2746,7 +2853,7 @@ Do not commit resources to B1.5 until B0 research phase shows >0.7 precision on 
 
 ### 3.3 Social layer: Registry + meta-analysis
 
-**⚠️ VALUE VALIDATION REQUIRED**
+**Caution:** VALUE VALIDATION REQUIRED
 
 Registry (B2) assumes:
 1. Analyzers cluster into generic profiles (work across similar repos)
@@ -2820,24 +2927,24 @@ Versioned schema, not exported by default. Used internally by analyzers and regi
 
 ### Views
 
-#### behavior_map.json (Spec A compatible)
+#### 🟩 behavior_map.json (Spec A compatible)
 * Same schema as Spec A v0.1
 * Maintained for backward compatibility
 * Enhanced with higher-fidelity edges when available (via higher confidence scores, new evidence types)
 
-#### ir_export.json (full detail)
+#### 🟪 ir_export.json (full detail)
 * Complete symbol table
 * Typed edges with resolution provenance
 * Dataflow facts (optional)
 * Cross-language links
 
-#### context_bundle.json (agent-optimized)
+#### 🟪 context_bundle.json (agent-optimized)
 * Minimal code excerpts for a query
 * Invariant checklist
 * "Impact zones" (what could break) — **B1.5 only**
 * Token-budget optimized
 
-#### sarif.json (CI integration)
+#### 🟪 sarif.json (CI integration)
 * SARIF 2.1 compatible
 * Findings from rule packs
 * Integration with GitHub Code Scanning, GitLab SAST
@@ -2927,7 +3034,7 @@ hypergumbo registry login
 * Language percentages (exact, not binned)
 * Framework signals (detected libraries)
 * Aggregate counts (nodes, edges, endpoints)
-* ❌ NOT uploaded: Source code, symbol names, directory structure, file paths
+* **Would HALT:** NOT uploaded: Source code, symbol names, directory structure, file paths
 
 **Server-side:**
 * Compute similarity to all public analyzers
@@ -3033,16 +3140,16 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 **Goal:** Validate that the hard parts of B are actually feasible before committing to B1.
 
 #### Prerequisites
-* ✅ Spec A validated: 
+* Spec A validated: 
   - 5+ agent adoptions confirmed (named projects, not anonymous)
   - Quantitative improvement: >20% reduction in "code not found" errors (agent logs)
   - 100+ repos analyzed without crashes
-* ✅ Funding secured: Budget for 8 months (4-6 engineers)
-* ✅ Benchmark repos collected:
+* Funding secured: Budget for 8 months (4-6 engineers)
+* Benchmark repos collected:
   - 20+ TypeScript repos with ground-truth call graphs
   - 10+ full-stack repos (Python backend + JS frontend)
   - 10+ Electron apps
-* ✅ Design partner pipeline: 5+ orgs in discussions, 3+ committed in writing
+* Design partner pipeline: 5+ orgs in discussions, 3+ committed in writing
 
 **Validation checkpoint**: If Spec A adoption <5 agents OR no quantitative improvement shown, investigate why before starting B0.
 
@@ -3098,10 +3205,10 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 * Task: Execute protocol, verify results, write report
 
 **Deliverables before B0 Month 1:**
-* ✅ 40 repos with ground truth (TypeScript, full-stack, Electron)
-* ✅ Evaluation protocol pre-registered publicly
-* ✅ Independent evaluators contracted
-* ✅ Baseline results (Spec A on benchmark repos)
+* 40 repos with ground truth (TypeScript, full-stack, Electron)
+* Evaluation protocol pre-registered publicly
+* Independent evaluators contracted
+* Baseline results (Spec A on benchmark repos)
 
 **Total effort:** 360-520 person-hours  
 **Critical path:** 2-3 months
@@ -3131,11 +3238,11 @@ Each phase below lists explicit prerequisites. Starting without validation creat
 * Timeout behavior (kill subprocess after 30s)
 
 **Success criteria for B1:**
-* ✅ Precision >0.80 on happy path (well-typed repos)
-* ✅ Graceful degradation: Falls back to AST when tsserver fails
-* ✅ Performance: <2 minutes for 500-file repo (90th percentile)
-* ✅ Memory: <4GB for large repos
-* ⚠️ If any fail: Re-scope B1 (maybe TypeScript-only, skip Python types)
+* Precision >0.80 on happy path (well-typed repos)
+* Graceful degradation: Falls back to AST when tsserver fails
+* Performance: <2 minutes for 500-file repo (90th percentile)
+* Memory: <4GB for large repos
+* **Caution:** If any fail: Re-scope B1 (maybe TypeScript-only, skip Python types)
 
 **If prototype fails completely:**
 * Fallback: Use tree-sitter + type annotation extraction (no full type checking)
@@ -3186,9 +3293,9 @@ profile = {
 * Generate similarity matrix + cluster dendrogram
 
 **Success criteria (quantitative):**
-* ✅ Within-cluster similarity >0.7 for 50%+ of pairs
-* ✅ Between-cluster similarity <0.4 (distinct clusters exist)
-* ✅ Cluster membership predictable from profile (>80% accuracy with k-means)
+* Within-cluster similarity >0.7 for 50%+ of pairs
+* Between-cluster similarity <0.4 (distinct clusters exist)
+* Cluster membership predictable from profile (>80% accuracy with k-means)
 
 **Registry reusability test (Weeks 3-4)**
 
@@ -3218,9 +3325,9 @@ profile = {
 
 | Success Rate | Edits Needed | Feature Quality | Decision |
 |--------------|--------------|-----------------|----------|
-| >70% | <5 lines | >0.7 precision | ✅ **Build full registry (B2)** – Analyzers are reusable |
-| 50-70% | 5-15 lines | 0.5-0.7 | ⚠️ **Borderline** – Build lightweight GitHub repo, not full infra |
-| <50% | >15 lines | <0.5 | ❌ **Skip registry** – Analyzers too bespoke, manual authoring only |
+| >70% | <5 lines | >0.7 precision | **Build full registry (B2)** – Analyzers are reusable |
+| 50-70% | 5-15 lines | 0.5-0.7 | **Caution:** **Borderline** – Build lightweight GitHub repo, not full infra |
+| <50% | >15 lines | <0.5 | **Would HALT:** Skip registry** – Analyzers too bespoke, manual authoring only |
 
 **Lightweight alternative (if borderline or fail):**
 * Create GitHub repo: `hypergumbo-community/capsule-examples`
@@ -3277,12 +3384,12 @@ profile = {
 **Report template:** Results, analysis, decision recommendation (go/no-go for B1).
 
 #### Success Criteria (gates for B1)
-* ✅ TypeScript typed edges: >0.80 precision vs Spec A baseline
-* ✅ Context Router: >30% token reduction validated by 3+ agents (A/B tested)
-* ✅ HTTP linker: <20% false positive rate (annotation-assisted)
-* ✅ Registry validation: Similarity >0.7 for 50%+ of repo pairs AND reusability >70%
-* ✅ All prototypes completed within 8 months (±2 weeks acceptable)
-* ✅ Team retention: 2/3 engineers commit to B1 (continuity)
+* TypeScript typed edges: >0.80 precision vs Spec A baseline
+* Context Router: >30% token reduction validated by 3+ agents (A/B tested)
+* HTTP linker: <20% false positive rate (annotation-assisted)
+* Registry validation: Similarity >0.7 for 50%+ of repo pairs AND reusability >70%
+* All prototypes completed within 8 months (±2 weeks acceptable)
+* Team retention: 2/3 engineers commit to B1 (continuity)
 
 **If any criterion fails:**
 * TypeScript precision <0.80 → Investigate why; may need different approach (tsserver integration harder than expected?)
@@ -3299,10 +3406,10 @@ profile = {
 
 ### **B1: Typed IR + Basic Linkers (15 months, 3-5 engineers)**
 **Prerequisites:**
-* ✅ B0 completed successfully (all gates passed)
-* ✅ Design partners committed for full B1 duration (3+ orgs, written agreements)
-* ✅ Engineering team hired/allocated (3-5 engineers available for 15 months)
-* ✅ Funding secured for 15-month project
+* B0 completed successfully (all gates passed)
+* Design partners committed for full B1 duration (3+ orgs, written agreements)
+* Engineering team hired/allocated (3-5 engineers available for 15 months)
+* Funding secured for 15-month project
 
 #### Phase 1: Typed IR Foundation (months 1-5)
 * Internal IR schema v2 (typed symbols, resolved calls)
@@ -3353,21 +3460,21 @@ profile = {
   - Annotation-provided: 0.95
 
 **Out of scope (defer to B1.5 or later):**
-* ❌ **Constant propagation:**
+* **Would HALT:** Constant propagation:**
   ```python
   BASE_URL = "/api/v1"
   @app.get(f"{BASE_URL}/users")  # Would need dataflow to resolve BASE_URL
   ```
-* ❌ **Dynamic route construction:**
+* **Would HALT:** Dynamic route construction:**
   ```python
   for entity in ["users", "posts"]:
       app.route(f"/{entity}", ...)(handler)  # Loop-generated routes
   ```
-* ❌ **Middleware/proxy rewriting:**
+* **Would HALT:** Middleware/proxy rewriting:**
   ```python
   app.use("/api", proxy("http://backend:5000"))  # Path transformations
   ```
-* ❌ **GraphQL, tRPC, gRPC:**
+* **Would HALT:** GraphQL, tRPC, gRPC:**
   - Different paradigm (schema-based, not route-based)
   - Defer to dedicated linkers in B1.5 or B2
 
@@ -3379,10 +3486,10 @@ Measure on 10 full-stack repos (from benchmark suite):
 - **False positive rate:** FP / (FP + TN)
 
 **Thresholds:**
-* ✅ Precision >0.80 with annotations: Continue
-* ✅ Precision >0.60 without annotations (inference): Continue
-* ⚠️ FP rate 20-30%: Document limitations, ship anyway
-* ❌ FP rate >30%: **Trigger fallback**
+* Precision >0.80 with annotations: Continue
+* Precision >0.60 without annotations (inference): Continue
+* **Caution:** FP rate 20-30%: Document limitations, ship anyway
+* **Would HALT:** FP rate >30%: **Trigger fallback**
 
 **Fallback options (if Month 6 fails):**
 
@@ -3537,11 +3644,11 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 * Agent SDK (Python + JavaScript clients)
 
 **NOT in B1 (deferred to B1.5)**:
-* ❌ Natural language query parsing ("show me the auth flow")
-* ❌ Dataflow slicing (taint tracking, reaching definitions)
-* ❌ Impact zone prediction ("what could break if I change this")
-* ❌ Invariant inference from tests
-* ❌ Validator pass (re-run analysis after edits)
+* **Would HALT:** Natural language query parsing ("show me the auth flow")
+* **Would HALT:** Dataflow slicing (taint tracking, reaching definitions)
+* **Would HALT:** Impact zone prediction ("what could break if I change this")
+* **Would HALT:** Invariant inference from tests
+* **Would HALT:** Validator pass (re-run analysis after edits)
 
 **Why defer**: These features require research (months 5-9 in B1.5 estimate); including in B1 would extend timeline to 18+ months.
 
@@ -3562,11 +3669,11 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 **Milestone gate:** Zero regressions vs Spec A on compatibility suite
 
 #### Success Criteria (B1)
-* ✅ >0.85 precision on typed call graphs (TypeScript + Python)
-* ✅ HTTP + IPC linkers: >0.80 precision on design partner repos
-* ✅ Basic context assembly: >30% token reduction validated by agents (A/B tested)
-* ✅ 100+ repos analyzed with B1 (upgrades from Spec A)
-* ✅ Zero breaking changes to Spec A compatibility
+* >0.85 precision on typed call graphs (TypeScript + Python)
+* HTTP + IPC linkers: >0.80 precision on design partner repos
+* Basic context assembly: >30% token reduction validated by agents (A/B tested)
+* 100+ repos analyzed with B1 (upgrades from Spec A)
+* Zero breaking changes to Spec A compatibility
 
 **Total B1 timeline: 15 months**
 
@@ -3574,14 +3681,14 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 
 ### **Decision Point: Do We Need B1.5?**
 **Prerequisites for starting B1.5**:
-* ✅ B1 shipped and stable (6+ months in production)
-* ✅ Evidence B1's basic slicing is insufficient:
+* B1 shipped and stable (6+ months in production)
+* Evidence B1's basic slicing is insufficient:
   - Agent developers request "smarter context" (specific feature requests logged)
   - Quantitative gap: Agents with B1 still have >X% hallucination rate, and analysis shows better slicing would help
   - Design partners willing to co-develop B1.5 features (3+ committed)
-* ✅ Funding secured for 18-month project
-* ✅ Engineering capacity: 3-4 engineers available
-* ✅ B0 dataflow prototype showed feasibility (>0.7 precision on known taint flows)
+* Funding secured for 18-month project
+* Engineering capacity: 3-4 engineers available
+* B0 dataflow prototype showed feasibility (>0.7 precision on known taint flows)
 
 **Alternative if B1.5 not needed**:
 * Agents report B1 slicing is "good enough"
@@ -3596,13 +3703,13 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 **Decision meeting**: After B1 is 6 months in production, review evidence and decide.
 
 ### **B1.5: Smart Context Router (18 months, 3-4 engineers)**
-**⚠️ COMPLEXITY WARNING**: This is research-heavy. Even with B0 prototype validation, dataflow slicing in production (handling large codebases, timeouts, edge cases) commonly takes 12+ months. Budget 18 months to avoid schedule pressure.
+**Caution:** COMPLEXITY WARNING - This is research-heavy. Even with B0 prototype validation, dataflow slicing in production (handling large codebases, timeouts, edge cases) commonly takes 12+ months. Budget 18 months to avoid schedule pressure.
 
 **Prerequisites:**
-* ✅ B1 shipped and stable (6+ months in production)
-* ✅ Evidence that basic slicing is insufficient (agents request smarter context)
-* ✅ Funding secured for research-heavy project
-* ✅ B0 dataflow prototype showed >0.7 precision
+* B1 shipped and stable (6+ months in production)
+* Evidence that basic slicing is insufficient (agents request smarter context)
+* Funding secured for research-heavy project
+* B0 dataflow prototype showed >0.7 precision
 #### Phase 1: Query Intelligence (months 1-4)
 * Natural language query → graph query translation
 * Embedding-based similarity search (symbol/file lookup)
@@ -3610,7 +3717,7 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 * **Tests:** Query parsing accuracy on 100 natural language examples
 
 #### Phase 2: Dataflow Slicing (months 5-9)
-**⚠️ HIGHEST COMPLEXITY COMPONENT**
+**Caution:** HIGHEST COMPLEXITY COMPONENT
 * Reaching definitions analysis (with timeouts)
 * Taint tracking (sources → sinks)
 * Partial results when timeout hit
@@ -3618,31 +3725,31 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 * **Tests:** Precision on known taint flows, timeout behavior
 
 #### Month 6 Checkpoint: Dataflow Feasibility Gate
-**⚠️ CRITICAL DECISION POINT:** Dataflow analysis is NP-hard. Even heuristics may not scale.
+**Caution:** CRITICAL DECISION POINT - Dataflow analysis is NP-hard. Even heuristics may not scale.
 **Measure on 20 mid-sized repos (500-2000 files):**
 **1. Timeout rate:**
 * Query: "Find all data flows from user input to database query" (typical taint tracking)
 * Timeout threshold: 30 seconds per query
 * Measure: % of queries that timeout
 * **Thresholds:**
-  - <10%: ✅ On track, continue development
-  - 10-30%: ⚠️ Warning zone, optimize algorithm aggressively
+  - <10%: On track, continue development
+  - 10-30%: **Caution:** Warning zone, optimize algorithm aggressively
   - 30-50%: 🔶 Concerning, evaluate if fixable in 2 months
   - >50%: 🚨 **Trigger fallback evaluation**
 **2. False positive rate (among non-timed-out queries):**
 * Compare dataflow results to ground truth (hand-verified taint flows)
 * False positive: Dataflow claims A→B link but manual analysis shows no path
 * **Thresholds:**
-  - <15%: ✅ Excellent, continue
-  - 15-30%: ✅ Acceptable, document limitations
-  - 30-40%: ⚠️ Marginal, investigate if improvements possible
+  - <15%: Excellent, continue
+  - 15-30%: Acceptable, document limitations
+  - 30-40%: **Caution:** Marginal, investigate if improvements possible
   - >40%: 🚨 **Trigger fallback evaluation**
 **3. Memory usage:**
 * Measure peak memory during dataflow queries
 * **Thresholds:**
-  - <2GB median: ✅ Good
-  - 2-8GB median: ✅ Acceptable with warnings ("dataflow queries require 8GB RAM")
-  - 8-16GB median: ⚠️ High, limits usability (many dev machines <16GB)
+  - <2GB median: Good
+  - 2-8GB median: Acceptable with warnings ("dataflow queries require 8GB RAM")
+  - 8-16GB median: **Caution:** High, limits usability (many dev machines <16GB)
   - >16GB median: 🚨 **Trigger fallback evaluation**
 
 **Fallback trigger conditions (Month 6):**
@@ -3666,12 +3773,12 @@ ws.send(JSON.stringify({type: 'chat', text: '...'}))
 
 | Scenario | Timeout | FP Rate | Memory | Decision |
 |----------|---------|---------|--------|----------|
-| Best case | <10% | <15% | <2GB | ✅ Continue to Month 9 |
-| Acceptable | 10-30% | 15-30% | 2-8GB | ✅ Continue, optimize |
+| Best case | <10% | <15% | <2GB | Continue to Month 9 |
+| Acceptable | 10-30% | 15-30% | 2-8GB | Continue, optimize |
 | Fixable | 30-50% | 30-40% | 8-16GB | 🔶 2-month push, re-evaluate Month 8 |
-| Fallback A | >50% | any | any | ❌ **Syntax-only slicing** |
-| Fallback B | any | >40% | any | ❌ **Annotation-required** |
-| Fallback C | any | any | >16GB | ❌ **LLM-assisted guessing** |
+| Fallback A | >50% | any | any | **Would HALT:** Syntax-only slicing** |
+| Fallback B | any | >40% | any | **Would HALT:** Annotation-required** |
+| Fallback C | any | any | >16GB | **Would HALT:** LLM-assisted guessing** |
 
 ### Fallback A: Syntax-Only Slicing (if timeouts unacceptable)
 
@@ -3812,11 +3919,11 @@ If all fallbacks unacceptable:
 * Agent SDK with full capabilities
 
 #### Success Criteria (B1.5)
-* ✅ Query parsing: >0.80 accuracy on natural language → graph queries
-* ✅ Dataflow slicing: >0.70 precision on taint tracking (where not timed out)
-* ✅ Impact prediction: >0.60 recall on breaking change detection
-* ✅ Token reduction: >50% vs naïve approach (maintained from B1)
-* ✅ Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing
+* Query parsing: >0.80 accuracy on natural language → graph queries
+* Dataflow slicing: >0.70 precision on taint tracking (where not timed out)
+* Impact prediction: >0.60 recall on breaking change detection
+* Token reduction: >50% vs naïve approach (maintained from B1)
+* Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing
   - Measured: Tasks requiring dataflow (e.g., "trace this tainted input"), token efficiency, correctness
   - Target: >50% token reduction on dataflow-relevant tasks, >85% correctness
   - Sample size: 30 tasks where dataflow matters (pre-selected)
@@ -3827,18 +3934,18 @@ If all fallbacks unacceptable:
 ### **B2: Registry + Social Layer (10-12 months OR 1 month, 2-3 engineers OR 1)**
 
 **Prerequisites:**
-* ✅ B1 shipped and stable (6+ months in production)
-* ✅ B1.5 shipped OR validation shows basic slicing is sufficient
-* ✅ **Registry validation completed in B0** showing:
+* B1 shipped and stable (6+ months in production)
+* B1.5 shipped OR validation shows basic slicing is sufficient
+* **Registry validation completed in B0** showing:
   - Repo clustering: Similarity >0.7 for 50%+ of pairs in same category
   - Analyzer reusability: >70% success rate when applying capsules across similar repos
-* ✅ Demonstrated demand: 10+ requests for "find analyzer for X" logged
-* ✅ Community adoption: 100+ repos analyzed, 20+ custom capsule plans created
-* ✅ Sharing activity: 5+ users informally sharing capsules via GitHub gists/repos
+* Demonstrated demand: 10+ requests for "find analyzer for X" logged
+* Community adoption: 100+ repos analyzed, 20+ custom capsule plans created
+* Sharing activity: 5+ users informally sharing capsules via GitHub gists/repos
 
 **If registry validation from B0 failed** (repos don't cluster OR reusability <50%):
-* ❌ Don't build full registry (9-12 months wasted)
-* ✅ Instead: Lightweight alternative (see below)
+* **Would HALT:** Don't build full registry (9-12 months wasted)
+* Instead: Lightweight alternative (see below)
 
 **Lightweight alternative** (1 month effort):
 * GitHub repo: `hypergumbo-examples`
@@ -3886,25 +3993,25 @@ If all fallbacks unacceptable:
 **Milestone gate:** 3+ self-hosted deployments, federation working between instances
 
 #### Success Criteria (B2)
-* ✅ 500+ capsules in registry
-* ✅ Similarity search: >0.80 precision on manual eval (recommendations are relevant)
-* ✅ 100% of public capsules signed and benchmarked
-* ✅ Zero security incidents (malware, data leaks)
-* ✅ Capsule quality (automated):
+* 500+ capsules in registry
+* Similarity search: >0.80 precision on manual eval (recommendations are relevant)
+* 100% of public capsules signed and benchmarked
+* Zero security incidents (malware, data leaks)
+* Capsule quality (automated):
   - Benchmark pass rate: >90% of capsules pass standard benchmark suite
   - Error rate: <5% of downloads result in crashes/failures
   - Security: 0 capsules with known CVEs or malware flags
-* ✅ User satisfaction (manual eval):
+* User satisfaction (manual eval):
   - Survey: "Did downloaded capsule work for your repo?" >70% yes
   - Survey: "Was it better than writing from scratch?" >60% yes
   - Repeat usage: >40% of users who download once, download again within 30 days
-* ✅ 1000+ weekly downloads
-* ✅ 50+ contributors (capsule authors)
+* 1000+ weekly downloads
+* 50+ contributors (capsule authors)
 
 **OR (if lightweight GitHub alternative):**
-* ✅ 50+ example capsules in repo
-* ✅ 100+ stars, 20+ contributors
-* ✅ Active community discussions (10+ issues/month)
+* 50+ example capsules in repo
+* 100+ stars, 20+ contributors
+* Active community discussions (10+ issues/month)
 
 **Total B2 timeline: 10-12 months** (OR 1 month for lightweight GitHub alternative)
 
@@ -3987,77 +4094,77 @@ If all fallbacks unacceptable:
 ### B0 (Research Phase)
 
 **Technical:**
-* ✅ TypeScript typed edges: precision >0.80 vs AST baseline
-* ✅ Context Router prototype: >30% token reduction in agent tests (A/B tested)
-* ✅ HTTP linker prototype: <20% false positive rate
-* ✅ Registry validation: Repo similarity >0.7 for 50%+ of pairs AND reusability >70%
-* ✅ All 3 prototypes completed on schedule (8 months including prep)
+* TypeScript typed edges: precision >0.80 vs AST baseline
+* Context Router prototype: >30% token reduction in agent tests (A/B tested)
+* HTTP linker prototype: <20% false positive rate
+* Registry validation: Repo similarity >0.7 for 50%+ of pairs AND reusability >70%
+* All 3 prototypes completed on schedule (8 months including prep)
 
 **Decision:**
-* ✅ Go/No-Go report approved by stakeholders
-* ✅ Realistic B1 timeline and budget agreed upon
+* Go/No-Go report approved by stakeholders
+* Realistic B1 timeline and budget agreed upon
 
 ### B1 (Typed IR + Basic Linkers)
 
 **Technical:**
-* ✅ >0.85 precision on typed call graphs (TypeScript, Python)
-* ✅ Mixed-fidelity graphs merge without conflicts
-* ✅ HTTP linker: >0.80 precision on design partner repos
-* ✅ IPC linker: >0.80 precision on Electron apps
-* ✅ Basic context assembly: <8K tokens for simple edits
+* >0.85 precision on typed call graphs (TypeScript, Python)
+* Mixed-fidelity graphs merge without conflicts
+* HTTP linker: >0.80 precision on design partner repos
+* IPC linker: >0.80 precision on Electron apps
+* Basic context assembly: <8K tokens for simple edits
 
 **Adoption:**
-* ✅ 3+ agents integrated with context assembly API
-* ✅ 100+ repos analyzed with B1 (upgrades from Spec A)
-* ✅ 5+ design partner case studies published
-* ✅ Agent A/B test: Same tasks with B1 slicing vs. naïve approach (full files)
+* 3+ agents integrated with context assembly API
+* 100+ repos analyzed with B1 (upgrades from Spec A)
+* 5+ design partner case studies published
+* Agent A/B test: Same tasks with B1 slicing vs. naïve approach (full files)
   - Measured: Token count, edit correctness (human eval), hallucination rate
   - Target: >30% token reduction, >80% correctness (maintained), <20% hallucination rate (vs. >40% baseline)
   - Sample size: 50 tasks across 3 agents
   - Pre-register protocol at https://hypergumbo.iterabloom.com/eval/b1
 
 **Quality:**
-* ✅ Zero breaking changes to Spec A compatibility
-* ✅ <10% performance regression vs Spec A on small repos
+* Zero breaking changes to Spec A compatibility
+* <10% performance regression vs Spec A on small repos
 
 ### B1.5 (Smart Context Router)
 
 **Technical:**
-* ✅ Natural language query parsing: >0.80 accuracy
-* ✅ Dataflow slicing: >0.70 precision (where not timed out)
-* ✅ Impact prediction: >0.60 recall on breaking changes
-* ✅ Token reduction: >50% vs naïve approach
+* Natural language query parsing: >0.80 accuracy
+* Dataflow slicing: >0.70 precision (where not timed out)
+* Impact prediction: >0.60 recall on breaking changes
+* Token reduction: >50% vs naïve approach
 
 **Adoption:**
-* ✅ 5+ agents using advanced context features
-* ✅ Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing (pre-registered metrics)
+* 5+ agents using advanced context features
+* Agent A/B test: B1.5 advanced slicing vs. B1 basic slicing (pre-registered metrics)
 
 **Quality:**
-* ✅ Explicit partial-results flags work correctly (timeout behavior)
-* ✅ <5 minutes for complex queries (90th percentile)
+* Explicit partial-results flags work correctly (timeout behavior)
+* <5 minutes for complex queries (90th percentile)
 
 ### B2 (Registry)
 
 **Technical:**
-* ✅ 500+ capsules in registry
-* ✅ Similarity search: >0.80 precision on manual eval
-* ✅ 100% of public capsules signed and benchmarked
-* ✅ Zero security incidents (malware, data leaks)
+* 500+ capsules in registry
+* Similarity search: >0.80 precision on manual eval
+* 100% of public capsules signed and benchmarked
+* Zero security incidents (malware, data leaks)
 
 **Adoption:**
-* ✅ 1000+ weekly downloads from registry
-* ✅ 50+ contributors (capsule authors)
-* ✅ 3+ self-hosted registry deployments
+* 1000+ weekly downloads from registry
+* 50+ contributors (capsule authors)
+* 3+ self-hosted registry deployments
 
 **Quality:**
-* ✅ Capsule quality metrics (automated: >90% pass benchmarks, <5% error rate, 0 CVEs)
-* ✅ User satisfaction surveys (>70% "it worked", >60% "better than scratch")
-* ✅ 95% uptime SLA for hosted registry
+* Capsule quality metrics (automated: >90% pass benchmarks, <5% error rate, 0 CVEs)
+* User satisfaction surveys (>70% "it worked", >60% "better than scratch")
+* 95% uptime SLA for hosted registry
 
 **OR (if lightweight GitHub alternative):**
-* ✅ 50+ example capsules in repo
-* ✅ 100+ stars, 20+ contributors
-* ✅ Active community discussions (10+ issues/month)
+* 50+ example capsules in repo
+* 100+ stars, 20+ contributors
+* Active community discussions (10+ issues/month)
 
 ## Appendix A: Comparison to Spec A
 

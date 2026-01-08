@@ -33,74 +33,31 @@ Why This Design
 """
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import __version__
-from .analyze.c import analyze_c
-from .analyze.elixir import analyze_elixir
-from .analyze.html import analyze_html
-from .analyze.java import analyze_java
-from .analyze.js_ts import analyze_javascript
-from .analyze.php import analyze_php
-from .analyze.py import analyze_python
-from .analyze.rust import analyze_rust
-from .analyze.go import analyze_go
-from .analyze.ruby import analyze_ruby
-from .analyze.kotlin import analyze_kotlin
-from .analyze.swift import analyze_swift
-from .analyze.scala import analyze_scala
-from .analyze.lua import analyze_lua
-from .analyze.dart import analyze_dart
-from .analyze.haskell import analyze_haskell
-from .analyze.agda import analyze_agda
-from .analyze.lean import analyze_lean
-from .analyze.wolfram import analyze_wolfram
-from .analyze.ocaml import analyze_ocaml
-from .analyze.solidity import analyze_solidity
-from .analyze.csharp import analyze_csharp
-from .analyze.cpp import analyze_cpp
-from .analyze.zig import analyze_zig
-from .analyze.groovy import analyze_groovy
-from .analyze.julia import analyze_julia
-from .analyze.bash import analyze_bash
-from .analyze.objc import analyze_objc
-from .analyze.hcl import analyze_hcl
-from .analyze.yaml_ansible import analyze_ansible
-from .analyze.sql import analyze_sql_files
-from .analyze.dockerfile import analyze_dockerfiles
-from .analyze.cuda import analyze_cuda_files
-from .analyze.verilog import analyze_verilog_files
-from .analyze.cmake import analyze_cmake_files
-from .analyze.make import analyze_make_files
-from .analyze.vhdl import analyze_vhdl_files
-from .analyze.graphql import analyze_graphql_files
-from .analyze.nix import analyze_nix_files
-from .analyze.glsl import analyze_glsl_files
-from .analyze.wgsl import analyze_wgsl_files
-from .analyze.xml_config import analyze_xml_files
-from .analyze.json_config import analyze_json_files
-from .analyze.r_lang import analyze_r_files
-from .analyze.fortran import analyze_fortran_files
-from .analyze.toml_config import analyze_toml_files
-from .analyze.css import analyze_css_files
-from .analyze.cobol import analyze_cobol
-from .analyze.latex import analyze_latex
-from .catalog import get_default_catalog, is_available
-from .linkers.dependency import link_dependencies
-from .linkers.graphql import link_graphql
-from .linkers.graphql_resolver import link_graphql_resolvers
-from .linkers.grpc import link_grpc
-from .linkers.http import link_http
-from .linkers.ipc import link_ipc
-from .linkers.jni import link_jni
-from .linkers.phoenix_ipc import link_phoenix_ipc
-from .linkers.swift_objc import link_swift_objc
-from .linkers.websocket import link_websocket
-from .linkers.message_queue import link_message_queues
-from .linkers.database_query import link_database_queries
-from .linkers.event_sourcing import link_events
+from .analyze.all_analyzers import run_all_analyzers
+from .analyze.py import analyze_python  # For cmd_slice fallback
+from .analyze.html import analyze_html  # For cmd_slice fallback
+from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
+from .linkers.registry import LinkerContext, run_all_linkers
+# Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo.linkers.database_query as _database_query_linker  # noqa: F401
+import hypergumbo.linkers.dependency as _dependency_linker  # noqa: F401
+import hypergumbo.linkers.event_sourcing as _event_sourcing_linker  # noqa: F401
+import hypergumbo.linkers.graphql as _graphql_linker  # noqa: F401
+import hypergumbo.linkers.graphql_resolver as _graphql_resolver_linker  # noqa: F401
+import hypergumbo.linkers.grpc as _grpc_linker  # noqa: F401
+import hypergumbo.linkers.http as _http_linker  # noqa: F401
+import hypergumbo.linkers.ipc as _ipc_linker  # noqa: F401
+import hypergumbo.linkers.jni as _jni_linker  # noqa: F401
+import hypergumbo.linkers.message_queue as _message_queue_linker  # noqa: F401
+import hypergumbo.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
+import hypergumbo.linkers.swift_objc as _swift_objc_linker  # noqa: F401
+import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
@@ -109,7 +66,7 @@ from .metrics import compute_metrics
 from .profile import detect_profile
 from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
-from .sketch import generate_sketch
+from .sketch import generate_sketch, ConfigExtractionMode
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import rank_symbols, _is_test_path
@@ -124,6 +81,26 @@ from .compact import (
 from .build_grammars import build_all_grammars, check_grammar_availability
 
 
+def _find_git_root(start_path: Path) -> Optional[Path]:
+    """Find the git repository root by walking up from start_path.
+
+    Args:
+        start_path: Directory to start searching from.
+
+    Returns:
+        Path to git root (directory containing .git), or None if not in a git repo.
+    """
+    current = start_path.resolve()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    # Check root directory too (only possible at filesystem root like /)
+    if (current / ".git").exists():  # pragma: no cover
+        return current  # pragma: no cover
+    return None
+
+
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -132,14 +109,55 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
         return 1
 
+    # Warn if analyzing a subdirectory of a git repo
+    git_root = _find_git_root(repo_root)
+    if git_root is not None and git_root.resolve() != repo_root.resolve():
+        # Reconstruct command with original flags but new path
+        cmd_parts = ["hypergumbo", "sketch"]
+        if args.tokens:
+            cmd_parts.extend(["-t", str(args.tokens)])
+        if getattr(args, "exclude_tests", False):
+            cmd_parts.append("-x")
+        cmd_parts.append(str(git_root))
+        suggested_cmd = " ".join(cmd_parts)
+        print(
+            f"NOTE: Your repo root appears to be at {git_root}\n"
+            f"      You may want to run: {suggested_cmd}\n",
+            file=sys.stderr,
+        )
+
     max_tokens = args.tokens if args.tokens else None
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
+    extra_excludes = getattr(args, "extra_excludes", [])
+    verbose = getattr(args, "verbose", False)
+
+    # Convert string mode to enum
+    mode_str = getattr(args, "config_extraction_mode", "hybrid")
+    config_mode = {
+        "heuristic": ConfigExtractionMode.HEURISTIC,
+        "embedding": ConfigExtractionMode.EMBEDDING,
+        "hybrid": ConfigExtractionMode.HYBRID,
+    }.get(mode_str, ConfigExtractionMode.HYBRID)
+
+    # Get embedding-related parameters
+    max_config_files = getattr(args, "max_config_files", 15)
+    fleximax_lines = getattr(args, "fleximax_lines", 100)
+    max_chunk_chars = getattr(args, "max_chunk_chars", 800)
+    language_proportional = getattr(args, "language_proportional", False)
+
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
         exclude_tests=exclude_tests,
         first_party_priority=first_party_priority,
+        extra_excludes=extra_excludes,
+        config_extraction_mode=config_mode,
+        verbose=verbose,
+        max_config_files=max_config_files,
+        fleximax_lines=fleximax_lines,
+        max_chunk_chars=max_chunk_chars,
+        language_proportional=language_proportional,
     )
     print(sketch)
     return 0
@@ -242,6 +260,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     coverage = getattr(args, "coverage", 0.8)
     tiers = getattr(args, "tiers", None)
     exclude_tests = getattr(args, "exclude_tests", False)
+    extra_excludes = getattr(args, "extra_excludes", [])
 
     run_behavior_map(
         repo_root=repo_root,
@@ -252,6 +271,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         coverage=coverage,
         tiers=tiers,
         exclude_tests=exclude_tests,
+        extra_excludes=extra_excludes,
     )
     return 0
 
@@ -364,11 +384,30 @@ def cmd_slice(args: argparse.Namespace) -> int:
             print("Error: No entrypoints detected. Use --entry to specify manually.",
                   file=sys.stderr)
             return 1
-        # Use the highest confidence entrypoint
-        best = max(entrypoints, key=lambda e: e.confidence)
+
+        # Score entries by both confidence and graph connectivity
+        # Well-connected entries produce richer slices
+        edge_src_counts: Dict[str, int] = {}
+        for e in edges:
+            edge_src_counts[e.src] = edge_src_counts.get(e.src, 0) + 1
+
+        def entry_score(ep: Any) -> float:
+            """Score = confidence * connectivity_boost.
+
+            connectivity_boost = 1 + log(1 + outgoing_edges)
+            This favors well-connected entries while still respecting confidence.
+            """
+            out_edges = edge_src_counts.get(ep.symbol_id, 0)
+            connectivity_boost = 1 + math.log(1 + out_edges)
+            return ep.confidence * connectivity_boost
+
+        best = max(entrypoints, key=entry_score)
         entry = best.symbol_id
+        out_edges = edge_src_counts.get(entry, 0)
         print(f"[hypergumbo slice] Auto-detected entry: {best.label}")
         print(f"  {entry}")
+        if out_edges > 0:
+            print(f"  (selected for connectivity: {out_edges} outgoing edges)")
 
     # Build slice query
     max_tier = getattr(args, "max_tier", None)
@@ -380,6 +419,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         exclude_tests=args.exclude_tests,
         reverse=args.reverse,
         max_tier=max_tier,
+        language=args.language,
     )
 
     # Perform slice
@@ -585,35 +625,164 @@ def cmd_routes(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_catalog(args: argparse.Namespace) -> int:
-    """Display available passes and packs."""
-    catalog = get_default_catalog()
+def cmd_explain(args: argparse.Namespace) -> int:
+    """Explain a symbol with its callers and callees."""
+    repo_root = Path(args.path).resolve()
 
-    # Filter passes based on --show-all
-    if args.show_all:
-        passes = catalog.passes
+    # Determine input file
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
     else:
-        passes = catalog.get_core_passes()
+        # Look for default results file
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
+            )
+            return 1
 
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+    edges = behavior_map.get("edges", [])
+
+    # Build lookup tables
+    nodes_by_id = {n["id"]: n for n in nodes}
+
+    # Find matching symbols (case-insensitive exact match on name)
+    pattern = args.symbol.lower()
+    matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+
+    if not matches:
+        print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)
+        return 1
+
+    # Display each match
+    for i, node in enumerate(matches):
+        if i > 0:
+            print("\n" + "=" * 60 + "\n")
+
+        symbol_id = node.get("id", "")
+        name = node.get("name", "")
+        kind = node.get("kind", "")
+        lang = node.get("language", "")
+        path = node.get("path", "")
+        span = node.get("span", {})
+        start_line = span.get("start_line", 0)
+        end_line = span.get("end_line", 0)
+
+        print(f"{name} ({kind})")
+        print(f"  Location: {path}:{start_line}-{end_line}")
+        print(f"  Language: {lang}")
+
+        # Show complexity and LOC if available
+        complexity = node.get("cyclomatic_complexity")
+        loc = node.get("lines_of_code")
+        if complexity is not None or loc is not None:
+            metrics = []
+            if complexity is not None:
+                metrics.append(f"complexity: {complexity}")
+            if loc is not None:
+                metrics.append(f"lines: {loc}")
+            print(f"  Metrics: {', '.join(metrics)}")
+
+        # Show supply chain info if available
+        supply_chain = node.get("supply_chain", {})
+        if supply_chain:
+            tier_name = supply_chain.get("tier_name", "")
+            reason = supply_chain.get("reason", "")
+            if tier_name:
+                sc_info = tier_name
+                if reason:
+                    sc_info += f" ({reason})"
+                print(f"  Supply chain: {sc_info}")
+
+        # Find callers (edges where dst = this symbol)
+        callers = []
+        for edge in edges:
+            if edge.get("dst") == symbol_id:
+                src_id = edge.get("src", "")
+                src_node = nodes_by_id.get(src_id, {})
+                src_name = src_node.get("name", src_id)
+                src_path = src_node.get("path", "")
+                src_line = edge.get("line", 0)
+                callers.append((src_name, src_path, src_line))
+
+        # Find callees (edges where src = this symbol)
+        callees = []
+        for edge in edges:
+            if edge.get("src") == symbol_id:
+                dst_id = edge.get("dst", "")
+                dst_node = nodes_by_id.get(dst_id, {})
+                dst_name = dst_node.get("name", dst_id)
+                dst_path = dst_node.get("path", "")
+                edge_line = edge.get("line", 0)
+                callees.append((dst_name, dst_path, edge_line))
+
+        # Display callers
+        print()
+        if callers:
+            print(f"  Called by ({len(callers)}):")
+            for caller_name, caller_path, caller_line in callers:
+                print(f"    - {caller_name} ({caller_path}:{caller_line})")
+        else:
+            print("  Called by: (none)")
+
+        # Display callees
+        if callees:
+            print(f"  Calls ({len(callees)}):")
+            for callee_name, callee_path, callee_line in callees:
+                print(f"    - {callee_name} ({callee_path}:{callee_line})")
+        else:
+            print("  Calls: (none)")
+
+    return 0
+
+
+def cmd_catalog(args: argparse.Namespace) -> int:
+    """Display available passes and packs.
+
+    Shows:
+    1. Suggested passes based on current repo (if any source files found)
+    2. All available passes (core and extra)
+    3. Available packs
+    """
+    catalog = get_default_catalog()
+    cwd = Path.cwd()
+
+    # Detect repo profile using existing language detection
+    profile = detect_profile(cwd)
+    detected_languages = set(profile.languages.keys())
+
+    # Show suggested passes based on detected languages
+    suggested = suggest_passes_for_languages(detected_languages)
+    if suggested:
+        print("Suggested for current repo:")
+        for p in suggested:
+            avail = is_available(p)
+            status = "" if avail else " [not installed]"
+            print(f"  - {p.id}: {p.description}{status}")
+        print()
+
+    # Show all passes (default behavior now)
     print("Available Passes:")
-    for p in passes:
+    for p in catalog.passes:
         avail = is_available(p)
         status = "" if avail else " [not installed]"
         if p.availability == "core":
             print(f"  - {p.id} (core): {p.description}{status}")
         else:
-            print(f"  - {p.id} (extra: {p.requires}): {p.description}{status}")
+            print(f"  - {p.id} (extra): {p.description}{status}")
 
     print()
     print("Available Packs:")
     for pack in catalog.packs:
         print(f"  - {pack.id}: {pack.description}")
-
-    if not args.show_all:
-        extras = catalog.get_extra_passes()
-        if extras:
-            print()
-            print(f"Use --show-all to see {len(extras)} additional extra(s)")
 
     return 0
 
@@ -669,9 +838,44 @@ def cmd_build_grammars(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    # Main parser with comprehensive help
+    main_description = """\
+Generate codebase summaries for AI assistants and coding agents.
+
+Quick start:
+  hypergumbo .              Generate Markdown sketch (paste into ChatGPT/Claude)
+  hypergumbo . -t 4000      Limit output to ~4000 tokens
+  hypergumbo run .          Full JSON analysis for tooling
+
+Workflow:
+  Most users only need 'sketch' (the default). For deeper analysis:
+  1. hypergumbo run .       → creates hypergumbo.results.json
+  2. hypergumbo search X    → find symbols matching "X"
+  3. hypergumbo explain X   → show callers/callees of symbol "X"
+  4. hypergumbo slice       → extract subgraph from entry point"""
+
+    main_epilog = """\
+Examples:
+  hypergumbo ~/myproject                    # Sketch with auto token budget
+  hypergumbo ~/myproject -t 8000            # Sketch sized for 8k context
+  hypergumbo . -t 4000 -x                   # Exclude test files
+  hypergumbo run . --compact                # LLM-friendly JSON output
+  hypergumbo slice --entry main --reverse   # Find what calls main()
+  hypergumbo routes                         # List API endpoints
+
+Token budget guidelines (for sketch):
+  1000    Brief overview (structure only)
+  4000    Good balance for most LLMs
+  8000    Detailed with many symbols
+  16000   Comprehensive (large codebases)
+
+For more help on a command: hypergumbo <command> --help"""
+
     p = argparse.ArgumentParser(
         prog="hypergumbo",
-        description="Generate behavior maps and sketches for AI coding agents.",
+        description=main_description,
+        epilog=main_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
         "--version",
@@ -683,9 +887,29 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command")
 
     # hypergumbo [path] [-t tokens] (default sketch mode)
+    sketch_epilog = """\
+Examples:
+  hypergumbo sketch .                   # Current directory, auto budget
+  hypergumbo sketch ~/project -t 4000   # 4000-token limit
+  hypergumbo sketch . -t 1000 -x        # Brief overview, no tests
+  hypergumbo . -t 8000                  # Shorthand (sketch is default)
+
+Token budget guidelines:
+  1000    Structure only (files, folders)
+  4000    Good balance for most LLMs
+  8000    Includes more symbols and docs
+  16000   Comprehensive (large context windows)
+
+Output is Markdown, printed to stdout. Pipe to a file or clipboard:
+  hypergumbo . -t 4000 > summary.md
+  hypergumbo . -t 4000 | pbcopy         # macOS clipboard
+  hypergumbo . -t 4000 | xclip -sel c   # Linux clipboard"""
+
     p_sketch = sub.add_parser(
         "sketch",
         help="Generate token-budgeted Markdown sketch (default mode)",
+        epilog=sketch_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_sketch.add_argument(
         "path",
@@ -711,7 +935,53 @@ def build_parser() -> argparse.ArgumentParser:
         dest="first_party_priority",
         help="Disable supply chain tier weighting in symbol ranking",
     )
-    p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True)
+    p_sketch.add_argument(
+        "-e", "--exclude",
+        action="append",
+        default=[],
+        dest="extra_excludes",
+        metavar="PATTERN",
+        help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
+    )
+    p_sketch.add_argument(
+        "--config-extraction",
+        choices=["heuristic", "embedding", "hybrid"],
+        default="hybrid",
+        dest="config_extraction_mode",
+        help="Config file extraction mode: heuristic (fast), "
+             "embedding (semantic, requires sentence-transformers), "
+             "hybrid (heuristics first, then embeddings; default)",
+    )
+    p_sketch.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Print progress messages to stderr",
+    )
+    p_sketch.add_argument(
+        "--max-config-files",
+        type=int,
+        default=15,
+        help="Maximum config files to process in embedding mode (default: 15)",
+    )
+    p_sketch.add_argument(
+        "--fleximax-lines",
+        type=int,
+        default=100,
+        help="Base sample size for log-scaled line sampling (default: 100)",
+    )
+    p_sketch.add_argument(
+        "--max-chunk-chars",
+        type=int,
+        default=800,
+        help="Maximum characters per chunk for embedding (default: 800)",
+    )
+    p_sketch.add_argument(
+        "--no-language-proportional",
+        action="store_false",
+        dest="language_proportional",
+        help="Disable language-proportional symbol selection (enabled by default)",
+    )
+    p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo init
     p_init = sub.add_parser("init", help="Initialize a hypergumbo capsule")
@@ -741,7 +1011,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.set_defaults(func=cmd_init)
 
     # hypergumbo run
-    p_run = sub.add_parser("run", help="Run analyzer capsule on a repo")
+    run_epilog = """\
+Examples:
+  hypergumbo run .                      # Full analysis → hypergumbo.results.json
+  hypergumbo run . --out analysis.json  # Custom output file
+  hypergumbo run . --compact            # LLM-friendly: top symbols + summary
+  hypergumbo run . --first-party-only   # Exclude vendored/external code
+  hypergumbo run . -x                   # Exclude test files
+
+After running, use search/explain/slice to query the results:
+  hypergumbo search "parse"             # Find symbols containing "parse"
+  hypergumbo explain "main"             # Show callers/callees of main
+  hypergumbo slice --entry main         # Extract subgraph from main()
+
+Output files:
+  - hypergumbo.results.json             # Full behavior map
+  - hypergumbo.results.4k.json          # Tiered outputs (auto-generated)
+  - hypergumbo.results.16k.json
+  - hypergumbo.results.64k.json"""
+
+    p_run = sub.add_parser(
+        "run",
+        help="Run full analysis and save behavior map to JSON",
+        epilog=run_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_run.add_argument(
         "path",
         nargs="?",
@@ -802,10 +1096,38 @@ def build_parser() -> argparse.ArgumentParser:
         dest="exclude_tests",
         help="Exclude test files from analysis output",
     )
+    p_run.add_argument(
+        "-e", "--exclude",
+        action="append",
+        default=[],
+        dest="extra_excludes",
+        metavar="PATTERN",
+        help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
-    p_slice = sub.add_parser("slice", help="Produce a reduced behavior slice")
+    slice_epilog = """\
+Examples:
+  hypergumbo slice --entry main              # Forward slice from main()
+  hypergumbo slice --entry main --reverse    # What calls main()?
+  hypergumbo slice --entry "UserService"     # Slice from a class
+  hypergumbo slice --list-entries            # Show detected entry points
+  hypergumbo slice --entry auto              # Auto-detect entry point
+
+Use cases:
+  - Understand what code main() depends on (forward slice)
+  - Find all callers of a function (reverse slice)
+  - Extract a focused subgraph for debugging or review
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_slice = sub.add_parser(
+        "slice",
+        help="Extract subgraph from an entry point",
+        epilog=slice_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_slice.add_argument(
         "path",
         nargs="?",
@@ -871,6 +1193,11 @@ def build_parser() -> argparse.ArgumentParser:
              "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
     )
     p_slice.add_argument(
+        "--language",
+        default=None,
+        help="Filter entry point matches to this language (e.g., python, javascript)",
+    )
+    p_slice.add_argument(
         "--inline",
         action="store_true",
         help="Include full node/edge objects in output (not just IDs). "
@@ -879,7 +1206,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_slice.set_defaults(func=cmd_slice)
 
     # hypergumbo search
-    p_search = sub.add_parser("search", help="Search for symbols by name")
+    search_epilog = """\
+Examples:
+  hypergumbo search "parse"               # Find symbols containing "parse"
+  hypergumbo search "User" --kind class   # Find classes with "User"
+  hypergumbo search "test" --limit 50     # Show more results
+  hypergumbo search "handle" --language python
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_search = sub.add_parser(
+        "search",
+        help="Find symbols by name pattern",
+        epilog=search_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_search.add_argument(
         "pattern",
         help="Pattern to search for (case-insensitive substring match)",
@@ -913,7 +1254,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.set_defaults(func=cmd_search)
 
     # hypergumbo routes
-    p_routes = sub.add_parser("routes", help="Display API routes/endpoints")
+    routes_epilog = """\
+Examples:
+  hypergumbo routes                       # Show all detected endpoints
+  hypergumbo routes --language python     # Filter by language
+
+Detects: Flask routes, FastAPI endpoints, Express routes, Django URLs, etc.
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_routes = sub.add_parser(
+        "routes",
+        help="List detected API routes and endpoints",
+        epilog=routes_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_routes.add_argument(
         "--path",
         default=".",
@@ -931,12 +1286,52 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_routes.set_defaults(func=cmd_routes)
 
+    # hypergumbo explain
+    explain_epilog = """\
+Examples:
+  hypergumbo explain "main"               # Show what main calls and is called by
+  hypergumbo explain "UserService"        # Explain a class
+  hypergumbo explain "parse_config"       # Explain a specific function
+
+Shows: Symbol location, callers (what calls it), callees (what it calls).
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_explain = sub.add_parser(
+        "explain",
+        help="Show callers and callees of a symbol",
+        epilog=explain_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_explain.add_argument(
+        "symbol",
+        help="Symbol name to explain (case-insensitive)",
+    )
+    p_explain.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_explain.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_explain.set_defaults(func=cmd_explain)
+
     # hypergumbo catalog
-    p_catalog = sub.add_parser("catalog", help="[stub] Show available passes/packs")
-    p_catalog.add_argument(
-        "--show-all",
-        action="store_true",
-        help="Include extras that require optional dependencies",
+    catalog_epilog = """\
+Examples:
+  hypergumbo catalog                      # List all analyzers
+
+Shows which languages and frameworks hypergumbo can analyze.
+The output begins with passes suggested for your current directory."""
+
+    p_catalog = sub.add_parser(
+        "catalog",
+        help="List available language analyzers",
+        epilog=catalog_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_catalog.set_defaults(func=cmd_catalog)
 
@@ -1041,6 +1436,7 @@ def run_behavior_map(
     coverage: float = 0.8,
     tiers: str | None = None,
     exclude_tests: bool = False,
+    extra_excludes: list[str] | None = None,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -1060,757 +1456,46 @@ def run_behavior_map(
             If None, defaults to generating DEFAULT_TIERS alongside full output.
         exclude_tests: If True, filter out symbols from test files after analysis.
             This removes test helpers and test fixtures from the behavior map.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+            Affects profile detection (language stats). Use for excluding
+            project-specific files like "*.json" or "vendor".
     """
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
-    profile = detect_profile(repo_root)
+    profile = detect_profile(repo_root, extra_excludes=extra_excludes)
     behavior_map["profile"] = profile.to_dict()
 
     # Detect internal package roots for supply chain classification
     package_roots = detect_package_roots(repo_root)
 
-    analysis_runs = []
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-    limits = Limits()
-    limits.max_files_per_analyzer = max_files
-
-    # Run Python analysis
-    py_result = analyze_python(repo_root, max_files=max_files)
-    if py_result.run is not None:
-        analysis_runs.append(py_result.run.to_dict())
-    all_symbols.extend(py_result.symbols)
-    all_edges.extend(py_result.edges)
-
-    # Run HTML analysis
-    html_result = analyze_html(repo_root, max_files=max_files)
-    if html_result.run is not None:
-        analysis_runs.append(html_result.run.to_dict())
-    all_symbols.extend(html_result.symbols)
-    all_edges.extend(html_result.edges)
-
-    # Run JavaScript/TypeScript/Svelte analysis (optional, requires tree-sitter)
-    js_result = analyze_javascript(repo_root, max_files=max_files)
-    if js_result.run is not None:
-        if js_result.skipped:
-            # Track skipped pass in limits
-            limits.skipped_passes.append({
-                "pass": js_result.run.pass_id,
-                "reason": js_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(js_result.run.to_dict())
-            all_symbols.extend(js_result.symbols)
-            all_edges.extend(js_result.edges)
-
-    # Run PHP analysis (optional, requires tree-sitter-php)
-    php_result = analyze_php(repo_root)
-    if php_result.run is not None:
-        if php_result.skipped:
-            limits.skipped_passes.append({
-                "pass": php_result.run.pass_id,
-                "reason": php_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(php_result.run.to_dict())
-            all_symbols.extend(php_result.symbols)
-            all_edges.extend(php_result.edges)
-
-    # Run C analysis (optional, requires tree-sitter-c)
-    c_symbols: list[Symbol] = []
-    c_result = analyze_c(repo_root)
-    if c_result.run is not None:
-        if c_result.skipped:
-            limits.skipped_passes.append({
-                "pass": c_result.run.pass_id,
-                "reason": c_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(c_result.run.to_dict())
-            c_symbols = list(c_result.symbols)
-            all_symbols.extend(c_symbols)
-            all_edges.extend(c_result.edges)
-
-    # Run Java analysis (optional, requires tree-sitter-java)
-    java_symbols: list[Symbol] = []
-    java_result = analyze_java(repo_root)
-    if java_result.run is not None:
-        if java_result.skipped:
-            limits.skipped_passes.append({
-                "pass": java_result.run.pass_id,
-                "reason": java_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(java_result.run.to_dict())
-            java_symbols = list(java_result.symbols)
-            all_symbols.extend(java_symbols)
-            all_edges.extend(java_result.edges)
-
-    # Run Elixir analysis (optional, requires tree-sitter-language-pack)
-    elixir_result = analyze_elixir(repo_root)
-    if elixir_result.run is not None:
-        if elixir_result.skipped:
-            limits.skipped_passes.append({
-                "pass": elixir_result.run.pass_id,
-                "reason": elixir_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(elixir_result.run.to_dict())
-            all_symbols.extend(elixir_result.symbols)
-            all_edges.extend(elixir_result.edges)
-
-    # Run Rust analysis (optional, requires tree-sitter-rust)
-    rust_result = analyze_rust(repo_root)
-    if rust_result.run is not None:
-        if rust_result.skipped:
-            limits.skipped_passes.append({
-                "pass": rust_result.run.pass_id,
-                "reason": rust_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(rust_result.run.to_dict())
-            all_symbols.extend(rust_result.symbols)
-            all_edges.extend(rust_result.edges)
-
-    # Run Go analysis (optional, requires tree-sitter-go)
-    go_result = analyze_go(repo_root)
-    if go_result.run is not None:
-        if go_result.skipped:
-            limits.skipped_passes.append({
-                "pass": go_result.run.pass_id,
-                "reason": go_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(go_result.run.to_dict())
-            all_symbols.extend(go_result.symbols)
-            all_edges.extend(go_result.edges)
-
-    # Run Ruby analysis (optional, requires tree-sitter-ruby)
-    ruby_result = analyze_ruby(repo_root)
-    if ruby_result.run is not None:
-        if ruby_result.skipped:
-            limits.skipped_passes.append({
-                "pass": ruby_result.run.pass_id,
-                "reason": ruby_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(ruby_result.run.to_dict())
-            all_symbols.extend(ruby_result.symbols)
-            all_edges.extend(ruby_result.edges)
-
-    # Run Kotlin analysis (optional, requires tree-sitter-kotlin)
-    kotlin_result = analyze_kotlin(repo_root)
-    if kotlin_result.run is not None:
-        if kotlin_result.skipped:
-            limits.skipped_passes.append({
-                "pass": kotlin_result.run.pass_id,
-                "reason": kotlin_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(kotlin_result.run.to_dict())
-            all_symbols.extend(kotlin_result.symbols)
-            all_edges.extend(kotlin_result.edges)
-
-    # Run Swift analysis (optional, requires tree-sitter-swift)
-    swift_result = analyze_swift(repo_root)
-    if swift_result.run is not None:
-        if swift_result.skipped:
-            limits.skipped_passes.append({
-                "pass": swift_result.run.pass_id,
-                "reason": swift_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(swift_result.run.to_dict())
-            all_symbols.extend(swift_result.symbols)
-            all_edges.extend(swift_result.edges)
-
-    # Run Scala analysis (optional, requires tree-sitter-scala)
-    scala_result = analyze_scala(repo_root)
-    if scala_result.run is not None:
-        if scala_result.skipped:
-            limits.skipped_passes.append({
-                "pass": scala_result.run.pass_id,
-                "reason": scala_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(scala_result.run.to_dict())
-            all_symbols.extend(scala_result.symbols)
-            all_edges.extend(scala_result.edges)
-
-    # Run Lua analysis (optional, requires tree-sitter-lua)
-    lua_result = analyze_lua(repo_root)
-    if lua_result.run is not None:
-        if lua_result.skipped:
-            limits.skipped_passes.append({
-                "pass": lua_result.run.pass_id,
-                "reason": lua_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(lua_result.run.to_dict())
-            all_symbols.extend(lua_result.symbols)
-            all_edges.extend(lua_result.edges)
-
-    # Run Dart/Flutter analysis (optional, requires tree-sitter-language-pack)
-    dart_result = analyze_dart(repo_root)
-    if dart_result.run is not None:
-        if dart_result.skipped:  # pragma: no cover - requires missing tree-sitter
-            limits.skipped_passes.append({
-                "pass": dart_result.run.pass_id,
-                "reason": dart_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(dart_result.run.to_dict())
-            all_symbols.extend(dart_result.symbols)
-            all_edges.extend(dart_result.edges)
-
-    # Run Haskell analysis (optional, requires tree-sitter-haskell)
-    haskell_result = analyze_haskell(repo_root)
-    if haskell_result.run is not None:
-        if haskell_result.skipped:
-            limits.skipped_passes.append({
-                "pass": haskell_result.run.pass_id,
-                "reason": haskell_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(haskell_result.run.to_dict())
-            all_symbols.extend(haskell_result.symbols)
-            all_edges.extend(haskell_result.edges)
-
-    # Run Agda analysis (optional, requires tree-sitter-agda)
-    agda_result = analyze_agda(repo_root)
-    if agda_result.run is not None:
-        if agda_result.skipped:  # pragma: no cover - agda installed
-            limits.skipped_passes.append({
-                "pass": agda_result.run.pass_id,
-                "reason": agda_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(agda_result.run.to_dict())
-            all_symbols.extend(agda_result.symbols)
-            all_edges.extend(agda_result.edges)
-
-    # Run Lean analysis (optional, requires tree-sitter-lean built from source)
-    lean_result = analyze_lean(repo_root)
-    if lean_result.run is not None:
-        if lean_result.skipped:  # pragma: no cover - lean not installed
-            limits.skipped_passes.append({
-                "pass": lean_result.run.pass_id,
-                "reason": lean_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(lean_result.run.to_dict())
-            all_symbols.extend(lean_result.symbols)
-            all_edges.extend(lean_result.edges)
-
-    # Run Wolfram analysis (optional, requires tree-sitter-wolfram built from source)
-    wolfram_result = analyze_wolfram(repo_root)
-    if wolfram_result.run is not None:
-        if wolfram_result.skipped:  # pragma: no cover - wolfram not installed
-            limits.skipped_passes.append({
-                "pass": wolfram_result.run.pass_id,
-                "reason": wolfram_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(wolfram_result.run.to_dict())
-            all_symbols.extend(wolfram_result.symbols)
-            all_edges.extend(wolfram_result.edges)
-
-    # Run OCaml analysis (optional, requires tree-sitter-ocaml)
-    ocaml_result = analyze_ocaml(repo_root)
-    if ocaml_result.run is not None:
-        if ocaml_result.skipped:
-            limits.skipped_passes.append({
-                "pass": ocaml_result.run.pass_id,
-                "reason": ocaml_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(ocaml_result.run.to_dict())
-            all_symbols.extend(ocaml_result.symbols)
-            all_edges.extend(ocaml_result.edges)
-
-    # Run Solidity analysis (optional, requires tree-sitter-solidity)
-    solidity_result = analyze_solidity(repo_root)
-    if solidity_result.run is not None:
-        if solidity_result.skipped:  # pragma: no cover - solidity installed
-            limits.skipped_passes.append({
-                "pass": solidity_result.run.pass_id,
-                "reason": solidity_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(solidity_result.run.to_dict())
-            all_symbols.extend(solidity_result.symbols)
-            all_edges.extend(solidity_result.edges)
-
-    # Run C# analysis (optional, requires tree-sitter-c-sharp)
-    csharp_result = analyze_csharp(repo_root)
-    if csharp_result.run is not None:
-        if csharp_result.skipped:  # pragma: no cover - c-sharp installed
-            limits.skipped_passes.append({
-                "pass": csharp_result.run.pass_id,
-                "reason": csharp_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(csharp_result.run.to_dict())
-            all_symbols.extend(csharp_result.symbols)
-            all_edges.extend(csharp_result.edges)
-
-    # Run C++ analysis (optional, requires tree-sitter-cpp)
-    cpp_result = analyze_cpp(repo_root)
-    if cpp_result.run is not None:
-        if cpp_result.skipped:  # pragma: no cover - cpp installed
-            limits.skipped_passes.append({
-                "pass": cpp_result.run.pass_id,
-                "reason": cpp_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(cpp_result.run.to_dict())
-            all_symbols.extend(cpp_result.symbols)
-            all_edges.extend(cpp_result.edges)
-
-    # Run Zig analysis (optional, requires tree-sitter-zig)
-    zig_result = analyze_zig(repo_root)
-    if zig_result.run is not None:
-        if zig_result.skipped:  # pragma: no cover - zig installed
-            limits.skipped_passes.append({
-                "pass": zig_result.run.pass_id,
-                "reason": zig_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(zig_result.run.to_dict())
-            all_symbols.extend(zig_result.symbols)
-            all_edges.extend(zig_result.edges)
-
-    # Run Groovy analysis (optional, requires tree-sitter-groovy)
-    groovy_result = analyze_groovy(repo_root)
-    if groovy_result.run is not None:
-        if groovy_result.skipped:  # pragma: no cover - groovy installed
-            limits.skipped_passes.append({
-                "pass": groovy_result.run.pass_id,
-                "reason": groovy_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(groovy_result.run.to_dict())
-            all_symbols.extend(groovy_result.symbols)
-            all_edges.extend(groovy_result.edges)
-
-    # Run Julia analysis (optional, requires tree-sitter-julia)
-    julia_result = analyze_julia(repo_root)
-    if julia_result.run is not None:
-        if julia_result.skipped:  # pragma: no cover - julia installed
-            limits.skipped_passes.append({
-                "pass": julia_result.run.pass_id,
-                "reason": julia_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(julia_result.run.to_dict())
-            all_symbols.extend(julia_result.symbols)
-            all_edges.extend(julia_result.edges)
-
-    # Run Bash/shell analysis (optional, requires tree-sitter-bash)
-    bash_result = analyze_bash(repo_root)
-    if bash_result.run is not None:
-        if bash_result.skipped:  # pragma: no cover - bash installed
-            limits.skipped_passes.append({
-                "pass": bash_result.run.pass_id,
-                "reason": bash_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(bash_result.run.to_dict())
-            all_symbols.extend(bash_result.symbols)
-            all_edges.extend(bash_result.edges)
-
-    # Run Objective-C analysis (optional, requires tree-sitter-objc)
-    objc_result = analyze_objc(repo_root)
-    if objc_result.run is not None:
-        if objc_result.skipped:  # pragma: no cover - objc installed
-            limits.skipped_passes.append({
-                "pass": objc_result.run.pass_id,
-                "reason": objc_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(objc_result.run.to_dict())
-            all_symbols.extend(objc_result.symbols)
-            all_edges.extend(objc_result.edges)
-
-    # Run HCL/Terraform analysis (optional, requires tree-sitter-hcl)
-    hcl_result = analyze_hcl(repo_root)
-    if hcl_result.run is not None:
-        if hcl_result.skipped:  # pragma: no cover - hcl installed
-            limits.skipped_passes.append({
-                "pass": hcl_result.run.pass_id,
-                "reason": hcl_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(hcl_result.run.to_dict())
-            all_symbols.extend(hcl_result.symbols)
-            all_edges.extend(hcl_result.edges)
-
-    # Run YAML/Ansible analysis (optional, requires tree-sitter-yaml)
-    ansible_result = analyze_ansible(repo_root)
-    if ansible_result.run is not None:
-        if ansible_result.skipped:  # pragma: no cover - yaml installed
-            limits.skipped_passes.append({
-                "pass": ansible_result.run.pass_id,
-                "reason": ansible_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(ansible_result.run.to_dict())
-            all_symbols.extend(ansible_result.symbols)
-            all_edges.extend(ansible_result.edges)
-
-    # Run SQL analysis (optional, requires tree-sitter-sql)
-    sql_result = analyze_sql_files(repo_root)
-    if sql_result.run is not None:
-        if sql_result.skipped:  # pragma: no cover - sql installed
-            limits.skipped_passes.append({
-                "pass": sql_result.run.pass_id,
-                "reason": sql_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(sql_result.run.to_dict())
-            all_symbols.extend(sql_result.symbols)
-            all_edges.extend(sql_result.edges)
-
-    # Run Dockerfile analysis (optional, requires tree-sitter-dockerfile)
-    dockerfile_result = analyze_dockerfiles(repo_root)
-    if dockerfile_result.run is not None:
-        if dockerfile_result.skipped:  # pragma: no cover - dockerfile installed
-            limits.skipped_passes.append({
-                "pass": dockerfile_result.run.pass_id,
-                "reason": dockerfile_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(dockerfile_result.run.to_dict())
-            all_symbols.extend(dockerfile_result.symbols)
-            all_edges.extend(dockerfile_result.edges)
-
-    # Run CUDA analysis (optional, requires tree-sitter-cuda)
-    cuda_result = analyze_cuda_files(repo_root)
-    if cuda_result.run is not None:
-        if cuda_result.skipped:  # pragma: no cover - cuda installed
-            limits.skipped_passes.append({
-                "pass": cuda_result.run.pass_id,
-                "reason": cuda_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(cuda_result.run.to_dict())
-            all_symbols.extend(cuda_result.symbols)
-            all_edges.extend(cuda_result.edges)
-
-    # Run Verilog/SystemVerilog analysis (optional, requires tree-sitter-verilog)
-    verilog_result = analyze_verilog_files(repo_root)
-    if verilog_result.run is not None:
-        if verilog_result.skipped:  # pragma: no cover - verilog installed
-            limits.skipped_passes.append({
-                "pass": verilog_result.run.pass_id,
-                "reason": verilog_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(verilog_result.run.to_dict())
-            all_symbols.extend(verilog_result.symbols)
-            all_edges.extend(verilog_result.edges)
-
-    # Run CMake analysis (optional, requires tree-sitter-cmake)
-    cmake_result = analyze_cmake_files(repo_root)
-    if cmake_result.run is not None:
-        if cmake_result.skipped:  # pragma: no cover - cmake installed
-            limits.skipped_passes.append({
-                "pass": cmake_result.run.pass_id,
-                "reason": cmake_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(cmake_result.run.to_dict())
-            all_symbols.extend(cmake_result.symbols)
-            all_edges.extend(cmake_result.edges)
-
-    # Run Make analysis (optional, requires tree-sitter-make)
-    make_result = analyze_make_files(repo_root)
-    if make_result.run is not None:
-        if make_result.skipped:  # pragma: no cover - make installed
-            limits.skipped_passes.append({
-                "pass": make_result.run.pass_id,
-                "reason": make_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(make_result.run.to_dict())
-            all_symbols.extend(make_result.symbols)
-            all_edges.extend(make_result.edges)
-
-    # Run VHDL analysis (optional, requires tree-sitter-vhdl)
-    vhdl_result = analyze_vhdl_files(repo_root)
-    if vhdl_result.run is not None:
-        if vhdl_result.skipped:  # pragma: no cover - vhdl installed
-            limits.skipped_passes.append({
-                "pass": vhdl_result.run.pass_id,
-                "reason": vhdl_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(vhdl_result.run.to_dict())
-            all_symbols.extend(vhdl_result.symbols)
-            all_edges.extend(vhdl_result.edges)
-
-    # Run GraphQL analysis (optional, requires tree-sitter-graphql)
-    graphql_result = analyze_graphql_files(repo_root)
-    if graphql_result.run is not None:
-        if graphql_result.skipped:  # pragma: no cover - graphql installed
-            limits.skipped_passes.append({
-                "pass": graphql_result.run.pass_id,
-                "reason": graphql_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(graphql_result.run.to_dict())
-            all_symbols.extend(graphql_result.symbols)
-            all_edges.extend(graphql_result.edges)
-
-    # Run Nix analysis (optional, requires tree-sitter-nix)
-    nix_result = analyze_nix_files(repo_root)
-    if nix_result.run is not None:
-        if nix_result.skipped:  # pragma: no cover - nix installed
-            limits.skipped_passes.append({
-                "pass": nix_result.run.pass_id,
-                "reason": nix_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(nix_result.run.to_dict())
-            all_symbols.extend(nix_result.symbols)
-            all_edges.extend(nix_result.edges)
-
-    # Run GLSL analysis (optional, requires tree-sitter-glsl)
-    glsl_result = analyze_glsl_files(repo_root)
-    if glsl_result.run is not None:
-        if glsl_result.skipped:  # pragma: no cover - glsl installed
-            limits.skipped_passes.append({
-                "pass": glsl_result.run.pass_id,
-                "reason": glsl_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(glsl_result.run.to_dict())
-            all_symbols.extend(glsl_result.symbols)
-            all_edges.extend(glsl_result.edges)
-
-    # Run WGSL analysis (optional, requires tree-sitter-wgsl)
-    wgsl_result = analyze_wgsl_files(repo_root)
-    if wgsl_result.run is not None:
-        if wgsl_result.skipped:  # pragma: no cover - wgsl installed
-            limits.skipped_passes.append({
-                "pass": wgsl_result.run.pass_id,
-                "reason": wgsl_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(wgsl_result.run.to_dict())
-            all_symbols.extend(wgsl_result.symbols)
-            all_edges.extend(wgsl_result.edges)
-
-    # Run XML analysis (optional, requires tree-sitter-xml)
-    xml_result = analyze_xml_files(repo_root)
-    if xml_result.run is not None:
-        if xml_result.skipped:  # pragma: no cover - xml installed
-            limits.skipped_passes.append({
-                "pass": xml_result.run.pass_id,
-                "reason": xml_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(xml_result.run.to_dict())
-            all_symbols.extend(xml_result.symbols)
-            all_edges.extend(xml_result.edges)
-
-    # Run JSON analysis (optional, requires tree-sitter-json)
-    json_result = analyze_json_files(repo_root)
-    if json_result.run is not None:
-        if json_result.skipped:  # pragma: no cover - json installed
-            limits.skipped_passes.append({
-                "pass": json_result.run.pass_id,
-                "reason": json_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(json_result.run.to_dict())
-            all_symbols.extend(json_result.symbols)
-            all_edges.extend(json_result.edges)
-
-    # Run R analysis (optional, requires tree-sitter-r)
-    r_result = analyze_r_files(repo_root)
-    if r_result.run is not None:
-        if r_result.skipped:  # pragma: no cover - r installed
-            limits.skipped_passes.append({
-                "pass": r_result.run.pass_id,
-                "reason": r_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(r_result.run.to_dict())
-            all_symbols.extend(r_result.symbols)
-            all_edges.extend(r_result.edges)
-
-    # Run Fortran analysis (optional, requires tree-sitter-fortran)
-    fortran_result = analyze_fortran_files(repo_root)
-    if fortran_result.run is not None:
-        if fortran_result.skipped:  # pragma: no cover - fortran installed
-            limits.skipped_passes.append({
-                "pass": fortran_result.run.pass_id,
-                "reason": fortran_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(fortran_result.run.to_dict())
-            all_symbols.extend(fortran_result.symbols)
-            all_edges.extend(fortran_result.edges)
-
-    # Run TOML analysis (optional, requires tree-sitter-toml)
-    toml_result = analyze_toml_files(repo_root)
-    if toml_result.run is not None:
-        if toml_result.skipped:  # pragma: no cover - toml installed
-            limits.skipped_passes.append({
-                "pass": toml_result.run.pass_id,
-                "reason": toml_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(toml_result.run.to_dict())
-            all_symbols.extend(toml_result.symbols)
-            all_edges.extend(toml_result.edges)
-
-    # Run CSS analysis (optional, requires tree-sitter-css)
-    css_result = analyze_css_files(repo_root)
-    if css_result.run is not None:
-        if css_result.skipped:  # pragma: no cover - css installed
-            limits.skipped_passes.append({
-                "pass": css_result.run.pass_id,
-                "reason": css_result.skip_reason,
-            })
-        else:
-            analysis_runs.append(css_result.run.to_dict())
-            all_symbols.extend(css_result.symbols)
-            all_edges.extend(css_result.edges)
-
-    cobol_result = analyze_cobol(repo_root)
-    if not cobol_result.skipped:
-        if cobol_result.run is not None:
-            analysis_runs.append(cobol_result.run.to_dict())
-        all_symbols.extend(cobol_result.symbols)
-        all_edges.extend(cobol_result.edges)
-
-    latex_result = analyze_latex(repo_root)
-    if not latex_result.skipped:
-        if latex_result.run is not None:
-            analysis_runs.append(latex_result.run.to_dict())
-        all_symbols.extend(latex_result.symbols)
-        all_edges.extend(latex_result.edges)
+    # Run all language analyzers using consolidated registry
+    # This replaces ~800 lines of repetitive analyzer invocation code
+    analysis_runs, all_symbols, all_edges, limits, captured_symbols = run_all_analyzers(
+        repo_root, max_files=max_files
+    )
 
     # Run cross-language linkers
+    #
+    # Linkers are being migrated to a registry pattern (like analyzers).
+    # New linkers should use @register_linker decorator in linkers/registry.py.
+    # The registry-based linkers run first, then existing explicit linkers below.
+    # Once all linkers are migrated, the explicit calls below can be removed.
 
-    # JNI linker: connect Java native methods to C implementations
-    if java_symbols and c_symbols:
-        jni_result = link_jni(java_symbols, c_symbols)
-        if jni_result.run is not None:
-            analysis_runs.append(jni_result.run.to_dict())
-            all_edges.extend(jni_result.edges)
-
-    # IPC linker: detect Electron IPC, postMessage, Web Workers
-    ipc_result = link_ipc(repo_root)
-    if ipc_result.run is not None:
-        analysis_runs.append(ipc_result.run.to_dict())
-        all_symbols.extend(ipc_result.symbols)
-        all_edges.extend(ipc_result.edges)
-
-    # WebSocket linker: detect Socket.io, native WebSocket, ws package patterns
-    ws_result = link_websocket(repo_root)
-    if ws_result.run is not None:
-        analysis_runs.append(ws_result.run.to_dict())
-        all_symbols.extend(ws_result.symbols)
-        all_edges.extend(ws_result.edges)
-
-    # Phoenix IPC linker: detect Phoenix Channels and LiveView patterns
-    phoenix_result = link_phoenix_ipc(repo_root)
-    if phoenix_result.run is not None:
-        analysis_runs.append(phoenix_result.run.to_dict())
-        all_symbols.extend(phoenix_result.symbols)
-        all_edges.extend(phoenix_result.edges)
-
-    # Swift/Objective-C linker: detect @objc, NSObject, bridging headers
-    swift_objc_result = link_swift_objc(repo_root)
-    if swift_objc_result.run is not None:
-        analysis_runs.append(swift_objc_result.run.to_dict())
-        all_symbols.extend(swift_objc_result.symbols)
-        all_edges.extend(swift_objc_result.edges)
-
-    # gRPC linker: detect gRPC service definitions, stubs, and servers
-    grpc_result = link_grpc(repo_root)
-    if grpc_result.run is not None:
-        analysis_runs.append(grpc_result.run.to_dict())
-        all_symbols.extend(grpc_result.symbols)
-        all_edges.extend(grpc_result.edges)
-
-    # Message queue linker: detect Kafka, RabbitMQ, SQS, Redis Pub/Sub patterns
-    mq_result = link_message_queues(repo_root)
-    if mq_result.run is not None:
-        analysis_runs.append(mq_result.run.to_dict())
-        all_symbols.extend(mq_result.symbols)
-        all_edges.extend(mq_result.edges)
-
-    # HTTP linker: connect fetch/requests calls to route handlers
-    # Include both kind="route" (Ruby/Go/Rust) and symbols with meta.route_path (Python/JS)
-    route_symbols = [
-        s for s in all_symbols
-        if s.kind == "route" or (s.meta and s.meta.get("route_path"))
-    ]
-    http_result = link_http(repo_root, route_symbols)
-    if http_result.run is not None:
-        analysis_runs.append(http_result.run.to_dict())
-        all_symbols.extend(http_result.symbols)
-        all_edges.extend(http_result.edges)
-
-    # GraphQL linker: connect client queries to schema definitions
-    # Get GraphQL operation symbols (query, mutation, subscription)
-    graphql_ops = [
-        s for s in all_symbols
-        if s.language == "graphql" and s.kind in ("query", "mutation", "subscription", "operation")
-    ]
-    graphql_link_result = link_graphql(repo_root, graphql_ops)
-    if graphql_link_result.run is not None:
-        analysis_runs.append(graphql_link_result.run.to_dict())
-        all_symbols.extend(graphql_link_result.symbols)
-        all_edges.extend(graphql_link_result.edges)
-
-    # GraphQL resolver linker: connect resolver implementations to schema types
-    # Get GraphQL type and field symbols for linking
-    graphql_schema = [
-        s for s in all_symbols
-        if s.language == "graphql" and s.kind in ("type", "field", "interface")
-    ]
-    resolver_result = link_graphql_resolvers(repo_root, graphql_schema)
-    if resolver_result.run is not None:
-        analysis_runs.append(resolver_result.run.to_dict())
-        all_symbols.extend(resolver_result.symbols)
-        all_edges.extend(resolver_result.edges)
-
-    # Database query linker: connect SQL queries in code to table definitions
-    # Get SQL table symbols for linking
-    table_symbols = [
-        s for s in all_symbols
-        if s.language == "sql" and s.kind == "table"
-    ]
-    db_query_result = link_database_queries(repo_root, table_symbols)
-    if db_query_result.run is not None:
-        analysis_runs.append(db_query_result.run.to_dict())
-        all_symbols.extend(db_query_result.symbols)
-        all_edges.extend(db_query_result.edges)
-
-    # Event sourcing linker: detect event publishers and subscribers
-    event_result = link_events(repo_root)
-    if event_result.run is not None:
-        analysis_runs.append(event_result.run.to_dict())
-        all_symbols.extend(event_result.symbols)
-        all_edges.extend(event_result.edges)
-
-    # Dependency linker: connect import statements to manifest declarations
-    # Get TOML dependency symbols for linking
-    toml_symbols = [s for s in all_symbols if s.language == "toml"]
-    dep_link_result = link_dependencies(
-        toml_symbols=toml_symbols,
-        code_edges=all_edges,
-        code_symbols=all_symbols,
+    # Run any registry-based linkers (new pattern)
+    # This enables new linkers to be added without modifying this file.
+    # LinkerContext provides all inputs; each linker picks what it needs.
+    linker_ctx = LinkerContext(
+        repo_root=repo_root,
+        symbols=all_symbols,
+        edges=all_edges,
+        captured_symbols=captured_symbols,
     )
-    if dep_link_result.run is not None:
-        analysis_runs.append(dep_link_result.run.to_dict())
-        all_edges.extend(dep_link_result.edges)
+    for _linker_name, linker_result in run_all_linkers(linker_ctx):
+        if linker_result.run is not None:
+            analysis_runs.append(linker_result.run.to_dict())
+        all_symbols.extend(linker_result.symbols)
+        all_edges.extend(linker_result.edges)
 
     # Filter out test files if requested
     if exclude_tests:
@@ -1928,7 +1613,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    subcommands = {"init", "run", "slice", "search", "routes", "catalog", "export-capsule", "sketch", "build-grammars"}
+    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

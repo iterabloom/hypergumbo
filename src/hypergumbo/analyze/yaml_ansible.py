@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -90,16 +91,14 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_all_children_by_type(
     node: "tree_sitter.Node", type_name: str
 ) -> list["tree_sitter.Node"]:
-    """Find all children (recursive) with given type."""
-    result: list["tree_sitter.Node"] = []
+    """Find all children (recursive) with given type.
 
-    def walk(n: "tree_sitter.Node") -> None:
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
+    result: list["tree_sitter.Node"] = []
+    for n in iter_tree(node):
         if n.type == type_name:
             result.append(n)
-        for child in n.children:
-            walk(child)
-
-    walk(node)
     return result
 
 

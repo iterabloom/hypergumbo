@@ -6,30 +6,41 @@ events) and links event publishers to their subscribers.
 Detected Patterns
 -----------------
 JavaScript (EventEmitter, custom events):
-- emitter.emit('eventName', data)
-- emitter.on('eventName', handler)
+- emitter.emit('eventName', data) - literal event name
+- emitter.emit(EVENT_NAME, data) - variable event name
+- emitter.on('eventName', handler) - literal event name
+- emitter.on(EVENT_NAME, handler) - variable event name
 - emitter.once('eventName', handler)
 - emitter.addEventListener('eventName', handler)
+- emitter.addEventListener(EVENT_NAME, handler)
 - emitter.dispatchEvent(new CustomEvent('eventName'))
 
 Python (Django signals, custom events):
-- signal.send(sender, **kwargs)
+- signal.send(sender, **kwargs) - Django signals (identifier-based)
 - signal.connect(receiver, sender)
 - @receiver(signal, sender=Sender)
-- EventBus.publish('eventName', data)
+- EventBus.publish('eventName', data) - literal event name
+- EventBus.publish(EVENT_NAME, data) - variable event name
 - EventBus.subscribe('eventName', handler)
+- EventBus.subscribe(EVENT_NAME, handler)
 
 Java (Spring ApplicationEvent):
 - applicationEventPublisher.publishEvent(event)
 - @EventListener on methods
 - @TransactionalEventListener
 
+Variable Event Detection
+------------------------
+Event names stored in variables are detected with lower confidence (0.65 vs 0.85):
+- const EVENT = 'user_created'; emitter.emit(EVENT) -> detected with event_type="variable"
+- Direct literal event names have event_type="literal" and higher confidence
+
 How It Works
 ------------
 1. Scan source files for event patterns
-2. Extract event names from publishers and subscribers
+2. Extract event names from publishers and subscribers (literal or variable)
 3. Match publishers to subscribers by event name
-4. Create event_publishes and event_subscribes edges
+4. Create event_publishes edges with confidence based on event_type
 
 Why This Design
 ---------------
@@ -37,6 +48,7 @@ Why This Design
 - Cross-language event detection enables full-stack event tracing
 - Topic/event name matching links producers to consumers
 - Symbols for events enable slice traversal across event boundaries
+- Variable event detection catches patterns where events are stored in constants
 """
 from __future__ import annotations
 
@@ -48,6 +60,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = "event-sourcing-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -63,6 +76,7 @@ class EventPattern:
     file_path: str  # Source file path
     language: str  # Source language
     framework: str  # Framework: emitter, django, spring
+    event_type: str = "literal"  # "literal" or "variable"
 
 
 @dataclass
@@ -74,25 +88,52 @@ class EventSourcingLinkResult:
     run: AnalysisRun | None = None
 
 
+# Pattern for matching variable identifiers (e.g., EVENT_NAME, events.USER_CREATED)
+_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+
+# Combined pattern: matches either quoted string literal or variable identifier
+# Group 1: literal event name, Group 2: variable identifier
+_EVENT_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+
+
+def _extract_event_from_match(
+    match: re.Match, literal_group: int = 1, var_group: int = 2
+) -> tuple[str, str]:
+    """Extract event name and event_type from a regex match.
+
+    The _EVENT_ARG pattern captures:
+    - Group literal_group: string literal (e.g., 'user_created')
+    - Group var_group: variable identifier (e.g., EVENT_NAME, events.USER)
+
+    Returns:
+        Tuple of (event_name, event_type) where event_type is "literal" or "variable".
+    """
+    literal = match.group(literal_group)
+    if literal:
+        return literal, "literal"
+    variable = match.group(var_group)
+    return variable, "variable"
+
+
 # ============================================================================
 # JavaScript EventEmitter patterns
 # ============================================================================
 
-# emitter.emit('eventName', ...) or emitter.emit("eventName", ...)
+# emitter.emit('eventName', ...) or emitter.emit(EVENT_NAME, ...)
 JS_EMIT_PATTERN = re.compile(
-    r"(?:\w+)\.emit\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:\w+)\.emit\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
-# emitter.on('eventName', ...) or emitter.once('eventName', ...)
+# emitter.on('eventName', ...) or emitter.on(EVENT_NAME, ...)
 JS_ON_PATTERN = re.compile(
-    r"(?:\w+)\.(?:on|once|addListener)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:\w+)\.(?:on|once|addListener)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
-# addEventListener('eventName', ...)
+# addEventListener('eventName', ...) or addEventListener(EVENT_NAME, ...)
 JS_ADD_LISTENER_PATTERN = re.compile(
-    r"\.addEventListener\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"\.addEventListener\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
@@ -104,7 +145,7 @@ JS_DISPATCH_EVENT_PATTERN = re.compile(
 
 # removeEventListener, removeListener patterns (for completeness)
 JS_REMOVE_LISTENER_PATTERN = re.compile(
-    r"\.(?:removeEventListener|removeListener|off)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"\.(?:removeEventListener|removeListener|off)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
@@ -113,6 +154,7 @@ JS_REMOVE_LISTENER_PATTERN = re.compile(
 # ============================================================================
 
 # Django signals: signal.send(sender=...) or signal.send_robust(sender=...)
+# Uses identifier matching - already supports "variables" (signal names are identifiers)
 DJANGO_SIGNAL_SEND_PATTERN = re.compile(
     r"(\w+)\s*\.\s*(?:send|send_robust)\s*\(",
     re.MULTILINE,
@@ -130,21 +172,21 @@ DJANGO_RECEIVER_DECORATOR_PATTERN = re.compile(
     re.MULTILINE,
 )
 
-# Python event bus: EventBus.publish('event', data)
+# Python event bus: EventBus.publish('event', data) or EventBus.publish(EVENT_NAME, data)
 PYTHON_EVENT_PUBLISH_PATTERN = re.compile(
-    r"(?:EventBus|event_bus|events?)\.(?:publish|emit|send|fire)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:EventBus|event_bus|events?)\.(?:publish|emit|send|fire)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE | re.IGNORECASE,
 )
 
-# Python event bus: EventBus.subscribe('event', handler)
+# Python event bus: EventBus.subscribe('event', handler) or EventBus.subscribe(EVENT, handler)
 PYTHON_EVENT_SUBSCRIBE_PATTERN = re.compile(
-    r"(?:EventBus|event_bus|events?)\.(?:subscribe|on|listen|register)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"(?:EventBus|event_bus|events?)\.(?:subscribe|on|listen|register)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE | re.IGNORECASE,
 )
 
-# Python: @on_event('eventName') or similar decorators
+# Python: @on_event('eventName') or @on_event(EVENT_NAME)
 PYTHON_EVENT_DECORATOR_PATTERN = re.compile(
-    r"@(?:on_event|event_handler|listen|subscribe)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"@(?:on_event|event_handler|listen|subscribe)\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE | re.IGNORECASE,
 )
 
@@ -194,9 +236,9 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
     """Scan JavaScript/TypeScript file for event patterns."""
     patterns: list[EventPattern] = []
 
-    # Emit patterns (publishers)
+    # Emit patterns (publishers) - supports variables
     for match in JS_EMIT_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
             event_name=event_name,
@@ -205,9 +247,10 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             file_path=str(file_path),
             language="javascript",
             framework="emitter",
+            event_type=event_type,
         ))
 
-    # dispatchEvent patterns (publishers)
+    # dispatchEvent patterns (publishers) - literal only (complex pattern)
     for match in JS_DISPATCH_EVENT_PATTERN.finditer(content):
         event_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
@@ -218,11 +261,12 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             file_path=str(file_path),
             language="javascript",
             framework="emitter",
+            event_type="literal",
         ))
 
-    # On/once patterns (subscribers)
+    # On/once patterns (subscribers) - supports variables
     for match in JS_ON_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
             event_name=event_name,
@@ -231,11 +275,12 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             file_path=str(file_path),
             language="javascript",
             framework="emitter",
+            event_type=event_type,
         ))
 
-    # addEventListener patterns (subscribers)
+    # addEventListener patterns (subscribers) - supports variables
     for match in JS_ADD_LISTENER_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
             event_name=event_name,
@@ -244,6 +289,7 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             file_path=str(file_path),
             language="javascript",
             framework="emitter",
+            event_type=event_type,
         ))
 
     return patterns
@@ -254,6 +300,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
     patterns: list[EventPattern] = []
 
     # Django signal.send patterns (publishers)
+    # Uses identifier matching - signal names are always "variable" type
     for match in DJANGO_SIGNAL_SEND_PATTERN.finditer(content):
         signal_name = match.group(1)
         line = content[: match.start()].count("\n") + 1
@@ -264,6 +311,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="python",
             framework="django",
+            event_type="variable",  # Django signals are always identifiers
         ))
 
     # Django signal.connect patterns (subscribers)
@@ -277,6 +325,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="python",
             framework="django",
+            event_type="variable",  # Django signals are always identifiers
         ))
 
     # Django @receiver decorator patterns (subscribers)
@@ -290,11 +339,12 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="python",
             framework="django",
+            event_type="variable",  # Django signals are always identifiers
         ))
 
-    # Generic event bus publish patterns
+    # Generic event bus publish patterns - supports variables
     for match in PYTHON_EVENT_PUBLISH_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
             event_name=event_name,
@@ -303,11 +353,12 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="python",
             framework="event_bus",
+            event_type=event_type,
         ))
 
-    # Generic event bus subscribe patterns
+    # Generic event bus subscribe patterns - supports variables
     for match in PYTHON_EVENT_SUBSCRIBE_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
             event_name=event_name,
@@ -316,11 +367,12 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="python",
             framework="event_bus",
+            event_type=event_type,
         ))
 
-    # Event handler decorator patterns
+    # Event handler decorator patterns - supports variables
     for match in PYTHON_EVENT_DECORATOR_PATTERN.finditer(content):
-        event_name = match.group(1)
+        event_name, event_type = _extract_event_from_match(match)
         line = content[: match.start()].count("\n") + 1
         patterns.append(EventPattern(
             event_name=event_name,
@@ -329,6 +381,7 @@ def _scan_python_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="python",
             framework="event_bus",
+            event_type=event_type,
         ))
 
     return patterns
@@ -417,6 +470,7 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
             "event_name": pattern.event_name,
             "framework": pattern.framework,
             "pattern_type": pattern.pattern_type,
+            "event_type": pattern.event_type,
         },
     )
 
@@ -484,13 +538,20 @@ def link_events(root: Path) -> EventSourcingLinkResult:
         if event_key in subscriber_by_event:
             for sub_pattern, sub_symbol in subscriber_by_event[event_key]:
                 is_cross_language = pub_symbol.language != sub_symbol.language
+                is_variable_event = (
+                    publisher.event_type == "variable"
+                    or sub_pattern.event_type == "variable"
+                )
+
+                # Lower confidence for variable event names (can't verify at static analysis)
+                base_confidence = 0.65 if is_variable_event else 0.85
 
                 edge = Edge.create(
                     src=pub_symbol.id,
                     dst=sub_symbol.id,
                     edge_type="event_publishes",
                     line=publisher.line,
-                    confidence=0.85,
+                    confidence=base_confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="event_name_match",
@@ -500,6 +561,8 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                     "publisher_framework": publisher.framework,
                     "subscriber_framework": sub_pattern.framework,
                     "cross_language": is_cross_language,
+                    "publisher_event_type": publisher.event_type,
+                    "subscriber_event_type": sub_pattern.event_type,
                 }
                 edges.append(edge)
 
@@ -507,3 +570,27 @@ def link_events(root: Path) -> EventSourcingLinkResult:
     run.files_analyzed = files_scanned
 
     return EventSourcingLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# =============================================================================
+# Linker Registry Integration
+# =============================================================================
+
+
+@register_linker(
+    "event_sourcing",
+    priority=55,  # Run after core linkers, with other event patterns
+    description="Event sourcing linking (EventEmitter, Django signals, Spring events)",
+)
+def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
+    """Event sourcing linker for registry-based dispatch.
+
+    This wraps link_events() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_events(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )

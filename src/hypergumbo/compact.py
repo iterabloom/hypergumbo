@@ -51,94 +51,31 @@ from typing import Dict, List, Tuple
 
 from .ir import Symbol, Edge
 from .ranking import compute_centrality, apply_tier_weights
-
-
-# Symbol kinds to exclude from tiered output
-# These have high centrality but don't represent useful code
-EXCLUDED_KINDS = frozenset({
-    "dependency",       # package.json, pyproject.toml dependencies
-    "devDependency",    # package.json dev dependencies
-    "file",             # file-level nodes (import targets)
-    "target",           # Makefile targets
-    "special_target",   # .PHONY and other special targets
-    "project",          # project-level nodes
-    "package",          # package.json package name
-    "script",           # package.json scripts
-    "event_subscriber", # CSS/JS event handlers (less useful in isolation)
-    "class_selector",   # CSS class selectors
-    "id_selector",      # CSS id selectors
-})
-
-# Path patterns indicating test files
-TEST_PATH_PATTERNS = (
-    "/tests/",
-    "/test/",
-    "/__tests__/",
-    "_test.go",
-    "_test.py",
-    ".test.ts",
-    ".test.js",
-    ".test.tsx",
-    ".test.jsx",
-    ".spec.ts",
-    ".spec.js",
-    ".spec.tsx",
-    ".spec.jsx",
-    ".test-d.ts",
-    ".test-d.tsx",
-    "test_",           # Python test files: test_foo.py
-    "/testfixtures/",  # Gradle test fixtures (case-insensitive match)
-    "/inttest/",       # Gradle integration test source set
-    "/integrationtest/",  # Alternative integration test naming
-    "tests.java",      # Java test files: FooTests.java
-    "test.java",       # Java test files: FooTest.java (but not TestFoo.java utilities)
+from .selection.filters import (
+    EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
+    EXCLUDED_KINDS,
+    is_test_path as _is_test_path,
+    is_example_path as _is_example_path,
+)
+from .selection.language_proportional import (
+    allocate_language_budget,
+    group_symbols_by_language,
+)
+from .selection.token_budget import (
+    CHARS_PER_TOKEN,  # re-export for backwards compatibility
+    DEFAULT_TIERS,  # re-export for backwards compatibility
+    TOKENS_BEHAVIOR_MAP_OVERHEAD,
+    estimate_json_tokens,
+    parse_tier_spec,  # re-export for backwards compatibility
 )
 
-# Path patterns indicating example/demo code
-# Include both /examples/ and examples/ to handle absolute and relative paths
-EXAMPLE_PATH_PATTERNS = (
-    "/examples/",
-    "/example/",
-    "/demos/",
-    "/demo/",
-    "/samples/",
-    "/sample/",
-    "/playground/",
-    "/tutorial/",
-    "/tutorials/",
-)
-
-
-def _is_example_path(path: str) -> bool:
-    """Check if a path represents example/demo code.
-
-    Args:
-        path: File path to check.
-
-    Returns:
-        True if the path appears to be example code.
-    """
-    path_lower = path.lower()
-    # Check standard patterns (with leading slash)
-    if any(pattern in path_lower for pattern in EXAMPLE_PATH_PATTERNS):
-        return True
-    # Also check if path starts with example directory (relative paths)
-    return path_lower.startswith(("examples/", "example/", "demos/", "demo/",
-                                   "samples/", "sample/", "playground/",
-                                   "tutorial/", "tutorials/"))
-
-
-def _is_test_path(path: str) -> bool:
-    """Check if a path represents a test file.
-
-    Args:
-        path: File path to check.
-
-    Returns:
-        True if the path appears to be a test file.
-    """
-    path_lower = path.lower()
-    return any(pattern in path_lower for pattern in TEST_PATH_PATTERNS)
+# Re-exports for backwards compatibility (from selection.* modules)
+__all__ = [
+    "CHARS_PER_TOKEN",
+    "DEFAULT_TIERS",
+    "EXAMPLE_PATH_PATTERNS",
+    "parse_tier_spec",
+]
 
 
 @dataclass
@@ -153,6 +90,11 @@ class CompactConfig:
         top_words_count: Number of top words to include in summary. Default 10.
         top_paths_count: Number of top path patterns to include. Default 5.
         first_party_priority: Apply tier weighting. Default True.
+        language_proportional: Use language-stratified selection. Default True.
+            When enabled, symbol budget is allocated proportionally by language
+            to ensure multi-language projects have representation from each.
+        min_per_language: Minimum symbols per language (floor guarantee).
+            Only used when language_proportional=True. Default 1.
     """
 
     target_coverage: float = 0.8
@@ -161,6 +103,8 @@ class CompactConfig:
     top_words_count: int = 10
     top_paths_count: int = 5
     first_party_priority: bool = True
+    language_proportional: bool = True
+    min_per_language: int = 1
 
 
 @dataclass
@@ -402,18 +346,43 @@ def select_by_coverage(
     else:
         centrality = raw_centrality
 
-    # Sort by centrality (highest first)
-    sorted_symbols = sorted(
-        symbols,
-        key=lambda s: (-centrality.get(s.id, 0), s.name)
-    )
-
     # Compute total centrality
     total_centrality = sum(centrality.values())
     if total_centrality == 0:
         total_centrality = 1.0  # Avoid division by zero
 
-    # Select by coverage
+    # Select symbols using appropriate strategy
+    if config.language_proportional:
+        # Language-proportional selection: allocate budget by language
+        lang_groups = group_symbols_by_language(symbols)
+        budgets = allocate_language_budget(
+            lang_groups, config.max_symbols, config.min_per_language
+        )
+
+        # Select top symbols from each language
+        candidates: List[Symbol] = []
+        for lang, budget in budgets.items():
+            lang_symbols = lang_groups.get(lang, [])
+            # Sort by centrality within language
+            sorted_lang = sorted(
+                lang_symbols,
+                key=lambda s: (-centrality.get(s.id, 0), s.name)
+            )
+            candidates.extend(sorted_lang[:budget])
+
+        # Sort combined candidates by centrality
+        sorted_symbols = sorted(
+            candidates,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+    else:
+        # Original behavior: sort all symbols by centrality
+        sorted_symbols = sorted(
+            symbols,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+
+    # Select by coverage from the (possibly pre-filtered) candidates
     included: List[Symbol] = []
     included_centrality = 0.0
 
@@ -503,66 +472,15 @@ def format_compact_behavior_map(
     return compact_map
 
 
-# Token estimation constants
-# ~4 chars per token is a reasonable approximation for JSON with code
-CHARS_PER_TOKEN = 4
-
-# Overhead per node (JSON structure, keys, formatting)
-# Estimated from typical node: {"id": "...", "name": "...", "kind": "...", ...}
-TOKENS_PER_NODE_OVERHEAD = 50
-
-# Overhead for behavior map shell (schema_version, view, metrics, etc.)
-TOKENS_BEHAVIOR_MAP_OVERHEAD = 200
-
-# Default tiers in tokens (k = 1000 tokens)
-DEFAULT_TIERS = ["4k", "16k", "64k"]
-
-
-def parse_tier_spec(spec: str) -> int:
-    """Parse a tier specification into target tokens.
-
-    Args:
-        spec: Tier spec like "4k", "16k", "64000", etc.
-
-    Returns:
-        Target token count.
-
-    Raises:
-        ValueError: If spec cannot be parsed.
-    """
-    spec = spec.lower().strip()
-    if spec.endswith("k"):
-        return int(float(spec[:-1]) * 1000)
-    return int(spec)
-
-
+# Backwards compatibility aliases for functions that were moved
 def estimate_node_tokens(node_dict: dict) -> int:
-    """Estimate tokens for a serialized node.
-
-    Args:
-        node_dict: Node dictionary from Symbol.to_dict().
-
-    Returns:
-        Estimated token count.
-    """
-    # Rough estimate based on JSON serialization
-    import json
-    json_str = json.dumps(node_dict)
-    return len(json_str) // CHARS_PER_TOKEN
+    """Estimate tokens for a serialized node. Alias for estimate_json_tokens."""
+    return estimate_json_tokens(node_dict)
 
 
 def estimate_behavior_map_tokens(behavior_map: dict) -> int:
-    """Estimate total tokens for a behavior map.
-
-    Args:
-        behavior_map: Full behavior map dictionary.
-
-    Returns:
-        Estimated token count.
-    """
-    import json
-    json_str = json.dumps(behavior_map)
-    return len(json_str) // CHARS_PER_TOKEN
+    """Estimate total tokens for a behavior map. Alias for estimate_json_tokens."""
+    return estimate_json_tokens(behavior_map)
 
 
 def select_by_tokens(
@@ -574,6 +492,8 @@ def select_by_tokens(
     exclude_non_code: bool = True,
     deduplicate_names: bool = True,
     exclude_examples: bool = True,
+    language_proportional: bool = True,
+    min_per_language: int = 1,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -591,6 +511,11 @@ def select_by_tokens(
             Prevents "push" appearing 4 times from different files.
         exclude_examples: Exclude symbols from example directories. Default True.
             Prevents example handlers from polluting tiers.
+        language_proportional: Use language-stratified selection. Default True.
+            When enabled, selects symbols proportionally by language to ensure
+            multi-language projects have representation from each.
+        min_per_language: Minimum symbols per language (floor guarantee).
+            Only used when language_proportional=True. Default 1.
 
     Returns:
         CompactResult with symbols fitting the budget.
@@ -624,16 +549,43 @@ def select_by_tokens(
     else:
         centrality = raw_centrality
 
-    # Sort eligible symbols by centrality (highest first)
-    sorted_symbols = sorted(
-        eligible_symbols,
-        key=lambda s: (-centrality.get(s.id, 0), s.name)
-    )
-
     # Compute total centrality for coverage calculation
     total_centrality = sum(centrality.values())
     if total_centrality == 0:
         total_centrality = 1.0
+
+    # Apply language-proportional pre-selection if enabled
+    if language_proportional:
+        # Group eligible symbols by language
+        lang_groups = group_symbols_by_language(eligible_symbols)
+        # Estimate max symbols that could fit (rough estimate for budget allocation)
+        avg_tokens_per_symbol = 50  # Conservative estimate
+        estimated_max_symbols = (target_tokens - TOKENS_BEHAVIOR_MAP_OVERHEAD) // avg_tokens_per_symbol
+        budgets = allocate_language_budget(
+            lang_groups, max(estimated_max_symbols, 10), min_per_language
+        )
+
+        # Select top symbols from each language
+        candidates: List[Symbol] = []
+        for lang, budget in budgets.items():
+            lang_symbols = lang_groups.get(lang, [])
+            sorted_lang = sorted(
+                lang_symbols,
+                key=lambda s: (-centrality.get(s.id, 0), s.name)
+            )
+            candidates.extend(sorted_lang[:budget])
+
+        # Sort combined candidates by centrality
+        sorted_symbols = sorted(
+            candidates,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+    else:
+        # Original behavior: sort all eligible symbols by centrality
+        sorted_symbols = sorted(
+            eligible_symbols,
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
 
     # Select symbols until we approach the token budget
     # Reserve tokens for overhead and summary

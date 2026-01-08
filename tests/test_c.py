@@ -618,3 +618,89 @@ int main() {
         # Verify call edge is detected
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
+
+
+class TestCSignatureExtraction:
+    """Tests for C function signature extraction."""
+
+    def test_basic_function_signature(self, tmp_path: Path) -> None:
+        """Basic function with parameters extracts signature."""
+        from hypergumbo.analyze.c import analyze_c
+
+        c_file = tmp_path / "math.c"
+        c_file.write_text("int add(int x, int y) { return x + y; }")
+
+        result = analyze_c(tmp_path)
+
+        add_sym = next((s for s in result.symbols if s.name == "add"), None)
+        assert add_sym is not None
+        assert add_sym.signature == "(int x, int y) int"
+
+    def test_void_function_signature(self, tmp_path: Path) -> None:
+        """Void return type function extracts signature without return type."""
+        from hypergumbo.analyze.c import analyze_c
+
+        c_file = tmp_path / "util.c"
+        c_file.write_text("void process(int count) { /* work */ }")
+
+        result = analyze_c(tmp_path)
+
+        process_sym = next((s for s in result.symbols if s.name == "process"), None)
+        assert process_sym is not None
+        # void return type should not appear in signature
+        assert process_sym.signature == "(int count)"
+
+    def test_pointer_parameter_signature(self, tmp_path: Path) -> None:
+        """Pointer parameters appear in signature."""
+        from hypergumbo.analyze.c import analyze_c
+
+        c_file = tmp_path / "str.c"
+        c_file.write_text("int strlen(const char* str) { return 0; }")
+
+        result = analyze_c(tmp_path)
+
+        strlen_sym = next((s for s in result.symbols if s.name == "strlen"), None)
+        assert strlen_sym is not None
+        assert "const char* str" in strlen_sym.signature
+        assert strlen_sym.signature.endswith("int")
+
+    def test_pointer_return_type_signature(self, tmp_path: Path) -> None:
+        """Pointer return type appears in signature."""
+        from hypergumbo.analyze.c import analyze_c
+
+        c_file = tmp_path / "alloc.c"
+        c_file.write_text("char* strdup(const char* s) { return 0; }")
+
+        result = analyze_c(tmp_path)
+
+        strdup_sym = next((s for s in result.symbols if s.name == "strdup"), None)
+        assert strdup_sym is not None
+        # Should have char* return type
+        assert "char*" in strdup_sym.signature
+
+    def test_empty_params_signature(self, tmp_path: Path) -> None:
+        """Function with no parameters has empty parens."""
+        from hypergumbo.analyze.c import analyze_c
+
+        c_file = tmp_path / "main.c"
+        c_file.write_text("int main() { return 0; }")
+
+        result = analyze_c(tmp_path)
+
+        main_sym = next((s for s in result.symbols if s.name == "main"), None)
+        assert main_sym is not None
+        assert main_sym.signature == "() int"
+
+    def test_declaration_signature(self, tmp_path: Path) -> None:
+        """Function declaration (prototype) extracts signature."""
+        from hypergumbo.analyze.c import analyze_c
+
+        h_file = tmp_path / "util.h"
+        h_file.write_text("void process(int x, int y);")
+
+        result = analyze_c(tmp_path)
+
+        process_sym = next((s for s in result.symbols if s.name == "process"), None)
+        assert process_sym is not None
+        assert process_sym.signature == "(int x, int y)"
+

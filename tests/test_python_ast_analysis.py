@@ -3,7 +3,14 @@ import json
 from pathlib import Path
 
 from hypergumbo.cli import run_behavior_map
-from hypergumbo.analyze.py import extract_nodes, _module_name_from_path, _resolve_relative_import
+from hypergumbo.analyze.py import (
+    extract_nodes,
+    _module_name_from_path,
+    _resolve_relative_import,
+    _compute_cyclomatic_complexity,
+    _compute_lines_of_code,
+)
+import ast
 
 
 def test_run_detects_python_function(tmp_path: Path) -> None:
@@ -1348,3 +1355,980 @@ def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
     call_dsts = {e["dst"] for e in call_edges}
     assert helper_id in call_dsts, \
         f"Call edge should resolve to helper {helper_id}, got {call_dsts}"
+
+
+# ============================================================================
+# Cyclomatic Complexity and Lines of Code Tests
+# ============================================================================
+
+
+def test_cyclomatic_complexity_simple_function() -> None:
+    """A function with no branches should have complexity 1."""
+    code = """
+def simple():
+    x = 1
+    y = 2
+    return x + y
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    assert _compute_cyclomatic_complexity(func) == 1
+
+
+def test_cyclomatic_complexity_with_if() -> None:
+    """Each if statement adds 1 to complexity."""
+    code = """
+def with_if(x):
+    if x > 0:
+        return 1
+    return 0
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 if = 2
+    assert _compute_cyclomatic_complexity(func) == 2
+
+
+def test_cyclomatic_complexity_with_if_elif_else() -> None:
+    """Each if/elif adds 1; else doesn't add (it's the default path)."""
+    code = """
+def with_branches(x):
+    if x > 0:
+        return "positive"
+    elif x < 0:
+        return "negative"
+    else:
+        return "zero"
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 if + 1 elif = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_loops() -> None:
+    """for and while loops each add 1."""
+    code = """
+def with_loops(items):
+    result = 0
+    for item in items:
+        result += item
+    while result > 100:
+        result -= 10
+    return result
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 for + 1 while = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_exception_handling() -> None:
+    """Each except handler adds 1."""
+    code = """
+def with_exceptions():
+    try:
+        risky_operation()
+    except ValueError:
+        handle_value_error()
+    except TypeError:
+        handle_type_error()
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 except handlers = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_context_managers() -> None:
+    """with statements add 1 each."""
+    code = """
+def with_context():
+    with open('file.txt') as f:
+        with lock:
+            data = f.read()
+    return data
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 with statements = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_boolean_operators() -> None:
+    """and/or operators add (n-1) where n is operand count."""
+    code = """
+def with_boolean(a, b, c):
+    if a and b and c:
+        return True
+    if a or b:
+        return True
+    return False
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 if + 2 (a and b and c has 3 operands) + 1 (a or b has 2 operands) = 6
+    assert _compute_cyclomatic_complexity(func) == 6
+
+
+def test_cyclomatic_complexity_with_ternary() -> None:
+    """Conditional expressions (ternary) add 1."""
+    code = """
+def with_ternary(x):
+    return "yes" if x else "no"
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 IfExp = 2
+    assert _compute_cyclomatic_complexity(func) == 2
+
+
+def test_cyclomatic_complexity_with_comprehension_if() -> None:
+    """Comprehension if clauses add to complexity."""
+    code = """
+def with_list_comp(items):
+    return [x for x in items if x > 0 if x < 100]
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 2 if clauses in comprehension = 3
+    assert _compute_cyclomatic_complexity(func) == 3
+
+
+def test_cyclomatic_complexity_with_match_case() -> None:
+    """match/case (Python 3.10+) adds complexity per case."""
+    code = """
+def with_match(x):
+    match x:
+        case 1:
+            return "one"
+        case 2:
+            return "two"
+        case _:
+            return "other"
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 3 cases = 4
+    assert _compute_cyclomatic_complexity(func) == 4
+
+
+def test_cyclomatic_complexity_complex_function() -> None:
+    """Complex function with multiple branch types."""
+    code = """
+def complex_function(items, flag):
+    result = []
+    for item in items:
+        if item > 0 and flag:
+            try:
+                result.append(process(item))
+            except ValueError:
+                continue
+        elif item < 0:
+            result.append(-item)
+    return result if result else None
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Base 1 + 1 for + 1 if + 1 (and) + 1 except + 1 elif + 1 IfExp = 7
+    assert _compute_cyclomatic_complexity(func) == 7
+
+
+def test_lines_of_code_simple() -> None:
+    """LOC is end_line - start_line + 1."""
+    code = """def simple():
+    x = 1
+    return x
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Lines 1-3
+    assert _compute_lines_of_code(func) == 3
+
+
+def test_lines_of_code_multiline() -> None:
+    """LOC counts all lines in a function."""
+    code = """def multiline():
+    a = 1
+    b = 2
+    c = 3
+    d = 4
+    e = 5
+    return a + b + c + d + e
+"""
+    tree = ast.parse(code)
+    func = tree.body[0]
+    # Lines 1-7
+    assert _compute_lines_of_code(func) == 7
+
+
+def test_cyclomatic_complexity_in_output(tmp_path: Path) -> None:
+    """Cyclomatic complexity should appear in analysis output."""
+    py_file = tmp_path / "example.py"
+    py_file.write_text("""
+def simple():
+    return 42
+
+def branchy(x, y):
+    if x > 0:
+        if y > 0:
+            return "both positive"
+    return "not both positive"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
+
+    # simple() has complexity 1 (no branches)
+    assert functions["simple"]["cyclomatic_complexity"] == 1
+
+    # branchy() has complexity 3 (base 1 + 2 ifs)
+    assert functions["branchy"]["cyclomatic_complexity"] == 3
+
+
+def test_lines_of_code_in_output(tmp_path: Path) -> None:
+    """Lines of code should appear in analysis output."""
+    py_file = tmp_path / "example.py"
+    py_file.write_text("""def short():
+    return 1
+
+def longer():
+    a = 1
+    b = 2
+    c = 3
+    d = 4
+    return a + b + c + d
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
+
+    # short() is 2 lines
+    assert functions["short"]["lines_of_code"] == 2
+
+    # longer() is 6 lines
+    assert functions["longer"]["lines_of_code"] == 6
+
+
+def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
+    """Classes should also have cyclomatic_complexity and lines_of_code."""
+    py_file = tmp_path / "example.py"
+    py_file.write_text("""class MyClass:
+    def __init__(self, x):
+        self.x = x
+
+    def process(self):
+        if self.x > 0:
+            return self.x * 2
+        return 0
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    # Find the class
+    classes = [n for n in data["nodes"] if n["kind"] == "class"]
+    assert len(classes) == 1
+    cls = classes[0]
+    assert cls["lines_of_code"] == 8  # Lines 1-8
+    # Class complexity includes all methods' branches
+    assert cls["cyclomatic_complexity"] >= 1
+
+    # Find methods
+    methods = {n["name"]: n for n in data["nodes"] if n["kind"] == "method"}
+    assert methods["MyClass.__init__"]["lines_of_code"] == 2
+    assert methods["MyClass.__init__"]["cyclomatic_complexity"] == 1
+    assert methods["MyClass.process"]["lines_of_code"] == 4
+    assert methods["MyClass.process"]["cyclomatic_complexity"] == 2  # 1 base + 1 if
+
+
+# ============================================================================
+# Function Signature Extraction Tests
+# ============================================================================
+
+
+class TestPythonSignatureExtraction:
+    """Tests for Python function signature extraction in the analyzer."""
+
+    def test_simple_function_signature(self, tmp_path: Path) -> None:
+        """Extract signature for simple function with typed args and return."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def add(x: int, y: int) -> int:\n"
+            "    return x + y\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: int, y: int) -> int"
+
+    def test_signature_with_defaults(self, tmp_path: Path) -> None:
+        """Extract signature for function with default values."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def greet(name: str, greeting: str = 'hello') -> str:\n"
+            "    return f'{greeting}, {name}'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(name: str, greeting: str=…) -> str"
+
+    def test_signature_with_varargs(self, tmp_path: Path) -> None:
+        """Extract signature for function with *args."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def many(first: int, *rest) -> list:\n"
+            "    return [first] + list(rest)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(first: int, *rest) -> list"
+
+    def test_signature_with_kwargs(self, tmp_path: Path) -> None:
+        """Extract signature for function with **kwargs."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def options(**kwargs) -> dict:\n"
+            "    return kwargs\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(**kwargs) -> dict"
+
+    def test_signature_with_kwonly_args(self, tmp_path: Path) -> None:
+        """Extract signature for function with keyword-only args."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def kw_only(*, key: str, value: int = 0) -> None:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        # Note: the bare * is not captured as vararg, but kwonly args follow
+        assert funcs[0]["signature"] == "(key: str, value: int=…) -> None"
+
+    def test_signature_with_posonly_args(self, tmp_path: Path) -> None:
+        """Extract signature for function with positional-only args (PEP 570)."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def pos_only(x: int, y: int, /) -> int:\n"
+            "    return x + y\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: int, y: int) -> int"
+
+    def test_signature_subscript_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with subscript type (List[int], Dict[str, int])."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "from typing import List, Dict\n"
+            "def process(items: List[int]) -> Dict[str, int]:\n"
+            "    return {str(x): x for x in items}\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(items: List[int]) -> Dict[str, int]"
+
+    def test_signature_union_type(self, tmp_path: Path) -> None:
+        """Extract signature with union type (X | Y)."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "def maybe(x: int | str) -> int | None:\n"
+            "    return int(x) if isinstance(x, str) else x\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: int | str) -> int | None"
+
+    def test_signature_attribute_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with attribute type (typing.Optional)."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "import typing\n"
+            "def opt(x: typing.Optional[int]) -> typing.Optional[str]:\n"
+            "    return str(x) if x is not None else None\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "(x: typing.Optional[int]) -> typing.Optional[str]"
+
+    def test_signature_truncated_for_long_signature(self, tmp_path: Path) -> None:
+        """Long signatures should be truncated."""
+        py_file = tmp_path / "test.py"
+        # Create a function with many parameters
+        py_file.write_text(
+            "def long_func(param_one: str, param_two: str, param_three: str, "
+            "param_four: str, param_five: str, param_six: str, param_seven: str) -> str:\n"
+            "    return 'x'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0]["signature"]
+        # Signature should be truncated to max_len (60 by default) + ellipsis
+        assert len(sig) <= 60
+        assert sig.endswith("…")
+
+    def test_signature_constant_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with constant type like Literal['a', 'b']."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "from typing import Literal\n"
+            "def mode(m: Literal['read', 'write']) -> None:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        # Literal is subscript with tuple of constants
+        assert "Literal" in funcs[0]["signature"]
+
+    def test_signature_tuple_annotation(self, tmp_path: Path) -> None:
+        """Extract signature with tuple type Dict[str, int] uses tuple for key types."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "from typing import Tuple\n"
+            "def coords() -> Tuple[int, int]:\n"
+            "    return (0, 0)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        assert len(funcs) == 1
+        assert funcs[0]["signature"] == "() -> Tuple[int, int]"
+
+
+class TestModulePseudoNode:
+    """Tests for <module> pseudo-node creation for script-only files."""
+
+    def test_module_node_created_for_script_with_calls(self, tmp_path: Path) -> None:
+        """Script files with function calls get a module pseudo-node."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "import os\n"
+            "print('hello')\n"
+            "x = os.getcwd()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+        assert modules[0]["name"] == "<module:script.py>"
+        assert modules[0]["span"]["start_line"] == 1
+        assert modules[0]["span"]["end_line"] == 3
+
+    def test_module_node_created_for_script_with_if_main(self, tmp_path: Path) -> None:
+        """Scripts with if __name__ == '__main__' get a module pseudo-node."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "import sys\n"
+            "\n"
+            "def main():\n"
+            "    print('hello')\n"
+            "\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+        assert modules[0]["name"] == "<module:main.py>"
+
+    def test_no_module_node_for_pure_definitions(self, tmp_path: Path) -> None:
+        """Files with only imports/defs don't get a module pseudo-node."""
+        py_file = tmp_path / "lib.py"
+        py_file.write_text(
+            "import os\n"
+            "\n"
+            "def helper():\n"
+            "    return os.getcwd()\n"
+            "\n"
+            "class MyClass:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+    def test_module_node_created_for_assignment(self, tmp_path: Path) -> None:
+        """Files with module-level assignments get a module pseudo-node."""
+        py_file = tmp_path / "config.py"
+        py_file.write_text(
+            "import os\n"
+            "CONFIG = {'debug': True}\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+        assert modules[0]["name"] == "<module:config.py>"
+
+    def test_no_module_node_for_docstring_only(self, tmp_path: Path) -> None:
+        """Files with only docstring don't get a module pseudo-node."""
+        py_file = tmp_path / "empty.py"
+        py_file.write_text(
+            '"""This module does nothing."""\n'
+            "\n"
+            "import os\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+    def test_no_module_node_for_pass_only(self, tmp_path: Path) -> None:
+        """Files with only pass statements don't get a module pseudo-node."""
+        py_file = tmp_path / "stub.py"
+        py_file.write_text(
+            '"""Stub module."""\n'
+            "pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+    def test_no_module_node_for_type_annotation_only(self, tmp_path: Path) -> None:
+        """Files with only type annotations don't get a module pseudo-node."""
+        py_file = tmp_path / "types.py"
+        py_file.write_text(
+            '"""Type stubs."""\n'
+            "x: int\n"
+            "y: str\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 0
+
+
+class TestModuleQualifiedCalls:
+    """Tests for module-qualified call resolution (module.func(), module.Class())."""
+
+    def test_module_qualified_function_call(self, tmp_path: Path) -> None:
+        """Module-qualified function calls (module.func()) should emit calls edges."""
+        # Create a utility module
+        utils_file = tmp_path / "utils.py"
+        utils_file.write_text(
+            "def helper():\n"
+            "    pass\n"
+        )
+
+        # Create main module that uses 'import utils' and calls utils.helper()
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import utils\n"
+            "\n"
+            "def run():\n"
+            "    utils.helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        assert len(call_edges) >= 1, "Expected at least one call edge"
+
+        # Verify the call edge: run -> helper
+        run_helper_edge = next(
+            (e for e in call_edges if "run" in e["src"] and "helper" in e["dst"]),
+            None
+        )
+        assert run_helper_edge is not None, "Expected call edge from run to helper"
+        assert "utils.py" in run_helper_edge["dst"]
+
+    def test_module_qualified_class_instantiation(self, tmp_path: Path) -> None:
+        """Module-qualified instantiation (module.Class()) should emit instantiates edges."""
+        # Create a module with a class
+        models_file = tmp_path / "models.py"
+        models_file.write_text(
+            "class User:\n"
+            "    def __init__(self):\n"
+            "        pass\n"
+        )
+
+        # Create main module that uses 'import models' and instantiates models.User()
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import models\n"
+            "\n"
+            "def create_user():\n"
+            "    user = models.User()\n"
+            "    return user\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Find instantiates edges
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        assert len(inst_edges) >= 1, "Expected at least one instantiates edge"
+
+        # Verify the instantiates edge: create_user -> User
+        create_user_edge = next(
+            (e for e in inst_edges if "create_user" in e["src"] and "User" in e["dst"]),
+            None
+        )
+        assert create_user_edge is not None, "Expected instantiates edge from create_user to User"
+        assert "models.py" in create_user_edge["dst"]
+        assert create_user_edge["meta"]["evidence_type"] == "ast_new"
+
+    def test_aliased_module_import(self, tmp_path: Path) -> None:
+        """Aliased module imports (import X as Y) should resolve calls correctly."""
+        # Create a utility module
+        utils_file = tmp_path / "utils.py"
+        utils_file.write_text(
+            "def helper():\n"
+            "    pass\n"
+        )
+
+        # Create main module with aliased import
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import utils as u\n"
+            "\n"
+            "def run():\n"
+            "    u.helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        run_helper_edge = next(
+            (e for e in call_edges if "run" in e["src"] and "helper" in e["dst"]),
+            None
+        )
+        assert run_helper_edge is not None, "Expected call edge from run to helper via alias"
+
+
+class TestVariableMethodCalls:
+    """Tests for variable method call resolution with type inference."""
+
+    def test_variable_method_call_with_type_inference(self, tmp_path: Path) -> None:
+        """Variable method calls (stub.method()) should resolve using constructor type."""
+        # Create a client class with a method
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "class ServiceClient:\n"
+            "    def __init__(self):\n"
+            "        pass\n"
+            "\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+        )
+
+        # Create main module that instantiates and calls method
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import ServiceClient\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = ServiceClient()\n"
+            "    stub.send_request()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have both instantiates and calls edges
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Verify instantiates edge
+        inst_edge = next(
+            (e for e in inst_edges if "make_request" in e["src"] and "ServiceClient" in e["dst"]),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for ServiceClient"
+
+        # Verify calls edge from stub.send_request() to ServiceClient.send_request
+        method_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "send_request" in e["dst"]),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for send_request method"
+        assert "client.py" in method_edge["dst"]
+
+    def test_module_qualified_instantiation_with_method_call(self, tmp_path: Path) -> None:
+        """Module.Class() instantiation followed by method call should resolve."""
+        # Create a service module with a stub class
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class EmailServiceStub:\n"
+            "    def __init__(self, channel):\n"
+            "        pass\n"
+            "\n"
+            "    def SendEmail(self, request):\n"
+            "        pass\n"
+        )
+
+        # Create main module using import service pattern
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "import service\n"
+            "\n"
+            "def send_confirmation():\n"
+            "    stub = service.EmailServiceStub(None)\n"
+            "    stub.SendEmail({})\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Verify instantiates edge
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        inst_edge = next(
+            (e for e in inst_edges if "send_confirmation" in e["src"] and "EmailServiceStub" in e["dst"]),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for EmailServiceStub"
+
+        # Verify calls edge for SendEmail
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        method_edge = next(
+            (e for e in call_edges if "send_confirmation" in e["src"] and "SendEmail" in e["dst"]),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for SendEmail method"
+
+    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
+        """Type inference only works for constructor assignments, not function returns."""
+        # Create a client class
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "class ServiceClient:\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_client():\n"
+            "    return ServiceClient()\n"
+        )
+
+        # Create main module using function return (NOT tracked)
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import get_client\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = get_client()  # NOT tracked - function return\n"
+            "    stub.send_request()  # Should NOT be resolved\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have a call edge for get_client()
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        get_client_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "get_client" in e["dst"]),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for get_client"
+
+        # Should NOT have a call edge for send_request (type not tracked from function return)
+        send_request_edge = next(
+            (e for e in call_edges if "send_request" in e["dst"]),
+            None
+        )
+        assert send_request_edge is None, "Should NOT resolve stub.send_request() from function return"
+
+    def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
+        """Module-level code with module.func() calls should emit edges from <module> node."""
+        # Create a utility module
+        utils_file = tmp_path / "utils.py"
+        utils_file.write_text(
+            "def configure():\n"
+            "    pass\n"
+        )
+
+        # Create a script that calls utils.configure() at module level
+        script_file = tmp_path / "script.py"
+        script_file.write_text(
+            "import utils\n"
+            "\n"
+            "utils.configure()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have a <module> pseudo-node
+        module_nodes = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(module_nodes) == 1
+        assert module_nodes[0]["name"] == "<module:script.py>"
+
+        # Should have a call edge from <module:script.py> to utils.configure
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        module_call_edge = next(
+            (e for e in call_edges if "<module:script.py>" in e["src"] and "configure" in e["dst"]),
+            None
+        )
+        assert module_call_edge is not None, "Expected call edge from <module> to configure"
+
+    def test_local_class_instantiation_with_method_call(self, tmp_path: Path) -> None:
+        """Local class instantiation followed by method call should resolve."""
+        # Single file with class and usage in same file
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "class LocalClient:\n"
+            "    def process(self):\n"
+            "        pass\n"
+            "\n"
+            "def run():\n"
+            "    client = LocalClient()\n"
+            "    client.process()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have instantiates edge
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        inst_edge = next(
+            (e for e in inst_edges if "run" in e["src"] and "LocalClient" in e["dst"]),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for LocalClient"
+
+        # Should have calls edge for process method
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        method_edge = next(
+            (e for e in call_edges if "run" in e["src"] and "process" in e["dst"]),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for process method"
+
+    def test_unresolved_variable_method_call(self, tmp_path: Path) -> None:
+        """Unresolved variable method calls should not emit edges."""
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "def run(external_client):\n"
+            "    # external_client type is unknown, can't be resolved\n"
+            "    external_client.unknown_method()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have no calls edges (method call can't be resolved)
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        assert len(call_edges) == 0, "Should not have calls edges for unresolved variable"
+
+    def test_unresolved_constructor_no_type_tracking(self, tmp_path: Path) -> None:
+        """Unresolved constructor calls should not track variable type."""
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "def run():\n"
+            "    # unknown_factory is not defined - type can't be tracked\n"
+            "    stub = unknown_factory()\n"
+            "    stub.do_something()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        # Should have no edges (neither instantiates nor calls)
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
+        assert len(call_edges) == 0, "Should not have calls edges for unresolved constructor"
+        assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"

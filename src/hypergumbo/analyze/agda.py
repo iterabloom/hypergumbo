@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -158,6 +159,28 @@ def _is_type_signature(rhs_node: "tree_sitter.Node", source: bytes) -> bool:
     return text.startswith(":")
 
 
+def _extract_agda_signature(
+    rhs_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract type signature from an Agda function rhs node.
+
+    Agda type signatures look like:
+        double : Nat -> Nat
+        add : Nat -> Nat -> Nat
+
+    The rhs node contains:
+    - : token
+    - expr (the type expression like "Nat -> Nat")
+
+    Returns signature like ": Nat -> Nat".
+    """
+    # The rhs node text already starts with ":"
+    sig_text = _node_text(rhs_node, source).strip()
+    if sig_text.startswith(":"):
+        return sig_text
+    return None  # pragma: no cover - defensive, called only for type signatures
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -180,6 +203,7 @@ def _extract_symbols_from_file(
         name: str,
         kind: str,
         meta: dict | None = None,
+        signature: Optional[str] = None,
     ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:
@@ -204,12 +228,31 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         )
         if meta:
             sym.meta = meta
         symbols.append(sym)
 
-    def walk(node: "tree_sitter.Node") -> None:
+    def _is_inside_data(node: "tree_sitter.Node") -> bool:
+        """Check if node is inside a data declaration."""
+        current = node.parent
+        while current is not None:
+            if current.type == "data":
+                return True
+            current = current.parent
+        return False  # pragma: no cover - defensive
+
+    def _is_inside_postulate(node: "tree_sitter.Node") -> bool:
+        """Check if node is inside a postulate block."""
+        current = node.parent
+        while current is not None:
+            if current.type == "postulate":
+                return True
+            current = current.parent
+        return False  # pragma: no cover - defensive
+
+    for node in iter_tree(tree.root_node):
         if node.type == "module":
             # Module declaration
             name_node = _find_child_by_type(node, "module_name")
@@ -231,7 +274,14 @@ def _extract_symbols_from_file(
                 if _is_type_signature(rhs, source):
                     name = _get_function_name_from_lhs(lhs, source)
                     if name:
-                        add_symbol(node, name, "function")
+                        sig = _extract_agda_signature(rhs, source)
+                        # Determine if this is a constructor or postulate
+                        if _is_inside_data(node):
+                            add_symbol(node, name, "function", {"is_constructor": True}, signature=sig)
+                        elif _is_inside_postulate(node):
+                            add_symbol(node, name, "function", {"is_postulate": True}, signature=sig)
+                        else:
+                            add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "data":
             # Data type definition
@@ -240,16 +290,6 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source).strip()
                 add_symbol(node, name, "data")
 
-            # Also extract constructors as functions
-            for child in node.children:
-                if child.type == "function":
-                    inner_lhs = _find_child_by_type(child, "lhs")
-                    inner_rhs = _find_child_by_type(child, "rhs")
-                    if inner_lhs and inner_rhs and _is_type_signature(inner_rhs, source):
-                        ctor_name = _get_function_name_from_lhs(inner_lhs, source)
-                        if ctor_name:
-                            add_symbol(child, ctor_name, "function", {"is_constructor": True})
-
         elif node.type == "record":
             # Record type definition
             name_node = _find_child_by_type(node, "record_name")
@@ -257,22 +297,6 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source).strip()
                 add_symbol(node, name, "record")
 
-        elif node.type == "postulate":
-            # Postulate block - extract inner functions
-            for child in node.children:
-                if child.type == "function":
-                    inner_lhs = _find_child_by_type(child, "lhs")
-                    inner_rhs = _find_child_by_type(child, "rhs")
-                    if inner_lhs and inner_rhs and _is_type_signature(inner_rhs, source):
-                        name = _get_function_name_from_lhs(inner_lhs, source)
-                        if name:
-                            add_symbol(child, name, "function", {"is_postulate": True})
-
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
 
 
@@ -292,7 +316,7 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "open":
             # open import ... statement
             import_node = _find_child_by_type(node, "import")
@@ -333,11 +357,6 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

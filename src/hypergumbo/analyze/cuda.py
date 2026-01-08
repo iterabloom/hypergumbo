@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -108,6 +109,39 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None  # pragma: no cover
 
 
+def _extract_cuda_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a CUDA function definition.
+
+    CUDA uses C/C++ syntax: return_type function_name(type1 param1, type2 param2)
+    Returns signature like "(int x, float* data) int".
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    # Find function_declarator for parameters
+    declarator = _find_child_by_type(node, "function_declarator")
+    if declarator:
+        # Find parameter_list within declarator
+        for child in declarator.children:
+            if child.type == "parameter_list":
+                for param_child in child.children:
+                    if param_child.type == "parameter_declaration":
+                        param_text = _node_text(param_child, source).strip()
+                        if param_text:
+                            params.append(param_text)
+
+    # Find return type (primitive_type, type_identifier, etc.)
+    for child in node.children:
+        if child.type in ("primitive_type", "type_identifier", "sized_type_specifier"):
+            return_type = _node_text(child, source).strip()
+            break
+
+    sig = "(" + ", ".join(params) + ")"
+    if return_type and return_type != "void":
+        sig += f" {return_type}"
+    return sig
+
+
 def _get_cuda_attributes(node: "tree_sitter.Node") -> tuple[bool, bool, bool]:
     """Check for __global__, __device__, __host__ attributes.
 
@@ -143,113 +177,120 @@ def _determine_function_kind(is_global: bool, is_device: bool, is_host: bool) ->
         return "function"  # No CUDA attributes = regular function
 
 
-def _process_cuda_tree(
+def _get_enclosing_cuda_function(
     node: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    symbol_registry: dict[str, str],
+) -> Optional[str]:
+    """Walk up to find the enclosing function definition's symbol ID."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            func_name = _get_function_name(current, source)
+            if func_name and func_name.lower() in symbol_registry:
+                return symbol_registry[func_name.lower()]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _process_cuda_tree(
+    root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
     symbol_registry: dict[str, str],
-    current_function_id: list[Optional[str]],
 ) -> None:
     """Process CUDA AST tree to extract symbols and edges.
 
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+
     Args:
-        node: Tree-sitter node to process
+        root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         symbol_registry: Registry mapping function names to symbol IDs
-        current_function_id: Current function context for tracking calls (mutable wrapper)
     """
-    if node.type == "function_definition":
-        func_name = _get_function_name(node, source)
-        if func_name:
-            is_global, is_device, is_host = _get_cuda_attributes(node)
-            kind = _determine_function_kind(is_global, is_device, is_host)
+    for node in iter_tree(root_node):
+        if node.type == "function_definition":
+            func_name = _get_function_name(node, source)
+            if func_name:
+                is_global, is_device, is_host = _get_cuda_attributes(node)
+                kind = _determine_function_kind(is_global, is_device, is_host)
 
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, kind)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, kind)
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=func_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind=kind,
-                name=func_name,
-                path=rel_path,
-                language="cuda",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                meta={"is_kernel": is_global} if is_global else None,
-            )
-            symbols.append(sym)
-            symbol_registry[func_name.lower()] = symbol_id
+                # Extract signature
+                signature = _extract_cuda_signature(node, source)
 
-            # Set current function context for nested call detection
-            prev_function_id = current_function_id[0]
-            current_function_id[0] = symbol_id
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=func_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind=kind,
+                    name=func_name,
+                    path=rel_path,
+                    language="cuda",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=signature,
+                    meta={"is_kernel": is_global} if is_global else None,
+                )
+                symbols.append(sym)
+                symbol_registry[func_name.lower()] = symbol_id
 
-            # Process children
-            for child in node.children:
-                _process_cuda_tree(child, source, rel_path, symbols, edges, symbol_registry, current_function_id)
+        elif node.type == "call_expression":
+            # Check for kernel launch syntax <<<...>>> (parsed as kernel_call_syntax)
+            is_kernel_launch = any(child.type == "kernel_call_syntax" for child in node.children)
 
-            # Restore previous context
-            current_function_id[0] = prev_function_id
-            return  # Don't recurse again after function body
+            # Get the function name being called
+            func_node = _find_child_by_type(node, "identifier")
+            if not func_node:  # pragma: no cover - method call edge case
+                # Try field_expression for method calls
+                field_expr = _find_child_by_type(node, "field_expression")  # pragma: no cover
+                if field_expr:  # pragma: no cover
+                    # Get the method name
+                    for child in field_expr.children:  # pragma: no cover
+                        if child.type == "field_identifier":  # pragma: no cover
+                            func_node = child  # pragma: no cover
+                            break  # pragma: no cover
 
-    elif node.type == "call_expression":
-        # Check for kernel launch syntax <<<...>>> (parsed as kernel_call_syntax)
-        is_kernel_launch = any(child.type == "kernel_call_syntax" for child in node.children)
+            current_function_id = _get_enclosing_cuda_function(node, source, rel_path, symbol_registry)
+            if func_node and current_function_id:
+                called_name = _node_text(func_node, source)
+                edge_type = "kernel_launch" if is_kernel_launch else "calls"
+                start_line = node.start_point[0] + 1
 
-        # Get the function name being called
-        func_node = _find_child_by_type(node, "identifier")
-        if not func_node:  # pragma: no cover - method call edge case
-            # Try field_expression for method calls
-            field_expr = _find_child_by_type(node, "field_expression")  # pragma: no cover
-            if field_expr:  # pragma: no cover
-                # Get the method name
-                for child in field_expr.children:  # pragma: no cover
-                    if child.type == "field_identifier":  # pragma: no cover
-                        func_node = child  # pragma: no cover
-                        break  # pragma: no cover
+                # Create a destination ID - either from registry or synthetic
+                if called_name.lower() in symbol_registry:
+                    dst_id = symbol_registry[called_name.lower()]
+                else:
+                    # Synthetic ID for unknown functions (like CUDA API)
+                    dst_id = f"cuda:external:{called_name}:function"
 
-        if func_node and current_function_id[0]:
-            called_name = _node_text(func_node, source)
-            edge_type = "kernel_launch" if is_kernel_launch else "calls"
-            start_line = node.start_point[0] + 1
-
-            # Create a destination ID - either from registry or synthetic
-            if called_name.lower() in symbol_registry:
-                dst_id = symbol_registry[called_name.lower()]
-            else:
-                # Synthetic ID for unknown functions (like CUDA API)
-                dst_id = f"cuda:external:{called_name}:function"
-
-            edge = Edge(
-                id=_make_edge_id(current_function_id[0], dst_id, edge_type),
-                src=current_function_id[0],
-                dst=dst_id,
-                edge_type=edge_type,
-                line=start_line,
-                confidence=0.90 if called_name.lower() in symbol_registry else 0.70,
-                origin=PASS_ID,
-                evidence_type="cuda_kernel_launch" if is_kernel_launch else "cuda_call",
-            )
-            edges.append(edge)
-
-    # Recurse into children
-    for child in node.children:
-        _process_cuda_tree(child, source, rel_path, symbols, edges, symbol_registry, current_function_id)
+                edge = Edge(
+                    id=_make_edge_id(current_function_id, dst_id, edge_type),
+                    src=current_function_id,
+                    dst=dst_id,
+                    edge_type=edge_type,
+                    line=start_line,
+                    confidence=0.90 if called_name.lower() in symbol_registry else 0.70,
+                    origin=PASS_ID,
+                    evidence_type="cuda_kernel_launch" if is_kernel_launch else "cuda_call",
+                )
+                edges.append(edge)
 
 
 def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
@@ -300,9 +341,6 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Current function context for call tracking
-            current_function_id: list[Optional[str]] = [None]
-
             # Process this file
             _process_cuda_tree(
                 tree.root_node,
@@ -311,7 +349,6 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
                 symbols,
                 edges,
                 symbol_registry,
-                current_function_id,
             )
 
         except Exception as e:  # pragma: no cover

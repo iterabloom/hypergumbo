@@ -4,6 +4,7 @@ from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import (
     detect_entrypoints,
     EntrypointKind,
+    _is_test_file,
 )
 
 
@@ -126,6 +127,52 @@ class TestCLIEntrypoints:
 
         assert len(entrypoints) == 1
         assert entrypoints[0].kind == EntrypointKind.CLI_COMMAND
+
+    def test_c_main_detected_as_cli(self) -> None:
+        """C main function is detected as CLI_MAIN."""
+        sym = make_symbol("main", path="src/main.c", language="c")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_cpp_main_detected_as_cli(self) -> None:
+        """C++ main function is detected as CLI_MAIN."""
+        sym = make_symbol("main", path="src/main.cpp", language="cpp")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_glsl_main_not_detected_as_cli(self) -> None:
+        """GLSL shader main function is NOT detected as CLI_MAIN."""
+        sym = make_symbol("main", path="shaders/vertex.glsl", language="glsl")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # GLSL main is a shader entry point, not a CLI entry point
+        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_hlsl_main_not_detected_as_cli(self) -> None:
+        """HLSL shader main function is NOT detected as CLI_MAIN."""
+        sym = make_symbol("main", path="shaders/pixel.hlsl", language="hlsl")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
+
+    def test_wgsl_main_not_detected_as_cli(self) -> None:
+        """WGSL shader main function is NOT detected as CLI_MAIN."""
+        sym = make_symbol("main", path="shaders/compute.wgsl", language="wgsl")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
 
 
 class TestElectronEntrypoints:
@@ -501,6 +548,30 @@ class TestExpressEntrypoints:
     def test_express_file_symbol_not_detected(self) -> None:
         """File symbols in route files are not detected as routes."""
         sym = make_symbol("file", kind="file", path="src/routes.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
+
+    def test_express_tsx_files_not_detected(self) -> None:
+        """TSX files in routes directory are React components, not Express routes.
+
+        React file-based routing (TanStack Router, Next.js app router) uses
+        routes/*.tsx for components, which should not be detected as Express routes.
+        """
+        sym = make_symbol("Dashboard", path="frontend/src/routes/index.tsx", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 0
+
+    def test_express_jsx_files_not_detected(self) -> None:
+        """JSX files in routes directory are React components, not Express routes."""
+        sym = make_symbol("App", path="frontend/src/routes/App.jsx", language="javascript")
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
@@ -1993,6 +2064,16 @@ class TestHapiEntrypoints:
         hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
         assert len(hapi_eps) == 0
 
+    def test_hapi_tsx_files_not_detected(self) -> None:
+        """TSX files in routes/ are React components, not Hapi routes."""
+        sym = make_symbol("Dashboard", path="frontend/src/routes/dashboard.tsx", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
+        assert len(hapi_eps) == 0
+
 
 class TestFastifyEntrypoints:
     """Tests for Fastify (Node.js) route detection."""
@@ -2202,6 +2283,16 @@ class TestKoaEntrypoints:
     def test_koa_non_route_file_not_detected(self) -> None:
         """Non-route JS files are not detected as Koa."""
         sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
+        assert len(koa_eps) == 0
+
+    def test_koa_tsx_files_not_detected(self) -> None:
+        """TSX files with .controller. pattern are React, not Koa."""
+        sym = make_symbol("UserController", path="src/components/user.controller.tsx", language="typescript")
         nodes = [sym]
 
         entrypoints = detect_entrypoints(nodes, [])
@@ -2448,6 +2539,22 @@ class TestTornadoEntrypoints:
             make_symbol("spec_func", path="app/handlers/spec_user.py", language="python"),
             # Cover _spec.py suffix pattern: file ending in _handler.py but also _spec.py
             make_symbol("describe", path="app/user_handler_spec.py", language="python"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
+
+        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
+        assert len(tornado_eps) == 0
+
+    def test_tornado_non_web_handlers_not_detected(self) -> None:
+        """Non-web handler patterns are excluded (error, signal, event handlers)."""
+        syms = [
+            make_symbol("ErrorHandler", path="app/error_handler.py", language="python"),
+            make_symbol("SignalHandler", path="app/signal_handler.py", language="python"),
+            make_symbol("EventHandler", path="app/event_handler.py", language="python"),
+            make_symbol("ExceptionHandler", path="app/exception_handler.py", language="python"),
+            make_symbol("LoggingHandler", path="app/logging_handler.py", language="python"),
+            make_symbol("LogHandler", path="app/log_handler.py", language="python"),
         ]
 
         entrypoints = detect_entrypoints(syms, [])
@@ -2785,6 +2892,40 @@ class TestMicronautEntrypoints:
         micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
         assert len(micronaut_eps) == 0
 
+    def test_grpc_service_client_not_detected(self) -> None:
+        """gRPC stub wrappers (*ServiceClient) are NOT Micronaut clients.
+
+        Files like AdServiceClient.java are typically gRPC stub wrappers,
+        not Micronaut HTTP clients. They should be excluded.
+        """
+        sym = make_symbol("AdServiceClient", path="src/AdServiceClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_grpc_client_not_detected(self) -> None:
+        """*GrpcClient.java files are NOT Micronaut clients."""
+        sym = make_symbol("UserGrpcClient", path="src/UserGrpcClient.java", language="java")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
+    def test_rpc_client_not_detected(self) -> None:
+        """*RpcClient.java files are NOT Micronaut clients."""
+        sym = make_symbol("OrderRpcClient", path="src/OrderRpcClient.kt", language="kotlin")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
+        assert len(micronaut_eps) == 0
+
 
 class TestGraphQLServerEntrypoints:
     """Tests for GraphQL server (Apollo, Yoga, Mercurius) detection.
@@ -2959,3 +3100,116 @@ class TestGraphQLServerEntrypoints:
 
         graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
         assert len(graphql_eps) == 0
+
+    def test_graphql_tsx_files_not_detected(self) -> None:
+        """TSX files in graphql/ are React components, not GraphQL servers."""
+        sym = make_symbol("GraphQLProvider", path="src/graphql/Provider.tsx", language="typescript")
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+    def test_graphql_non_graphql_resolvers_not_detected(self) -> None:
+        """Non-GraphQL resolver patterns are excluded (dns, promise, dependency)."""
+        syms = [
+            make_symbol("DnsResolver", path="src/dns-resolver.js", language="javascript"),
+            make_symbol("resolve", path="src/promise_resolver.ts", language="typescript"),
+            make_symbol("DependencyResolver", path="src/dependency-resolver.js", language="javascript"),
+            make_symbol("resolve", path="src/path_resolver.js", language="javascript"),
+            make_symbol("ModuleResolver", path="src/module-resolver.ts", language="typescript"),
+        ]
+
+        entrypoints = detect_entrypoints(syms, [])
+
+        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(graphql_eps) == 0
+
+
+class TestIsTestFile:
+    """Tests for _is_test_file function."""
+
+    def test_python_test_prefix(self) -> None:
+        """Detect Python test_ prefix."""
+        assert _is_test_file("test_main.py")
+        assert _is_test_file("src/test_utils.py")
+
+    def test_python_test_suffix(self) -> None:
+        """Detect Python _test.py suffix."""
+        assert _is_test_file("main_test.py")
+        assert _is_test_file("src/utils_test.py")
+
+    def test_python_spec_patterns(self) -> None:
+        """Detect Python spec patterns."""
+        assert _is_test_file("spec_main.py")
+        assert _is_test_file("main_spec.py")
+
+    def test_go_test_suffix(self) -> None:
+        """Detect Go _test.go suffix."""
+        assert _is_test_file("main_test.go")
+        assert _is_test_file("pkg/handlers/user_test.go")
+
+    def test_mock_filename_suffix(self) -> None:
+        """Detect *_mock.* filename patterns."""
+        assert _is_test_file("user_mock.go")
+        assert _is_test_file("service_mock.py")
+        assert _is_test_file("src/handler_mock.ts")
+
+    def test_mock_filename_prefix(self) -> None:
+        """Detect mock_*.* filename patterns."""
+        assert _is_test_file("src/mock_user.go")
+        assert _is_test_file("mock_service.py")
+
+    def test_fake_filename_suffix(self) -> None:
+        """Detect *_fake.* filename patterns."""
+        assert _is_test_file("user_fake.go")
+        assert _is_test_file("src/handler_fake.ts")
+
+    def test_fake_filename_prefix(self) -> None:
+        """Detect fake_*.* filename patterns."""
+        assert _is_test_file("src/fake_user.go")
+        assert _is_test_file("fake_handler.go")
+
+    def test_fakes_directory(self) -> None:
+        """Detect files in fakes/ directory."""
+        assert _is_test_file("pkg/rtc/transport/transportfakes/fake_handler.go")
+        assert _is_test_file("internal/fakes/mock_service.go")
+
+    def test_mocks_directory(self) -> None:
+        """Detect files in mocks/ directory."""
+        assert _is_test_file("pkg/mocks/user_service.go")
+        assert _is_test_file("src/mocks/api_client.ts")
+
+    def test_fixtures_directory(self) -> None:
+        """Detect files in fixtures/ directory."""
+        assert _is_test_file("tests/fixtures/sample_data.json")
+        assert _is_test_file("fixtures/test_user.py")
+
+    def test_testdata_directory(self) -> None:
+        """Detect files in testdata/ directory."""
+        assert _is_test_file("pkg/testdata/sample.txt")
+        assert _is_test_file("testdata/config.yaml")
+
+    def test_testutils_directory(self) -> None:
+        """Detect files in testutils/ directory."""
+        assert _is_test_file("pkg/testutils/helpers.go")
+        assert _is_test_file("testutils/factory.py")
+
+    def test_regular_file_not_detected(self) -> None:
+        """Regular source files are not detected as test files."""
+        assert not _is_test_file("src/main.py")
+        assert not _is_test_file("pkg/handlers/user.go")
+        assert not _is_test_file("internal/api/routes.ts")
+
+    def test_case_insensitive_directories(self) -> None:
+        """Directory matching is case-insensitive."""
+        assert _is_test_file("src/MOCKS/service.go")
+        assert _is_test_file("Fixtures/data.json")
+        assert _is_test_file("TESTDATA/sample.txt")
+
+    def test_compound_directory_names(self) -> None:
+        """Detect directories ending with 'fakes' or 'mocks'."""
+        # These hit endswith("fakes") and endswith("mocks") specifically
+        assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
+        assert _is_test_file("internal/servicemocks/client.go")

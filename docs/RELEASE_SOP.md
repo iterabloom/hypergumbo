@@ -74,6 +74,82 @@ Two secrets must be configured in the repository settings:
 | `PYPI_TOKEN` | Publishing to PyPI | Create at https://pypi.org/manage/account/token/ |
 | `FORGEJO_TOKEN` | Creating Forgejo releases | Create at https://codeberg.org/user/settings/applications |
 
+### GPG Signing Setup
+
+Branch protection requires signed commits. Set up GPG signing before your first release.
+
+#### Key Hierarchy (Recommended)
+
+For security, use a master key on a trusted machine with subkeys on development machines:
+
+```
+Master Key [C] (trusted machine, kept offline)
+├── Signing Subkey [S] (exported to dev machines)
+└── Encryption Subkey [E] (exported to dev machines)
+```
+
+If a development machine is compromised, revoke subkeys and generate new ones without losing your identity.
+
+#### Setup Steps
+
+**On trusted machine (once):**
+
+```bash
+# 1. Create master key (Certify only)
+gpg --expert --full-generate-key
+# Select: (11) ECC → toggle off Sign → Curve 25519 → 2y expiry
+
+# 2. Add signing subkey
+gpg --expert --edit-key YOUR_EMAIL
+# gpg> addkey → (11) ECC → keep Sign → Curve 25519 → 2y → save
+
+# 3. Add encryption subkey
+gpg --expert --edit-key YOUR_EMAIL
+# gpg> addkey → (12) ECC (encrypt only) → Curve 25519 → 2y → save
+
+# 4. Backup master key (store securely offline!)
+gpg --export-secret-keys --armor YOUR_EMAIL > master-secret.asc
+gpg --gen-revoke YOUR_EMAIL > revoke.asc
+
+# 5. Export subkeys only (for dev machines)
+gpg --export-secret-subkeys --armor YOUR_EMAIL > subkeys-only.asc
+gpg --export --armor YOUR_EMAIL > public.asc
+```
+
+**On development machine:**
+
+```bash
+# 1. Import keys
+gpg --import public.asc
+gpg --import subkeys-only.asc
+
+# 2. Trust the key
+gpg --edit-key YOUR_EMAIL
+# gpg> trust → 5 (ultimate) → quit
+
+# 3. Configure git
+git config --global user.signingkey YOUR_SIGNING_SUBKEY_ID
+git config --global commit.gpgsign true
+git config --global gpg.program gpg
+
+# 4. Fix terminal issue (add to ~/.bashrc)
+echo 'export GPG_TTY=$(tty)' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**On Codeberg:**
+
+1. Go to https://codeberg.org/user/settings/keys
+2. Add your public key under "GPG Keys"
+
+#### Verify Setup
+
+```bash
+echo "test" | gpg --clear-sign  # Should prompt for passphrase
+git commit --allow-empty -m "test: verify signing"
+git log --show-signature -1  # Should show "Good signature"
+```
+
 ### Version Consistency
 
 Before releasing, ensure version is consistent across:
@@ -90,23 +166,27 @@ Update `CHANGELOG.md` with release notes. The workflow extracts the section matc
 
 ### Option A: Tag-Based Release (Recommended)
 
+Requires GPG signing configured (see Prerequisites). Signed commits satisfy branch protection.
+
 ```bash
-# 1. Sync dev and merge to main
+# 1. Sync dev and merge to main (creates signed merge commit)
 git checkout dev && git pull origin dev
 git checkout main && git pull origin main
 git merge dev --no-ff -m "chore: merge dev into main for release"
+git push origin main
 
 # 2. Update version and changelog
 ./scripts/bump-version 0.6.0
 # Edit CHANGELOG.md with release notes
 
-# 3. Commit version bump
+# 3. Commit version bump (signed automatically)
 git add pyproject.toml CHANGELOG.md
 git commit -s -m "chore: release v0.6.0"
 
 # 4. Create and push tag
+git push origin main
 git tag v0.6.0
-git push origin main v0.6.0
+git push origin v0.6.0
 
 # 5. Merge release commit back to dev
 git checkout dev
@@ -115,6 +195,8 @@ git push origin dev
 ```
 
 The workflow triggers automatically on tag push.
+
+**Without GPG signing:** Use PRs instead of direct pushes for steps 1 and 5.
 
 ### Option B: Manual Dispatch (for testing)
 
@@ -193,7 +275,7 @@ Prereleases are:
 - [ ] Verify package on PyPI: https://pypi.org/project/hypergumbo/
 - [ ] Verify release on Codeberg: https://codeberg.org/iterabloom/hypergumbo/releases
 - [ ] Test installation: `pip install hypergumbo==X.Y.Z`
-- [ ] Update STATUS.md if needed
+- [ ] Update CHANGELOG.md if needed
 - [ ] Announce release (if significant)
 
 ## Platform Notes

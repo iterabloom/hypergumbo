@@ -472,3 +472,47 @@ fn caller() i32 {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # caller should call helper
         assert len(call_edges) >= 1
+
+
+class TestZigSignatureExtraction:
+    """Tests for Zig function signature extraction."""
+
+    def test_typed_params_with_return_type(self, tmp_path: Path) -> None:
+        """Extracts signature from function with typed params and return type."""
+        (tmp_path / "Calculator.zig").write_text(
+            """fn add(x: i32, y: i32) i32 {
+    return x + y;
+}
+"""
+        )
+        result = analyze_zig(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x: i32, y: i32) i32"
+
+    def test_void_return_type_omitted(self, tmp_path: Path) -> None:
+        """Omits void return type from signature."""
+        (tmp_path / "Logger.zig").write_text(
+            """fn log(message: []const u8) void {
+    _ = message;
+}
+"""
+        )
+        result = analyze_zig(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "log"]
+        assert len(funcs) == 1
+        # void is omitted
+        assert funcs[0].signature == "(message: []const u8)"
+
+    def test_no_params_function(self, tmp_path: Path) -> None:
+        """Extracts signature from function with no parameters."""
+        (tmp_path / "Simple.zig").write_text(
+            """fn getAnswer() i32 {
+    return 42;
+}
+"""
+        )
+        result = analyze_zig(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "getAnswer"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "() i32"

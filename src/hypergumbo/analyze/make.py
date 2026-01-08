@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -136,7 +137,7 @@ def _get_include_files(node: "tree_sitter.Node", source: bytes) -> list[str]:
 
 
 def _process_make_tree(
-    node: "tree_sitter.Node",
+    root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
@@ -146,76 +147,29 @@ def _process_make_tree(
     """Process Makefile AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         target_registry: Registry mapping target names to symbol IDs
     """
-    if node.type == "variable_assignment":
-        var_name = _get_variable_name(node, source)
-        if var_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "variable")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=var_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="variable",
-                name=var_name,
-                path=rel_path,
-                language="make",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            target_registry[var_name.lower()] = symbol_id
-
-    elif node.type == "rule":
-        # Extract targets and prerequisites
-        targets_node = None
-        prereqs_node = None
-
-        for child in node.children:
-            if child.type == "targets":
-                targets_node = child
-            elif child.type == "prerequisites":
-                prereqs_node = child
-
-        if targets_node:
-            target_names = _get_target_names(targets_node, source)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Determine if this is a pattern rule
-            is_pattern = any("%" in t for t in target_names)
-            kind = "pattern_rule" if is_pattern else "target"
-
-            for target_name in target_names:
-                # Skip special targets like .PHONY
-                if target_name.startswith("."):
-                    kind = "special_target"
-
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, target_name, kind)
+    for node in iter_tree(root):
+        if node.type == "variable_assignment":
+            var_name = _get_variable_name(node, source)
+            if var_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "variable")
 
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=target_name,
+                    canonical_name=var_name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind=kind,
-                    name=target_name,
+                    kind="variable",
+                    name=var_name,
                     path=rel_path,
                     language="make",
                     span=Span(
@@ -227,95 +181,139 @@ def _process_make_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                target_registry[target_name.lower()] = symbol_id
+                target_registry[var_name.lower()] = symbol_id
 
-                # Create edges for prerequisites
-                if prereqs_node:
-                    prereqs = _get_prerequisites(prereqs_node, source)
-                    for prereq in prereqs:
-                        # Skip variable references for now (could resolve later)
-                        if prereq.startswith("$"):
-                            continue
+        elif node.type == "rule":
+            # Extract targets and prerequisites
+            targets_node = None
+            prereqs_node = None
 
-                        if prereq.lower() in target_registry:
-                            dst_id = target_registry[prereq.lower()]
-                            confidence = 0.90
-                        else:
-                            # External file or unresolved target
-                            dst_id = f"make:external:{prereq}:target"
-                            confidence = 0.70
+            for child in node.children:
+                if child.type == "targets":
+                    targets_node = child
+                elif child.type == "prerequisites":
+                    prereqs_node = child
 
-                        edge = Edge(
-                            id=_make_edge_id(symbol_id, dst_id, "depends_on"),
-                            src=symbol_id,
-                            dst=dst_id,
-                            edge_type="depends_on",
-                            line=start_line,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            evidence_type="make_prerequisite",
-                        )
-                        edges.append(edge)
+            if targets_node:
+                target_names = _get_target_names(targets_node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
 
-    elif node.type == "define_directive":
-        define_name = _get_define_name(node, source)
-        if define_name:
+                # Determine if this is a pattern rule
+                is_pattern = any("%" in t for t in target_names)
+                kind = "pattern_rule" if is_pattern else "target"
+
+                for target_name in target_names:
+                    # Skip special targets like .PHONY
+                    if target_name.startswith("."):
+                        kind = "special_target"
+
+                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, target_name, kind)
+
+                    sym = Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=target_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind=kind,
+                        name=target_name,
+                        path=rel_path,
+                        language="make",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                    symbols.append(sym)
+                    target_registry[target_name.lower()] = symbol_id
+
+                    # Create edges for prerequisites
+                    if prereqs_node:
+                        prereqs = _get_prerequisites(prereqs_node, source)
+                        for prereq in prereqs:
+                            # Skip variable references for now (could resolve later)
+                            if prereq.startswith("$"):
+                                continue
+
+                            if prereq.lower() in target_registry:
+                                dst_id = target_registry[prereq.lower()]
+                                confidence = 0.90
+                            else:
+                                # External file or unresolved target
+                                dst_id = f"make:external:{prereq}:target"
+                                confidence = 0.70
+
+                            edge = Edge(
+                                id=_make_edge_id(symbol_id, dst_id, "depends_on"),
+                                src=symbol_id,
+                                dst=dst_id,
+                                edge_type="depends_on",
+                                line=start_line,
+                                confidence=confidence,
+                                origin=PASS_ID,
+                                evidence_type="make_prerequisite",
+                            )
+                            edges.append(edge)
+
+        elif node.type == "define_directive":
+            define_name = _get_define_name(node, source)
+            if define_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, define_name, "function")
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=define_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="function",
+                    name=define_name,
+                    path=rel_path,
+                    language="make",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                target_registry[define_name.lower()] = symbol_id
+
+        elif node.type == "include_directive":
+            include_files = _get_include_files(node, source)
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, define_name, "function")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=define_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="function",
-                name=define_name,
-                path=rel_path,
-                language="make",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            target_registry[define_name.lower()] = symbol_id
+            for include_file in include_files:
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, include_file, "include")
 
-    elif node.type == "include_directive":
-        include_files = _get_include_files(node, source)
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-
-        for include_file in include_files:
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, include_file, "include")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=include_file,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="include",
-                name=include_file,
-                path=rel_path,
-                language="make",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-
-    # Recurse into children
-    for child in node.children:
-        _process_make_tree(child, source, rel_path, symbols, edges, target_registry)
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=include_file,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="include",
+                    name=include_file,
+                    path=rel_path,
+                    language="make",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
 
 
 def analyze_make_files(repo_root: Path) -> MakeAnalysisResult:

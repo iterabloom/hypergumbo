@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -154,122 +155,125 @@ def _extract_instantiation_info(node: "tree_sitter.Node", source: bytes) -> Opti
     return None  # pragma: no cover
 
 
+def _find_containing_module(
+    node: "tree_sitter.Node", module_by_pos: dict[tuple[int, int], str]
+) -> Optional[str]:
+    """Walk up parents to find the containing module's symbol ID."""
+    current = node.parent
+    while current is not None:
+        pos_key = (current.start_byte, current.end_byte)
+        if pos_key in module_by_pos:
+            return module_by_pos[pos_key]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _process_verilog_tree(
-    node: "tree_sitter.Node",
+    root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
     module_registry: dict[str, str],
-    current_module_id: list[Optional[str]],
 ) -> None:
     """Process Verilog AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         module_registry: Registry mapping module names to symbol IDs
-        current_module_id: Current module context for tracking instantiations (mutable wrapper)
     """
-    if node.type == "module_declaration":
-        module_name = _extract_module_name(node, source)
-        if module_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, module_name, "module")
+    # Track module nodes by byte position for parent walking
+    # (node.parent returns new Python object, so id() doesn't work)
+    module_by_pos: dict[tuple[int, int], str] = {}
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=module_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="module",
-                name=module_name,
-                path=rel_path,
-                language="verilog",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            module_registry[module_name.lower()] = symbol_id
+    for node in iter_tree(root):
+        if node.type == "module_declaration":
+            module_name = _extract_module_name(node, source)
+            if module_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, module_name, "module")
 
-            # Set current module context for nested instantiations
-            prev_module_id = current_module_id[0]
-            current_module_id[0] = symbol_id
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=module_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="module",
+                    name=module_name,
+                    path=rel_path,
+                    language="verilog",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                module_registry[module_name.lower()] = symbol_id
+                module_by_pos[(node.start_byte, node.end_byte)] = symbol_id
 
-            # Process children
-            for child in node.children:
-                _process_verilog_tree(child, source, rel_path, symbols, edges, module_registry, current_module_id)
+        elif node.type == "interface_declaration":
+            interface_name = _extract_interface_name(node, source)
+            if interface_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, interface_name, "interface")
 
-            # Restore previous context
-            current_module_id[0] = prev_module_id
-            return  # Don't recurse again after module body
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=interface_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="interface",
+                    name=interface_name,
+                    path=rel_path,
+                    language="verilog",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+                module_registry[interface_name.lower()] = symbol_id
 
-    elif node.type == "interface_declaration":
-        interface_name = _extract_interface_name(node, source)
-        if interface_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, interface_name, "interface")
+        elif node.type == "module_instantiation":
+            # Find containing module by walking up parents
+            current_module_id = _find_containing_module(node, module_by_pos)
+            inst_info = _extract_instantiation_info(node, source)
+            if inst_info and current_module_id:
+                module_type, _instance_name = inst_info
+                start_line = node.start_point[0] + 1
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=interface_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="interface",
-                name=interface_name,
-                path=rel_path,
-                language="verilog",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            module_registry[interface_name.lower()] = symbol_id
+                # Create instantiates edge if module is known
+                if module_type.lower() in module_registry:
+                    dst_id = module_registry[module_type.lower()]
+                else:
+                    # External module reference
+                    dst_id = f"verilog:external:{module_type}:module"
 
-    elif node.type == "module_instantiation":
-        inst_info = _extract_instantiation_info(node, source)
-        if inst_info and current_module_id[0]:
-            module_type, _instance_name = inst_info
-            start_line = node.start_point[0] + 1
-
-            # Create instantiates edge if module is known
-            if module_type.lower() in module_registry:
-                dst_id = module_registry[module_type.lower()]
-            else:
-                # External module reference
-                dst_id = f"verilog:external:{module_type}:module"
-
-            edge = Edge(
-                id=_make_edge_id(current_module_id[0], dst_id, "instantiates"),
-                src=current_module_id[0],
-                dst=dst_id,
-                edge_type="instantiates",
-                line=start_line,
-                confidence=0.90 if module_type.lower() in module_registry else 0.70,
-                origin=PASS_ID,
-                evidence_type="verilog_instantiation",
-            )
-            edges.append(edge)
-
-    # Recurse into children
-    for child in node.children:
-        _process_verilog_tree(child, source, rel_path, symbols, edges, module_registry, current_module_id)
+                edge = Edge(
+                    id=_make_edge_id(current_module_id, dst_id, "instantiates"),
+                    src=current_module_id,
+                    dst=dst_id,
+                    edge_type="instantiates",
+                    line=start_line,
+                    confidence=0.90 if module_type.lower() in module_registry else 0.70,
+                    origin=PASS_ID,
+                    evidence_type="verilog_instantiation",
+                )
+                edges.append(edge)
 
 
 def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
@@ -320,9 +324,6 @@ def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Current module context for instantiation tracking
-            current_module_id: list[Optional[str]] = [None]
-
             # Process this file
             _process_verilog_tree(
                 tree.root_node,
@@ -331,7 +332,6 @@ def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
                 symbols,
                 edges,
                 module_registry,
-                current_module_id,
             )
 
         except Exception as e:  # pragma: no cover

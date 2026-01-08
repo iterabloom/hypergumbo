@@ -54,6 +54,10 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from .ir import Symbol, Edge
+from .selection.filters import is_test_path
+
+# Backwards compatibility alias - external code imports _is_test_path from here
+_is_test_path = is_test_path
 
 
 # Tier weights for supply chain ranking (first-party prioritized)
@@ -331,38 +335,6 @@ def rank_files(
         )
 
     return results
-
-
-def _is_test_path(path: str) -> bool:
-    """Check if a path looks like a test file.
-
-    Matches common test patterns across Python, JavaScript, and TypeScript.
-    Only matches actual test files, not directories that happen to contain 'test'.
-    """
-    import os
-    if not path:
-        return False
-
-    filename = os.path.basename(path)
-
-    # Directory patterns (actual test directories, not temp dirs)
-    if "/test/" in path or "/tests/" in path or "/__tests__/" in path:
-        return True
-    # Handle paths that start with test/ (no leading slash)
-    if path.startswith("test/") or path.startswith("tests/"):
-        return True
-
-    # File name patterns: test_*.py, test_*.js, etc.
-    if filename.startswith("test_"):
-        return True
-
-    # Suffix patterns (.test.ts, .spec.js, _test.py, etc.)
-    for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
-        if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
-            return True
-        if filename.endswith(f"_test{ext}"):
-            return True
-    return False
 
 
 def get_importance_threshold(

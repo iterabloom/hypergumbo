@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -105,128 +106,138 @@ def _get_type_identifier(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover
 
 
-def _process_glsl_tree(
+def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
+    """Find first child of given type."""
+    for child in node.children:
+        if child.type == type_name:
+            return child
+    return None  # pragma: no cover - defensive
+
+
+def _extract_glsl_signature(func_def: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a GLSL function_definition node.
+
+    Returns signature in format: (type param1, type param2) return_type
+    GLSL is C-like with typed parameters.
+    """
+    # Find function declarator (contains name and params)
+    func_decl = _find_child_by_type(func_def, "function_declarator")
+    if func_decl is None:  # pragma: no cover - always has declarator
+        return None
+
+    # Find parameter list
+    params: list[str] = []
+    param_list = _find_child_by_type(func_decl, "parameter_list")
+    if param_list:
+        for child in param_list.children:
+            if child.type == "parameter_declaration":
+                param_text = _node_text(child, source).strip()
+                params.append(param_text)
+
+    # Get return type (primitive_type or type_identifier before function_declarator)
+    return_type: Optional[str] = None
+    for child in func_def.children:
+        if child.type in ("primitive_type", "type_identifier"):
+            return_type = _node_text(child, source)
+            break
+
+    params_str = ", ".join(params) if params else ""
+    signature = f"({params_str})"
+    if return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
+def _find_enclosing_function(
     node: "tree_sitter.Node",
+    source: bytes,
+    function_registry: dict[str, str],
+) -> Optional[str]:
+    """Find the enclosing function's symbol ID by walking up parent nodes."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            for child in current.children:
+                if child.type == "function_declarator":
+                    func_name = _get_identifier(child, source)
+                    if func_name:
+                        return function_registry.get(func_name.lower())
+        current = current.parent
+    return None  # pragma: no cover - no enclosing function found
+
+
+def _process_glsl_tree(
+    tree: "tree_sitter.Tree",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
     function_registry: dict[str, str],
-    current_function: Optional[str] = None,
 ) -> None:
     """Process GLSL AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        tree: Tree-sitter tree to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         function_registry: Registry mapping function names to symbol IDs
-        current_function: ID of function we're currently inside (for call edges)
     """
-    # Function definitions
-    if node.type == "function_definition":
-        # Find function declarator to get the name
-        func_name = None
-        for child in node.children:
-            if child.type == "function_declarator":
-                func_name = _get_identifier(child, source)
-                break
-
-        if func_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=func_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="function",
-                name=func_name,
-                path=rel_path,
-                language="glsl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-            function_registry[func_name.lower()] = symbol_id
-
-            # Process children with this function as current
+    # First pass: collect all function definitions to build registry
+    for node in iter_tree(tree.root_node):
+        if node.type == "function_definition":
+            # Find function declarator to get the name
+            func_name = None
             for child in node.children:
-                _process_glsl_tree(child, source, rel_path, symbols, edges, function_registry, symbol_id)
-            return  # Don't process children again
+                if child.type == "function_declarator":
+                    func_name = _get_identifier(child, source)
+                    break
 
-    # Struct definitions
-    elif node.type == "struct_specifier":
-        struct_name = _get_type_identifier(node, source)
-        if struct_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, struct_name, "struct")
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=struct_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="struct",
-                name=struct_name,
-                path=rel_path,
-                language="glsl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-
-    # Variable declarations (uniform, in, out)
-    elif node.type == "declaration":
-        text = _node_text(node, source).strip()
-        var_name = _get_identifier(node, source)
-
-        if var_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Determine kind based on storage qualifier
-            kind = "variable"
-            if text.startswith("uniform"):
-                kind = "uniform"
-            elif text.startswith("in "):
-                kind = "input"
-            elif text.startswith("out "):
-                kind = "output"
-            elif text.startswith("varying"):  # pragma: no cover - old GLSL syntax
-                kind = "varying"  # pragma: no cover - old GLSL syntax
-            elif text.startswith("attribute"):  # pragma: no cover - old GLSL syntax
-                kind = "attribute"  # pragma: no cover - old GLSL syntax
-
-            # Only create symbols for shader-specific declarations
-            if kind in ("uniform", "input", "output", "varying", "attribute"):
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, kind)
+            if func_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
 
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=var_name,
+                    canonical_name=func_name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind=kind,
-                    name=var_name,
+                    kind="function",
+                    name=func_name,
+                    path=rel_path,
+                    language="glsl",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=_extract_glsl_signature(node, source),
+                )
+                symbols.append(sym)
+                function_registry[func_name.lower()] = symbol_id
+
+        # Struct definitions
+        elif node.type == "struct_specifier":
+            struct_name = _get_type_identifier(node, source)
+            if struct_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, struct_name, "struct")
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=struct_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="struct",
+                    name=struct_name,
                     path=rel_path,
                     language="glsl",
                     span=Span(
@@ -239,28 +250,71 @@ def _process_glsl_tree(
                 )
                 symbols.append(sym)
 
-    # Function calls
-    elif node.type == "call_expression":
-        func_name = _get_identifier(node, source)
-        if func_name and current_function:
-            start_line = node.start_point[0] + 1
-            dst_id = function_registry.get(func_name.lower(), f"glsl:builtin:{func_name}")
+        # Variable declarations (uniform, in, out)
+        elif node.type == "declaration":
+            text = _node_text(node, source).strip()
+            var_name = _get_identifier(node, source)
 
-            edge = Edge(
-                id=_make_edge_id(current_function, dst_id, "calls"),
-                src=current_function,
-                dst=dst_id,
-                edge_type="calls",
-                line=start_line,
-                confidence=0.90 if func_name.lower() in function_registry else 0.70,
-                origin=PASS_ID,
-                evidence_type="static",
-            )
-            edges.append(edge)
+            if var_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
 
-    # Recurse into children
-    for child in node.children:
-        _process_glsl_tree(child, source, rel_path, symbols, edges, function_registry, current_function)
+                # Determine kind based on storage qualifier
+                kind = "variable"
+                if text.startswith("uniform"):
+                    kind = "uniform"
+                elif text.startswith("in "):
+                    kind = "input"
+                elif text.startswith("out "):
+                    kind = "output"
+                elif text.startswith("varying"):  # pragma: no cover - old GLSL syntax
+                    kind = "varying"  # pragma: no cover - old GLSL syntax
+                elif text.startswith("attribute"):  # pragma: no cover - old GLSL syntax
+                    kind = "attribute"  # pragma: no cover - old GLSL syntax
+
+                # Only create symbols for shader-specific declarations
+                if kind in ("uniform", "input", "output", "varying", "attribute"):
+                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, kind)
+
+                    sym = Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=var_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind=kind,
+                        name=var_name,
+                        path=rel_path,
+                        language="glsl",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                    symbols.append(sym)
+
+        # Function calls
+        elif node.type == "call_expression":
+            func_name = _get_identifier(node, source)
+            current_function = _find_enclosing_function(node, source, function_registry)
+            if func_name and current_function:
+                start_line = node.start_point[0] + 1
+                dst_id = function_registry.get(func_name.lower(), f"glsl:builtin:{func_name}")
+
+                edge = Edge(
+                    id=_make_edge_id(current_function, dst_id, "calls"),
+                    src=current_function,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=start_line,
+                    confidence=0.90 if func_name.lower() in function_registry else 0.70,
+                    origin=PASS_ID,
+                    evidence_type="static",
+                )
+                edges.append(edge)
 
 
 def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
@@ -313,7 +367,7 @@ def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
 
             # Process this file
             _process_glsl_tree(
-                tree.root_node,
+                tree,
                 source,
                 rel_path,
                 symbols,

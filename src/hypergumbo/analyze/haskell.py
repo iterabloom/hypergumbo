@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
+from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 
@@ -135,6 +136,40 @@ def _get_module_name(import_node: "tree_sitter.Node", source: bytes) -> str:
     return ""  # pragma: no cover
 
 
+def _extract_haskell_signature(
+    sig_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract type signature from a Haskell signature node.
+
+    Haskell type signatures look like:
+        add :: Int -> Int -> Int
+
+    The signature node contains:
+    - variable (function name)
+    - :: token
+    - function/type (the type expression)
+
+    Returns the type part like ":: Int -> Int -> Int".
+    """
+    # Find the :: token and everything after it
+    found_colons = False
+    type_parts: list[str] = []
+
+    for child in sig_node.children:
+        if child.type == "::":
+            found_colons = True
+            type_parts.append("::")
+        elif found_colons:
+            # Collect the type expression
+            type_text = _node_text(child, source).strip()
+            if type_text:
+                type_parts.append(type_text)
+
+    if type_parts:
+        return " ".join(type_parts)
+    return None  # pragma: no cover - defensive, called only when signature exists
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -152,7 +187,25 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
 
-    def add_symbol(node: "tree_sitter.Node", name: str, kind: str) -> None:
+    # First pass: collect type signatures
+    type_signatures: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type == "signature":
+            # Get function name from variable child
+            var_node = _find_child_by_type(node, "variable")
+            if var_node:
+                name = _node_text(var_node, source)
+                sig = _extract_haskell_signature(node, source)
+                if sig:
+                    type_signatures[name] = sig
+
+    def add_symbol(
+        node: "tree_sitter.Node",
+        name: str,
+        kind: str,
+        signature: Optional[str] = None,
+    ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:
             return  # pragma: no cover - skip empty/duplicate names
@@ -176,20 +229,25 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         ))
 
-    def walk(node: "tree_sitter.Node") -> None:
+    # Second pass: extract symbols
+    for node in iter_tree(tree.root_node):
         if node.type == "function":
             # Function with pattern matching
             name = _get_function_name(node, source)
             if name:
-                add_symbol(node, name, "function")
+                # Look up type signature
+                sig = type_signatures.get(name)
+                add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "bind":
             # Simple binding (like main = ...)
             name = _get_function_name(node, source)
             if name:
-                add_symbol(node, name, "function")
+                sig = type_signatures.get(name)
+                add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "data_type":
             # Data type definition
@@ -220,12 +278,27 @@ def _extract_symbols_from_file(
                 instance_name = f"{class_name} {type_name}".strip()
                 add_symbol(node, instance_name, "instance")
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
+
+
+def _find_enclosing_function_haskell(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    global_symbol_registry: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the function that contains this node by walking up parents."""
+    current = node.parent
+    while current:
+        if current.type in ("function", "bind"):
+            name = _get_function_name(current, source)
+            # Check local symbols first, then global
+            if name in local_symbols:
+                return local_symbols[name]
+            if name in global_symbol_registry:  # pragma: no cover - cross-file case
+                return global_symbol_registry[name]  # pragma: no cover
+        current = current.parent
+    return None  # pragma: no cover - no enclosing function
 
 
 def _extract_edges_from_file(
@@ -248,21 +321,7 @@ def _extract_edges_from_file(
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
-    def find_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
-        """Find the function that contains this node."""
-        current = node.parent
-        while current:
-            if current.type in ("function", "bind"):
-                name = _get_function_name(current, source)
-                # Check local symbols first, then global
-                if name in local_symbols:
-                    return local_symbols[name]
-                if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                    return global_symbol_registry[name]  # pragma: no cover
-            current = current.parent
-        return None  # pragma: no cover - no enclosing function
-
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "import":
             # Import statement
             module_name = _get_module_name(node, source)
@@ -299,7 +358,9 @@ def _extract_edges_from_file(
 
                 if callee_name and callee_name not in ("print", "putStrLn", "return"):
                     # Find the caller (enclosing function)
-                    caller = find_enclosing_function(node)
+                    caller = _find_enclosing_function_haskell(
+                        node, source, local_symbols, global_symbol_registry
+                    )
                     if caller:
                         # Try to resolve callee
                         callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
@@ -330,11 +391,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

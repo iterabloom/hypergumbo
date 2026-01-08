@@ -432,3 +432,55 @@ class TestSwiftHelperFunctions:
 
         result = _find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
+
+
+class TestSwiftSignatureExtraction:
+    """Tests for Swift function signature extraction."""
+
+    def test_basic_function_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a basic function."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        (tmp_path / "Calculator.swift").write_text("""
+class Calculator {
+    func add(x: Int, y: Int) -> Int {
+        return x + y
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(x: Int, y: Int) -> Int"
+
+    def test_void_function_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from void function."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        (tmp_path / "Logger.swift").write_text("""
+class Logger {
+    func log(message: String) {
+        print(message)
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "log" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(message: String)"
+
+    def test_no_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from function with no parameters."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        (tmp_path / "Counter.swift").write_text("""
+class Counter {
+    func getCount() -> Int {
+        return 0
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "() -> Int"

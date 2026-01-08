@@ -56,6 +56,9 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "scala": ["*.scala", "*.sc"],
     "elixir": ["*.ex", "*.exs"],
     "lua": ["*.lua"],
+    "clojure": ["*.clj", "*.cljs", "*.cljc", "*.edn"],
+    "erlang": ["*.erl", "*.hrl"],
+    "elm": ["*.elm"],
     "haskell": ["*.hs", "*.lhs"],
     "agda": ["*.agda", "*.lagda", "*.lagda.md"],
     "lean": ["*.lean"],
@@ -82,6 +85,19 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "dart": ["*.dart"],
     "cobol": ["*.cob", "*.cbl", "*.cobol", "*.cpy"],
     "latex": ["*.tex", "*.sty", "*.cls"],
+    "fsharp": ["*.fs", "*.fsi", "*.fsx"],
+    "perl": ["*.pl", "*.pm", "*.t"],
+    "proto": ["*.proto"],
+    "thrift": ["*.thrift"],
+    "capnp": ["*.capnp"],
+    "powershell": ["*.ps1", "*.psm1", "*.psd1"],
+    "gdscript": ["*.gd"],
+    "starlark": ["BUILD", "BUILD.bazel", "BUCK", "*.bzl"],
+    "fish": ["*.fish"],
+    "hlsl": ["*.hlsl", "*.hlsli", "*.fx"],
+    "ada": ["*.ads", "*.adb", "*.ada"],
+    "d": ["*.d", "*.di"],
+    "nim": ["*.nim", "*.nims", "*.nimble"],
 }
 
 # Framework detection patterns
@@ -344,13 +360,26 @@ def _count_loc(file_path: Path) -> int:
         return 0
 
 
-def _detect_languages(repo_root: Path) -> dict[str, LanguageStats]:
-    """Detect languages by scanning file extensions."""
+def _detect_languages(
+    repo_root: Path, extra_excludes: list[str] | None = None
+) -> dict[str, LanguageStats]:
+    """Detect languages by scanning file extensions.
+
+    Args:
+        repo_root: Path to the repository root.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+    """
     languages: dict[str, LanguageStats] = {}
+
+    # Combine default and extra excludes
+    from .discovery import DEFAULT_EXCLUDES
+    excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:
+        excludes.extend(extra_excludes)
 
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
         # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
-        files = set(find_files(repo_root, patterns))
+        files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
             stats = LanguageStats(files=len(files))
             for f in files:
@@ -603,12 +632,18 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     return frameworks
 
 
-def detect_profile(repo_root: Path) -> RepoProfile:
+def detect_profile(
+    repo_root: Path, extra_excludes: list[str] | None = None
+) -> RepoProfile:
     """Detect the profile of a repository.
+
+    Args:
+        repo_root: Path to the repository root.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
 
     Returns a RepoProfile with detected languages and frameworks.
     """
-    languages = _detect_languages(repo_root)
+    languages = _detect_languages(repo_root, extra_excludes=extra_excludes)
     frameworks = _detect_frameworks(repo_root)
 
     return RepoProfile(languages=languages, frameworks=frameworks)

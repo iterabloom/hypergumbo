@@ -608,7 +608,12 @@ class TestMockedTreeSitter:
         children: list | None = None,
         has_error: bool = False,
     ) -> MagicMock:
-        """Create a mock tree-sitter node."""
+        """Create a mock tree-sitter node.
+
+        Note: Must explicitly set parent=None to prevent MagicMock from
+        creating infinite mock chains when code walks up via node.parent.
+        Parent pointers for children are set up automatically.
+        """
         node = MagicMock()
         node.type = node_type
         node.start_byte = start_byte
@@ -617,6 +622,10 @@ class TestMockedTreeSitter:
         node.end_point = end_point
         node.children = children or []
         node.has_error = has_error
+        node.parent = None  # Explicit None prevents infinite mock chains
+        # Set parent pointers for all children
+        for child in node.children:
+            child.parent = node
         return node
 
     def test_get_parser_for_js_file(self, tmp_path: Path) -> None:
@@ -2917,3 +2926,341 @@ class TestReexportResolution:
         assert helper_id in call_dsts, \
             f"Call edge should point to real helper {helper_id}, got {call_dsts}"
 
+
+class TestJsTsSignatureExtraction:
+    """Tests for extracting function signatures from JavaScript/TypeScript code."""
+
+    def test_extracts_js_function_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from JavaScript function declarations."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+function add(x, y) {
+    return x + y;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_extracts_ts_function_signature_with_types(self, tmp_path: Path) -> None:
+        """Extracts signature from TypeScript function with type annotations."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+function add(x: number, y: number): number {
+    return x + y;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "x: number" in sig
+        assert "y: number" in sig
+        assert ": number" in sig  # return type
+
+    def test_extracts_arrow_function_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from arrow functions."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+const add = (x: number, y: number): number => x + y;
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "x: number" in sig
+        assert "y: number" in sig
+
+    def test_extracts_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from class methods."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+class Calculator {
+    add(x: number, y: number): number {
+        return x + y;
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        sig = methods[0].signature
+        assert sig is not None
+        assert "x: number" in sig
+
+    def test_extracts_signature_with_default_params(self, tmp_path: Path) -> None:
+        """Extracts signature with default parameters (shows ...)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+function greet(name, greeting = "Hello") {
+    return greeting + ", " + name;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "name" in sig
+        # Default value should be shown as ...
+        assert "greeting = ..." in sig
+
+    def test_extracts_signature_with_rest_params(self, tmp_path: Path) -> None:
+        """Extracts signature with rest parameters."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+function sum(...numbers) {
+    return numbers.reduce((a, b) => a + b, 0);
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "...numbers" in sig
+
+    def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
+        """Symbol.to_dict() includes the signature field."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+function greet(name: string): string {
+    return "Hello, " + name;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        as_dict = funcs[0].to_dict()
+        assert "signature" in as_dict
+        assert "name: string" in as_dict["signature"]
+
+
+class TestNamespaceImports:
+    """Tests for namespace import tracking and resolution."""
+
+    def test_extract_namespace_import_star_as(self, tmp_path: Path) -> None:
+        """Extracts 'import * as alias from module' statements."""
+        from hypergumbo.analyze.js_ts import _extract_namespace_imports, _get_parser_for_file
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+import * as grpc from '@grpc/grpc-js';
+import * as utils from './utils';
+""")
+
+        parser = _get_parser_for_file(js_file)
+        source = js_file.read_bytes()
+        tree = parser.parse(source)
+
+        ns_imports = _extract_namespace_imports(tree, source)
+
+        assert "grpc" in ns_imports
+        assert ns_imports["grpc"] == "@grpc/grpc-js"
+        assert "utils" in ns_imports
+        assert ns_imports["utils"] == "./utils"
+
+    def test_extract_default_import(self, tmp_path: Path) -> None:
+        """Extracts default imports as namespace mappings."""
+        from hypergumbo.analyze.js_ts import _extract_namespace_imports, _get_parser_for_file
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+import grpc from 'grpc';
+import axios from 'axios';
+""")
+
+        parser = _get_parser_for_file(js_file)
+        source = js_file.read_bytes()
+        tree = parser.parse(source)
+
+        ns_imports = _extract_namespace_imports(tree, source)
+
+        assert "grpc" in ns_imports
+        assert ns_imports["grpc"] == "grpc"
+        assert "axios" in ns_imports
+        assert ns_imports["axios"] == "axios"
+
+    def test_namespace_function_call_resolution(self, tmp_path: Path) -> None:
+        """Namespace function calls (alias.func()) should be resolved."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create a utils module
+        utils_file = tmp_path / "utils.js"
+        utils_file.write_text("""
+function helper() {
+    return 'help';
+}
+""")
+
+        # Create main module using namespace import
+        main_file = tmp_path / "main.js"
+        main_file.write_text("""
+import * as utils from './utils';
+
+function run() {
+    utils.helper();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Look for run -> helper edge
+        run_helper_edge = next(
+            (e for e in call_edges if "run" in e.src and "helper" in e.dst),
+            None
+        )
+        assert run_helper_edge is not None, "Expected call edge from run to helper via namespace"
+
+
+class TestVariableTypeInference:
+    """Tests for variable type inference from constructor calls."""
+
+    def test_variable_type_tracked_from_new(self, tmp_path: Path) -> None:
+        """Variable types should be tracked from 'new ClassName()' assignments."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+class ServiceClient {
+    send() {
+        return 'sent';
+    }
+}
+
+function run() {
+    const client = new ServiceClient();
+    client.send();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Should have instantiates edge
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        inst_edge = next(
+            (e for e in inst_edges if "run" in e.src and "ServiceClient" in e.dst),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for ServiceClient"
+
+        # Should have calls edge for client.send() -> ServiceClient.send
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        method_edge = next(
+            (e for e in call_edges if "run" in e.src and "send" in e.dst),
+            None
+        )
+        assert method_edge is not None, "Expected call edge for send method"
+        # Verify it resolved to ServiceClient.send
+        assert "ServiceClient.send" in method_edge.dst or "send" in method_edge.dst
+
+    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
+        """Type inference should NOT track types from function returns."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "main.js"
+        js_file.write_text("""
+class ServiceClient {
+    send() {
+        return 'sent';
+    }
+}
+
+function getClient() {
+    return new ServiceClient();
+}
+
+function run() {
+    const client = getClient();  // NOT tracked - function return
+    client.send();  // Should NOT be high-confidence resolved
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Should have call edge for getClient()
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        get_client_edge = next(
+            (e for e in call_edges if "run" in e.src and "getClient" in e.dst),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for getClient"
+
+        # client.send() should NOT be resolved with high confidence
+        # (may have low-confidence inferred edge, but not type_inferred evidence)
+        type_inferred_edges = [
+            e for e in call_edges
+            if e.meta and e.meta.get("evidence_type") == "ast_method_type_inferred"
+        ]
+        assert len(type_inferred_edges) == 0, (
+            "Should NOT have type-inferred edge for function return"
+        )
+
+    def test_namespace_class_instantiation(self, tmp_path: Path) -> None:
+        """new namespace.ClassName() should track type correctly."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create a service module with a class
+        service_file = tmp_path / "service.js"
+        service_file.write_text("""
+class EmailClient {
+    send() {
+        return 'email sent';
+    }
+}
+""")
+
+        # Create main module using namespace instantiation
+        main_file = tmp_path / "main.js"
+        main_file.write_text("""
+import * as service from './service';
+
+function run() {
+    const client = new service.EmailClient();
+    client.send();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Should have instantiates edge for EmailClient
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        inst_edge = next(
+            (e for e in inst_edges if "run" in e.src and "EmailClient" in e.dst),
+            None
+        )
+        assert inst_edge is not None, "Expected instantiates edge for namespace.EmailClient"

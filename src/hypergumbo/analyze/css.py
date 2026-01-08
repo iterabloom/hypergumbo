@@ -35,6 +35,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -155,21 +156,122 @@ def _extract_font_family(node, source: bytes) -> str | None:
     return None  # pragma: no cover - defensive
 
 
-def _process_css_node(
-    node,
+def _process_css_tree(
+    root_node,
     symbols: list[Symbol],
     edges: list[Edge],
     rel_path: str,
     source: bytes,
     file_symbol_id: str,
 ) -> None:
-    """Process a CSS AST node and extract symbols."""
-    if node.type == "import_statement":
-        import_path = _extract_import_path(node, source)
-        if import_path:
+    """Process a CSS AST tree and extract symbols using iterative traversal."""
+    for node in iter_tree(root_node):
+        if node.type == "import_statement":
+            import_path = _extract_import_path(node, source)
+            if import_path:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, import_path, "import")
+                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=import_path,
+                        fingerprint=fingerprint,
+                        kind="import",
+                        name=import_path,
+                        path=rel_path,
+                        language="css",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                )
+
+                # Create import edge from file to imported path
+                edge_id = _make_edge_id(file_symbol_id, import_path, "imports")
+                edges.append(
+                    Edge(
+                        id=edge_id,
+                        src=file_symbol_id,
+                        dst=import_path,
+                        edge_type="imports",
+                        line=start_line,
+                        confidence=1.0,
+                        origin=PASS_ID,
+                    )
+                )
+
+        elif node.type == "declaration":
+            var_name = _extract_variable_name(node, source)
+            if var_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, var_name, "variable")
+                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=var_name,
+                        fingerprint=fingerprint,
+                        kind="variable",
+                        name=var_name,
+                        path=rel_path,
+                        language="css",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                )
+
+        elif node.type == "keyframes_statement":
+            name = _extract_keyframes_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, name, "keyframes")
+                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=name,
+                        fingerprint=fingerprint,
+                        kind="keyframes",
+                        name=name,
+                        path=rel_path,
+                        language="css",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                )
+
+        elif node.type == "media_statement":
+            query = _extract_media_query(node, source)
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, import_path, "import")
+            symbol_id = _make_symbol_id(rel_path, start_line, query, "media")
             fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
             symbols.append(
@@ -177,10 +279,10 @@ def _process_css_node(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=import_path,
+                    canonical_name=query,
                     fingerprint=fingerprint,
-                    kind="import",
-                    name=import_path,
+                    kind="media",
+                    name=query,
                     path=rel_path,
                     language="css",
                     span=Span(
@@ -192,216 +294,106 @@ def _process_css_node(
                     origin=PASS_ID,
                 )
             )
+            # iter_tree will automatically recurse into media block children
 
-            # Create import edge from file to imported path
-            edge_id = _make_edge_id(file_symbol_id, import_path, "imports")
-            edges.append(
-                Edge(
-                    id=edge_id,
-                    src=file_symbol_id,
-                    dst=import_path,
-                    edge_type="imports",
-                    line=start_line,
-                    confidence=1.0,
-                    origin=PASS_ID,
+        elif node.type == "at_rule":
+            # Check what kind of at-rule this is by looking at the at_keyword
+            at_keyword = None
+            for child in node.children:
+                if child.type == "at_keyword":
+                    at_keyword = _get_node_text(child, source)
+                    break
+
+            if at_keyword == "@font-face":
+                font_family = _extract_font_family(node, source)
+                name = font_family or "unnamed"
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, name, "font_face")
+                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=name,
+                        fingerprint=fingerprint,
+                        kind="font_face",
+                        name=name,
+                        path=rel_path,
+                        language="css",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
                 )
-            )
+            # Other at-rules (e.g. @charset, @namespace) - iter_tree will recurse
 
-    elif node.type == "declaration":
-        var_name = _extract_variable_name(node, source)
-        if var_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, var_name, "variable")
-            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+        elif node.type == "class_selector":
+            # Extract class name (includes the dot)
+            class_name = _get_node_text(node, source)
+            if class_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, class_name, "class_selector")
+                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
-            symbols.append(
-                Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=var_name,
-                    fingerprint=fingerprint,
-                    kind="variable",
-                    name=var_name,
-                    path=rel_path,
-                    language="css",
-                    span=Span(
-                        start_line=start_line,
-                        start_col=node.start_point[1],
-                        end_line=end_line,
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=class_name,
+                        fingerprint=fingerprint,
+                        kind="class_selector",
+                        name=class_name,
+                        path=rel_path,
+                        language="css",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
                 )
-            )
 
-    elif node.type == "keyframes_statement":
-        name = _extract_keyframes_name(node, source)
-        if name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, name, "keyframes")
-            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
+        elif node.type == "id_selector":
+            # Extract ID name (includes the hash)
+            id_name = _get_node_text(node, source)
+            if id_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, id_name, "id_selector")
+                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
-            symbols.append(
-                Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=name,
-                    fingerprint=fingerprint,
-                    kind="keyframes",
-                    name=name,
-                    path=rel_path,
-                    language="css",
-                    span=Span(
-                        start_line=start_line,
-                        start_col=node.start_point[1],
-                        end_line=end_line,
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=id_name,
+                        fingerprint=fingerprint,
+                        kind="id_selector",
+                        name=id_name,
+                        path=rel_path,
+                        language="css",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=node.start_point[1],
+                            end_line=end_line,
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
                 )
-            )
-
-    elif node.type == "media_statement":
-        query = _extract_media_query(node, source)
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        symbol_id = _make_symbol_id(rel_path, start_line, query, "media")
-        fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
-
-        symbols.append(
-            Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=query,
-                fingerprint=fingerprint,
-                kind="media",
-                name=query,
-                path=rel_path,
-                language="css",
-                span=Span(
-                    start_line=start_line,
-                    start_col=node.start_point[1],
-                    end_line=end_line,
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-        )
-
-        # Recurse into media block for nested declarations
-        for child in node.children:
-            _process_css_node(child, symbols, edges, rel_path, source, file_symbol_id)
-
-    elif node.type == "at_rule":
-        # Check what kind of at-rule this is by looking at the at_keyword
-        at_keyword = None
-        for child in node.children:
-            if child.type == "at_keyword":
-                at_keyword = _get_node_text(child, source)
-                break
-
-        if at_keyword == "@font-face":
-            font_family = _extract_font_family(node, source)
-            name = font_family or "unnamed"
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, name, "font_face")
-            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
-
-            symbols.append(
-                Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=name,
-                    fingerprint=fingerprint,
-                    kind="font_face",
-                    name=name,
-                    path=rel_path,
-                    language="css",
-                    span=Span(
-                        start_line=start_line,
-                        start_col=node.start_point[1],
-                        end_line=end_line,
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                )
-            )
-        else:
-            # Other at-rules (e.g. @charset, @namespace), recurse
-            for child in node.children:  # pragma: no cover - rare at-rules
-                _process_css_node(child, symbols, edges, rel_path, source, file_symbol_id)  # pragma: no cover
-
-    elif node.type == "class_selector":
-        # Extract class name (includes the dot)
-        class_name = _get_node_text(node, source)
-        if class_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, class_name, "class_selector")
-            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
-
-            symbols.append(
-                Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=class_name,
-                    fingerprint=fingerprint,
-                    kind="class_selector",
-                    name=class_name,
-                    path=rel_path,
-                    language="css",
-                    span=Span(
-                        start_line=start_line,
-                        start_col=node.start_point[1],
-                        end_line=end_line,
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                )
-            )
-
-    elif node.type == "id_selector":
-        # Extract ID name (includes the hash)
-        id_name = _get_node_text(node, source)
-        if id_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, id_name, "id_selector")
-            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
-
-            symbols.append(
-                Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=id_name,
-                    fingerprint=fingerprint,
-                    kind="id_selector",
-                    name=id_name,
-                    path=rel_path,
-                    language="css",
-                    span=Span(
-                        start_line=start_line,
-                        start_col=node.start_point[1],
-                        end_line=end_line,
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                )
-            )
-
-    else:
-        # Recurse for other node types
-        for child in node.children:
-            _process_css_node(child, symbols, edges, rel_path, source, file_symbol_id)
+        # iter_tree automatically handles recursion for all node types
 
 
 def analyze_css_files(root: Path) -> CSSAnalysisResult:
@@ -450,7 +442,7 @@ def analyze_css_files(root: Path) -> CSSAnalysisResult:
             file_symbol_id = _make_symbol_id(rel_path, 1, rel_path, "file")
 
             # Process the tree
-            _process_css_node(
+            _process_css_tree(
                 tree.root_node, symbols, edges, rel_path, source, file_symbol_id
             )
 

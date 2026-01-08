@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -146,6 +147,52 @@ def _get_open_module_path(node: "tree_sitter.Node", source: bytes) -> str:
     return ""  # pragma: no cover
 
 
+def _extract_ocaml_signature(
+    let_binding: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from an OCaml let binding.
+
+    OCaml function syntax: let name param1 param2 = body
+    Returns signature string like "(param1, param2)" or None.
+    """
+    params: list[str] = []
+    found_name = False
+
+    for child in let_binding.children:
+        if child.type == "value_name" and not found_name:
+            found_name = True
+            continue
+        if not found_name:  # pragma: no cover - value_name is always first
+            continue  # pragma: no cover
+
+        # Stop at = sign (start of function body)
+        if child.type == "=":
+            break
+
+        # Collect parameter nodes
+        if child.type == "parameter":
+            # Extract the value_pattern from inside the parameter
+            param_text = _node_text(child, source).strip()
+            if param_text:
+                params.append(param_text)
+        elif child.type == "parenthesized_pattern":  # pragma: no cover - rare pattern
+            # Pattern like (x, y) or (x : int)
+            params.append(_node_text(child, source))  # pragma: no cover
+        elif child.type == "typed_pattern":  # pragma: no cover - rare pattern
+            # Pattern like (x : int)
+            params.append(_node_text(child, source))  # pragma: no cover
+        elif child.type == "unit_pattern":  # pragma: no cover - rare pattern
+            # Pattern like ()
+            params.append("()")  # pragma: no cover
+        elif child.type == "wildcard_pattern":  # pragma: no cover - rare pattern
+            # Pattern like _
+            params.append("_")  # pragma: no cover
+
+    if params:
+        return "(" + ", ".join(params) + ")"
+    return None  # No params = value, not function
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -162,7 +209,12 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
 
-    def add_symbol(node: "tree_sitter.Node", name: str, kind: str) -> None:
+    def add_symbol(
+        node: "tree_sitter.Node",
+        name: str,
+        kind: str,
+        signature: Optional[str] = None,
+    ) -> None:
         """Add a symbol if not already seen."""
         if not name or name in seen_names:
             return  # pragma: no cover - skip empty/duplicate names
@@ -186,16 +238,19 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            signature=signature,
         ))
 
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "value_definition":
             # Let binding - function definition
             let_binding = _find_child_by_type(node, "let_binding")
             if let_binding:
                 name = _get_let_binding_name(let_binding, source)
                 if name:
-                    add_symbol(node, name, "function")
+                    # Extract signature
+                    signature = _extract_ocaml_signature(let_binding, source)
+                    add_symbol(node, name, "function", signature=signature)
 
         elif node.type == "type_definition":
             # Type definition
@@ -213,12 +268,29 @@ def _extract_symbols_from_file(
                 if name:
                     add_symbol(node, name, "module")
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return symbols
+
+
+def _find_enclosing_ocaml_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    global_symbol_registry: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the function that contains this node by walking up the parent chain."""
+    current = node.parent
+    while current:
+        if current.type == "value_definition":
+            let_binding = _find_child_by_type(current, "let_binding")
+            if let_binding:
+                name = _get_let_binding_name(let_binding, source)
+                # Check local symbols first, then global
+                if name in local_symbols:
+                    return local_symbols[name]
+                if name in global_symbol_registry:  # pragma: no cover - cross-file case
+                    return global_symbol_registry[name]  # pragma: no cover
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_edges_from_file(
@@ -241,23 +313,7 @@ def _extract_edges_from_file(
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
-    def find_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
-        """Find the function that contains this node."""
-        current = node.parent
-        while current:
-            if current.type == "value_definition":
-                let_binding = _find_child_by_type(current, "let_binding")
-                if let_binding:
-                    name = _get_let_binding_name(let_binding, source)
-                    # Check local symbols first, then global
-                    if name in local_symbols:
-                        return local_symbols[name]
-                    if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                        return global_symbol_registry[name]  # pragma: no cover
-            current = current.parent
-        return None  # pragma: no cover - no enclosing function
-
-    def walk(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         if node.type == "open_module":
             # Open statement (import)
             module_path = _get_open_module_path(node, source)
@@ -289,7 +345,7 @@ def _extract_edges_from_file(
 
                 if callee_name and callee_name not in ("print_int", "print_string", "print_endline", "print_newline"):
                     # Find the caller (enclosing function)
-                    caller = find_enclosing_function(node)
+                    caller = _find_enclosing_ocaml_function(node, source, local_symbols, global_symbol_registry)
                     if caller:
                         # Try to resolve callee
                         callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
@@ -320,11 +376,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-        # Recurse into children
-        for child in node.children:
-            walk(child)
-
-    walk(tree.root_node)
     return edges
 
 

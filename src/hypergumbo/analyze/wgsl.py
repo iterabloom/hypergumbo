@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -128,6 +129,54 @@ def _detect_entry_point(node: "tree_sitter.Node", source: bytes) -> Optional[str
     return None
 
 
+def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
+    """Find first child of given type."""
+    for child in node.children:
+        if child.type == type_name:
+            return child
+    return None  # pragma: no cover - defensive
+
+
+def _extract_wgsl_signature(func_decl: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a WGSL function_declaration node.
+
+    Returns signature in format: (x: type, y: type) -> ReturnType
+    WGSL is Rust-like with typed parameters.
+    """
+    # Find parameter list
+    params: list[str] = []
+    param_list = _find_child_by_type(func_decl, "parameter_list")
+
+    if param_list:
+        for child in param_list.children:
+            if child.type == "parameter":
+                # Extract param text (name: type)
+                param_text = _node_text(child, source).strip()
+                # Remove attributes like @builtin(vertex_index)
+                if "@" not in param_text:
+                    params.append(param_text)
+                else:  # pragma: no cover - attribute parameters
+                    # Extract just name: type part after attributes
+                    parts = param_text.split(")")
+                    if len(parts) > 1:
+                        params.append(parts[-1].strip())
+
+    # Find return type from function_return_type_declaration
+    return_type: Optional[str] = None
+    return_decl = _find_child_by_type(func_decl, "function_return_type_declaration")
+    if return_decl:
+        type_decl = _find_child_by_type(return_decl, "type_declaration")
+        if type_decl:
+            return_type = _node_text(type_decl, source)
+
+    params_str = ", ".join(params) if params else ""
+    signature = f"({params_str})"
+    if return_type:
+        signature += f" -> {return_type}"
+
+    return signature
+
+
 def _detect_binding(node: "tree_sitter.Node", source: bytes) -> Optional[dict]:
     """Detect WGSL binding attributes (@group/@binding).
 
@@ -158,149 +207,70 @@ def _detect_binding(node: "tree_sitter.Node", source: bytes) -> Optional[dict]:
     return None  # pragma: no cover - no bindings found
 
 
+def _find_containing_function(
+    node: "tree_sitter.Node", function_by_pos: dict[tuple[int, int], str]
+) -> Optional[str]:
+    """Walk up parents to find the containing function's symbol ID."""
+    current = node.parent
+    while current is not None:
+        pos_key = (current.start_byte, current.end_byte)
+        if pos_key in function_by_pos:
+            return function_by_pos[pos_key]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _process_wgsl_tree(
-    node: "tree_sitter.Node",
+    root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
     function_registry: dict[str, str],
-    current_function: Optional[str] = None,
 ) -> None:
     """Process WGSL AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
         function_registry: Registry mapping function names to symbol IDs
-        current_function: ID of function we're currently inside (for call edges)
     """
-    # Function definitions (fn name(...) { ... })
-    if node.type == "function_declaration":
-        func_name = None
-        # WGSL function structure: fn identifier ...
-        for child in node.children:
-            if child.type in ("identifier", "ident"):
-                func_name = _node_text(child, source)
-                break
+    # Track function nodes by byte position for parent walking
+    # (node.parent returns new Python object, so id() doesn't work)
+    function_by_pos: dict[tuple[int, int], str] = {}
 
-        if func_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
-
-            # Check for entry point attributes
-            entry_type = _detect_entry_point(node, source)
-            meta: Optional[dict] = None
-            if entry_type:
-                meta = {"entry_point": entry_type}
-
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=entry_type,  # Set stable_id to entry point type
-                shape_id=None,
-                canonical_name=func_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="function",
-                name=func_name,
-                path=rel_path,
-                language="wgsl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                meta=meta,
-            )
-            symbols.append(sym)
-            function_registry[func_name.lower()] = symbol_id
-
-            # Process children with this function as current
+    for node in iter_tree(root):
+        # Function definitions (fn name(...) { ... })
+        if node.type == "function_declaration":
+            func_name = None
+            # WGSL function structure: fn identifier ...
             for child in node.children:
-                _process_wgsl_tree(child, source, rel_path, symbols, edges, function_registry, symbol_id)
-            return  # Don't process children again
+                if child.type in ("identifier", "ident"):
+                    func_name = _node_text(child, source)
+                    break
 
-    # Struct definitions (struct Name { ... })
-    elif node.type == "struct_declaration":
-        struct_name = _get_identifier(node, source)
-        if struct_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, struct_name, "struct")
+            if func_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
 
-            sym = Symbol(
-                id=symbol_id,
-                stable_id=None,
-                shape_id=None,
-                canonical_name=struct_name,
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind="struct",
-                name=struct_name,
-                path=rel_path,
-                language="wgsl",
-                span=Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            symbols.append(sym)
-
-    # Global variable declarations (var<...> name: Type)
-    elif node.type == "global_variable_declaration":
-        # Variable name is nested: global_variable_declaration > variable_declaration
-        #   > variable_identifier_declaration > identifier
-        var_name = None
-        for child in node.children:
-            if child.type == "variable_declaration":
-                for grandchild in child.children:
-                    if grandchild.type == "variable_identifier_declaration":
-                        var_name = _get_identifier(grandchild, source)
-                        break
-        if var_name:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Check for binding attributes
-            binding_info = _detect_binding(node, source)
-
-            # Determine kind based on variable storage
-            # Note: storage buffers may have access mode like var<storage, read_write>
-            # so we check for patterns without the closing >
-            text = _node_text(node, source).strip()
-            kind = "variable"
-            if "var<uniform" in text:
-                kind = "uniform"
-            elif "var<storage" in text:
-                kind = "storage"
-            elif "var<private" in text:  # pragma: no cover - not extracted
-                kind = "private"  # pragma: no cover - not extracted
-            elif "var<workgroup" in text:  # pragma: no cover - not extracted
-                kind = "workgroup"  # pragma: no cover - not extracted
-
-            # Only create symbols for shader-specific declarations
-            if kind in ("uniform", "storage") or binding_info:
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, kind)
-
-                meta_dict: Optional[dict] = None
-                if binding_info:
-                    meta_dict = binding_info
+                # Check for entry point attributes
+                entry_type = _detect_entry_point(node, source)
+                meta: Optional[dict] = None
+                if entry_type:
+                    meta = {"entry_point": entry_type}
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=entry_type,  # Set stable_id to entry point type
                     shape_id=None,
-                    canonical_name=var_name,
+                    canonical_name=func_name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind=kind,
-                    name=var_name,
+                    kind="function",
+                    name=func_name,
                     path=rel_path,
                     language="wgsl",
                     span=Span(
@@ -310,37 +280,127 @@ def _process_wgsl_tree(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    meta=meta_dict,
+                    meta=meta,
+                    signature=_extract_wgsl_signature(node, source),
+                )
+                symbols.append(sym)
+                function_registry[func_name.lower()] = symbol_id
+                function_by_pos[(node.start_byte, node.end_byte)] = symbol_id
+
+        # Struct definitions (struct Name { ... })
+        elif node.type == "struct_declaration":
+            struct_name = _get_identifier(node, source)
+            if struct_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, struct_name, "struct")
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=struct_name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind="struct",
+                    name=struct_name,
+                    path=rel_path,
+                    language="wgsl",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
                 )
                 symbols.append(sym)
 
-    # Function calls (WGSL uses type_constructor_or_function_call_expression)
-    elif node.type == "type_constructor_or_function_call_expression":
-        # Extract function name from type_declaration child
-        func_name = None
-        for child in node.children:
-            if child.type == "type_declaration":
-                func_name = _get_identifier(child, source)
-                break
-        if func_name and current_function:
-            start_line = node.start_point[0] + 1
-            dst_id = function_registry.get(func_name.lower(), f"wgsl:builtin:{func_name}")
+        # Global variable declarations (var<...> name: Type)
+        elif node.type == "global_variable_declaration":
+            # Variable name is nested: global_variable_declaration > variable_declaration
+            #   > variable_identifier_declaration > identifier
+            var_name = None
+            for child in node.children:
+                if child.type == "variable_declaration":
+                    for grandchild in child.children:
+                        if grandchild.type == "variable_identifier_declaration":
+                            var_name = _get_identifier(grandchild, source)
+                            break
+            if var_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
 
-            edge = Edge(
-                id=_make_edge_id(current_function, dst_id, "calls"),
-                src=current_function,
-                dst=dst_id,
-                edge_type="calls",
-                line=start_line,
-                confidence=0.90 if func_name.lower() in function_registry else 0.70,
-                origin=PASS_ID,
-                evidence_type="static",
-            )
-            edges.append(edge)
+                # Check for binding attributes
+                binding_info = _detect_binding(node, source)
 
-    # Recurse into children
-    for child in node.children:
-        _process_wgsl_tree(child, source, rel_path, symbols, edges, function_registry, current_function)
+                # Determine kind based on variable storage
+                # Note: storage buffers may have access mode like var<storage, read_write>
+                # so we check for patterns without the closing >
+                text = _node_text(node, source).strip()
+                kind = "variable"
+                if "var<uniform" in text:
+                    kind = "uniform"
+                elif "var<storage" in text:
+                    kind = "storage"
+                elif "var<private" in text:  # pragma: no cover - not extracted
+                    kind = "private"  # pragma: no cover - not extracted
+                elif "var<workgroup" in text:  # pragma: no cover - not extracted
+                    kind = "workgroup"  # pragma: no cover - not extracted
+
+                # Only create symbols for shader-specific declarations
+                if kind in ("uniform", "storage") or binding_info:
+                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, kind)
+
+                    meta_dict: Optional[dict] = None
+                    if binding_info:
+                        meta_dict = binding_info
+
+                    sym = Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=var_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind=kind,
+                        name=var_name,
+                        path=rel_path,
+                        language="wgsl",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        meta=meta_dict,
+                    )
+                    symbols.append(sym)
+
+        # Function calls (WGSL uses type_constructor_or_function_call_expression)
+        elif node.type == "type_constructor_or_function_call_expression":
+            # Find containing function by walking up parents
+            current_function = _find_containing_function(node, function_by_pos)
+            # Extract function name from type_declaration child
+            func_name = None
+            for child in node.children:
+                if child.type == "type_declaration":
+                    func_name = _get_identifier(child, source)
+                    break
+            if func_name and current_function:
+                start_line = node.start_point[0] + 1
+                dst_id = function_registry.get(func_name.lower(), f"wgsl:builtin:{func_name}")
+
+                edge = Edge(
+                    id=_make_edge_id(current_function, dst_id, "calls"),
+                    src=current_function,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=start_line,
+                    confidence=0.90 if func_name.lower() in function_registry else 0.70,
+                    origin=PASS_ID,
+                    evidence_type="static",
+                )
+                edges.append(edge)
 
 
 def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
@@ -396,7 +456,7 @@ def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Process this file
+            # Process this file using iterative traversal
             _process_wgsl_tree(
                 tree.root_node,
                 source,

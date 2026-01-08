@@ -171,3 +171,37 @@ class TestLeanAnalyzerWhenUnavailable:
         assert "tree-sitter-lean" in result.skip_reason
         assert len(result.symbols) == 0
         assert len(result.edges) == 0
+
+
+class TestLeanSignatureExtraction:
+    """Tests for Lean function signature extraction."""
+
+    def test_def_signature(self, tmp_path: Path) -> None:
+        """Extract signature from def with parameters and return type."""
+        make_lean_file(tmp_path, "Example.lean", """
+def double (n : Nat) : Nat := n + n
+""")
+        result = analyze_lean(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(n : Nat) : Nat"
+
+    def test_theorem_signature(self, tmp_path: Path) -> None:
+        """Extract signature from theorem with parameters and proof type."""
+        make_lean_file(tmp_path, "Example.lean", """
+theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm a b
+""")
+        result = analyze_lean(tmp_path)
+        thms = [s for s in result.symbols if s.kind == "theorem" and s.name == "add_comm"]
+        assert len(thms) == 1
+        assert thms[0].signature == "(a b : Nat) : a + b = b + a"
+
+    def test_def_no_params(self, tmp_path: Path) -> None:
+        """Extract signature from def without parameters."""
+        make_lean_file(tmp_path, "Example.lean", """
+def answer : Nat := 42
+""")
+        result = analyze_lean(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "answer"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == ": Nat"

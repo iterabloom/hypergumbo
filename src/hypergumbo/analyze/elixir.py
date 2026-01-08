@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -94,6 +95,51 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Walk up the tree to find all enclosing module names, innermost first."""
+    modules: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type == "call":
+            target = _find_child_by_type(current, "identifier")
+            if target and _node_text(target, source) == "defmodule":
+                mod_name = _get_module_name_from_call(current, source)
+                if mod_name:
+                    modules.append(mod_name)
+        current = current.parent
+    return list(reversed(modules))  # Return outermost first
+
+
+def _get_enclosing_function(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function."""
+    current = node.parent
+    while current is not None:
+        if current.type == "call":
+            target = _find_child_by_type(current, "identifier")
+            if target:
+                target_name = _node_text(target, source)
+                if target_name in ("def", "defp", "defmacro", "defmacrop"):
+                    func_name = _get_function_name(current, source)
+                    if func_name and func_name in local_symbols:
+                        return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_module_name_from_call(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract module name from defmodule call node."""
+    args = _find_child_by_type(node, "arguments")
+    if args:
+        for child in args.children:
+            if child.type == "alias":
+                return _node_text(child, source)
+    return None
+
+
 def _get_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from defmodule call."""
     # defmodule has structure: (call target: (identifier "defmodule") arguments: (arguments (alias)))
@@ -122,6 +168,61 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _extract_elixir_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from def/defp/defmacro call.
+
+    Returns signature in format: (param1, param2, keyword: default)
+    Elixir is dynamically typed, so no type annotations are included.
+    """
+    args = _find_child_by_type(node, "arguments")
+    if args is None:  # pragma: no cover - defensive
+        return "()"
+
+    for child in args.children:
+        if child.type == "call":
+            # def foo(a, b) - parameters are in the arguments of the inner call
+            inner_args = _find_child_by_type(child, "arguments")
+            if inner_args is None:  # pragma: no cover - rare
+                return "()"
+
+            params: list[str] = []
+            for param in inner_args.children:
+                if param.type == "identifier":
+                    # Simple positional parameter
+                    params.append(_node_text(param, source))
+                elif param.type == "binary_operator":  # pragma: no cover - default vals
+                    # Default value: param \\ default
+                    left = None
+                    for pc in param.children:
+                        if pc.type == "identifier":
+                            left = _node_text(pc, source)
+                            break
+                    if left:
+                        params.append(f"{left} \\\\ ...")
+                elif param.type == "keywords":
+                    # Keyword arguments
+                    for kw_pair in param.children:
+                        if kw_pair.type == "pair":
+                            key_node = None
+                            for pc in kw_pair.children:
+                                if pc.type == "keyword":
+                                    key_node = pc
+                                    break
+                            if key_node:
+                                key_text = _node_text(key_node, source).rstrip(":")
+                                params.append(f"{key_text}: ...")
+
+            return f"({', '.join(params)})"
+
+        elif child.type == "identifier":
+            # Simple case: def foo, do: :ok (no parameters)
+            return "()"
+
+    return "()"  # pragma: no cover - defensive
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -144,12 +245,8 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    module_stack: list[str] = []
 
-    def get_current_module() -> str:
-        return ".".join(module_stack) if module_stack else ""
-
-    def visit(node: "tree_sitter.Node") -> None:
+    for node in iter_tree(tree.root_node):
         # Check for defmodule
         if node.type == "call":
             target = _find_child_by_type(node, "identifier")
@@ -159,13 +256,12 @@ def _extract_symbols_from_file(
                 if target_name == "defmodule":
                     module_name = _get_module_name(node, source)
                     if module_name:
-                        # Handle nested modules
-                        if module_stack:
-                            full_name = f"{get_current_module()}.{module_name}"
+                        # Handle nested modules by walking up
+                        enclosing_modules = _get_enclosing_modules(node, source)
+                        if enclosing_modules:
+                            full_name = f"{'.'.join(enclosing_modules)}.{module_name}"
                         else:
                             full_name = module_name
-
-                        module_stack.append(module_name)
 
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
@@ -188,17 +284,11 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[full_name] = symbol
 
-                        # Process children within module context
-                        for child in node.children:
-                            visit(child)
-
-                        module_stack.pop()
-                        return  # Already processed children
-
                 elif target_name in ("def", "defp"):
                     func_name = _get_function_name(node, source)
                     if func_name:
-                        current_module = get_current_module()
+                        enclosing_modules = _get_enclosing_modules(node, source)
+                        current_module = ".".join(enclosing_modules) if enclosing_modules else ""
                         full_name = f"{current_module}.{func_name}" if current_module else func_name
 
                         start_line = node.start_point[0] + 1
@@ -218,6 +308,7 @@ def _extract_symbols_from_file(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=_extract_elixir_signature(node, source),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[func_name] = symbol  # Store by short name for local calls
@@ -225,7 +316,8 @@ def _extract_symbols_from_file(
                 elif target_name in ("defmacro", "defmacrop"):
                     macro_name = _get_function_name(node, source)
                     if macro_name:
-                        current_module = get_current_module()
+                        enclosing_modules = _get_enclosing_modules(node, source)
+                        current_module = ".".join(enclosing_modules) if enclosing_modules else ""
                         full_name = f"{current_module}.{macro_name}" if current_module else macro_name
 
                         start_line = node.start_point[0] + 1
@@ -245,15 +337,11 @@ def _extract_symbols_from_file(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            signature=_extract_elixir_signature(node, source),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[macro_name] = symbol
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -273,32 +361,15 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
+    for node in iter_tree(tree.root_node):
         if node.type == "call":
             target = _find_child_by_type(node, "identifier")
             if target:
                 target_name = _node_text(target, source)
 
-                # Track current function for call edges
-                if target_name in ("def", "defp", "defmacro", "defmacrop"):
-                    func_name = _get_function_name(node, source)
-                    if func_name and func_name in local_symbols:
-                        old_function = current_function
-                        current_function = local_symbols[func_name]
-
-                        # Process function body
-                        for child in node.children:
-                            visit(child)
-
-                        current_function = old_function
-                        return
-
                 # Detect use/import/alias directives
-                elif target_name == "use":
+                if target_name == "use":
                     args = _find_child_by_type(node, "arguments")
                     if args:
                         for child in args.children:
@@ -333,39 +404,36 @@ def _extract_edges_from_file(
                                 ))
 
                 # Detect function calls within a function body
-                elif current_function is not None:
-                    # Check if this is a call to a known local function
-                    if target_name in local_symbols:
-                        callee = local_symbols[target_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="function_call",
-                            confidence=0.85,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
-                    # Check global symbols
-                    elif target_name in global_symbols:
-                        callee = global_symbols[target_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="function_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                elif target_name not in ("def", "defp", "defmacro", "defmacrop", "defmodule"):
+                    current_function = _get_enclosing_function(node, source, local_symbols)
+                    if current_function is not None:
+                        # Check if this is a call to a known local function
+                        if target_name in local_symbols:
+                            callee = local_symbols[target_name]
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.85,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+                        # Check global symbols
+                        elif target_name in global_symbols:
+                            callee = global_symbols[target_name]
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.80,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

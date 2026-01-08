@@ -414,3 +414,62 @@ contract Token {
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 0
+
+
+class TestSoliditySignatureExtraction:
+    """Tests for Solidity function signature extraction."""
+
+    def test_function_with_params(self, temp_repo: Path) -> None:
+        """Extract signature from function with typed params."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "transfer" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature is not None
+        assert "address to" in funcs[0].signature
+        assert "uint256 amount" in funcs[0].signature
+
+    def test_function_with_return_type(self, temp_repo: Path) -> None:
+        """Extract signature with return type."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function getBalance() public view returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "getBalance" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature is not None
+        assert "returns" in funcs[0].signature
+
+    def test_function_no_params(self, temp_repo: Path) -> None:
+        """Extract signature from function with no params."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function empty() public pure {}
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "empty" in s.name]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"

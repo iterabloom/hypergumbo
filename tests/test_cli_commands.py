@@ -8,7 +8,9 @@ from hypergumbo.cli import (
     cmd_slice,
     cmd_catalog,
     cmd_export_capsule,
+    cmd_sketch,
     main,
+    _find_git_root,
 )
 
 
@@ -103,7 +105,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_result):
+    with patch("hypergumbo.analyze.js_ts.analyze_javascript", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -146,8 +148,8 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_javascript", return_value=mock_js_result), \
-         patch("hypergumbo.cli.analyze_php", return_value=mock_php_result):
+    with patch("hypergumbo.analyze.js_ts.analyze_javascript", return_value=mock_js_result), \
+         patch("hypergumbo.analyze.php.analyze_php", return_value=mock_php_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -180,7 +182,7 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_php", return_value=mock_result):
+    with patch("hypergumbo.analyze.php.analyze_php", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -213,7 +215,7 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_c", return_value=mock_result):
+    with patch("hypergumbo.analyze.c.analyze_c", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -246,7 +248,7 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_java", return_value=mock_result):
+    with patch("hypergumbo.analyze.java.analyze_java", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -279,7 +281,7 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_elixir", return_value=mock_result):
+    with patch("hypergumbo.analyze.elixir.analyze_elixir", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -312,7 +314,7 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_rust", return_value=mock_result):
+    with patch("hypergumbo.analyze.rust.analyze_rust", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -345,7 +347,7 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_go", return_value=mock_result):
+    with patch("hypergumbo.analyze.go.analyze_go", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -378,7 +380,7 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_ruby", return_value=mock_result):
+    with patch("hypergumbo.analyze.ruby.analyze_ruby", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -411,7 +413,7 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_kotlin", return_value=mock_result):
+    with patch("hypergumbo.analyze.kotlin.analyze_kotlin", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -444,7 +446,7 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_swift", return_value=mock_result):
+    with patch("hypergumbo.analyze.swift.analyze_swift", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -477,7 +479,7 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_scala", return_value=mock_result):
+    with patch("hypergumbo.analyze.scala.analyze_scala", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -510,7 +512,7 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_lua", return_value=mock_result):
+    with patch("hypergumbo.analyze.lua.analyze_lua", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -543,7 +545,7 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_haskell", return_value=mock_result):
+    with patch("hypergumbo.analyze.haskell.analyze_haskell", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -576,7 +578,7 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.out = str(tmp_path / "results.json")
 
-    with patch("hypergumbo.cli.analyze_ocaml", return_value=mock_result):
+    with patch("hypergumbo.analyze.ocaml.analyze_ocaml", return_value=mock_result):
         result = cmd_run(args)
 
     assert result == 0
@@ -647,6 +649,7 @@ def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -695,6 +698,7 @@ def test_cmd_slice_with_input_file(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -717,6 +721,7 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -753,6 +758,7 @@ def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -826,6 +832,7 @@ def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -873,6 +880,7 @@ def test_edge_from_dict_defaults(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -918,6 +926,7 @@ def test_cmd_slice_list_entries(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = True
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -957,6 +966,7 @@ def test_cmd_slice_list_entries_none(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = True
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -996,6 +1006,7 @@ def test_cmd_slice_auto_entry(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -1036,12 +1047,103 @@ def test_cmd_slice_auto_entry_no_entrypoints(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = False
+    args.language = None
 
     result = cmd_slice(args)
 
     assert result == 1  # Error exit code
     _, err = capsys.readouterr()
     assert "No entrypoints detected" in err
+
+
+def test_cmd_slice_auto_entry_prefers_connected(tmp_path: Path, capsys) -> None:
+    """Test --entry auto prefers well-connected entries over isolated ones.
+
+    When multiple entries have similar confidence, the one with more
+    outgoing edges produces a richer slice and should be preferred.
+    """
+    # Create two potential entries (both match cli_main pattern)
+    # Entry 1: main() with 5 outgoing edges (well-connected)
+    # Entry 2: run() with 0 outgoing edges (isolated)
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/app.py:1-10:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/app.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/runner.py:1-5:run:function",
+                "name": "run",
+                "kind": "function",
+                "language": "python",
+                "path": "src/runner.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-5:helper1:function",
+                "name": "helper1",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:6-10:helper2:function",
+                "name": "helper2",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            # main calls helper1, helper2, and itself (well-connected)
+            {
+                "id": "edge1",
+                "src": "python:src/app.py:1-10:main:function",
+                "dst": "python:src/utils.py:1-5:helper1:function",
+                "type": "calls",
+                "confidence": 0.95,
+            },
+            {
+                "id": "edge2",
+                "src": "python:src/app.py:1-10:main:function",
+                "dst": "python:src/utils.py:6-10:helper2:function",
+                "type": "calls",
+                "confidence": 0.95,
+            },
+            # run has NO outgoing edges (isolated)
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # main should be selected because it has more outgoing edges
+    assert "main" in out
+    assert "connectivity" in out  # Should mention connectivity
+    assert "2 outgoing edges" in out  # Should report edge count
 
 
 def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
@@ -1091,6 +1193,7 @@ def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
     args.exclude_tests = False
     args.list_entries = False
     args.reverse = True  # Reverse slice
+    args.language = None
 
     result = cmd_slice(args)
 
@@ -1159,6 +1262,7 @@ def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.reverse = False
+    args.language = None
     args.list_entries = False
     args.max_tier = None
     args.inline = True  # Enable inline mode
@@ -1219,6 +1323,7 @@ def test_cmd_slice_without_inline_has_ids_only(tmp_path: Path) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.reverse = False
+    args.language = None
     args.list_entries = False
     args.max_tier = None
     args.inline = False  # Disable inline mode (default)
@@ -1280,6 +1385,7 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.reverse = False
+    args.language = None
     args.list_entries = False
     args.max_tier = None
 
@@ -1297,10 +1403,9 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     assert "Use a full node ID" in err
 
 
-def test_cmd_catalog_show_all(capsys) -> None:
-    """Catalog with --show-all shows all passes including extras."""
+def test_cmd_catalog_shows_all_passes(capsys) -> None:
+    """Catalog shows all passes including extras by default."""
     args = FakeArgs()
-    args.show_all = True
 
     result = cmd_catalog(args)
 
@@ -1310,24 +1415,27 @@ def test_cmd_catalog_show_all(capsys) -> None:
     assert "Available Passes:" in out
     assert "python-ast-v1" in out
     assert "html-pattern-v1" in out
-    assert "javascript-ts-v1" in out  # extra included with --show-all
+    assert "javascript-ts-v1" in out  # extras now shown by default
     assert "Available Packs:" in out
 
 
-def test_cmd_catalog_default(capsys) -> None:
-    """Catalog without --show-all shows only core passes."""
+def test_cmd_catalog_shows_suggestions(capsys, tmp_path, monkeypatch) -> None:
+    """Catalog shows suggested passes based on current directory."""
+    # Create Python file in temp directory
+    (tmp_path / "main.py").write_text("print('hello')")
+
+    # Change to temp directory
+    monkeypatch.chdir(tmp_path)
+
     args = FakeArgs()
-    args.show_all = False
 
     result = cmd_catalog(args)
 
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "Available Passes:" in out
+    assert "Suggested for current repo:" in out
     assert "python-ast-v1" in out
-    assert "javascript-ts-v1" not in out  # extras hidden by default
-    assert "Use --show-all" in out  # hint about extras
 
 
 def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:
@@ -1413,3 +1521,175 @@ def test_main_with_export_capsule(tmp_path: Path) -> None:
     result = main(["export-capsule", str(tmp_path), "--out", str(out_path)])
     assert result == 0
     assert out_path.exists()
+
+
+def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
+    """Test --config-extraction flag with all modes."""
+    # Create a simple package.json
+    (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
+
+    # Test default (heuristic) mode
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 1000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "test" in out  # Should include package name
+
+    # Test embedding mode (will use heuristic if sentence-transformers unavailable)
+    args.config_extraction_mode = "embedding"
+    result = cmd_sketch(args)
+    assert result == 0
+
+    # Test hybrid mode
+    args.config_extraction_mode = "hybrid"
+    result = cmd_sketch(args)
+    assert result == 0
+
+
+def test_main_sketch_config_extraction_flag(tmp_path: Path) -> None:
+    """Test sketch command with --config-extraction flag via main()."""
+    (tmp_path / "package.json").write_text('{"name": "cli-test", "version": "2.0.0"}')
+
+    # Test with explicit heuristic mode
+    result = main(["sketch", str(tmp_path), "--config-extraction", "heuristic"])
+    assert result == 0
+
+
+def test_cmd_sketch_nonexistent_path(capsys) -> None:
+    """Test cmd_sketch with nonexistent path returns error."""
+    args = FakeArgs()
+    args.path = "/nonexistent/path/that/does/not/exist"
+    args.tokens = None
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "does not exist" in err
+
+
+def test_cmd_sketch_warns_about_git_root(tmp_path: Path, capsys) -> None:
+    """Test cmd_sketch warns when analyzing a subdirectory of a git repo."""
+    # Create a git repo structure
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+
+    # Create a subdirectory with some code
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(src_dir)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+
+    result = cmd_sketch(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "NOTE: Your repo root appears to be at" in err
+    assert str(tmp_path) in err
+    assert "You may want to run" in err
+    # Verify flags are preserved in suggested command
+    assert "-t 100" in err
+
+
+def test_cmd_sketch_git_warning_with_exclude_tests(tmp_path: Path, capsys) -> None:
+    """Test git root warning includes -x flag when exclude_tests is True."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(src_dir)
+    args.tokens = 100
+    args.exclude_tests = True  # This should be included in suggested command
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+
+    result = cmd_sketch(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "-x" in err
+    assert "-t 100" in err
+
+
+def test_cmd_sketch_no_warning_at_git_root(tmp_path: Path, capsys) -> None:
+    """Test cmd_sketch does not warn when already at git root."""
+    # Create a git repo structure
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+
+    result = cmd_sketch(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "NOTE: Your repo root" not in err
+
+
+def test_find_git_root_finds_repo(tmp_path: Path) -> None:
+    """Test _find_git_root finds the git root directory."""
+    # Create nested structure: tmp/.git and tmp/a/b/c
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    nested = tmp_path / "a" / "b" / "c"
+    nested.mkdir(parents=True)
+
+    result = _find_git_root(nested)
+    assert result == tmp_path
+
+
+def test_find_git_root_returns_none_outside_repo(tmp_path: Path) -> None:
+    """Test _find_git_root returns None when not in a git repo."""
+    # No .git directory
+    subdir = tmp_path / "some" / "dir"
+    subdir.mkdir(parents=True)
+
+    result = _find_git_root(subdir)
+    assert result is None
+
+
+def test_find_git_root_at_root_itself(tmp_path: Path) -> None:
+    """Test _find_git_root when starting at the git root."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+
+    result = _find_git_root(tmp_path)
+    assert result == tmp_path

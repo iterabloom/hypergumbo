@@ -28,24 +28,36 @@ Why This Design
 - Uses tree-sitter-cpp package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as other language analyzers for consistency
+- Uses iterative traversal to avoid RecursionError on deeply nested code
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import (
+    AnalysisResult,
+    FileAnalysis,
+    find_child_by_type as _find_child_by_type,
+    is_grammar_available,
+    iter_tree,
+    make_file_id as _base_make_file_id,
+    make_symbol_id as _base_make_symbol_id,
+    node_text as _node_text,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = "cpp-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
+
+# Backwards compatibility alias
+CppAnalysisResult = AnalysisResult
 
 
 def find_cpp_files(repo_root: Path) -> Iterator[Path]:
@@ -55,53 +67,67 @@ def find_cpp_files(repo_root: Path) -> Iterator[Path]:
 
 def is_cpp_tree_sitter_available() -> bool:
     """Check if tree-sitter with C++ grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_cpp") is None:
-        return False
-    return True
-
-
-@dataclass
-class CppAnalysisResult:
-    """Result of analyzing C++ files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
+    return is_grammar_available("tree_sitter_cpp")
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
     """Generate location-based ID."""
-    return f"cpp:{path}:{start_line}-{end_line}:{name}:{kind}"
+    return _base_make_symbol_id("cpp", path, start_line, end_line, name, kind)
 
 
 def _make_file_id(path: str) -> str:
     """Generate ID for a C++ file node (used as include edge source)."""
-    return f"cpp:{path}:1-1:file:file"
+    return _base_make_file_id("cpp", path)
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+def _extract_cpp_signature(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract function signature from a C++ function definition or declaration.
 
+    Returns signature like "(int x, std::string& name) int" or "(void)".
+    """
+    if node.type not in ("function_definition", "declaration"):
+        return None  # pragma: no cover
 
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
+    # Find function_declarator
+    declarator = _find_child_by_type(node, "function_declarator")
+    if not declarator:
+        return None  # pragma: no cover
+
+    # Find parameter_list
+    param_list = _find_child_by_type(declarator, "parameter_list")
+    if not param_list:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    param_strs: list[str] = []
+    for child in param_list.children:
+        if child.type == "parameter_declaration":
+            param_text = _node_text(child, source).strip()
+            param_strs.append(param_text)
+
+    # Build signature with parameters
+    sig = "(" + ", ".join(param_strs) + ")"
+
+    # Extract return type (collect nodes before function_declarator)
+    return_type_parts: list[str] = []
     for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
+        if child.type == "function_declarator":
+            break
+        if child.type in (
+            "primitive_type", "type_identifier", "qualified_identifier",
+            "sized_type_specifier", "template_type", "auto",
+            "storage_class_specifier", "type_qualifier",
+        ):
+            return_type_parts.append(_node_text(child, source))
 
+    if return_type_parts:
+        return_type = " ".join(return_type_parts)
+        if return_type and return_type != "void":
+            sig += f" {return_type}"
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    return sig
 
 
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[tuple[str, str]]:
@@ -150,7 +176,8 @@ def _extract_symbols_from_file(
 
     analysis = FileAnalysis()
 
-    def visit(node: "tree_sitter.Node") -> None:
+    # Use iterative traversal to avoid RecursionError on deeply nested code
+    for node in iter_tree(tree.root_node):
         # Class declaration
         if node.type == "class_specifier":
             name_node = _find_child_by_type(node, "type_identifier")
@@ -236,6 +263,7 @@ def _extract_symbols_from_file(
                 name, kind = result
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+                signature = _extract_cpp_signature(node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, kind),
@@ -251,6 +279,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 # Store by both full name and short name
@@ -259,11 +288,6 @@ def _extract_symbols_from_file(
                 if short_name != name:
                     analysis.symbol_by_name[short_name] = symbol
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -274,7 +298,10 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract include, call, and instantiation edges from a file."""
+    """Extract include, call, and instantiation edges from a file.
+
+    Uses iterative traversal to avoid RecursionError on deeply nested code.
+    """
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -283,7 +310,6 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the function name being called from a call_expression."""
@@ -306,8 +332,15 @@ def _extract_edges_from_file(
 
         return None  # pragma: no cover - defensive
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
+    # Stack entries: (node, current_function_context)
+    stack: list[tuple["tree_sitter.Node", Optional[Symbol]]] = [
+        (tree.root_node, None)
+    ]
+
+    while stack:
+        node, current_function = stack.pop()
+
+        new_function = current_function
 
         # Track current function for call edges
         if node.type == "function_definition":
@@ -316,15 +349,7 @@ def _extract_edges_from_file(
                 name, _ = result
                 short_name = name.split("::")[-1] if "::" in name else name
                 if short_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[short_name]
-
-                    # Process function body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
+                    new_function = local_symbols[short_name]
 
         # Include directive
         elif node.type == "preproc_include":
@@ -438,11 +463,10 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
+        # Add children to stack with updated context
+        for child in reversed(node.children):
+            stack.append((child, new_function))
 
-    visit(tree.root_node)
     return edges
 
 

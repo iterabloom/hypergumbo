@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -167,6 +168,84 @@ def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tr
     return [child for child in node.children if child.type == type_name]
 
 
+def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract type text from a type node."""
+    return _node_text(node, source)
+
+
+def _extract_csharp_signature(
+    node: "tree_sitter.Node", source: bytes, is_constructor: bool = False
+) -> Optional[str]:
+    """Extract function signature from a C# method or constructor declaration.
+
+    Returns signature like:
+    - "(int x, int y) int" for regular methods
+    - "(string msg)" for void methods (no return type shown)
+    - "(string name, int age)" for constructors (no return type)
+
+    Args:
+        node: The method_declaration or constructor_declaration node.
+        source: The source code bytes.
+        is_constructor: True if this is a constructor (no return type).
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params_node = None
+    return_type = None
+
+    # Find parameter_list and return type
+    # The return type is a type node (predefined_type, generic_name, etc.)
+    # NOT a plain identifier (that's the method name)
+    type_node_types = ("predefined_type", "generic_name", "array_type",
+                       "nullable_type", "qualified_name", "ref_type", "pointer_type")
+
+    for child in node.children:
+        if child.type == "parameter_list":
+            params_node = child
+        # Return type is a type node, not identifier
+        elif child.type in type_node_types:
+            return_type = _extract_type_text(child, source)
+        # Handle custom type as return (identifier that's a type, not method name)
+        # The identifier for return type comes BEFORE parameter_list
+        elif child.type == "identifier" and params_node is None and return_type is None:
+            # Check if this is a type (followed by another identifier which is method name)
+            # Actually, for custom return types we need special handling
+            # Let's skip this for now - will use the type nodes above
+            pass
+
+    if params_node is None:
+        return None  # pragma: no cover
+
+    # Extract parameters
+    params: list[str] = []
+    for child in params_node.children:
+        if child.type == "parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                # Type nodes (not plain identifier for type - those are param names)
+                if subchild.type in type_node_types:
+                    param_type = _extract_type_text(subchild, source)
+                # For custom types, identifier IS the type if param_type not set
+                elif subchild.type == "identifier":
+                    if param_type is None:
+                        param_type = _node_text(subchild, source)
+                    else:
+                        param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                params.append(f"{param_type} {param_name}")
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    # Add return type for methods (not constructors), but omit void
+    if not is_constructor and return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
 def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the method name from a method declaration.
 
@@ -204,12 +283,35 @@ class FileAnalysis:
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
 
 
+def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing class/interface/struct name.
+
+    Args:
+        node: The current node.
+        source: Source bytes for extracting text.
+
+    Returns:
+        The name of the enclosing type, or None if not inside a type.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "interface_declaration", "struct_declaration"):
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
 ) -> FileAnalysis:
-    """Extract symbols from a single C# file."""
+    """Extract symbols from a single C# file.
+
+    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+    """
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -217,7 +319,6 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_class: Optional[str] = None
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the identifier name from a declaration node."""
@@ -226,13 +327,7 @@ def _extract_symbols_from_file(
             return _node_text(name_node, source)
         return None  # pragma: no cover - defensive
 
-    def extract_method_name(node: "tree_sitter.Node") -> Optional[str]:
-        """Extract the method name from a method declaration."""
-        return _extract_method_name(node, source)
-
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_class
-
+    for node in iter_tree(tree.root_node):
         # Class declaration
         if node.type == "class_declaration":
             name = extract_name_from_declaration(node)
@@ -257,14 +352,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
-
-                # Process body with class context
-                old_class = current_class
-                current_class = name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
 
         # Interface declaration
         elif node.type == "interface_declaration":
@@ -291,14 +378,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
 
-                # Process interface body
-                old_class = current_class
-                current_class = name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
-
         # Struct declaration
         elif node.type == "struct_declaration":
             name = extract_name_from_declaration(node)
@@ -323,14 +402,6 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
-
-                # Process struct body
-                old_class = current_class
-                current_class = name
-                for child in node.children:
-                    visit(child)
-                current_class = old_class
-                return
 
         # Enum declaration
         elif node.type == "enum_declaration":
@@ -359,8 +430,9 @@ def _extract_symbols_from_file(
 
         # Method declaration
         elif node.type == "method_declaration":
-            name = extract_method_name(node)
+            name = _extract_method_name(node, source)
             if name:
+                current_class = _get_enclosing_class(node, source)
                 if current_class:
                     full_name = f"{current_class}.{name}"
                 else:
@@ -384,6 +456,9 @@ def _extract_symbols_from_file(
                         meta["http_method"] = http_method
                         stable_id = http_method
 
+                # Extract signature
+                signature = _extract_csharp_signature(node, source, is_constructor=False)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -400,6 +475,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     stable_id=stable_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -409,10 +485,14 @@ def _extract_symbols_from_file(
         elif node.type == "constructor_declaration":
             name = extract_name_from_declaration(node)
             if name:
+                current_class = _get_enclosing_class(node, source)
                 full_name = f"{current_class}.{name}" if current_class else name
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract signature (constructors have no return type)
+                signature = _extract_csharp_signature(node, source, is_constructor=True)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "constructor"),
@@ -428,6 +508,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -437,6 +518,7 @@ def _extract_symbols_from_file(
         elif node.type == "property_declaration":
             name = extract_name_from_declaration(node)
             if name:
+                current_class = _get_enclosing_class(node, source)
                 full_name = f"{current_class}.{name}" if current_class else name
 
                 start_line = node.start_point[0] + 1
@@ -461,12 +543,38 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
+
+
+def _get_enclosing_method(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing method or constructor.
+
+    Args:
+        node: The current node.
+        source: Source bytes for extracting text.
+        local_symbols: Map of method/constructor names to Symbol objects.
+
+    Returns:
+        The Symbol for the enclosing method/constructor, or None if not inside one.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "method_declaration":
+            method_name = _extract_method_name(current, source)
+            if method_name and method_name in local_symbols:
+                return local_symbols[method_name]
+        elif current.type == "constructor_declaration":  # pragma: no cover
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                ctor_name = _node_text(name_node, source)
+                if ctor_name in local_symbols:
+                    return local_symbols[ctor_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
 
 
 def _extract_edges_from_file(
@@ -476,7 +584,10 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract call, import, and instantiation edges from a file."""
+    """Extract call, import, and instantiation edges from a file.
+
+    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+    """
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -485,7 +596,6 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the method name being called from an invocation expression."""
@@ -502,41 +612,9 @@ def _extract_edges_from_file(
                 return _node_text(child, source)
         return None  # pragma: no cover - defensive
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current method for call edges
-        if node.type == "method_declaration":
-            method_name = _extract_method_name(node, source)
-            if method_name:
-                if method_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[method_name]
-
-                    # Process method body
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
-        # Track current constructor
-        elif node.type == "constructor_declaration":
-            name_node = _find_child_by_type(node, "identifier")
-            if name_node:
-                ctor_name = _node_text(name_node, source)
-                if ctor_name in local_symbols:
-                    old_function = current_function
-                    current_function = local_symbols[ctor_name]
-
-                    for child in node.children:
-                        visit(child)
-
-                    current_function = old_function
-                    return
-
+    for node in iter_tree(tree.root_node):
         # Using directive
-        elif node.type == "using_directive":
+        if node.type == "using_directive":
             # Get the namespace being imported
             name_node = _find_child_by_type(node, "identifier")
             if not name_node:
@@ -556,6 +634,7 @@ def _extract_edges_from_file(
 
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
+            current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
                 callee_name = get_callee_name(node)
                 if callee_name:
@@ -588,6 +667,7 @@ def _extract_edges_from_file(
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
+            current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
                 type_node = _find_child_by_type(node, "identifier")
                 if type_node:
@@ -618,11 +698,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

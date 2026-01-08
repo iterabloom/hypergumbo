@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -109,6 +110,62 @@ def _is_function_body(node: "tree_sitter.Node") -> bool:
     return node.type == "function_expression"
 
 
+def _extract_nix_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract function signature from a Nix function_expression node.
+
+    Nix has two function styles:
+    - Simple lambda: x: y: body -> (x, y)
+    - Formals (attrset pattern): { a, b, c ? 0 }: body -> { a, b, c }
+
+    Returns signature string or None.
+    """
+    if node.type != "function_expression":
+        return None  # pragma: no cover
+
+    params: list[str] = []
+    has_formals = False
+    current = node
+
+    # Walk through potentially curried functions
+    while current and current.type == "function_expression":
+        for child in current.children:
+            if child.type == "formals":
+                # Attrset pattern: { a, b, c ? 0 }
+                has_formals = True
+                for formal_child in child.children:
+                    if formal_child.type == "formal":
+                        # Get the identifier from the formal
+                        for fc in formal_child.children:
+                            if fc.type == "identifier":
+                                params.append(_node_text(fc, source))
+                                break
+                # Don't recurse into body for formals style
+                break
+            elif child.type == "identifier":
+                # Simple lambda: x: body
+                params.append(_node_text(child, source))
+
+        # Check if body is another function_expression (curried)
+        body = None
+        for child in current.children:
+            if child.type == "function_expression":
+                body = child
+                break
+            elif child.type not in ("identifier", "formals", ":"):
+                # Found actual body, stop
+                break
+
+        if has_formals or body is None:
+            break
+        current = body
+
+    if has_formals:
+        return "{ " + ", ".join(params) + " }"
+    elif params:
+        return "(" + ", ".join(params) + ")"
+    return "()"  # pragma: no cover - edge case
+
+
 def _is_derivation_call(node: "tree_sitter.Node", source: bytes) -> bool:
     """Check if node is a derivation-creating call."""
     if node.type != "apply_expression":
@@ -166,59 +223,122 @@ def _find_import_target(node: "tree_sitter.Node", source: bytes) -> Optional[str
     return None  # pragma: no cover
 
 
+def _is_in_inputs_block(node: "tree_sitter.Node", source: bytes) -> bool:
+    """Check if node is inside a flake inputs block by walking up the parent chain."""
+    current = node.parent
+    while current:
+        if current.type == "binding":
+            name = _get_attrpath_name(current, source)
+            if name == "inputs":
+                return True
+        current = current.parent
+    return False  # pragma: no cover - defensive
+
+
 def _process_nix_tree(
-    node: "tree_sitter.Node",
+    root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
-    in_inputs: bool = False,
 ) -> None:
     """Process Nix AST tree to extract symbols and edges.
 
     Args:
-        node: Tree-sitter node to process
+        root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
         edges: List to append edges to
-        in_inputs: Whether we're inside a flake inputs block
     """
-    # Track if we're entering inputs block
-    is_inputs_block = False
-    if node.type == "binding":
-        name = _get_attrpath_name(node, source)
-        if name == "inputs":
-            is_inputs_block = True
+    for node in iter_tree(root):
+        # Process bindings
+        if node.type == "binding":
+            name = _get_attrpath_name(node, source)
+            if name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
 
-    # Process bindings
-    if node.type == "binding":
-        name = _get_attrpath_name(node, source)
-        if name:
+                # Check if we're inside an inputs block
+                in_inputs = _is_in_inputs_block(node, source)
+
+                # Determine kind based on context and value
+                kind = "binding"
+                value_node = None
+                for child in node.children:
+                    # Skip attrpath and anonymous nodes (like '=')
+                    if child.is_named and child.type != "attrpath":
+                        value_node = child
+                        break
+
+                if value_node and _is_function_body(value_node):
+                    kind = "function"
+                elif in_inputs:
+                    kind = "input"
+                elif value_node and _is_derivation_call(value_node, source):
+                    kind = "derivation"
+                    # Try to get derivation name
+                    drv_name = _get_derivation_name(value_node, source)
+                    if drv_name:
+                        name = drv_name
+
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, kind)
+
+                # Extract signature for functions
+                signature = None
+                if kind == "function" and value_node:
+                    signature = _extract_nix_signature(value_node, source)
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=name,
+                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    kind=kind,
+                    name=name,
+                    path=rel_path,
+                    language="nix",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=signature,
+                )
+                symbols.append(sym)
+
+        # Detect import expressions
+        elif node.type == "apply_expression":
+            text = _node_text(node, source)
+            if text.strip().startswith("import"):
+                target = _find_import_target(node, source)
+                if target:
+                    start_line = node.start_point[0] + 1
+                    src_id = f"nix:{rel_path}:{start_line}:import"
+                    dst_id = f"nix:external:{target}"
+
+                    edge = Edge(
+                        id=_make_edge_id(src_id, dst_id, "imports"),
+                        src=src_id,
+                        dst=dst_id,
+                        edge_type="imports",
+                        line=start_line,
+                        confidence=0.80,
+                        origin=PASS_ID,
+                        evidence_type="static",
+                    )
+                    edges.append(edge)
+
+        # Detect top-level function (module/overlay pattern)
+        elif node.type == "function_expression" and node.parent and node.parent.type == "source_code":
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-
-            # Determine kind based on context and value
-            kind = "binding"
-            value_node = None
-            for child in node.children:
-                # Skip attrpath and anonymous nodes (like '=')
-                if child.is_named and child.type != "attrpath":
-                    value_node = child
-                    break
-
-            if value_node and _is_function_body(value_node):
-                kind = "function"
-            elif in_inputs:
-                kind = "input"
-            elif value_node and _is_derivation_call(value_node, source):
-                kind = "derivation"
-                # Try to get derivation name
-                drv_name = _get_derivation_name(value_node, source)
-                if drv_name:
-                    name = drv_name
-
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, kind)
+            # Use file basename as function name for top-level functions
+            name = Path(rel_path).stem
+            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
 
             sym = Symbol(
                 id=symbol_id,
@@ -226,7 +346,7 @@ def _process_nix_tree(
                 shape_id=None,
                 canonical_name=name,
                 fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                kind=kind,
+                kind="function",
                 name=name,
                 path=rel_path,
                 language="nix",
@@ -237,63 +357,9 @@ def _process_nix_tree(
                     end_col=node.end_point[1],
                 ),
                 origin=PASS_ID,
+                signature=_extract_nix_signature(node, source),
             )
             symbols.append(sym)
-
-    # Detect import expressions
-    elif node.type == "apply_expression":
-        text = _node_text(node, source)
-        if text.strip().startswith("import"):
-            target = _find_import_target(node, source)
-            if target:
-                start_line = node.start_point[0] + 1
-                src_id = f"nix:{rel_path}:{start_line}:import"
-                dst_id = f"nix:external:{target}"
-
-                edge = Edge(
-                    id=_make_edge_id(src_id, dst_id, "imports"),
-                    src=src_id,
-                    dst=dst_id,
-                    edge_type="imports",
-                    line=start_line,
-                    confidence=0.80,
-                    origin=PASS_ID,
-                    evidence_type="static",
-                )
-                edges.append(edge)
-
-    # Detect top-level function (module/overlay pattern)
-    elif node.type == "function_expression" and node.parent and node.parent.type == "source_code":
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        # Use file basename as function name for top-level functions
-        name = Path(rel_path).stem
-        symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
-
-        sym = Symbol(
-            id=symbol_id,
-            stable_id=None,
-            shape_id=None,
-            canonical_name=name,
-            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-            kind="function",
-            name=name,
-            path=rel_path,
-            language="nix",
-            span=Span(
-                start_line=start_line,
-                end_line=end_line,
-                start_col=node.start_point[1],
-                end_col=node.end_point[1],
-            ),
-            origin=PASS_ID,
-        )
-        symbols.append(sym)
-
-    # Recurse into children
-    child_in_inputs = in_inputs or is_inputs_block
-    for child in node.children:
-        _process_nix_tree(child, source, rel_path, symbols, edges, child_in_inputs)
 
 
 def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:

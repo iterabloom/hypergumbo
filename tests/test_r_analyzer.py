@@ -202,3 +202,59 @@ process_data <- function(data) {
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 1
     assert functions[0].name == "process_data"
+
+
+class TestRSignatureExtraction:
+    """Tests for R function signature extraction."""
+
+    def test_function_with_params(self, tmp_path):
+        """Extract signature for function with parameters."""
+        r_file = tmp_path / "calc.R"
+        r_file.write_text("""
+add <- function(x, y) {
+  x + y
+}
+""")
+        result = analyze_r_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "add"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x, y)"
+
+    def test_function_no_params(self, tmp_path):
+        """Extract signature for function with no parameters."""
+        r_file = tmp_path / "constant.R"
+        r_file.write_text("""
+get_answer <- function() {
+  42
+}
+""")
+        result = analyze_r_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "get_answer"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "()"
+
+    def test_function_with_defaults(self, tmp_path):
+        """Extract signature for function with default values."""
+        r_file = tmp_path / "opts.R"
+        r_file.write_text("""
+greet <- function(name, greeting = "Hello") {
+  paste(greeting, name)
+}
+""")
+        result = analyze_r_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "greet"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(name, greeting = ...)"
+
+    def test_function_single_param(self, tmp_path):
+        """Extract signature for function with single parameter."""
+        r_file = tmp_path / "double.R"
+        r_file.write_text("""
+double_it <- function(x) {
+  x * 2
+}
+""")
+        result = analyze_r_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double_it"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x)"

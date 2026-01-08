@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -96,6 +97,43 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _get_enclosing_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Walk up the tree to find the enclosing module name."""
+    current = node.parent
+    while current is not None:
+        if current.type == "module_definition":
+            id_node = _find_child_by_type(current, "identifier")
+            if id_node:
+                return _node_text(id_node, source)
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_function_julia(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up the tree to find the enclosing function for Julia."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            func_name = _extract_function_name(current, source)
+            if func_name and func_name in local_symbols:
+                return local_symbols[func_name]
+        elif current.type == "assignment":
+            # Check for short-form function definition
+            left_node = current.children[0] if current.children else None
+            if left_node and left_node.type == "call_expression":
+                id_node = _find_child_by_type(left_node, "identifier")
+                if id_node:
+                    func_name = _node_text(id_node, source)
+                    if func_name in local_symbols:
+                        return local_symbols[func_name]
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -110,11 +148,90 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     sig_node = _find_child_by_type(node, "signature")
     if sig_node:
         call_node = _find_child_by_type(sig_node, "call_expression")
+        if not call_node:
+            # Handle typed_expression case: add(x::Int)::ReturnType
+            typed_node = _find_child_by_type(sig_node, "typed_expression")
+            if typed_node:
+                call_node = _find_child_by_type(typed_node, "call_expression")
         if call_node:
             id_node = _find_child_by_type(call_node, "identifier")
             if id_node:
                 return _node_text(id_node, source)
     return None  # pragma: no cover
+
+
+def _extract_julia_signature(
+    node: "tree_sitter.Node", source: bytes, is_short_form: bool = False
+) -> Optional[str]:
+    """Extract function signature from a Julia function definition.
+
+    Returns signature like:
+    - "(x::Int, y::Int)::Int" for typed functions
+    - "(message::String)" for untyped return
+    - "(x)" for short-form functions
+
+    Args:
+        node: The function_definition or assignment node.
+        source: The source code bytes.
+        is_short_form: True for assignment-based function definitions.
+
+    Returns:
+        The signature string, or None if extraction fails.
+    """
+    params: list[str] = []
+    return_type: Optional[str] = None
+
+    if is_short_form:
+        # Short form: f(x) = expr
+        left_node = node.children[0] if node.children else None
+        if left_node and left_node.type == "call_expression":
+            arg_list = _find_child_by_type(left_node, "argument_list")
+            if arg_list:
+                for child in arg_list.children:
+                    if child.type == "typed_expression":  # pragma: no cover - rare in short form
+                        params.append(_node_text(child, source))
+                    elif child.type == "identifier":
+                        params.append(_node_text(child, source))
+    else:
+        # Full form: function name(args)::ReturnType
+        sig_node = _find_child_by_type(node, "signature")
+        if sig_node:
+            # Check if signature has typed return
+            typed_expr = _find_child_by_type(sig_node, "typed_expression")
+            if typed_expr:
+                # Get call_expression and return type
+                call_node = _find_child_by_type(typed_expr, "call_expression")
+                for child in typed_expr.children:
+                    if child.type == "identifier" and call_node:
+                        # This is the return type (after ::)
+                        return_type = _node_text(child, source)
+                if call_node:
+                    arg_list = _find_child_by_type(call_node, "argument_list")
+                    if arg_list:
+                        for child in arg_list.children:
+                            if child.type == "typed_expression":
+                                params.append(_node_text(child, source))
+                            elif child.type == "identifier":  # pragma: no cover - untyped in typed func
+                                params.append(_node_text(child, source))
+            else:
+                # No typed return
+                call_node = _find_child_by_type(sig_node, "call_expression")
+                if call_node:
+                    arg_list = _find_child_by_type(call_node, "argument_list")
+                    if arg_list:
+                        for child in arg_list.children:
+                            if child.type == "typed_expression":
+                                params.append(_node_text(child, source))
+                            elif child.type == "identifier":
+                                params.append(_node_text(child, source))
+
+    params_str = ", ".join(params)
+    signature = f"({params_str})"
+
+    if return_type:
+        signature += f"::{return_type}"
+
+    return signature
 
 
 def _extract_symbols_from_file(
@@ -130,11 +247,8 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
-    current_module: Optional[str] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_module
-
+    for node in iter_tree(tree.root_node):
         # Module definition
         if node.type == "module_definition":
             id_node = _find_child_by_type(node, "identifier")
@@ -161,14 +275,6 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
 
-                # Process body with module context
-                old_module = current_module
-                current_module = module_name
-                for child in node.children:
-                    visit(child)
-                current_module = old_module
-                return
-
         # Function definition (full form)
         elif node.type == "function_definition":
             func_name = _extract_function_name(node, source)
@@ -176,7 +282,11 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                current_module = _get_enclosing_module(node, source)
                 full_name = f"{current_module}.{func_name}" if current_module else func_name
+
+                # Extract signature
+                signature = _extract_julia_signature(node, source, is_short_form=False)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "function"),
@@ -192,6 +302,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -207,6 +318,9 @@ def _extract_symbols_from_file(
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
 
+                    # Extract signature
+                    signature = _extract_julia_signature(node, source, is_short_form=True)
+
                     symbol = Symbol(
                         id=_make_symbol_id(str(file_path), start_line, end_line, func_name, "function"),
                         name=func_name,
@@ -221,6 +335,7 @@ def _extract_symbols_from_file(
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        signature=signature,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[func_name] = symbol
@@ -346,11 +461,6 @@ def _extract_symbols_from_file(
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[const_name] = symbol
 
-        # Recurse into children
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return analysis
 
 
@@ -370,45 +480,10 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
-    current_function: Optional[Symbol] = None
 
-    def visit(node: "tree_sitter.Node") -> None:
-        nonlocal current_function
-
-        # Track current function for call edges
-        if node.type == "function_definition":
-            func_name = _extract_function_name(node, source)
-            if func_name and func_name in local_symbols:
-                old_function = current_function
-                current_function = local_symbols[func_name]
-
-                # Process function body
-                for child in node.children:
-                    visit(child)
-
-                current_function = old_function
-                return
-
-        # Track short-form function for call edges
-        elif node.type == "assignment":
-            left_node = node.children[0] if node.children else None
-            if left_node and left_node.type == "call_expression":
-                id_node = _find_child_by_type(left_node, "identifier")
-                if id_node:
-                    func_name = _node_text(id_node, source)
-                    if func_name in local_symbols:
-                        old_function = current_function
-                        current_function = local_symbols[func_name]
-
-                        # Process right side
-                        for child in node.children[2:]:
-                            visit(child)
-
-                        current_function = old_function
-                        return
-
+    for node in iter_tree(tree.root_node):
         # Detect import/using statements
-        elif node.type in ("import_statement", "using_statement"):
+        if node.type in ("import_statement", "using_statement"):
             # Get the import path
             scoped_node = _find_child_by_type(node, "scoped_identifier")
             if scoped_node:
@@ -434,6 +509,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
+            current_function = _get_enclosing_function_julia(node, source, local_symbols)
             if current_function is not None:
                 id_node = _find_child_by_type(node, "identifier")
                 if id_node:
@@ -466,11 +542,6 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
 
-        # Recurse
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
     return edges
 
 

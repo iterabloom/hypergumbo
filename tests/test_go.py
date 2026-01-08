@@ -399,11 +399,9 @@ class TestGoHelperFunctions:
     """Tests for helper function edge cases."""
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
-        """_find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.go import (
-            _find_child_by_type,
-            is_go_tree_sitter_available,
-        )
+        """find_child_by_type returns None when no matching child."""
+        from hypergumbo.analyze.base import find_child_by_type
+        from hypergumbo.analyze.go import is_go_tree_sitter_available
 
         if not is_go_tree_sitter_available():
             pytest.skip("tree-sitter-go not available")
@@ -418,7 +416,7 @@ class TestGoHelperFunctions:
         tree = parser.parse(source)
 
         # Try to find a child type that doesn't exist
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
 
 
@@ -702,3 +700,410 @@ func main() {
         assert len(routes) >= 1
         assert routes[0].name == "handlers.GetAPI"
 
+
+class TestGoSignatureExtraction:
+    """Tests for extracting function signatures from Go code."""
+
+    def test_extracts_simple_signature(self, tmp_path: Path) -> None:
+        """Extracts signature with simple parameter types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func add(x int, y int) int {
+    return x + y
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(x int, y int) int"
+
+    def test_extracts_signature_with_multiple_returns(self, tmp_path: Path) -> None:
+        """Extracts signature with multiple return types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func divide(a int, b int) (int, error) {
+    return a / b, nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(a int, b int) (int, error)"
+
+    def test_extracts_signature_with_shared_types(self, tmp_path: Path) -> None:
+        """Extracts signature where parameters share types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func sum(a, b, c int) int {
+    return a + b + c
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(a, b, c int) int"
+
+    def test_extracts_signature_with_no_params(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no parameters."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func getAnswer() int {
+    return 42
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "() int"
+
+    def test_extracts_signature_with_no_return(self, tmp_path: Path) -> None:
+        """Extracts signature for function with no return type."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func printHello(name string) {
+    println("Hello, " + name)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert funcs[0].signature == "(name string)"
+
+    def test_extracts_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature for method with receiver."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+type Counter struct {
+    value int
+}
+
+func (c *Counter) Add(amount int) {
+    c.value += amount
+}
+
+func (c Counter) Get() int {
+    return c.value
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        sigs = {s.name.split(".")[-1]: s.signature for s in methods}
+
+        assert sigs.get("Add") == "(amount int)"
+        assert sigs.get("Get") == "() int"
+
+    def test_extracts_signature_with_complex_types(self, tmp_path: Path) -> None:
+        """Extracts signature with complex types."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func process(items []string) map[string]int {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        sig = funcs[0].signature
+        assert sig is not None
+        assert "[]string" in sig
+        assert "map[string]int" in sig
+
+    def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
+        """Symbol.to_dict() includes the signature field."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func greet(name string) string {
+    return "Hello, " + name
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        as_dict = funcs[0].to_dict()
+        assert "signature" in as_dict
+        assert as_dict["signature"] == "(name string) string"
+
+
+class TestImportPathToDirHint:
+    """Tests for _import_path_to_dir_hint helper function."""
+
+    def test_with_src_pattern(self) -> None:
+        """Returns /src/... for paths containing /src/."""
+        from hypergumbo.analyze.go import _import_path_to_dir_hint
+
+        result = _import_path_to_dir_hint("github.com/example/src/foo/bar")
+        assert result == "/src/foo/bar"
+
+    def test_fallback_without_src(self) -> None:
+        """Returns last 2 components for paths without /src/."""
+        from hypergumbo.analyze.go import _import_path_to_dir_hint
+
+        result = _import_path_to_dir_hint("github.com/example/genproto")
+        assert result == "/example/genproto"
+
+    def test_single_component(self) -> None:
+        """Returns None for single-component paths."""
+        from hypergumbo.analyze.go import _import_path_to_dir_hint
+
+        result = _import_path_to_dir_hint("fmt")
+        assert result is None
+
+
+class TestResolveCallee:
+    """Tests for _resolve_callee helper function."""
+
+    def test_fallback_when_no_match(self, tmp_path: Path) -> None:
+        """Returns first candidate when import hint doesn't match any."""
+        from hypergumbo.analyze.go import _resolve_callee
+        from hypergumbo.ir import Symbol, Span
+
+        # Create two candidates in different directories
+        sym1 = Symbol(
+            id="go:/path/a/foo.go:1-1:Func:function",
+            name="Func",
+            kind="function",
+            language="go",
+            path="/path/a/foo.go",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            origin="test",
+            origin_run_id="test",
+        )
+        sym2 = Symbol(
+            id="go:/path/b/foo.go:1-1:Func:function",
+            name="Func",
+            kind="function",
+            language="go",
+            path="/path/b/foo.go",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            origin="test",
+            origin_run_id="test",
+        )
+
+        # Import hint that doesn't match any candidate
+        result = _resolve_callee("Func", [sym1, sym2], "github.com/nonexistent/pkg")
+        # Should return first candidate as fallback
+        assert result == sym1
+
+
+class TestGoImportPathResolution:
+    """Tests for import path disambiguation (Bug #1 from bakeoff report)."""
+
+    def test_resolves_call_to_correct_file_by_import_path(self, tmp_path: Path) -> None:
+        """When multiple files define same symbol, resolve by import path.
+
+        This tests Bug #1: Go import resolution ignores import paths.
+        When multiple files declare the same package name, hypergumbo should
+        use the import path to disambiguate, not pick arbitrarily.
+
+        We use 'frontend' vs 'checkoutservice' naming to ensure alphabetical
+        ordering would pick the WRONG file (frontend < checkoutservice).
+        """
+        from hypergumbo.analyze.go import analyze_go
+
+        # Create structure where alphabetically first file has 'wrong' definition
+        # frontend comes before checkoutservice alphabetically
+        frontend_proto = tmp_path / "src" / "frontend" / "genproto"
+        frontend_proto.mkdir(parents=True)
+        checkout_proto = tmp_path / "src" / "checkoutservice" / "genproto"
+        checkout_proto.mkdir(parents=True)
+
+        # Both files define same function in package hipstershop
+        (frontend_proto / "demo.pb.go").write_text("""package hipstershop
+
+func RegisterCheckoutServiceServer(s interface{}, srv interface{}) {
+    // WRONG - frontend copy
+}
+""")
+
+        (checkout_proto / "demo.pb.go").write_text("""package hipstershop
+
+func RegisterCheckoutServiceServer(s interface{}, srv interface{}) {
+    // CORRECT - checkoutservice copy
+}
+""")
+
+        # main.go imports checkoutservice's genproto (not frontend's)
+        checkout = tmp_path / "src" / "checkoutservice"
+        (checkout / "main.go").write_text("""package main
+
+import (
+    pb "github.com/example/src/checkoutservice/genproto"
+)
+
+func main() {
+    pb.RegisterCheckoutServiceServer(nil, nil)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find the call edge from main to RegisterCheckoutServiceServer
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main.go" in e.src]
+
+        assert len(main_calls) >= 1, "Should have call edge from main"
+
+        # The destination MUST be in checkoutservice/genproto, NOT frontend/genproto
+        dst_id = main_calls[0].dst
+        assert "checkoutservice" in dst_id, (
+            f"Call should resolve to checkoutservice/genproto based on import path, got {dst_id}"
+        )
+        assert "frontend" not in dst_id, (
+            f"Call should NOT resolve to frontend/genproto, got {dst_id}"
+        )
+
+
+class TestGoReceiverMethodCalls:
+    """Tests for receiver.Method() call extraction (Bug #2 from bakeoff report)."""
+
+    def test_extracts_receiver_method_call_local(self, tmp_path: Path) -> None:
+        """Extracts method calls where method IS defined locally.
+
+        This is a baseline test - method calls should work when the
+        receiver type and method are both in our symbol registry.
+        """
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+
+func (s *Server) RegisterService(desc interface{}, impl interface{}) {
+    // server implementation
+}
+
+func RegisterFooServer(s *Server, srv interface{}) {
+    s.RegisterService(nil, srv)
+}
+
+func main() {
+    srv := &Server{}
+    RegisterFooServer(srv, nil)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find call edges
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # There should be an edge from RegisterFooServer to Server.RegisterService
+        register_foo_calls = [
+            e for e in call_edges
+            if "RegisterFooServer" in e.src
+        ]
+
+        # Should have at least one call edge from RegisterFooServer
+        assert len(register_foo_calls) >= 1, (
+            f"RegisterFooServer should have outgoing call edges, found: {register_foo_calls}"
+        )
+
+        # One of those edges should be to RegisterService
+        dst_names = [e.dst for e in register_foo_calls]
+        has_register_service_call = any(
+            "RegisterService" in dst for dst in dst_names
+        )
+        assert has_register_service_call, (
+            f"Should have edge to RegisterService, found destinations: {dst_names}"
+        )
+
+    def test_extracts_receiver_method_call_external(self, tmp_path: Path) -> None:
+        """Extracts method calls where receiver type is EXTERNAL.
+
+        This tests Bug #2: Call extraction fails for receiver.Method() calls
+        when the method is defined externally (not in our symbol registry).
+
+        In real gRPC code:
+            func RegisterFooServer(s grpc.ServiceRegistrar, srv FooServer) {
+                s.RegisterService(&FooService_ServiceDesc, srv)
+            }
+
+        The `s.RegisterService()` call should create an edge, even though
+        ServiceRegistrar is from google.golang.org/grpc.
+        """
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "google.golang.org/grpc"
+
+// External type - grpc.ServiceRegistrar is not defined in our codebase
+func RegisterFooServer(s grpc.ServiceRegistrar, srv FooServer) {
+    // This call is to an EXTERNAL method - not in our symbol table
+    s.RegisterService(&FooService_ServiceDesc, srv)
+}
+
+type FooServer interface {}
+var FooService_ServiceDesc = struct{}{}
+
+func main() {
+    RegisterFooServer(nil, nil)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find call edges from RegisterFooServer
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        register_foo_calls = [
+            e for e in call_edges
+            if "RegisterFooServer" in e.src
+        ]
+
+        # Should have an edge for s.RegisterService() call
+        # The destination may be unresolved/external, but the edge should exist
+        assert len(register_foo_calls) >= 1, (
+            f"RegisterFooServer should have outgoing call edge for s.RegisterService(), "
+            f"but found {len(register_foo_calls)} edges"
+        )

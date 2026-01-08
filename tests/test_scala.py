@@ -393,3 +393,63 @@ class TestScalaHelperFunctions:
 
         result = _find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
+
+
+class TestScalaSignatureExtraction:
+    """Tests for Scala function signature extraction."""
+
+    def test_basic_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from a basic method."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Calculator.scala").write_text("""
+class Calculator {
+    def add(x: Int, y: Int): Int = x + y
+}
+""")
+        result = analyze_scala(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(x: Int, y: Int): Int"
+
+    def test_unit_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from Unit method (omits Unit)."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Logger.scala").write_text("""
+class Logger {
+    def log(message: String): Unit = println(message)
+}
+""")
+        result = analyze_scala(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "log" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(message: String)"
+
+    def test_no_params_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from method with no parameters."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Counter.scala").write_text("""
+class Counter {
+    def getCount(): Int = 0
+}
+""")
+        result = analyze_scala(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "(): Int"
+
+    def test_trait_abstract_method_signature(self, tmp_path: Path) -> None:
+        """Extracts signature from abstract method in trait."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Drawable.scala").write_text("""
+trait Drawable {
+    def draw(): Unit
+}
+""")
+        result = analyze_scala(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "draw" in s.name]
+        assert len(methods) == 1
+        assert methods[0].signature == "()"

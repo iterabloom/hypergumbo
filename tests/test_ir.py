@@ -373,3 +373,55 @@ def test_symbol_to_dict_supply_chain_all_tiers() -> None:
         assert d["supply_chain"]["tier"] == tier
         assert d["supply_chain"]["tier_name"] == tier_name
         assert d["supply_chain"]["reason"] == f"test reason for tier {tier}"
+
+
+# ==================== MODIFIERS FIELD TESTS ====================
+
+
+def test_symbol_has_modifiers_field() -> None:
+    """Symbol should have modifiers field for semantic attributes."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="java:Test.java:1-2:doWork:method",
+        name="doWork",
+        kind="method",
+        language="java",
+        path="Test.java",
+        span=span,
+        modifiers=["native", "public", "static"],
+    )
+
+    assert symbol.modifiers == ["native", "public", "static"]
+
+
+def test_symbol_modifiers_defaults_to_empty_list() -> None:
+    """Symbol modifiers should default to empty list."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="python:test.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=span,
+    )
+
+    assert symbol.modifiers == []
+
+
+def test_symbol_to_dict_includes_modifiers() -> None:
+    """Symbol.to_dict should include modifiers field."""
+    span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
+    symbol = Symbol(
+        id="java:Test.java:1-2:doWork:method",
+        name="doWork",
+        kind="method",
+        language="java",
+        path="Test.java",
+        span=span,
+        modifiers=["native", "public"],
+    )
+    d = symbol.to_dict()
+
+    assert "modifiers" in d
+    assert d["modifiers"] == ["native", "public"]

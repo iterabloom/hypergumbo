@@ -8,25 +8,38 @@ Detected Patterns
 Electron IPC:
 - ipcRenderer.send('channel', data) -> message_send
 - ipcRenderer.invoke('channel', data) -> message_send
+- ipcRenderer.send(channelVar, data) -> message_send (variable channel)
 - ipcMain.on('channel', handler) -> message_receive
 - ipcMain.handle('channel', handler) -> message_receive
+- ipcMain.handle(channelVar, handler) -> message_receive (variable channel)
 
 Web Workers / postMessage:
 - worker.postMessage(data) -> message_send
 - window.postMessage(data, origin) -> message_send
 - addEventListener('message', handler) -> message_receive
 
+Channel Detection Strategy
+--------------------------
+Patterns can use either string literals or variables for channel names:
+- Literal: ipcRenderer.send('open-file', data) -> exact channel 'open-file'
+- Variable: ipcRenderer.send(CHANNEL, data) -> variable name 'CHANNEL'
+
+For variable-based channels, we use heuristic matching:
+- If sender uses `OPEN_CHANNEL` and receiver uses `OPEN_CHANNEL`, link them
+- Confidence is lower for variable-based matches (0.65 vs 0.85)
+
 How It Works
 ------------
 1. Find all JavaScript/TypeScript files in the repository
 2. Scan each file for IPC patterns using regex
-3. Extract channel names from send/receive patterns
-4. Create edges linking files with matching channels
+3. Extract channel names (literals) or variable names from patterns
+4. Create edges linking files with matching channels/variables
 
 Why This Design
 ---------------
 - Regex-based detection is fast and doesn't require tree-sitter
 - Channel-based matching enables cross-file IPC graph construction
+- Variable detection catches patterns missed by literal-only matching
 - Separate linker keeps language analyzers focused on their language
 """
 from __future__ import annotations
@@ -39,6 +52,12 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from .registry import (
+    LinkerContext,
+    LinkerRequirement,
+    LinkerResult,
+    register_linker,
+)
 
 PASS_ID = "ipc-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -49,10 +68,11 @@ class IpcPattern:
     """Represents a detected IPC pattern."""
 
     type: str  # 'send' or 'receive'
-    channel: str  # Channel name (may be empty for postMessage)
+    channel: str  # Channel name (literal value or variable name, may be empty for postMessage)
     line: int  # Line number in source
     file_path: str  # Source file path
     pattern_type: str  # 'electron', 'postmessage', 'worker'
+    channel_type: str = "literal"  # 'literal' or 'variable'
 
 
 @dataclass
@@ -64,16 +84,29 @@ class IpcLinkResult:
     run: AnalysisRun | None = None
 
 
+# ============================================================================
+# Common patterns for variable detection (shared with MQ linker pattern)
+# ============================================================================
+
+# Identifier pattern: matches variable names, constants, and simple attribute access
+_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+
+# Channel argument pattern: matches either a string literal OR an identifier
+# Group 1: string literal content (if literal)
+# Group 2: identifier/variable name (if variable)
+_CHANNEL_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+
+
 # Regex patterns for IPC detection
-# Electron IPC send patterns
+# Electron IPC send patterns - matches both literals and variables
 ELECTRON_SEND_PATTERN = re.compile(
-    r"ipcRenderer\s*\.\s*(send|invoke)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"ipcRenderer\s*\.\s*(send|invoke)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
-# Electron IPC receive patterns
+# Electron IPC receive patterns - matches both literals and variables
 ELECTRON_RECEIVE_PATTERN = re.compile(
-    r"ipcMain\s*\.\s*(on|handle)\s*\(\s*['\"]([^'\"]+)['\"]",
+    rf"ipcMain\s*\.\s*(on|handle)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
@@ -90,6 +123,28 @@ MESSAGE_LISTENER_PATTERN = re.compile(
 )
 
 
+def _extract_channel_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
+    """Extract channel and channel_type from a regex match.
+
+    Args:
+        match: Regex match object
+        literal_group: Group index for string literal content
+        var_group: Group index for variable name
+
+    Returns:
+        tuple of (channel_value, channel_type) where channel_type is 'literal' or 'variable'
+    """
+    literal = match.group(literal_group)
+    variable = match.group(var_group)
+
+    if literal:
+        return (literal, "literal")
+    elif variable:
+        return (variable, "variable")
+    else:
+        return ("unknown", "variable")  # pragma: no cover
+
+
 def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
     """Detect IPC patterns in source code.
 
@@ -98,7 +153,7 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
         language: Programming language ('javascript', 'typescript', etc.)
 
     Returns:
-        List of detected patterns with type, channel, and line info.
+        List of detected patterns with type, channel, channel_type, and line info.
     """
     # Only process JavaScript/TypeScript
     if language not in ("javascript", "typescript"):
@@ -108,26 +163,30 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
     text = source.decode("utf-8", errors="replace")
 
     # Detect Electron ipcRenderer.send/invoke
+    # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_SEND_PATTERN.finditer(text):
         method = match.group(1)  # 'send' or 'invoke'
-        channel = match.group(2)
+        channel, channel_type = _extract_channel_from_match(match, 2, 3)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
             "type": "send",
             "channel": channel,
+            "channel_type": channel_type,
             "line": line,
             "pattern_type": "electron",
             "method": method,
         })
 
     # Detect Electron ipcMain.on/handle
+    # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_RECEIVE_PATTERN.finditer(text):
         method = match.group(1)  # 'on' or 'handle'
-        channel = match.group(2)
+        channel, channel_type = _extract_channel_from_match(match, 2, 3)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
             "type": "receive",
             "channel": channel,
+            "channel_type": channel_type,
             "line": line,
             "pattern_type": "electron",
             "method": method,
@@ -140,6 +199,7 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
         patterns.append({
             "type": "send",
             "channel": "",  # postMessage doesn't use named channels
+            "channel_type": "literal",  # Not applicable but consistent
             "line": line,
             "pattern_type": "postmessage",
             "object": obj,
@@ -151,6 +211,7 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
         patterns.append({
             "type": "receive",
             "channel": "",  # message events don't use named channels
+            "channel_type": "literal",  # Not applicable but consistent
             "line": line,
             "pattern_type": "postmessage",
         })
@@ -204,6 +265,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     line=p["line"],
                     file_path=str(file_path),
                     pattern_type=p["pattern_type"],
+                    channel_type=p.get("channel_type", "literal"),
                 ))
 
             files_analyzed += 1
@@ -250,7 +312,11 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 ),
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                meta={"channel": channel, "pattern_type": pattern.pattern_type},
+                meta={
+                    "channel": channel,
+                    "channel_type": pattern.channel_type,
+                    "pattern_type": pattern.pattern_type,
+                },
             ))
             created_symbol_ids.add(sym_id)
         return sym_id
@@ -264,18 +330,26 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             src_id = _ensure_symbol(sender, channel)
             for receiver in receivers:
                 dst_id = _ensure_symbol(receiver, channel)
+                # Confidence depends on whether channels are literal or variable
+                is_variable_match = (
+                    sender.channel_type == "variable" or receiver.channel_type == "variable"
+                )
+                confidence = 0.65 if is_variable_match else 0.85
                 # Create edge from sender to receiver
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
                     edge_type="message_send",
                     line=sender.line,
-                    confidence=0.85,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="ipc_channel_match",
+                    evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
                 )
-                edge.meta = {"channel": channel}
+                edge.meta = {
+                    "channel": channel,
+                    "channel_type": "variable" if is_variable_match else "literal",
+                }
                 edges.append(edge)
 
     # Also create edges for the receive side
@@ -288,17 +362,24 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             src_id = _ensure_symbol(receiver, channel)
             for sender in senders:
                 dst_id = _ensure_symbol(sender, channel)
+                is_variable_match = (
+                    sender.channel_type == "variable" or receiver.channel_type == "variable"
+                )
+                confidence = 0.65 if is_variable_match else 0.85
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
                     edge_type="message_receive",
                     line=receiver.line,
-                    confidence=0.85,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="ipc_channel_match",
+                    evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
                 )
-                edge.meta = {"channel": channel}
+                edge.meta = {
+                    "channel": channel,
+                    "channel_type": "variable" if is_variable_match else "literal",
+                }
                 edges.append(edge)
 
     run.files_analyzed = files_analyzed
@@ -306,3 +387,65 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return IpcLinkResult(edges=edges, symbols=symbols, run=run)
+
+
+# ---------------------------------------------------------------------------
+# Linker Registry Integration
+# ---------------------------------------------------------------------------
+
+
+def _count_js_ts_files(ctx: LinkerContext) -> int:
+    """Count JavaScript/TypeScript files in the repository."""
+    count = 0
+    for _ in _find_js_files(ctx.repo_root):
+        count += 1
+    return count
+
+
+def _count_electron_patterns_in_code(ctx: LinkerContext) -> int:
+    """Count files that might contain Electron IPC patterns.
+
+    Looks for ipcRenderer or ipcMain in JS/TS symbols from analyzers.
+    """
+    count = 0
+    for sym in ctx.symbols:
+        if sym.language in ("javascript", "typescript"):
+            # Look for Electron-related patterns
+            name_lower = sym.name.lower()
+            if "ipc" in name_lower or "electron" in name_lower:
+                count += 1
+    return count
+
+
+IPC_REQUIREMENTS = [
+    LinkerRequirement(
+        name="js_ts_files",
+        description="JavaScript/TypeScript files",
+        check=_count_js_ts_files,
+    ),
+    LinkerRequirement(
+        name="electron_patterns",
+        description="Electron IPC patterns in code",
+        check=_count_electron_patterns_in_code,
+    ),
+]
+
+
+@register_linker(
+    "ipc",
+    priority=40,  # Run after analyzers
+    description="Electron IPC and postMessage pattern linking",
+    requirements=IPC_REQUIREMENTS,
+)
+def ipc_linker(ctx: LinkerContext) -> LinkerResult:
+    """IPC linker for registry-based dispatch.
+
+    This wraps link_ipc() to use the LinkerContext/LinkerResult interface.
+    """
+    result = link_ipc(ctx.repo_root)
+
+    return LinkerResult(
+        symbols=result.symbols,
+        edges=result.edges,
+        run=result.run,
+    )
