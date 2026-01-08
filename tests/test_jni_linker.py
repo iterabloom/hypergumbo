@@ -325,7 +325,7 @@ class TestJniLinkerRegistry:
     def test_jni_linker_registered(self) -> None:
         """JNI linker is registered in the linker registry."""
         # Import the jni module to trigger registration
-        import hypergumbo.linkers.jni  # noqa: F401
+        import hypergumbo.linkers.jni
         from hypergumbo.linkers.registry import get_linker
 
         linker = get_linker("jni")
@@ -336,7 +336,7 @@ class TestJniLinkerRegistry:
 
     def test_jni_linker_has_requirements(self) -> None:
         """JNI linker declares its requirements."""
-        import hypergumbo.linkers.jni  # noqa: F401
+        import hypergumbo.linkers.jni
         from hypergumbo.linkers.registry import get_linker
 
         linker = get_linker("jni")
@@ -349,7 +349,7 @@ class TestJniLinkerRegistry:
 
     def test_jni_linker_via_registry(self) -> None:
         """JNI linker works via registry dispatch."""
-        import hypergumbo.linkers.jni  # noqa: F401
+        import hypergumbo.linkers.jni
         from pathlib import Path
         from hypergumbo.linkers.registry import LinkerContext, run_linker
 
@@ -389,7 +389,7 @@ class TestJniLinkerRegistry:
 
     def test_jni_requirements_check_with_matching_symbols(self) -> None:
         """JNI requirements report as met when matching symbols exist."""
-        import hypergumbo.linkers.jni  # noqa: F401
+        import hypergumbo.linkers.jni
         from pathlib import Path
         from hypergumbo.linkers.registry import LinkerContext, check_linker_requirements
 
@@ -435,7 +435,7 @@ class TestJniLinkerRegistry:
 
     def test_jni_requirements_check_missing_java_native(self) -> None:
         """JNI requirements report unmet when Java native methods missing."""
-        import hypergumbo.linkers.jni  # noqa: F401
+        import hypergumbo.linkers.jni
         from pathlib import Path
         from hypergumbo.linkers.registry import LinkerContext, check_linker_requirements
 

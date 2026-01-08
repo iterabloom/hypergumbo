@@ -10,11 +10,25 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **`--frameworks` flag (ADR-0003 Item 3):** Control framework detection with new CLI option:
+  - `--frameworks=none`: Skip framework detection entirely (base analysis only)
+  - `--frameworks=all`: Check all known framework patterns for detected languages
+  - `--frameworks=fastapi,celery`: Only check specified frameworks (explicit mode)
+  - Default (no flag): Auto-detect based on detected languages (existing behavior)
+  - Output includes `framework_mode` field indicating which mode was used
+- **Linker activation conditions (ADR-0003 Item 4):** Linkers now have structured activation criteria:
+  - `always`: Protocol linkers (HTTP, WebSocket, MQ) always run
+  - `frameworks`: Framework linkers (gRPC, GraphQL) only run when framework detected
+  - `language_pairs`: Language-pair linkers (JNI, Swift-ObjC) only run when both languages present
+  - New `LinkerActivation` dataclass and `should_run_linker()` helper in registry
 - **Rich metadata extraction (ADR-0003 Phase 1-5):** Analyzers now capture rich metadata:
   - **Python:** Full decorator info with args/kwargs, base classes, and structured parameters
   - **JavaScript/TypeScript:** Decorator extraction with arguments (e.g., `@Controller('/users')` → `{"name": "Controller", "args": ["/users"], "kwargs": {}}`), base class extraction from `extends`/`implements` clauses including generic types (e.g., `extends Repository<User>` → `["Repository<User>"]`)
   - **Java:** Full annotation info with args/kwargs (e.g., `@Table(name = "users")` → `{"name": "Table", "args": [], "kwargs": {"name": "users"}}`), base class extraction from `extends`/`implements` clauses including generic types. Supports integer, float, boolean, string, and array annotation values.
 - This metadata enables the future FRAMEWORK_PATTERNS phase for semantic entry detection per ADR-0003.
+
+### Deprecated
+- **Packs (ADR-0003 Item 5):** The `Pack` and `PackConfig` classes now emit deprecation warnings. Framework-specific analysis is now handled by linker activation conditions rather than packs. Existing code using packs will continue to work but should be migrated to use the new `--frameworks` flag instead.
 
 ## [0.6.9] - 2026-01-07
 

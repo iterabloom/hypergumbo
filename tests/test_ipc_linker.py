@@ -538,7 +538,7 @@ class TestIpcLinkerRegistration:
 
     def test_linker_is_registered(self) -> None:
         """IPC linker is registered with the registry."""
-        import hypergumbo.linkers.ipc  # noqa: F401
+        import hypergumbo.linkers.ipc
         from hypergumbo.linkers.registry import get_linker
 
         linker = get_linker("ipc")

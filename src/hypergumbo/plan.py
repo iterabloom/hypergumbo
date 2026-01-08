@@ -24,6 +24,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -92,6 +93,10 @@ class PassConfig:
 class PackConfig:
     """Configuration for a pack in the plan.
 
+    .. deprecated:: 0.7.0
+        PackConfig is deprecated along with Packs. Use the --frameworks flag
+        and linker activation conditions instead.
+
     Attributes:
         id: Pack identifier from catalog
         enabled: Whether this pack should be used
@@ -101,6 +106,15 @@ class PackConfig:
     id: str
     enabled: bool = True
     config: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Emit deprecation warning on PackConfig creation."""
+        warnings.warn(
+            "PackConfig is deprecated and will be removed in a future version. "
+            "Use the --frameworks flag and linker activation conditions instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict."""
@@ -180,7 +194,8 @@ def generate_plan(profile: RepoProfile, catalog: Catalog) -> CapsulePlan:
     """Generate a capsule plan from profile and catalog.
 
     Template-based generation that selects passes based on detected
-    languages and packs based on detected frameworks.
+    languages. Framework-specific analysis is now handled by linker
+    activation conditions rather than packs.
 
     Args:
         profile: Detected repo profile with languages and frameworks
@@ -195,7 +210,6 @@ def generate_plan(profile: RepoProfile, catalog: Catalog) -> CapsulePlan:
 
     # Build lookup of available passes by ID
     catalog_passes = {p.id: p for p in catalog.passes}
-    catalog_packs = {p.id: p for p in catalog.packs}
 
     # Add passes for detected languages
     for lang in profile.languages:
@@ -208,13 +222,9 @@ def generate_plan(profile: RepoProfile, catalog: Catalog) -> CapsulePlan:
                 if not any(p.id == pass_id for p in passes):
                     passes.append(PassConfig(id=pass_id, enabled=True))
 
-    # Add packs for detected frameworks
-    for framework in profile.frameworks:
-        pack_id = FRAMEWORK_TO_PACK.get(framework)
-        if pack_id and pack_id in catalog_packs:
-            # Avoid duplicates
-            if not any(p.id == pack_id for p in packs):
-                packs.append(PackConfig(id=pack_id, enabled=True))
+    # NOTE: Packs are deprecated (ADR-0003). Framework-specific analysis
+    # is now handled by linker activation conditions.
+    # The packs list remains empty for backward compatibility.
 
     # Add default exclude rules
     for rule_def in DEFAULT_EXCLUDE_RULES:

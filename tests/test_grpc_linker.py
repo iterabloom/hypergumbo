@@ -537,7 +537,7 @@ class TestGrpcLinkerRegistration:
     def test_linker_is_registered(self) -> None:
         """gRPC linker is registered with the registry."""
         # Import the module to trigger registration
-        import hypergumbo.linkers.grpc  # noqa: F401
+        import hypergumbo.linkers.grpc
         from hypergumbo.linkers.registry import get_linker
 
         linker = get_linker("grpc")
