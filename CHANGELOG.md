@@ -45,6 +45,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - JNI linker only runs when both Java and C/C++ present
   - Swift-ObjC linker only runs when both Swift and Objective-C present
   - Protocol linkers (HTTP, WebSocket, MQ) always run (user-controlled opt-out via `--linkers`)
+- **HTTP linker concept metadata support:** HTTP linker now extracts route info from concept metadata:
+  - Prefers `meta.concepts[].path` and `meta.concepts[].method` (FRAMEWORK_PATTERNS phase)
+  - Falls back to legacy `meta.route_path` and `meta.http_method` when no route concept
+  - Enables route linking for symbols enriched by framework pattern YAML files
 
 ### Deprecated
 - **Packs (ADR-0003 Item 5):** The `Pack` and `PackConfig` classes now emit deprecation warnings. Framework-specific analysis is now handled by linker activation conditions rather than packs. Existing code using packs will continue to work but should be migrated to use the new `--frameworks` flag instead.
