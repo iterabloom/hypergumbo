@@ -18,6 +18,19 @@ Detection is intentionally shallow - we look for package names in
 dependency files rather than analyzing imports. This keeps profiling
 fast (milliseconds) even for large repos.
 
+Framework Specification (ADR-0003)
+----------------------------------
+The --frameworks flag controls which frameworks to check for:
+- none: Skip framework detection (base analysis only)
+- all: Check all known framework patterns for detected languages
+- explicit: Only check specified frameworks (e.g., "fastapi,celery")
+- auto (default): Auto-detect based on detected languages
+
+This enables users to:
+- Reduce noise by disabling framework detection (--frameworks=none)
+- Exhaustively check all patterns (--frameworks=all)
+- Focus on specific frameworks (--frameworks=fastapi,django)
+
 Why This Design
 ---------------
 - Extension-based language detection is simple and reliable
@@ -28,6 +41,7 @@ Why This Design
 """
 import json
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 from .discovery import find_files
@@ -325,6 +339,108 @@ SCALA_FRAMEWORKS = {
     "finatra": ["finatra", "com.twitter"],
 }
 
+# Map languages to their framework dictionaries
+LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
+    "python": PYTHON_FRAMEWORKS,
+    "javascript": JS_FRAMEWORKS,
+    "typescript": JS_FRAMEWORKS,  # TypeScript uses same frameworks as JS
+    "rust": RUST_FRAMEWORKS,
+    "go": GO_FRAMEWORKS,
+    "php": PHP_FRAMEWORKS,
+    "java": JAVA_FRAMEWORKS,
+    "kotlin": JAVA_FRAMEWORKS,  # Kotlin uses same frameworks as Java
+    "swift": SWIFT_FRAMEWORKS,
+    "scala": SCALA_FRAMEWORKS,
+}
+
+
+class FrameworkMode(Enum):
+    """Mode for framework detection (ADR-0003).
+
+    - NONE: Skip framework detection entirely
+    - ALL: Check all known frameworks for detected languages
+    - EXPLICIT: Only check explicitly specified frameworks
+    - AUTO: Auto-detect based on detected languages (default)
+    """
+
+    NONE = "none"
+    ALL = "all"
+    EXPLICIT = "explicit"
+    AUTO = "auto"
+
+
+@dataclass
+class FrameworkSpec:
+    """Specification for which frameworks to check (ADR-0003).
+
+    Attributes:
+        mode: How frameworks were specified
+        frameworks: Set of framework names to check for
+        requested: Original user-requested frameworks (for explicit mode)
+    """
+
+    mode: FrameworkMode
+    frameworks: set[str]
+    requested: list[str] = field(default_factory=list)
+
+
+def resolve_frameworks(
+    spec: str | None,
+    detected_languages: set[str],
+) -> FrameworkSpec:
+    """Resolve a framework specification to a concrete set of frameworks.
+
+    Args:
+        spec: Framework specification string:
+            - None: Auto-detect (default)
+            - "none": Skip framework detection
+            - "all": Check all frameworks for detected languages
+            - "fastapi,celery": Explicit list of frameworks
+        detected_languages: Set of detected language names
+
+    Returns:
+        FrameworkSpec with mode and resolved framework set
+    """
+    if spec is None:
+        # Auto-detect: return all frameworks for detected languages
+        frameworks = _get_frameworks_for_languages(detected_languages)
+        return FrameworkSpec(mode=FrameworkMode.AUTO, frameworks=frameworks)
+
+    spec_lower = spec.lower().strip()
+
+    if spec_lower == "none":
+        return FrameworkSpec(mode=FrameworkMode.NONE, frameworks=set())
+
+    if spec_lower == "all":
+        # All frameworks for detected languages
+        frameworks = _get_frameworks_for_languages(detected_languages)
+        return FrameworkSpec(mode=FrameworkMode.ALL, frameworks=frameworks)
+
+    # Explicit list: parse comma-separated framework names
+    requested = [f.strip() for f in spec.split(",") if f.strip()]
+    frameworks = set(requested)
+    return FrameworkSpec(
+        mode=FrameworkMode.EXPLICIT,
+        frameworks=frameworks,
+        requested=requested,
+    )
+
+
+def _get_frameworks_for_languages(languages: set[str]) -> set[str]:
+    """Get all known frameworks for a set of languages.
+
+    Args:
+        languages: Set of language names
+
+    Returns:
+        Set of framework names available for those languages
+    """
+    frameworks: set[str] = set()
+    for lang in languages:
+        if lang in LANGUAGE_FRAMEWORKS:
+            frameworks.update(LANGUAGE_FRAMEWORKS[lang].keys())
+    return frameworks
+
 
 @dataclass
 class LanguageStats:
@@ -343,12 +459,19 @@ class RepoProfile:
 
     languages: dict[str, LanguageStats] = field(default_factory=dict)
     frameworks: list[str] = field(default_factory=list)
+    framework_mode: str = "auto"  # none, all, explicit, auto
+    requested_frameworks: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "languages": {k: v.to_dict() for k, v in self.languages.items()},
             "frameworks": sorted(self.frameworks),
+            "framework_mode": self.framework_mode,
         }
+        # Only include requested_frameworks for explicit mode
+        if self.framework_mode == "explicit":
+            result["requested_frameworks"] = sorted(self.requested_frameworks)
+        return result
 
 
 def _count_loc(file_path: Path) -> int:
@@ -617,33 +740,78 @@ def _detect_dart_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
-def _detect_frameworks(repo_root: Path) -> list[str]:
-    """Detect all frameworks in the repository."""
+def _detect_frameworks(
+    repo_root: Path,
+    allowed_frameworks: set[str] | None = None,
+) -> list[str]:
+    """Detect frameworks in the repository.
+
+    Args:
+        repo_root: Path to the repository root.
+        allowed_frameworks: If provided, only check for these frameworks.
+            If None, check all known frameworks.
+
+    Returns:
+        List of detected framework names.
+    """
     frameworks = []
-    frameworks.extend(_detect_python_frameworks(repo_root))
-    frameworks.extend(_detect_js_frameworks(repo_root))
-    frameworks.extend(_detect_rust_frameworks(repo_root))
-    frameworks.extend(_detect_go_frameworks(repo_root))
-    frameworks.extend(_detect_php_frameworks(repo_root))
-    frameworks.extend(_detect_java_frameworks(repo_root))
-    frameworks.extend(_detect_swift_frameworks(repo_root))
-    frameworks.extend(_detect_scala_frameworks(repo_root))
-    frameworks.extend(_detect_dart_frameworks(repo_root))
+
+    # Collect all detections
+    all_detected = []
+    all_detected.extend(_detect_python_frameworks(repo_root))
+    all_detected.extend(_detect_js_frameworks(repo_root))
+    all_detected.extend(_detect_rust_frameworks(repo_root))
+    all_detected.extend(_detect_go_frameworks(repo_root))
+    all_detected.extend(_detect_php_frameworks(repo_root))
+    all_detected.extend(_detect_java_frameworks(repo_root))
+    all_detected.extend(_detect_swift_frameworks(repo_root))
+    all_detected.extend(_detect_scala_frameworks(repo_root))
+    all_detected.extend(_detect_dart_frameworks(repo_root))
+
+    # Filter by allowed frameworks if specified
+    if allowed_frameworks is not None:
+        frameworks = [f for f in all_detected if f in allowed_frameworks]
+    else:
+        frameworks = all_detected
+
     return frameworks
 
 
 def detect_profile(
-    repo_root: Path, extra_excludes: list[str] | None = None
+    repo_root: Path,
+    extra_excludes: list[str] | None = None,
+    frameworks: str | None = None,
 ) -> RepoProfile:
     """Detect the profile of a repository.
 
     Args:
         repo_root: Path to the repository root.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+        frameworks: Framework specification (ADR-0003):
+            - None: Auto-detect (default)
+            - "none": Skip framework detection
+            - "all": Check all frameworks for detected languages
+            - "fastapi,celery": Only check specified frameworks
 
     Returns a RepoProfile with detected languages and frameworks.
     """
     languages = _detect_languages(repo_root, extra_excludes=extra_excludes)
-    frameworks = _detect_frameworks(repo_root)
+    detected_languages = set(languages.keys())
 
-    return RepoProfile(languages=languages, frameworks=frameworks)
+    # Resolve framework specification
+    framework_spec = resolve_frameworks(frameworks, detected_languages)
+
+    if framework_spec.mode == FrameworkMode.NONE:
+        # Skip framework detection
+        detected_frameworks: list[str] = []
+    else:
+        # Detect frameworks (filtered by allowed set if specified)
+        allowed = framework_spec.frameworks if framework_spec.frameworks else None
+        detected_frameworks = _detect_frameworks(repo_root, allowed_frameworks=allowed)
+
+    return RepoProfile(
+        languages=languages,
+        frameworks=detected_frameworks,
+        framework_mode=framework_spec.mode.value,
+        requested_frameworks=framework_spec.requested,
+    )

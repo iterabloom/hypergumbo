@@ -99,6 +99,15 @@ filterwarnings = [
     "ignore:.*analysis skipped.*requires tree-sitter:UserWarning",
     # tree-sitter deprecation warnings (older grammar packages)
     "ignore:int argument support is deprecated:DeprecationWarning",
+    # Pack deprecation warnings (ADR-0003)
+    "ignore:Packs are deprecated:DeprecationWarning",
+    "ignore:PackConfig is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+# Omit optional modules that require extra dependencies
+omit = [
+    "*/sketch_embeddings.py",  # Requires sentence-transformers
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -131,8 +140,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests can use assert, hardcoded values, subprocess, temp paths
-"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F841", "RUF005"]
+# Tests can use assert, hardcoded values, subprocess, temp paths, side-effect imports
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
 # Conditional imports for optional tree-sitter deps
 "src/hypergumbo/analyze/*.py" = ["E402"]
 

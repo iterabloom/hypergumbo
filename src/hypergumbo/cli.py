@@ -1437,6 +1437,7 @@ def run_behavior_map(
     tiers: str | None = None,
     exclude_tests: bool = False,
     extra_excludes: list[str] | None = None,
+    frameworks: str | None = None,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -1459,11 +1460,16 @@ def run_behavior_map(
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
             Affects profile detection (language stats). Use for excluding
             project-specific files like "*.json" or "vendor".
+        frameworks: Framework specification (ADR-0003):
+            - None: Auto-detect (default)
+            - "none": Skip framework detection
+            - "all": Check all frameworks for detected languages
+            - "fastapi,celery": Only check specified frameworks
     """
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
-    profile = detect_profile(repo_root, extra_excludes=extra_excludes)
+    profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks)
     behavior_map["profile"] = profile.to_dict()
 
     # Detect internal package roots for supply chain classification

@@ -214,14 +214,21 @@ class TestGeneratePlan:
             assert "javascript-ts-v1" not in pass_ids
 
     def test_generate_plan_for_fastapi_project(self) -> None:
-        """Generates plan with FastAPI pack for FastAPI project."""
+        """FastAPI project should NOT get packs (deprecated)."""
+        # NOTE: Packs are deprecated (ADR-0003). Framework-specific analysis
+        # is now handled by linker activation conditions.
         profile = RepoProfile(languages=["python"], frameworks=["fastapi"])
-        catalog = get_default_catalog()
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            catalog = get_default_catalog()
+            plan = generate_plan(profile, catalog)
 
-        plan = generate_plan(profile, catalog)
-
-        pack_ids = [p.id for p in plan.packs]
-        assert "python-fastapi" in pack_ids
+        # Packs are no longer added
+        assert plan.packs == []
+        # But the Python pass should still be present
+        pass_ids = [p.id for p in plan.passes]
+        assert "python-ast-v1" in pass_ids
 
     def test_generate_plan_has_version(self) -> None:
         """Generated plan has version field."""

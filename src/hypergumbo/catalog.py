@@ -30,6 +30,7 @@ Why This Design
 from __future__ import annotations
 
 import importlib.util
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -68,6 +69,10 @@ class Pass:
 class Pack:
     """A bundle of passes for a specific use case.
 
+    .. deprecated:: 0.7.0
+        Packs are deprecated. Use the --frameworks flag and linker activation
+        conditions instead for framework-specific analysis.
+
     Attributes:
         id: Unique identifier (e.g., 'python-fastapi')
         description: Human-readable description
@@ -77,6 +82,15 @@ class Pack:
     id: str
     description: str
     passes: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Emit deprecation warning on Pack creation."""
+        warnings.warn(
+            "Packs are deprecated and will be removed in a future version. "
+            "Use the --frameworks flag and linker activation conditions instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict."""
