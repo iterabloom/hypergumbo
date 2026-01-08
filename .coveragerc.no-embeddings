@@ -1,0 +1,28 @@
+# Coverage configuration for when sentence-transformers is unavailable.
+# This excludes embedding-specific code that cannot be executed without
+# the optional sentence-transformers dependency.
+
+[run]
+# Omit the embedding module entirely - it requires sentence-transformers
+omit =
+    */sketch_embeddings.py
+
+[report]
+# Exclude lines containing these patterns (embedding-related conditionals)
+exclude_also =
+    # Functions that require sentence-transformers
+    def _extract_config_embedding
+    def _extract_config_hybrid
+    def _discover_config_files_embedding
+    def _collect_config_content_with_discovery
+    def _collect_config_content
+    def _get_repo_languages
+    def _compute_log_sample_size
+    def _compute_stride
+    def _build_context_chunk
+    # Embedding mode branches
+    if mode == ConfigExtractionMode.EMBEDDING
+    elif mode == ConfigExtractionMode.HYBRID
+    # File header handling (only reached via embedding output)
+    if.*has_file_headers
+    for file_header, file_lines in file_sections
