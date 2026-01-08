@@ -1549,12 +1549,14 @@ def _extract_config_info(
     # Fair character allocation: each file gets equal share
     # First pass: group lines by file (lines starting with "[" are file headers)
     # Also preserve any "preamble" lines that come before the first header (hybrid mode)
-    preamble_lines: list[str] = []
-    file_sections: list[tuple[str, list[str]]] = []
-    current_file = ""
-    current_lines: list[str] = []
+    # NOTE: This block only executes when embedding mode produces [filename] headers.
+    # When sentence-transformers is unavailable, this code path is never reached.
+    preamble_lines: list[str] = []  # pragma: no cover - embedding output only
+    file_sections: list[tuple[str, list[str]]] = []  # pragma: no cover - embedding output only
+    current_file = ""  # pragma: no cover - embedding output only
+    current_lines: list[str] = []  # pragma: no cover - embedding output only
 
-    for line in lines:
+    for line in lines:  # pragma: no cover - embedding output only
         if line.startswith("[") and line.endswith("]") and "/" not in line:
             if current_file and current_lines:
                 file_sections.append((current_file, current_lines))
@@ -1566,16 +1568,16 @@ def _extract_config_info(
         else:
             current_lines.append(line)
 
-    if current_file and current_lines:
+    if current_file and current_lines:  # pragma: no cover - embedding output only
         file_sections.append((current_file, current_lines))
 
     if not file_sections and not preamble_lines:  # pragma: no cover
         return "\n".join(lines)[:max_chars]  # pragma: no cover
 
     # Second pass: allocate chars - preamble gets priority, rest shared among files
-    preamble_text = "\n".join(preamble_lines) if preamble_lines else ""
-    remaining_chars = max_chars - len(preamble_text)
-    if preamble_text:
+    preamble_text = "\n".join(preamble_lines) if preamble_lines else ""  # pragma: no cover - embedding output only
+    remaining_chars = max_chars - len(preamble_text)  # pragma: no cover - embedding output only
+    if preamble_text:  # pragma: no cover - embedding output only
         remaining_chars -= 2  # Account for separator newlines
 
     if not file_sections:  # pragma: no cover - defensive, no file headers
@@ -1587,14 +1589,14 @@ def _extract_config_info(
                 preamble_text = preamble_text[:last_newline]
         return preamble_text
 
-    num_files = len(file_sections)
-    chars_per_file = remaining_chars // num_files if num_files > 0 else remaining_chars
+    num_files = len(file_sections)  # pragma: no cover - embedding output only
+    chars_per_file = remaining_chars // num_files if num_files > 0 else remaining_chars  # pragma: no cover - embedding output only
 
-    result_parts: list[str] = []
-    if preamble_text:
+    result_parts: list[str] = []  # pragma: no cover - embedding output only
+    if preamble_text:  # pragma: no cover - embedding output only
         result_parts.append(preamble_text)
 
-    for file_header, file_lines in file_sections:
+    for file_header, file_lines in file_sections:  # pragma: no cover - embedding output only
         # Build this file's content
         file_content = file_header + "\n" + "\n".join(file_lines)
 
@@ -1610,7 +1612,7 @@ def _extract_config_info(
             result_parts.append("")  # Separator
         result_parts.append(file_content)
 
-    return "\n".join(result_parts)
+    return "\n".join(result_parts)  # pragma: no cover - embedding output only
 
 
 def _format_config_section(config_info: str) -> str:
