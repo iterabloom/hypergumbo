@@ -2605,6 +2605,28 @@ class TestDecoratorMetadata:
         assert method_by_name["factory"]["meta"]["decorators"][0]["name"] == "classmethod"
         assert method_by_name["name"]["meta"]["decorators"][0]["name"] == "property"
 
+    def test_decorator_with_ellipsis_arg(self, tmp_path: Path) -> None:
+        """Decorator with ellipsis (...) should serialize as string."""
+        py_file = tmp_path / "models.py"
+        py_file.write_text(
+            "def field(default): pass\n"
+            "\n"
+            "@field(...)\n"
+            "def required_field():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "required_field")
+
+        decorators = func["meta"]["decorators"]
+        # Ellipsis should be serialized as "..." string (JSON-safe)
+        assert decorators[0]["args"] == ["..."]
+
 
 class TestBaseClassMetadata:
     """Tests for base class metadata extraction per ADR-0003."""
