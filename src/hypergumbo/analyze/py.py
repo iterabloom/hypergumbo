@@ -104,6 +104,9 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
     For complex expressions (names, calls, etc.), returns string representation.
     """
     if isinstance(node, ast.Constant):
+        # Handle Ellipsis (...) which is not JSON-serializable
+        if node.value is ...:
+            return "..."
         return node.value
     elif isinstance(node, ast.Name):
         # Variable reference - return name as string
