@@ -1636,13 +1636,20 @@ This prefers well-connected entries, producing richer slices.
 
 See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-migration-path) for the authoritative migration plan.
 
-| Version | Focus | Entry Detection Impact |
-|---------|-------|------------------------|
-| **v0.6.x** | Path heuristics + exclusions | Current state |
-| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata |
-| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata |
-| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) |
-| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure |
+| Version | Focus | Entry Detection Impact | Status |
+|---------|-------|------------------------|--------|
+| **v0.6.x** | Path heuristics + exclusions | Current state | 🟩 |
+| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata | 🟩 |
+| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata | 🟨 |
+| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) | ⬜ |
+| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure | ⬜ |
+
+**v0.8.x progress:**
+- 🟩 `framework_patterns.py` module with YAML-driven pattern matching
+- 🟩 FastAPI patterns YAML (`fastapi.yaml`)
+- 🟩 `enrich_symbols()` called in CLI pipeline after analyzers
+- 🟩 Linkers respect activation conditions (conditional execution)
+- 🟧 Purify Python analyzer (blocked: http linker depends on `meta.route_path`)
 
 ## 9) Testing & quality bar
 
