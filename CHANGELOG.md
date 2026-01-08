@@ -26,6 +26,25 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - **JavaScript/TypeScript:** Decorator extraction with arguments (e.g., `@Controller('/users')` → `{"name": "Controller", "args": ["/users"], "kwargs": {}}`), base class extraction from `extends`/`implements` clauses including generic types (e.g., `extends Repository<User>` → `["Repository<User>"]`)
   - **Java:** Full annotation info with args/kwargs (e.g., `@Table(name = "users")` → `{"name": "Table", "args": [], "kwargs": {"name": "users"}}`), base class extraction from `extends`/`implements` clauses including generic types. Supports integer, float, boolean, string, and array annotation values.
 - This metadata enables the future FRAMEWORK_PATTERNS phase for semantic entry detection per ADR-0003.
+- **FRAMEWORK_PATTERNS phase (ADR-0003 Items 6-8):** Data-driven symbol enrichment:
+  - New `framework_patterns.py` module with `Pattern`, `FrameworkPatternDef` dataclasses
+  - Framework patterns defined in YAML files (`src/hypergumbo/frameworks/*.yaml`)
+  - `enrich_symbols()` matches patterns against symbol metadata and adds concept annotations
+  - Symbols gain `meta.concepts` list with framework-specific semantics (route, model, dependency, etc.)
+  - FastAPI patterns YAML (`fastapi.yaml`) with patterns for:
+    - Route decorators: `@app.get("/path")`, `@router.post("/path")`, etc.
+    - Pydantic models: `class Item(BaseModel)`
+    - Dependency injection: `Depends(get_db)`, `BackgroundTasks`
+  - Pattern matching extracts HTTP method from decorator suffix and path from args
+- **Linker conditional execution (ADR-0003 Item 10):** Linkers now respect activation conditions:
+  - `run_all_linkers()` filters linkers based on detected frameworks and languages
+  - LinkerContext extended with `detected_frameworks` and `detected_languages` fields
+  - gRPC linker only runs when grpc/protobuf framework detected
+  - GraphQL linker only runs when graphql framework detected
+  - Phoenix IPC linker only runs when phoenix framework detected
+  - JNI linker only runs when both Java and C/C++ present
+  - Swift-ObjC linker only runs when both Swift and Objective-C present
+  - Protocol linkers (HTTP, WebSocket, MQ) always run (user-controlled opt-out via `--linkers`)
 
 ### Deprecated
 - **Packs (ADR-0003 Item 5):** The `Pack` and `PackConfig` classes now emit deprecation warnings. Framework-specific analysis is now handled by linker activation conditions rather than packs. Existing code using packs will continue to work but should be migrated to use the new `--frameworks` flag instead.
