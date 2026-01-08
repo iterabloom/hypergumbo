@@ -10,10 +10,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
-- **Rich metadata extraction (ADR-0003 Phase 1):** Python analyzer now captures:
-  - **Decorators with arguments:** Full decorator info including positional args and kwargs (e.g., `@app.get('/users', tags=['api'])` → `{"name": "app.get", "args": ["/users"], "kwargs": {"tags": ["api"]}}`)
-  - **Base classes:** Class inheritance captured in `meta.base_classes` (e.g., `["BaseModel", "Generic[T]"]`)
-  - **Structured parameters:** Function/method parameters with name, type, and default flag in `meta.parameters`
+- **Rich metadata extraction (ADR-0003 Phase 1-4):** Analyzers now capture rich metadata:
+  - **Python:** Full decorator info with args/kwargs, base classes, and structured parameters
+  - **JavaScript/TypeScript:** Decorator extraction with arguments (e.g., `@Controller('/users')` → `{"name": "Controller", "args": ["/users"], "kwargs": {}}`), base class extraction from `extends`/`implements` clauses including generic types (e.g., `extends Repository<User>` → `["Repository<User>"]`)
 - This metadata enables the future FRAMEWORK_PATTERNS phase for semantic entry detection per ADR-0003.
 
 ## [0.6.9] - 2026-01-07

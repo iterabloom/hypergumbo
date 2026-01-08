@@ -7,6 +7,20 @@ This analyzer uses tree-sitter to parse JS/TS/Svelte files and extract:
 - Method call relationships (edges)
 - Object instantiation relationships (edges)
 
+Rich Metadata (ADR-0003)
+------------------------
+Class and method symbols include rich metadata in their `meta` field:
+
+**Class metadata:**
+- `decorators`: List of decorator dicts with name, args, kwargs
+  Example: `@Controller('/users')` → `{"name": "Controller", "args": ["/users"], "kwargs": {}}`
+- `base_classes`: List of base class/interface names including generics
+  Example: `extends Repository<User> implements IService` → `["Repository<User>", "IService"]`
+
+**Method metadata:**
+- `decorators`: List of decorator dicts with name, args, kwargs
+- `route_path`: NestJS route path if detected (legacy, also in decorators)
+
 If tree-sitter is not installed, the analyzer gracefully degrades and
 reports the pass as skipped with reason.
 
@@ -632,6 +646,191 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _ts_value_to_python(node: "tree_sitter.Node", source: bytes) -> str | int | float | bool | list | None:
+    """Convert a tree-sitter AST node to a Python value representation.
+
+    Handles strings, numbers, booleans, arrays, and identifiers.
+    Returns the value or a string representation for identifiers.
+    """
+    if node.type == "string":
+        # Strip quotes from string literals
+        text = _node_text(node, source)
+        # Handle both single and double quotes
+        if len(text) >= 2:
+            if (text[0] == '"' and text[-1] == '"') or (text[0] == "'" and text[-1] == "'"):
+                return text[1:-1]
+        return text  # pragma: no cover
+    elif node.type == "template_string":
+        # Template string (backtick): extract content without quotes
+        text = _node_text(node, source)
+        if len(text) >= 2 and text[0] == '`' and text[-1] == '`':
+            return text[1:-1]
+        return text  # pragma: no cover
+    elif node.type == "number":
+        text = _node_text(node, source)
+        try:
+            if '.' in text:
+                return float(text)
+            return int(text)
+        except ValueError:  # pragma: no cover
+            return text
+    elif node.type in ("true", "false"):
+        return node.type == "true"
+    elif node.type == "array":
+        result = []
+        for child in node.children:
+            if child.type not in ("[", "]", ","):
+                result.append(_ts_value_to_python(child, source))
+        return result
+    elif node.type == "identifier":
+        # Return identifier as a string (variable reference)
+        return _node_text(node, source)
+    elif node.type == "member_expression":
+        # Handle qualified names like AuthGuard.jwt
+        return _node_text(node, source)
+    # For other types, return the text representation
+    return _node_text(node, source)  # pragma: no cover
+
+
+def _extract_decorator_info(
+    dec_node: "tree_sitter.Node", source: bytes
+) -> dict[str, object]:
+    """Extract full decorator information including arguments.
+
+    Returns a dict with:
+    - name: decorator name (e.g., "Injectable", "Controller")
+    - args: list of positional arguments
+    - kwargs: dict of keyword arguments (always empty for JS/TS decorators)
+
+    TypeScript decorators don't have named kwargs like Python, so kwargs is always {}.
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    # Decorator can be: @Name, @Name(), @Name(arg1, arg2)
+    for child in dec_node.children:
+        if child.type == "call_expression":
+            # @Decorator() or @Decorator(args)
+            for call_child in child.children:
+                if call_child.type == "identifier":
+                    name = _node_text(call_child, source)
+                elif call_child.type == "member_expression":
+                    name = _node_text(call_child, source)
+                elif call_child.type == "arguments":
+                    for arg in call_child.children:
+                        if arg.type not in ("(", ")", ","):
+                            args.append(_ts_value_to_python(arg, source))
+        elif child.type == "identifier":  # pragma: no cover
+            # @Decorator without parens (rare in TS but possible)
+            name = _node_text(child, source)
+        elif child.type == "member_expression":  # pragma: no cover
+            # @module.Decorator without parens
+            name = _node_text(child, source)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_decorators(
+    node: "tree_sitter.Node", source: bytes
+) -> list[dict[str, object]]:
+    """Extract all decorators for a class or method node.
+
+    Decorators appear as sibling nodes before the decorated node,
+    or as children with type 'decorator' in some grammars.
+
+    Returns list of decorator info dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    decorators: list[dict[str, object]] = []
+
+    # Check for decorator children (some grammars nest decorators inside the declaration)
+    for child in node.children:
+        if child.type == "decorator":
+            dec_info = _extract_decorator_info(child, source)
+            if dec_info["name"]:
+                decorators.append(dec_info)
+
+    # Check siblings before this node (TypeScript pattern)
+    parent = node.parent
+    if parent is not None:
+        idx = None
+        for i, sibling in enumerate(parent.children):
+            if sibling == node:
+                idx = i
+                break
+
+        if idx is not None:
+            # Look backward for decorator siblings
+            for i in range(idx - 1, -1, -1):
+                sibling = parent.children[i]
+                if sibling.type == "decorator":
+                    dec_info = _extract_decorator_info(sibling, source)
+                    if dec_info["name"]:
+                        decorators.insert(0, dec_info)  # Maintain order
+                else:
+                    # Stop at non-decorator (e.g., another method or statement)
+                    if sibling.type not in ("comment", "decorator"):
+                        break
+
+    return decorators
+
+
+def _extract_base_classes(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Extract base classes from a class_declaration node.
+
+    Handles:
+    - extends clause: class Foo extends Bar
+    - implements clause: class Foo implements IBar, IBaz
+    - generic types: class Foo extends Bar<T>
+
+    Supports both TypeScript (nested extends_clause) and JavaScript (flat) grammars.
+
+    Returns list of base class/interface names.
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        if child.type == "class_heritage":
+            # class_heritage contains extends_clause and/or implements_clause
+            for heritage_child in child.children:
+                if heritage_child.type == "extends_clause":
+                    # TypeScript: extends_clause contains the base class
+                    # May have identifier/type_identifier followed by type_arguments
+                    base_name = ""
+                    type_args = ""
+                    for extends_child in heritage_child.children:
+                        if extends_child.type in ("identifier", "type_identifier"):
+                            base_name = _node_text(extends_child, source)
+                        elif extends_child.type == "member_expression":
+                            # React.Component style
+                            base_name = _node_text(extends_child, source)
+                        elif extends_child.type == "generic_type":
+                            # Explicit generic type like Repository<User>
+                            base_name = _node_text(extends_child, source)  # pragma: no cover
+                        elif extends_child.type == "type_arguments":
+                            # Separate type arguments like <User>
+                            type_args = _node_text(extends_child, source)
+                    if base_name:
+                        base_classes.append(base_name + type_args)
+                elif heritage_child.type == "implements_clause":
+                    # implements_clause contains interface list
+                    for impl_child in heritage_child.children:
+                        if impl_child.type in ("identifier", "type_identifier"):
+                            base_classes.append(_node_text(impl_child, source))
+                        elif impl_child.type == "generic_type":
+                            base_classes.append(_node_text(impl_child, source))
+                elif heritage_child.type == "identifier":
+                    # JavaScript: class_heritage directly contains identifier
+                    base_classes.append(_node_text(heritage_child, source))
+                elif heritage_child.type == "member_expression":
+                    # JavaScript: qualified base class like React.Component
+                    base_classes.append(_node_text(heritage_child, source))
+
+    return base_classes
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -802,6 +1001,18 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+
+                # Extract decorator and base class metadata
+                meta: dict[str, object] | None = None
+                decorators = _extract_decorators(node, source)
+                base_classes = _extract_base_classes(node, source)
+                if decorators or base_classes:
+                    meta = {}
+                    if decorators:
+                        meta["decorators"] = decorators
+                    if base_classes:
+                        meta["base_classes"] = base_classes
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class", lang),
                     name=name,
@@ -811,6 +1022,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 
@@ -909,7 +1121,16 @@ def _extract_symbols(
 
                 http_method, route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
-                meta = {"route_path": route_path} if route_path else None
+
+                # Build meta with decorators and route_path
+                meta: dict[str, object] | None = None
+                decorators = _extract_decorators(node, source)
+                if decorators or route_path:
+                    meta = {}
+                    if decorators:
+                        meta["decorators"] = decorators
+                    if route_path:
+                        meta["route_path"] = route_path
 
                 signature = _extract_jsts_signature(node, source)
 

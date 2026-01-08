@@ -3264,3 +3264,557 @@ function run() {
             None
         )
         assert inst_edge is not None, "Expected instantiates edge for namespace.EmailClient"
+
+
+# ============================================================================
+# TypeScript Decorator Metadata Tests (Phase 4)
+# ============================================================================
+
+
+class TestDecoratorMetadata:
+    """Tests for extracting decorator metadata from TypeScript classes and methods."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_typescript")
+
+    def test_class_decorator_simple(self, tmp_path: Path) -> None:
+        """Extracts simple class decorator without arguments."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text("""
+@Injectable()
+class UserService {
+    findAll() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        assert classes[0].name == "UserService"
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Injectable"
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {}
+
+    def test_class_decorator_with_string_arg(self, tmp_path: Path) -> None:
+        """Extracts class decorator with string argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+@Controller('/users')
+class UsersController {
+    findAll() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Controller"
+        assert decorators[0]["args"] == ["/users"]
+
+    def test_method_decorator_simple(self, tmp_path: Path) -> None:
+        """Extracts simple method decorator."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UsersController {
+    @Get()
+    findAll() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        assert methods[0].name == "UsersController.findAll"
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Get"
+        assert decorators[0]["args"] == []
+
+    def test_method_decorator_with_path_arg(self, tmp_path: Path) -> None:
+        """Extracts method decorator with path argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UsersController {
+    @Get(':id')
+    findOne() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Get"
+        assert decorators[0]["args"] == [":id"]
+
+    def test_multiple_decorators_on_method(self, tmp_path: Path) -> None:
+        """Extracts multiple decorators from a method."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UsersController {
+    @UseGuards(AuthGuard)
+    @Get('/protected')
+    getProtected() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 2
+        decorator_names = [d["name"] for d in decorators]
+        assert "UseGuards" in decorator_names
+        assert "Get" in decorator_names
+
+    def test_multiple_decorators_on_class(self, tmp_path: Path) -> None:
+        """Extracts multiple decorators from a class."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+@Controller('/api')
+@UseInterceptors(LoggingInterceptor)
+class ApiController {
+    index() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 2
+        decorator_names = [d["name"] for d in decorators]
+        assert "Controller" in decorator_names
+        assert "UseInterceptors" in decorator_names
+
+
+# ============================================================================
+# TypeScript Base Class Metadata Tests (Phase 4)
+# ============================================================================
+
+
+class TestBaseClassMetadata:
+    """Tests for extracting base class information from TypeScript/JavaScript."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_class_extends_single(self, tmp_path: Path) -> None:
+        """Extracts single base class from extends clause."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "user.ts"
+        ts_file.write_text("""
+class User extends BaseModel {
+    name: string;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        assert classes[0].name == "User"
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert base_classes == ["BaseModel"]
+
+    def test_class_implements_single(self, tmp_path: Path) -> None:
+        """Extracts single interface from implements clause."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text("""
+class UserService implements IUserService {
+    findAll() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert "IUserService" in base_classes
+
+    def test_class_implements_multiple(self, tmp_path: Path) -> None:
+        """Extracts multiple interfaces from implements clause."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text("""
+class UserService implements IUserService, IDisposable, Serializable {
+    findAll() { return []; }
+    dispose() {}
+    serialize() { return ''; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 3
+        assert "IUserService" in base_classes
+        assert "IDisposable" in base_classes
+        assert "Serializable" in base_classes
+
+    def test_class_extends_and_implements(self, tmp_path: Path) -> None:
+        """Extracts both extends and implements clauses."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UserController extends BaseController implements IController {
+    index() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 2
+        assert "BaseController" in base_classes
+        assert "IController" in base_classes
+
+    def test_class_extends_generic(self, tmp_path: Path) -> None:
+        """Extracts generic base class with type parameters."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "repo.ts"
+        ts_file.write_text("""
+class UserRepository extends Repository<User> {
+    findByEmail(email: string) { return null; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 1
+        # Should capture the generic type
+        assert "Repository<User>" in base_classes or "Repository" in base_classes
+
+    def test_javascript_extends(self, tmp_path: Path) -> None:
+        """Extracts base class from JavaScript ES6 class."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "widget.js"
+        js_file.write_text("""
+class Widget extends BaseWidget {
+    render() { return '<div></div>'; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert base_classes == ["BaseWidget"]
+
+    def test_class_no_inheritance(self, tmp_path: Path) -> None:
+        """Class without extends/implements has empty base_classes."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "simple.ts"
+        ts_file.write_text("""
+class SimpleClass {
+    doSomething() { return true; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        # Either empty list or key not present
+        assert base_classes == [] or "base_classes" not in meta
+
+    def test_qualified_base_class(self, tmp_path: Path) -> None:
+        """Extracts qualified base class name (e.g., React.Component)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "component.tsx"
+        ts_file.write_text("""
+class MyComponent extends React.Component {
+    render() { return null; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 1
+        assert "React.Component" in base_classes or "Component" in base_classes
+
+    def test_javascript_qualified_base_class(self, tmp_path: Path) -> None:
+        """Extracts qualified base class in JavaScript (React.Component style)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "widget.js"
+        js_file.write_text("""
+class Widget extends React.Component {
+    render() { return null; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 1
+        assert "React.Component" in base_classes
+
+    def test_implements_generic_interface(self, tmp_path: Path) -> None:
+        """Extracts generic interface from implements clause."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text("""
+class UserService implements Repository<User> {
+    findAll() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 1
+        assert "Repository<User>" in base_classes
+
+
+class TestDecoratorEdgeCases:
+    """Tests for edge cases in decorator extraction."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_typescript")
+
+    def test_decorator_with_identifier_arg(self, tmp_path: Path) -> None:
+        """Extracts decorator with identifier argument (variable reference)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UserController {
+    @UseGuards(AuthGuard)
+    getProtected() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "UseGuards"
+        assert decorators[0]["args"] == ["AuthGuard"]
+
+    def test_decorator_with_array_arg(self, tmp_path: Path) -> None:
+        """Extracts decorator with array argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+@ApiTags(['users', 'admin'])
+class AdminController {
+    index() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "ApiTags"
+        assert decorators[0]["args"] == [["users", "admin"]]
+
+    def test_decorator_with_number_arg(self, tmp_path: Path) -> None:
+        """Extracts decorator with number argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class RateLimitedController {
+    @RateLimit(100)
+    index() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["args"] == [100]
+
+    def test_decorator_with_boolean_arg(self, tmp_path: Path) -> None:
+        """Extracts decorator with boolean argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class CachedController {
+    @Cache(true)
+    index() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["args"] == [True]
+
+    def test_decorator_with_member_expression_arg(self, tmp_path: Path) -> None:
+        """Extracts decorator with member expression argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UserController {
+    @UseGuards(Guards.JwtGuard)
+    getProtected() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["args"] == ["Guards.JwtGuard"]
+
+    def test_qualified_decorator_name(self, tmp_path: Path) -> None:
+        """Extracts decorator with qualified name (module.Decorator)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class ServiceController {
+    @nest.Get('/path')
+    getPath() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "nest.Get"
+        assert decorators[0]["args"] == ["/path"]
+
+    def test_decorator_with_template_string(self, tmp_path: Path) -> None:
+        """Extracts decorator with template string argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class UserController {
+    @Get(`/users`)
+    getUsers() { return []; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["args"] == ["/users"]
+
+    def test_decorator_with_float_arg(self, tmp_path: Path) -> None:
+        """Extracts decorator with float argument."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text("""
+class WeightedController {
+    @Weight(0.75)
+    index() { return {}; }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["args"] == [0.75]
