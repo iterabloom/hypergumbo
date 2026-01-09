@@ -3971,3 +3971,509 @@ class TestRustWebPatterns:
         model = next(s for s in enriched if s.name == "User")
         assert "concepts" in model.meta
         assert any(c["concept"] == "model" for c in model.meta["concepts"])
+
+
+class TestHapiPatterns:
+    """Tests for Hapi.js framework pattern matching."""
+
+    def test_hapi_server_route_pattern(self) -> None:
+        """Hapi server.route() matches route pattern with kwargs extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None, "Hapi patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:server.js:10:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="javascript",
+            path="server.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "server.route",
+                        "args": [],
+                        "kwargs": {"method": "GET", "path": "/users"},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "server.route"
+        assert results[0]["path"] == "/users"
+        assert results[0]["method"] == "GET"
+
+    def test_hapi_server_route_post(self) -> None:
+        """Hapi server.route() matches POST method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:server.js:20:createUser:function",
+            name="createUser",
+            kind="function",
+            language="javascript",
+            path="server.js",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "server.route",
+                        "args": [],
+                        "kwargs": {"method": "POST", "path": "/users"},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "POST"
+        assert results[0]["path"] == "/users"
+
+    def test_hapi_server_register_plugin(self) -> None:
+        """Hapi server.register() matches plugin pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:server.js:30:registerPlugins:function",
+            name="registerPlugins",
+            kind="function",
+            language="javascript",
+            path="server.js",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "server.register", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "plugin"
+
+    def test_hapi_server_ext_middleware(self) -> None:
+        """Hapi server.ext() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:server.js:40:onPreHandler:function",
+            name="onPreHandler",
+            kind="function",
+            language="javascript",
+            path="server.js",
+            span=Span(40, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "server.ext", "args": ["onPreHandler"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_hapi_auth_strategy(self) -> None:
+        """Hapi server.auth.strategy() matches auth_strategy pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:auth.js:10:jwtAuth:function",
+            name="jwtAuth",
+            kind="function",
+            language="javascript",
+            path="auth.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "server.auth.strategy", "args": ["jwt"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth_strategy"
+
+    def test_hapi_joi_validator(self) -> None:
+        """Hapi Joi.object() matches validator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:validators.js:10:userSchema:variable",
+            name="userSchema",
+            kind="variable",
+            language="javascript",
+            path="validators.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Joi.object", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "validator"
+
+    def test_hapi_boom_error_handler(self) -> None:
+        """Hapi Boom.badRequest() matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hapi")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:handlers.js:10:handleError:function",
+            name="handleError",
+            kind="function",
+            language="javascript",
+            path="handlers.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Boom.badRequest", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_hapi_enrich_symbols(self) -> None:
+        """Hapi symbols are enriched with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:server.js:10:getUsers:function",
+                name="getUsers",
+                kind="function",
+                language="javascript",
+                path="server.js",
+                span=Span(10, 20, 0, 0),
+                meta={
+                    "decorators": [
+                        {
+                            "name": "server.route",
+                            "args": [],
+                            "kwargs": {"method": "GET", "path": "/users"},
+                        },
+                    ],
+                },
+            ),
+            Symbol(
+                id="test:server.js:30:registerAuth:function",
+                name="registerAuth",
+                kind="function",
+                language="javascript",
+                path="server.js",
+                span=Span(30, 40, 0, 0),
+                meta={
+                    "decorators": [
+                        {"name": "server.auth.strategy", "args": [], "kwargs": {}},
+                    ],
+                },
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"hapi"})
+
+        route = next(s for s in enriched if s.name == "getUsers")
+        assert "concepts" in route.meta
+        assert any(c["concept"] == "route" for c in route.meta["concepts"])
+
+        auth = next(s for s in enriched if s.name == "registerAuth")
+        assert "concepts" in auth.meta
+        assert any(c["concept"] == "auth_strategy" for c in auth.meta["concepts"])
+
+
+class TestKoaPatterns:
+    """Tests for Koa.js framework pattern matching."""
+
+    def test_koa_router_get_pattern(self) -> None:
+        """Koa router.get() matches route pattern with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None, "Koa patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:routes.js:10:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="javascript",
+            path="routes.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "router.get"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_koa_router_post_pattern(self) -> None:
+        """Koa router.post() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes.js:20:createUser:function",
+            name="createUser",
+            kind="function",
+            language="javascript",
+            path="routes.js",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+        assert results[0]["path"] == "/users"
+
+    def test_koa_router_put_pattern(self) -> None:
+        """Koa router.put() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes.js:30:updateUser:function",
+            name="updateUser",
+            kind="function",
+            language="javascript",
+            path="routes.js",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.put", "args": ["/users/:id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "PUT"
+        assert results[0]["path"] == "/users/:id"
+
+    def test_koa_router_delete_pattern(self) -> None:
+        """Koa router.delete() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes.js:40:deleteUser:function",
+            name="deleteUser",
+            kind="function",
+            language="javascript",
+            path="routes.js",
+            span=Span(40, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.delete", "args": ["/users/:id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "DELETE"
+
+    def test_koa_router_use_middleware(self) -> None:
+        """Koa router.use() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes.js:50:authMiddleware:function",
+            name="authMiddleware",
+            kind="function",
+            language="javascript",
+            path="routes.js",
+            span=Span(50, 60, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.use", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_koa_app_use_middleware(self) -> None:
+        """Koa app.use() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.js:10:globalMiddleware:function",
+            name="globalMiddleware",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.use", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_koa_passport_auth(self) -> None:
+        """Koa passport.authenticate() matches auth_strategy pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:auth.js:10:jwtAuth:function",
+            name="jwtAuth",
+            kind="function",
+            language="javascript",
+            path="auth.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "passport.authenticate", "args": ["jwt"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth_strategy"
+
+    def test_koa_jwt_middleware(self) -> None:
+        """Koa jwt() matches auth_middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("koa")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:middleware.js:10:jwtMiddleware:function",
+            name="jwtMiddleware",
+            kind="function",
+            language="javascript",
+            path="middleware.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "jwt", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth_middleware"
+
+    def test_koa_enrich_symbols(self) -> None:
+        """Koa symbols are enriched with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:routes.js:10:getUsers:function",
+                name="getUsers",
+                kind="function",
+                language="javascript",
+                path="routes.js",
+                span=Span(10, 20, 0, 0),
+                meta={
+                    "decorators": [
+                        {"name": "router.get", "args": ["/users"], "kwargs": {}},
+                    ],
+                },
+            ),
+            Symbol(
+                id="test:middleware.js:10:logger:function",
+                name="logger",
+                kind="function",
+                language="javascript",
+                path="middleware.js",
+                span=Span(10, 20, 0, 0),
+                meta={
+                    "decorators": [
+                        {"name": "logger", "args": [], "kwargs": {}},
+                    ],
+                },
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"koa"})
+
+        route = next(s for s in enriched if s.name == "getUsers")
+        assert "concepts" in route.meta
+        assert any(c["concept"] == "route" for c in route.meta["concepts"])
+
+        mw = next(s for s in enriched if s.name == "logger")
+        assert "concepts" in mw.meta
+        assert any(c["concept"] == "middleware" for c in mw.meta["concepts"])

@@ -140,6 +140,20 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Middleware: `router.Use()`, `e.Use()`, etc.
     - GORM models: `gorm.Model` embedding
     - gRPC service and client definitions
+  - Hapi.js patterns YAML (`hapi.yaml`) with patterns for:
+    - Server routes: `server.route({ method, path, handler })`
+    - Plugin registration: `server.register()`
+    - Extension points: `server.ext()`
+    - Auth strategies: `server.auth.strategy()`
+    - Joi validation: `Joi.object()`, `Joi.string()`, etc.
+    - Boom error responses: `Boom.badRequest()`, `Boom.unauthorized()`, etc.
+  - Koa.js patterns YAML (`koa.yaml`) with patterns for:
+    - Router routes: `router.get()`, `router.post()`, etc. (via koa-router/@koa/router)
+    - Global middleware: `app.use()`
+    - Router middleware: `router.use()`, `router.param()`
+    - Passport auth: `passport.authenticate()`, `passport.use()`
+    - JWT middleware: `jwt()`
+    - Common middleware: `helmet`, `cors`, `logger`, `compress`
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method
