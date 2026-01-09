@@ -3539,3 +3539,244 @@ class TestLaravelPatterns:
         mailer = next(s for s in enriched if s.name == "WelcomeMail")
         assert "concepts" in mailer.meta
         assert any(c["concept"] == "mailer" for c in mailer.meta["concepts"])
+
+
+class TestGoWebPatterns:
+    """Tests for Go web framework pattern matching."""
+
+    def test_go_gin_get_route_pattern(self) -> None:
+        """Gin router.GET matches route pattern with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None, "Go-web patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:main.go:10:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.GET", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "router.GET"
+        assert results[0]["method"] == "GET"
+
+    def test_go_echo_post_route_pattern(self) -> None:
+        """Echo e.POST matches route pattern with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:handlers.go:15:createUser:function",
+            name="createUser",
+            kind="function",
+            language="go",
+            path="handlers.go",
+            span=Span(15, 25, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "e.POST", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_go_fiber_get_route_pattern(self) -> None:
+        """Fiber app.Get matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:main.go:20:getProduct:function",
+            name="getProduct",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.Get", "args": ["/products/:id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+
+    def test_go_chi_delete_route_pattern(self) -> None:
+        """Chi r.Delete matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:handlers.go:25:deleteUser:function",
+            name="deleteUser",
+            kind="function",
+            language="go",
+            path="handlers.go",
+            span=Span(25, 35, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "r.Delete", "args": ["/users/{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "DELETE"
+
+    def test_go_http_handlefunc_pattern(self) -> None:
+        """net/http http.HandleFunc matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:main.go:5:healthHandler:function",
+            name="healthHandler",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "http.HandleFunc", "args": ["/health"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "http.HandleFunc"
+
+    def test_go_middleware_pattern(self) -> None:
+        """Go middleware pattern (router.Use) matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:middleware.go:1:authMiddleware:function",
+            name="authMiddleware",
+            kind="function",
+            language="go",
+            path="middleware.go",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.Use", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+        assert results[0]["matched_decorator"] == "router.Use"
+
+    def test_go_gorm_model_pattern(self) -> None:
+        """GORM gorm.Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models/user.go:1:User:struct",
+            name="User",
+            kind="struct",
+            language="go",
+            path="models/user.go",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["gorm.Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+        assert results[0]["matched_base_class"] == "gorm.Model"
+
+    def test_go_enrich_symbols_integration(self) -> None:
+        """Go web patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:main.go:10:getUsers:function",
+                name="getUsers",
+                kind="function",
+                language="go",
+                path="main.go",
+                span=Span(10, 20, 0, 0),
+                meta={"decorators": [{"name": "router.GET", "args": ["/users"], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:middleware.go:1:authMiddleware:function",
+                name="authMiddleware",
+                kind="function",
+                language="go",
+                path="middleware.go",
+                span=Span(1, 20, 0, 0),
+                meta={"decorators": [{"name": "router.Use", "args": [], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:models/user.go:1:User:struct",
+                name="User",
+                kind="struct",
+                language="go",
+                path="models/user.go",
+                span=Span(1, 20, 0, 0),
+                meta={"base_classes": ["gorm.Model"]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"go-web"})
+
+        # Check that concepts were added
+        route = next(s for s in enriched if s.name == "getUsers")
+        assert "concepts" in route.meta
+        assert any(c["concept"] == "route" for c in route.meta["concepts"])
+
+        middleware = next(s for s in enriched if s.name == "authMiddleware")
+        assert "concepts" in middleware.meta
+        assert any(c["concept"] == "middleware" for c in middleware.meta["concepts"])
+
+        model = next(s for s in enriched if s.name == "User")
+        assert "concepts" in model.meta
+        assert any(c["concept"] == "model" for c in model.meta["concepts"])

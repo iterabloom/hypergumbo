@@ -1,0 +1,87 @@
+# Go Web Framework patterns (ADR-0003 v1.0.x)
+#
+# Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Go uses struct embedding and interface implementation for patterns.
+# Routes are typically defined via method calls, not decorators.
+
+id: go-web
+language: go
+
+patterns:
+  # Gin framework - handler functions
+  - concept: route
+    decorator: "^(c|ctx|context)\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
+    extract_method: "decorator_suffix"
+
+  - concept: route
+    decorator: "^(router|r|g|group)\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
+    extract_method: "decorator_suffix"
+
+  # Echo framework - handler functions
+  - concept: route
+    decorator: "^(e|echo)\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
+    extract_method: "decorator_suffix"
+
+  # Fiber framework - handler functions (uses PascalCase methods)
+  - concept: route
+    decorator: "^(app|fiber)\\.(Get|Post|Put|Delete|Patch|Options|Head)$"
+    extract_method: "decorator_suffix"
+
+  # Chi router - handler functions (uses PascalCase methods)
+  - concept: route
+    decorator: "^(r|mux|router)\\.(Get|Post|Put|Delete|Patch|Options|Head)$"
+    extract_method: "decorator_suffix"
+
+  # net/http - HandleFunc
+  - concept: route
+    decorator: "^http\\.HandleFunc$"
+
+  - concept: route
+    decorator: "^(mux|router)\\.(Handle|HandleFunc)$"
+
+  # Middleware patterns
+  - concept: middleware
+    decorator: "^(c|ctx|r|router|e|echo|app)\\.(Use|Middleware)$"
+
+  # Gin middleware
+  - concept: middleware
+    decorator: "^gin\\.(Logger|Recovery|BasicAuth)$"
+
+  # Echo middleware
+  - concept: middleware
+    decorator: "^echo\\.middleware\\."
+
+  # GORM models (ORM)
+  - concept: model
+    base_class: "^gorm\\.Model$"
+
+  # GORM database operations
+  - concept: repository
+    decorator: "^db\\.(Create|First|Find|Save|Delete|Update|Where)$"
+
+  # Go context handling
+  - concept: middleware
+    decorator: "^context\\.(WithValue|WithCancel|WithDeadline|WithTimeout)$"
+
+  # gRPC service definitions
+  - concept: grpc_service
+    base_class: "^.*Server$"
+
+  # gRPC client definitions
+  - concept: grpc_client
+    base_class: "^.*Client$"
+
+  # Worker/background task patterns (using goroutines with common names)
+  - concept: task
+    decorator: "^go\\s+"
+
+  # Cron jobs (robfig/cron)
+  - concept: scheduled_task
+    decorator: "^c\\.(AddFunc|Schedule)$"
+
+linkers:
+  - http
+  - grpc
+  - database_query

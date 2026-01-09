@@ -125,6 +125,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Notifications: `Notification`
     - Livewire components: `Livewire\Component`
     - Jobs, events, listeners, policies, seeders
+  - Go web framework patterns YAML (`go-web.yaml`) with patterns for:
+    - Gin routes: `router.GET()`, `r.POST()`, etc.
+    - Echo routes: `e.GET()`, `echo.POST()`, etc.
+    - Fiber routes: `app.Get()`, `fiber.Post()`, etc.
+    - Chi routes: `r.Get()`, `mux.Delete()`, etc.
+    - net/http: `http.HandleFunc()`
+    - Middleware: `router.Use()`, `e.Use()`, etc.
+    - GORM models: `gorm.Model` embedding
+    - gRPC service and client definitions
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method
