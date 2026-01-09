@@ -114,6 +114,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - GenServer/Agent/Task: Elixir OTP patterns
     - Oban workers: Background job processing
     - Absinthe: GraphQL schema and resolvers
+  - Laravel (PHP) patterns YAML (`laravel.yaml`) with patterns for:
+    - Controllers: `Controller` base class
+    - Eloquent models: `Model` base class
+    - Form requests: `FormRequest` validation
+    - Mailables: `Mailable` for emails
+    - Artisan commands: `Command` for CLI
+    - JSON resources: `JsonResource`, `ResourceCollection`
+    - Service providers: `ServiceProvider`
+    - Notifications: `Notification`
+    - Livewire components: `Livewire\Component`
+    - Jobs, events, listeners, policies, seeders
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method

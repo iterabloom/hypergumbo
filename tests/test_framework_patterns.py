@@ -3261,3 +3261,281 @@ class TestPhoenixPatterns:
         channel = next(s for s in enriched if s.name == "RoomChannel")
         assert "concepts" in channel.meta
         assert any(c["concept"] == "websocket_handler" for c in channel.meta["concepts"])
+
+
+class TestLaravelPatterns:
+    """Tests for Laravel (PHP) framework pattern matching."""
+
+    def test_laravel_controller_pattern(self) -> None:
+        """Laravel Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None, "Laravel patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UserController.php:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="php",
+            path="app/Http/Controllers/UserController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "Controller"
+
+    def test_laravel_eloquent_model_pattern(self) -> None:
+        """Laravel Eloquent Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:User.php:1:User:class",
+            name="User",
+            kind="class",
+            language="php",
+            path="app/Models/User.php",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+        assert results[0]["matched_base_class"] == "Model"
+
+    def test_laravel_form_request_pattern(self) -> None:
+        """Laravel FormRequest base class matches form pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:CreateUserRequest.php:1:CreateUserRequest:class",
+            name="CreateUserRequest",
+            kind="class",
+            language="php",
+            path="app/Http/Requests/CreateUserRequest.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["FormRequest"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "form"
+        assert results[0]["matched_base_class"] == "FormRequest"
+
+    def test_laravel_mailable_pattern(self) -> None:
+        """Laravel Mailable base class matches mailer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:WelcomeMail.php:1:WelcomeMail:class",
+            name="WelcomeMail",
+            kind="class",
+            language="php",
+            path="app/Mail/WelcomeMail.php",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["Mailable"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "mailer"
+        assert results[0]["matched_base_class"] == "Mailable"
+
+    def test_laravel_artisan_command_pattern(self) -> None:
+        """Laravel Command base class matches command pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ImportData.php:1:ImportData:class",
+            name="ImportData",
+            kind="class",
+            language="php",
+            path="app/Console/Commands/ImportData.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Command"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "command"
+        assert results[0]["matched_base_class"] == "Command"
+
+    def test_laravel_json_resource_pattern(self) -> None:
+        """Laravel JsonResource base class matches serializer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserResource.php:1:UserResource:class",
+            name="UserResource",
+            kind="class",
+            language="php",
+            path="app/Http/Resources/UserResource.php",
+            span=Span(1, 25, 0, 0),
+            meta={
+                "base_classes": ["JsonResource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer"
+        assert results[0]["matched_base_class"] == "JsonResource"
+
+    def test_laravel_service_provider_pattern(self) -> None:
+        """Laravel ServiceProvider base class matches provider pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:AppServiceProvider.php:1:AppServiceProvider:class",
+            name="AppServiceProvider",
+            kind="class",
+            language="php",
+            path="app/Providers/AppServiceProvider.php",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["ServiceProvider"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "provider"
+        assert results[0]["matched_base_class"] == "ServiceProvider"
+
+    def test_laravel_notification_pattern(self) -> None:
+        """Laravel Notification base class matches notification pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:InvoicePaid.php:1:InvoicePaid:class",
+            name="InvoicePaid",
+            kind="class",
+            language="php",
+            path="app/Notifications/InvoicePaid.php",
+            span=Span(1, 35, 0, 0),
+            meta={
+                "base_classes": ["Notification"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "notification"
+        assert results[0]["matched_base_class"] == "Notification"
+
+    def test_laravel_livewire_component_pattern(self) -> None:
+        """Livewire Component base class matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:Counter.php:1:Counter:class",
+            name="Counter",
+            kind="class",
+            language="php",
+            path="app/Http/Livewire/Counter.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Livewire\\Component"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "component"
+        assert results[0]["matched_base_class"] == "Livewire\\Component"
+
+    def test_laravel_enrich_symbols_integration(self) -> None:
+        """Laravel patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:UserController.php:1:UserController:class",
+                name="UserController",
+                kind="class",
+                language="php",
+                path="app/Http/Controllers/UserController.php",
+                span=Span(1, 50, 0, 0),
+                meta={"base_classes": ["Controller"]},
+            ),
+            Symbol(
+                id="test:User.php:1:User:class",
+                name="User",
+                kind="class",
+                language="php",
+                path="app/Models/User.php",
+                span=Span(1, 40, 0, 0),
+                meta={"base_classes": ["Model"]},
+            ),
+            Symbol(
+                id="test:WelcomeMail.php:1:WelcomeMail:class",
+                name="WelcomeMail",
+                kind="class",
+                language="php",
+                path="app/Mail/WelcomeMail.php",
+                span=Span(1, 40, 0, 0),
+                meta={"base_classes": ["Mailable"]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"laravel"})
+
+        # Check that concepts were added
+        controller = next(s for s in enriched if s.name == "UserController")
+        assert "concepts" in controller.meta
+        assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
+
+        model = next(s for s in enriched if s.name == "User")
+        assert "concepts" in model.meta
+        assert any(c["concept"] == "model" for c in model.meta["concepts"])
+
+        mailer = next(s for s in enriched if s.name == "WelcomeMail")
+        assert "concepts" in mailer.meta
+        assert any(c["concept"] == "mailer" for c in mailer.meta["concepts"])
