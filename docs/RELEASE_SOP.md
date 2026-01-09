@@ -2,6 +2,22 @@
 
 This document describes the hypergumbo release process, including what happens when the release pipeline runs, how to trigger releases, and troubleshooting guidance.
 
+## Quick Reference
+
+```
+AGENT                                         HUMAN
+─────                                         ─────
+./scripts/prepare-release 0.8.0
+  ├── Bump version
+  ├── Update CHANGELOG
+  ├── Run validations
+  └── Create PR ────────────────────────────► Merge PR on Codeberg
+
+                                              ./scripts/tag-release 0.8.0
+                                                ├── Create signed tag
+                                                └── Push tag ──► CI Release
+```
+
 ## Release Workflow Overview
 
 The release pipeline is defined in `.github/workflows/release.yml` and runs on Forgejo/Codeberg.
@@ -36,8 +52,9 @@ The workflow runs four jobs in sequence:
 
 #### Job 1: test-matrix
 - Runs tests on Python 3.10, 3.11, 3.12, and 3.13
-- Builds source-only grammars
+- Builds source-only grammars (tree-sitter-lean, tree-sitter-wolfram)
 - Requires 100% test coverage
+- Uses conditional coverage config when `sentence-transformers` unavailable
 
 #### Job 2: security-audit
 - **pip-audit**: Scans for known vulnerabilities in dependencies
@@ -49,6 +66,7 @@ The workflow runs four jobs in sequence:
 #### Job 3: integration-tests
 - Runs `./scripts/integration-test --quick`
 - Tests CLI functionality on real repositories
+- Uses lightweight repos only (Express) to avoid OOM on small runners
 - 30-minute timeout
 
 #### Job 4: build-and-publish
@@ -76,7 +94,7 @@ Two secrets must be configured in the repository settings:
 
 ### GPG Signing Setup
 
-Branch protection requires signed commits. Set up GPG signing before your first release.
+Tags must be GPG-signed. Set up GPG signing before your first release.
 
 #### Key Hierarchy (Recommended)
 
@@ -154,9 +172,10 @@ git log --show-signature -1  # Should show "Good signature"
 
 Before releasing, ensure version is consistent across:
 - `pyproject.toml` (`version = "X.Y.Z"`)
+- `src/hypergumbo/__init__.py` (`__version__ = "X.Y.Z"`)
 - Git tag (`vX.Y.Z`)
 
-Use `./scripts/bump-version X.Y.Z` to update the version.
+The `prepare-release` script handles this automatically.
 
 ### Changelog
 
@@ -164,41 +183,60 @@ Update `CHANGELOG.md` with release notes. The workflow extracts the section matc
 
 ## How to Release
 
-### Option A: Tag-Based Release (Recommended)
+### Primary Method: Agent + Human Workflow (Recommended)
 
-Requires GPG signing configured (see Prerequisites). Signed commits satisfy branch protection.
+This workflow separates automated preparation (agent) from authorization (human), respecting branch protection on main.
+
+#### Step 1: Agent Prepares Release
 
 ```bash
-# 1. Sync dev and merge to main (creates signed merge commit)
-git checkout dev && git pull origin dev
-git checkout main && git pull origin main
-git merge dev --no-ff -m "chore: merge dev into main for release"
-git push origin main
-
-# 2. Update version and changelog
-./scripts/bump-version 0.6.0
-# Edit CHANGELOG.md with release notes
-
-# 3. Commit version bump (signed automatically)
-git add pyproject.toml CHANGELOG.md
-git commit -s -m "chore: release v0.6.0"
-
-# 4. Create and push tag
-git push origin main
-git tag v0.6.0
-git push origin v0.6.0
-
-# 5. Merge release commit back to dev
-git checkout dev
-git merge main
-git push origin dev
+# Agent runs this command
+./scripts/prepare-release 0.8.0
 ```
 
-The workflow triggers automatically on tag push.
+This script:
+1. ✓ Verifies on dev branch with clean working directory
+2. ✓ Bumps version in `pyproject.toml` and `__init__.py`
+3. ✓ Updates CHANGELOG.md (`[Unreleased]` → `[0.8.0] - YYYY-MM-DD`)
+4. ✓ Commits: `chore: release 0.8.0`
+5. ✓ Runs `./scripts/release-check` (tests, security, build)
+6. ✓ Pushes to dev
+7. ✓ Creates PR from dev → main
+8. ✓ Outputs handoff instructions
 
-**Without GPG signing:** Use PRs instead of direct pushes for steps 1 and 5.
+**If any step fails**, the script stops and provides fix instructions.
 
-### Option B: Manual Dispatch (for testing)
+#### Step 2: Human Reviews and Merges PR
+
+1. Go to Codeberg and review the PR
+2. Verify CI passes
+3. Merge the PR (this requires human action due to branch protection)
+
+#### Step 3: Human Creates Signed Tag
+
+```bash
+# Human runs this after merging the PR
+./scripts/tag-release 0.8.0
+```
+
+This script:
+1. Switches to main and pulls latest
+2. Verifies version in pyproject.toml matches
+3. Creates GPG-signed tag: `git tag -s v0.8.0`
+4. Pushes tag to trigger release workflow
+5. Optionally syncs dev with main
+
+### Alternative: Direct Release (No Branch Protection)
+
+If your repository doesn't have branch protection on main:
+
+```bash
+./scripts/release 0.8.0
+```
+
+This script will detect if main is protected and suggest the agent+human workflow if needed.
+
+### Manual Dispatch (for testing)
 
 Via Codeberg UI:
 1. Go to Actions → Release workflow
@@ -223,9 +261,26 @@ curl -X POST \
   "https://codeberg.org/api/v1/repos/iterabloom/hypergumbo/actions/workflows/release.yml/dispatches"
 ```
 
+## Scripts Reference
+
+| Script | Who Runs | Purpose |
+|--------|----------|---------|
+| `./scripts/prepare-release VERSION` | Agent | Full preparation: bump, changelog, validate, PR |
+| `./scripts/tag-release VERSION` | Human | Create signed tag after PR merge |
+| `./scripts/release VERSION` | Either | Legacy single-step (detects branch protection) |
+| `./scripts/release-check` | Either | Validate release readiness (standalone) |
+| `./scripts/bump-version VERSION` | Either | Just bump version (used by prepare-release) |
+
 ## Dry Run Mode
 
-Dry run skips:
+Both `prepare-release` and `tag-release` support `--dry-run`:
+
+```bash
+./scripts/prepare-release 0.8.0 --dry-run  # Shows what would happen
+./scripts/tag-release 0.8.0 --dry-run      # Shows what would happen
+```
+
+For the CI workflow, dry run skips:
 - PyPI publishing
 - Forgejo release creation
 
@@ -248,36 +303,110 @@ Prereleases are:
 
 ## Troubleshooting
 
-### Workflow doesn't trigger on tag push
+### Branch Protection Errors
+
+**Symptom:** `remote: Forgejo: Not allowed to push to protected branch main`
+
+**Solution:** Use the agent+human workflow:
+```bash
+./scripts/prepare-release VERSION  # Creates PR instead of direct push
+# Merge PR on Codeberg
+./scripts/tag-release VERSION      # Tags after merge
+```
+
+### Coverage Failure in CI (98-99%)
+
+**Symptom:** Tests pass locally with 100% but fail in CI with ~99%
+
+**Cause:** `sentence-transformers` (1GB+ with PyTorch) may not install on small CI runners, causing embedding-related code paths to be skipped.
+
+**Solution:** This is handled automatically. The workflow uses `.coveragerc.no-embeddings` when embeddings are unavailable.
+
+### pip-audit Fails on Non-PyPI Packages
+
+**Symptom:** `pip-audit --strict` fails with warnings about packages not on PyPI
+
+**Cause:** `tree-sitter-lean` and `tree-sitter-wolfram` are built from source.
+
+**Solution:** `release-check` now uses `pip-audit` without `--strict` and distinguishes real vulnerabilities from non-PyPI warnings.
+
+### Integration Tests OOM-Killed
+
+**Symptom:** Integration tests fail with `ANALYSIS_FAILED` on Flask or Gin repos
+
+**Cause:** Small CI runners don't have enough memory for large repos.
+
+**Solution:** The `--quick` mode now only tests Express (proven to work on small runners).
+
+### Workflow Doesn't Trigger on Tag Push
+
 - Verify the tag matches `v*` pattern
 - Check that tag was pushed: `git push origin v0.6.0`
+- Ensure you didn't just push to a branch named after the tag
 
-### Tests fail in release workflow but pass locally
-- Check Python version differences
+### Tests Fail in Release but Pass Locally
+
+- Check Python version differences (CI tests 3.10-3.13)
 - Run `./scripts/ci-debug analyze-deps` for dependency issues
 - Some grammars need `./scripts/build-source-grammars` first
 
-### PyPI publish fails
+### PyPI Publish Fails
+
 - Verify `PYPI_TOKEN` is set in repository secrets
 - Check token hasn't expired
 - Ensure version doesn't already exist on PyPI
 
-### Forgejo release creation fails
+### Forgejo Release Creation Fails
+
 - Verify `FORGEJO_TOKEN` is set and has write permissions
 - Check API rate limits
 
-### SBOM generation fails
-- Non-blocking; check cyclonedx-bom installation
-- May fail in minimal environments
+### Local Main Diverged from Origin
+
+**Symptom:** `Your branch is ahead of 'origin/main' by N commits`
+
+**Cause:** Failed direct pushes accumulated locally.
+
+**Solution:**
+```bash
+git checkout main
+git reset --hard origin/main
+```
+
+### Tag Already Exists
+
+**Symptom:** Need to recreate a tag after failed release attempt
+
+**Solution:**
+```bash
+# Delete local and remote tag
+git tag -d v0.8.0
+git push origin :refs/tags/v0.8.0
+
+# Recreate
+git tag -s v0.8.0 -m "Release v0.8.0"
+git push origin v0.8.0
+```
 
 ## Post-Release Checklist
 
 - [ ] Verify package on PyPI: https://pypi.org/project/hypergumbo/
 - [ ] Verify release on Codeberg: https://codeberg.org/iterabloom/hypergumbo/releases
 - [ ] Test installation: `pip install hypergumbo==X.Y.Z`
-- [ ] Update CHANGELOG.md if needed
+- [ ] Sync dev with main (if not done by tag-release):
+  ```bash
+  git checkout dev && git merge main && git push origin dev
+  ```
 - [ ] Announce release (if significant)
 
 ## Platform Notes
 
 Codeberg/Forgejo only provides Linux runners (`codeberg-small-lazy`). Multi-platform testing (macOS, Windows) should be done locally before tagging a release.
+
+## Two-User Workflow (Optional)
+
+For attribution clarity, you can use separate accounts:
+- **Agent account** (e.g., `jgstern_agent`): Runs `prepare-release`, creates PRs
+- **Human account** (e.g., `jgstern`): Merges PRs, runs `tag-release`
+
+This makes it clear in the git history which actions were automated vs. human-authorized.

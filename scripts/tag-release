@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# Create and push a signed release tag.
+#
+# This script is the human-only step after prepare-release.
+# It creates a GPG-signed tag and pushes it, triggering the release workflow.
+#
+# Usage:
+#   ./scripts/tag-release VERSION [--dry-run]
+#
+# Arguments:
+#   VERSION      Version to tag (e.g., 0.8.0)
+#   --dry-run    Show what would happen without making changes
+#
+# Prerequisites:
+#   - PR from dev → main must be merged
+#   - GPG key must be configured for signing
+#
+# What this script does:
+#   1. Switches to main and pulls latest
+#   2. Verifies the version matches expectations
+#   3. Creates a GPG-signed tag
+#   4. Pushes the tag (triggers release workflow)
+#
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+DRY_RUN=false
+VERSION=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 VERSION [--dry-run]"
+            echo ""
+            echo "Creates and pushes a signed release tag."
+            echo ""
+            echo "Arguments:"
+            echo "  VERSION      Version to tag (e.g., 0.8.0)"
+            echo "  --dry-run    Show what would happen without making changes"
+            echo ""
+            echo "This script should be run by a human after the release PR is merged."
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+        *)
+            VERSION="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$VERSION" ]]; then
+    echo -e "${RED}Error: VERSION is required${NC}"
+    echo "Usage: $0 VERSION [--dry-run]"
+    exit 1
+fi
+
+# Validate version format
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    echo -e "${RED}Error: Invalid version format: $VERSION${NC}"
+    echo "Expected: MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-suffix"
+    exit 1
+fi
+
+TAG="v$VERSION"
+
+# Get project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
+echo "╔════════════════════════════════════════╗"
+echo "║        Tag Release $TAG"
+echo "╚════════════════════════════════════════╝"
+echo ""
+
+if $DRY_RUN; then
+    echo -e "${YELLOW}[DRY RUN MODE - no changes will be made]${NC}"
+    echo ""
+fi
+
+run() {
+    if $DRY_RUN; then
+        echo -e "${BLUE}[dry-run]${NC} $*"
+    else
+        "$@"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────
+echo "━━━ Step 1: Switch to main ━━━"
+# ─────────────────────────────────────────────────────────────
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+    echo "Switching from $CURRENT_BRANCH to main..."
+    run git checkout main
+fi
+
+run git fetch origin main
+run git pull origin main
+echo -e "${GREEN}✓${NC} On main branch, up to date"
+
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "━━━ Step 2: Verify version ━━━"
+# ─────────────────────────────────────────────────────────────
+
+PYPROJECT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+
+if [[ "$PYPROJECT_VERSION" != "$VERSION" ]]; then
+    echo -e "${RED}Error: Version mismatch!${NC}"
+    echo "  Expected (from argument): $VERSION"
+    echo "  Found in pyproject.toml:  $PYPROJECT_VERSION"
+    echo ""
+    echo "Make sure the release PR was merged correctly."
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Version matches: $VERSION"
+
+# Check CHANGELOG has the version entry
+if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
+    echo -e "${YELLOW}!${NC} Warning: CHANGELOG.md missing entry for [$VERSION]"
+fi
+
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "━━━ Step 3: Check for existing tag ━━━"
+# ─────────────────────────────────────────────────────────────
+
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+    echo -e "${YELLOW}Warning: Tag $TAG already exists${NC}"
+    echo ""
+    read -p "Delete and recreate? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        run git tag -d "$TAG"
+        run git push origin ":refs/tags/$TAG" || true
+        echo -e "${GREEN}✓${NC} Deleted existing tag"
+    else
+        echo "Aborting."
+        exit 1
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "━━━ Step 4: Create signed tag ━━━"
+# ─────────────────────────────────────────────────────────────
+
+# Check for GPG key
+GPG_KEY="${GPG_KEY_ID:-}"
+HAS_SIGNING_KEY=false
+
+if [[ -n "$GPG_KEY" ]]; then
+    HAS_SIGNING_KEY=true
+elif git config --get user.signingkey >/dev/null 2>&1; then
+    HAS_SIGNING_KEY=true
+fi
+
+if $HAS_SIGNING_KEY; then
+    if [[ -n "$GPG_KEY" ]]; then
+        run git tag -s -u "$GPG_KEY" "$TAG" -m "Release $TAG"
+    else
+        run git tag -s "$TAG" -m "Release $TAG"
+    fi
+    echo -e "${GREEN}✓${NC} Created signed tag: $TAG"
+else
+    echo -e "${YELLOW}Warning: No GPG key configured${NC}"
+    echo ""
+    echo "Options:"
+    echo "  1. Configure GPG: git config --global user.signingkey YOUR_KEY_ID"
+    echo "  2. Set GPG_KEY_ID environment variable"
+    echo "  3. Create unsigned tag (not recommended for releases)"
+    echo ""
+    read -p "Create unsigned tag anyway? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        run git tag -a "$TAG" -m "Release $TAG"
+        echo -e "${YELLOW}!${NC} Created unsigned tag: $TAG"
+    else
+        echo "Aborting. Please configure GPG signing."
+        exit 1
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "━━━ Step 5: Push tag ━━━"
+# ─────────────────────────────────────────────────────────────
+
+echo "Pushing tag to origin..."
+run git push origin "$TAG"
+echo -e "${GREEN}✓${NC} Pushed tag: $TAG"
+
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "╔════════════════════════════════════════════════════════════╗"
+echo -e "║  ${GREEN}Release $TAG triggered!${NC}                                "
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
+echo "The release workflow should now be running on Codeberg."
+echo ""
+echo "Monitor progress:"
+echo "  https://codeberg.org/iterabloom/hypergumbo/actions"
+echo ""
+echo "Once complete, verify:"
+echo "  - PyPI: https://pypi.org/project/hypergumbo/"
+echo "  - Codeberg: https://codeberg.org/iterabloom/hypergumbo/releases"
+echo ""
+
+# Optionally sync dev with main
+echo "━━━ Optional: Sync dev with main ━━━"
+echo ""
+read -p "Merge main back into dev to sync histories? [Y/n] " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    run git checkout dev
+    run git pull origin dev
+    run git merge main --no-edit
+    run git push origin dev
+    echo -e "${GREEN}✓${NC} dev synced with main"
+fi
