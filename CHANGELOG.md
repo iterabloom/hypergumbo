@@ -44,6 +44,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Flask-RESTful Resources: `class UserResource(Resource)`
     - Flask-WTF forms: `class LoginForm(FlaskForm)`
     - Flask-SQLAlchemy models: `class User(db.Model)`
+  - NestJS patterns YAML (`nestjs.yaml`) with patterns for:
+    - HTTP route decorators: `@Get()`, `@Post()`, `@Put()`, `@Delete()`, etc. with path extraction
+    - Controllers: `@Controller('users')`
+    - Services: `@Injectable()`
+    - Modules: `@Module()`
+    - Guards: `@UseGuards(AuthGuard)`
+    - Interceptors: `@UseInterceptors(LoggingInterceptor)`
+    - Pipes: `@UsePipes(ValidationPipe)`
+    - Microservice event handlers: `@EventPattern()`, `@MessagePattern()`
+    - WebSocket gateway: `@WebSocketGateway()`, `@SubscribeMessage()`
+  - New extraction method `decorator_name_upper` for NestJS-style decorators where the decorator name IS the HTTP method
   - Pattern matching extracts HTTP method from decorator suffix and path from args
 - **Linker conditional execution (ADR-0003 Item 10):** Linkers now respect activation conditions:
   - `run_all_linkers()` filters linkers based on detected frameworks and languages
