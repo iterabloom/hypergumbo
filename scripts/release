@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Release script - creates a new release.
 #
+# NOTE: If your main branch has push protection (common on Codeberg/GitHub),
+# use the two-step workflow instead:
+#   1. ./scripts/prepare-release VERSION  (agent runs this)
+#   2. ./scripts/tag-release VERSION      (human runs this after merging PR)
+#
+# This script attempts direct push and will detect branch protection,
+# suggesting the two-step workflow if needed.
+#
 # This script:
 # 1. Runs all release checks
-# 2. Merges dev → main (if on dev)
+# 2. Merges dev → main (if on dev) - fails if branch protected
 # 3. Creates a signed git tag
 # 4. Generates SBOM
 # 5. Builds and optionally publishes to PyPI
@@ -19,6 +27,7 @@
 # Environment:
 #   PYPI_TOKEN   API token for PyPI upload (or use keyring)
 #   GPG_KEY_ID   GPG key for signing (optional, uses default if not set)
+#   FORGEJO_TOKEN  Used to check branch protection status (optional)
 #
 set -euo pipefail
 
@@ -103,8 +112,62 @@ echo "━━━ Step 2: Branch management ━━━"
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
+# Check if main branch has push protection
+# We do this by checking if a dry-run push would fail
+check_branch_protection() {
+    # Try to determine if main is protected
+    # Method 1: Check Codeberg/Forgejo branch protection via API (if FORGEJO_TOKEN available)
+    if [[ -n "${FORGEJO_TOKEN:-}" ]]; then
+        REPO_URL=$(git config --get remote.origin.url | sed 's/.*codeberg.org[:/]\(.*\)\.git/\1/' | sed 's/.*codeberg.org[:/]\(.*\)/\1/')
+        if [[ -n "$REPO_URL" ]]; then
+            PROTECTION=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" \
+                "https://codeberg.org/api/v1/repos/$REPO_URL/branch_protections" 2>/dev/null || echo "")
+            if echo "$PROTECTION" | grep -q '"branch_name":"main"'; then
+                return 0  # Protected
+            fi
+        fi
+    fi
+
+    # Method 2: Check git config for common protection indicators
+    # Some forges set receive.denyNonFastForwards or similar
+
+    # Method 3: Assume protected if we're on Codeberg (common setup)
+    if git config --get remote.origin.url | grep -q "codeberg.org"; then
+        echo -e "${YELLOW}Note: Codeberg detected - main branch may be protected${NC}"
+        return 0  # Assume protected
+    fi
+
+    return 1  # Not protected (or unknown)
+}
+
 if [[ "$CURRENT_BRANCH" == "dev" ]]; then
-    echo "On dev branch - will merge to main"
+    echo "On dev branch - checking if main is protected..."
+
+    if check_branch_protection; then
+        echo ""
+        echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}  Branch protection detected on main!${NC}"
+        echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "Direct push to main is not allowed. Use the two-step workflow instead:"
+        echo ""
+        echo "  1. Agent prepares release:"
+        echo -e "     ${GREEN}./scripts/prepare-release $VERSION${NC}"
+        echo ""
+        echo "  2. Human merges PR and tags:"
+        echo -e "     ${GREEN}./scripts/tag-release $VERSION${NC}"
+        echo ""
+        echo "This workflow creates a PR from dev → main that must be merged"
+        echo "via the Codeberg web UI, then the human creates the signed tag."
+        echo ""
+        read -p "Try direct push anyway? (will likely fail) [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 0
+        fi
+    fi
+
+    echo "Attempting to merge dev into main..."
 
     # Ensure main is up to date
     run git fetch origin main
@@ -112,7 +175,15 @@ if [[ "$CURRENT_BRANCH" == "dev" ]]; then
     # Switch to main and merge
     run git checkout main
     run git pull origin main
-    run git merge dev --no-ff -m "Release v$VERSION"
+
+    if ! $DRY_RUN; then
+        if ! git merge dev --no-ff -m "Release v$VERSION"; then
+            echo -e "${RED}Merge failed!${NC}"
+            exit 1
+        fi
+    else
+        run git merge dev --no-ff -m "Release v$VERSION"
+    fi
 
 elif [[ "$CURRENT_BRANCH" == "main" ]]; then
     echo "Already on main branch"
