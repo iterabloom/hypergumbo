@@ -1,0 +1,57 @@
+# NestJS framework patterns (ADR-0003 v1.0.x)
+#
+# Matches NestJS decorators for controllers, routes, services, and modules.
+# Symbols matching these patterns get enriched with concept metadata.
+
+id: nestjs
+language: javascript  # Also works for typescript
+
+patterns:
+  # HTTP route decorators - @Get(), @Post(), @Get(':id'), etc.
+  - concept: route
+    decorator: "^(Get|Post|Put|Delete|Patch|Options|Head|All)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name_upper"
+
+  # Controller class - @Controller('users')
+  - concept: controller
+    decorator: "^Controller$"
+
+  # Injectable service - @Injectable()
+  - concept: service
+    decorator: "^Injectable$"
+
+  # Module definition - @Module({...})
+  - concept: module
+    decorator: "^Module$"
+
+  # Guards - @UseGuards(AuthGuard)
+  - concept: guard
+    decorator: "^UseGuards$"
+
+  # Interceptors - @UseInterceptors(LoggingInterceptor)
+  - concept: interceptor
+    decorator: "^UseInterceptors$"
+
+  # Pipes - @UsePipes(ValidationPipe)
+  - concept: pipe
+    decorator: "^UsePipes$"
+
+  # Parameter decorators (conceptual markers)
+  # - @Body(), @Query(), @Param(), @Headers()
+
+  # Event handlers for microservices
+  - concept: event_handler
+    decorator: "^(EventPattern|MessagePattern)$"
+
+  # WebSocket gateway - @WebSocketGateway()
+  - concept: websocket_gateway
+    decorator: "^WebSocketGateway$"
+
+  # WebSocket event handlers - @SubscribeMessage('event')
+  - concept: websocket_handler
+    decorator: "^SubscribeMessage$"
+
+linkers:
+  - http
+  - websocket

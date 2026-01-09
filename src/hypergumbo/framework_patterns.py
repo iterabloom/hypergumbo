@@ -117,7 +117,7 @@ class Pattern:
                         if path:
                             result["path"] = path
                     if self.extract_method:
-                        method = self._extract_http_method(dec, match)
+                        method = self._extract_http_method(dec, match, dec_name)
                         if method:
                             result["method"] = method
                     return result
@@ -189,13 +189,14 @@ class Pattern:
         return None
 
     def _extract_http_method(
-        self, metadata: dict[str, Any] | str, match: re.Match
+        self, metadata: dict[str, Any] | str, match: re.Match, dec_name: str
     ) -> str | None:
         """Extract HTTP method from decorator match.
 
         Args:
             metadata: Decorator metadata
             match: Regex match object from decorator name
+            dec_name: The matched decorator name (e.g., "Get", "app.get")
 
         Returns:
             HTTP method string (GET, POST, etc.) or None.
@@ -205,6 +206,10 @@ class Pattern:
             groups = match.groups()
             if groups:
                 return groups[-1].upper()
+        elif self.extract_method == "decorator_name_upper":
+            # Use the decorator name directly as the method (e.g., Get -> GET)
+            # This is useful for NestJS-style decorators where @Get() = GET method
+            return dec_name.upper()
         elif self.extract_method and self.extract_method.startswith("kwargs."):
             # Extract from kwargs
             if isinstance(metadata, dict):

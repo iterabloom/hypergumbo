@@ -1076,3 +1076,275 @@ class TestFlaskPatterns:
         assert route_concept["method"] == "GET"
         assert route_concept["path"] == "/users"
         assert route_concept["framework"] == "flask"
+
+
+class TestNestJSPatterns:
+    """Tests for NestJS framework pattern matching."""
+
+    def test_nestjs_get_route_pattern(self) -> None:
+        """NestJS @Get() decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None, "NestJS patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:users.controller.ts:10:findAll:method",
+            name="findAll",
+            kind="method",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Get", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "Get"
+        assert results[0]["method"] == "GET"
+
+    def test_nestjs_get_with_path_pattern(self) -> None:
+        """NestJS @Get(':id') decorator matches route pattern with path."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:users.controller.ts:20:findOne:method",
+            name="findOne",
+            kind="method",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Get", "args": [":id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == ":id"
+
+    def test_nestjs_post_route_pattern(self) -> None:
+        """NestJS @Post() decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:users.controller.ts:30:create:method",
+            name="create",
+            kind="method",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Post", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_nestjs_controller_pattern(self) -> None:
+        """NestJS @Controller decorator matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:users.controller.ts:1:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Controller", "args": ["users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_decorator"] == "Controller"
+
+    def test_nestjs_injectable_pattern(self) -> None:
+        """NestJS @Injectable decorator matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:users.service.ts:1:UsersService:class",
+            name="UsersService",
+            kind="class",
+            language="typescript",
+            path="users.service.ts",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Injectable", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_nestjs_module_pattern(self) -> None:
+        """NestJS @Module decorator matches module pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:users.module.ts:1:UsersModule:class",
+            name="UsersModule",
+            kind="class",
+            language="typescript",
+            path="users.module.ts",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Module", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "module"
+
+    def test_nestjs_use_guards_pattern(self) -> None:
+        """NestJS @UseGuards decorator matches guard pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:users.controller.ts:5:AdminController:class",
+            name="AdminController",
+            kind="class",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(5, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "UseGuards", "args": ["AuthGuard"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "guard"
+
+    def test_nestjs_websocket_gateway_pattern(self) -> None:
+        """NestJS @WebSocketGateway decorator matches websocket_gateway pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:events.gateway.ts:1:EventsGateway:class",
+            name="EventsGateway",
+            kind="class",
+            language="typescript",
+            path="events.gateway.ts",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "WebSocketGateway", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_gateway"
+
+    def test_nestjs_subscribe_message_pattern(self) -> None:
+        """NestJS @SubscribeMessage decorator matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nestjs")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:events.gateway.ts:10:handleEvent:method",
+            name="handleEvent",
+            kind="method",
+            language="typescript",
+            path="events.gateway.ts",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "SubscribeMessage", "args": ["events"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+
+    def test_nestjs_enrich_symbols_integration(self) -> None:
+        """Integration test: enrich_symbols adds NestJS route concepts."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:users.controller.ts:10:findAll:method",
+            name="findAll",
+            kind="method",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Get", "args": ["users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"nestjs"})
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        route_concept = enriched[0].meta["concepts"][0]
+        assert route_concept["concept"] == "route"
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "users"
+        assert route_concept["framework"] == "nestjs"
