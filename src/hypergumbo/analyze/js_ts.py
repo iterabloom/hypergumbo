@@ -320,6 +320,11 @@ def _extract_namespace_imports(
 # Deprecated - use express.yaml, hapi.yaml, koa.yaml patterns
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
+# Known router/app receiver names for route detection (ADR-0003)
+# Only calls like app.get(), router.post(), etc. are treated as routes.
+# This prevents false positives from test mocks like fetchMock.get().
+ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
+
 # Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
 # Framework-specific route detection is deprecated in favor of YAML patterns
 _deprecated_route_warnings_emitted: set[str] = set()
@@ -472,6 +477,31 @@ def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | 
     return None  # pragma: no cover
 
 
+def _get_receiver_name(member_expr: "tree_sitter.Node", source: bytes) -> str | None:
+    """Extract the receiver (object) name from a member_expression.
+
+    For 'app.get()', returns 'app'.
+    For 'router.route("/path").get()', returns 'router' (traverses chain).
+    For 'fetchMock.get()', returns 'fetchMock'.
+
+    Returns None if the receiver cannot be determined.
+    """
+    # Get the object part of the member_expression (first child before '.')
+    for child in member_expr.children:
+        if child.type == "identifier":
+            return _node_text(child, source).lower()
+        elif child.type == "call_expression":
+            # Chained call: router.route('/path').get()
+            # Recurse into the call's callee to find the root receiver
+            for subchild in child.children:
+                if subchild.type == "member_expression":
+                    return _get_receiver_name(subchild, source)
+        elif child.type == "member_expression":  # pragma: no cover
+            # Nested member: express.Router().get()
+            return _get_receiver_name(child, source)
+    return None
+
+
 def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
     """Detect if a call_expression is an Express-style route registration.
 
@@ -484,8 +514,11 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     - router.route('/path').get(handler)  (chained syntax)
     - router.route('/path').post(handler).get(handler)  (multiple chained)
 
-    The call must be of form <expr>.<http_method>('/path', ...) where http_method is
-    get, post, put, patch, delete, head, or options.
+    The call must be of form <receiver>.<http_method>('/path', ...) where:
+    - receiver is in ROUTER_RECEIVER_NAMES (app, router, express, server, fastify, koa)
+    - http_method is get, post, put, patch, delete, head, or options
+
+    This prevents false positives from test mocks like fetchMock.get().
     """
     if node.type != "call_expression":  # pragma: no cover
         return None, None
@@ -500,6 +533,11 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
             args_node = child
 
     if callee_node is None or args_node is None:
+        return None, None
+
+    # Validate the receiver is a known router/app name (ADR-0003)
+    receiver_name = _get_receiver_name(callee_node, source)
+    if receiver_name not in ROUTER_RECEIVER_NAMES:
         return None, None
 
     # Get the method name from the member_expression

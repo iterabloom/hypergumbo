@@ -3933,3 +3933,86 @@ function calculateTotal(items) {
             and "Express" in str(warning.message)
         ]
         assert len(route_warnings) == 0
+
+    def test_fetchmock_get_not_detected_as_route(self, tmp_path: Path) -> None:
+        """fetchMock.get() should NOT be detected as an Express route (ADR-0003).
+
+        This tests the fix for false positives where test mocking libraries like
+        fetch-mock were incorrectly detected as route registrations.
+        """
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        js_file = tmp_path / "test.spec.tsx"
+        js_file.write_text("""
+import fetchMock from 'fetch-mock';
+
+const collections = [{id: 1}, {id: 2}];
+
+collections
+    .filter((c) => c.id !== 'root')
+    .forEach((c) => fetchMock.get(`/api/collection/${c.id}`, c));
+
+fetchMock.post('/api/users', { id: 1 });
+fetchMock.delete('/api/users/1', 200);
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = analyze_javascript(tmp_path)
+
+        # Should have no route symbols from fetchMock
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 0, f"Found unexpected routes: {[s.name for s in route_symbols]}"
+
+        # Should have no deprecation warnings (no routes detected)
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Express" in str(warning.message)
+        ]
+        assert len(route_warnings) == 0
+
+    def test_unknown_receiver_not_detected_as_route(self, tmp_path: Path) -> None:
+        """Unknown receiver names should NOT be detected as routes.
+
+        Only app, router, express, server, fastify, koa are valid receivers.
+        """
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        js_file = tmp_path / "test.js"
+        js_file.write_text("""
+// These should NOT be detected as routes
+myObject.get('/path', handler);
+api.post('/users', handler);
+client.delete('/item', handler);
+axios.get('/data').then(callback);
+http.get('/endpoint', callback);
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = analyze_javascript(tmp_path)
+
+        # Should have no route symbols
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 0, f"Found unexpected routes: {[s.name for s in route_symbols]}"
+
+        # Should have no deprecation warnings
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Express" in str(warning.message)
+        ]
+        assert len(route_warnings) == 0

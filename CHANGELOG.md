@@ -240,10 +240,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tooling:** `find-uncovered` now auto-runs tests when needed, warns on stale coverage, and uses a visible `coverage-report.txt` cache.
 
 ### Fixed
+- **JavaScript/TypeScript route detection false positives (ADR-0003):** Fixed `fetchMock.get()`, `axios.post()`, and similar test/HTTP client calls being incorrectly detected as Express routes. Route detection now validates that the receiver is a known router object (`app`, `router`, `express`, `server`, `fastify`, `koa`) before matching HTTP method calls. This eliminates false positives from test mocking libraries like `fetch-mock` and HTTP clients.
 - **Entrypoint false positives reduced across frameworks:**
   - Excluded `.tsx`/`.jsx` React file-routing paths from Express/Hapi/Koa route detection.
-  - Avoided Tornado “handler” false positives by excluding common non-web handler filename patterns.
-  - Tightened GraphQL server detection by excluding `.tsx`/`.jsx` and common non-resolver “*resolver*” filename patterns (e.g., DNS/promise/dependency/path/module resolvers).
+  - Avoided Tornado "handler" false positives by excluding common non-web handler filename patterns.
+  - Tightened GraphQL server detection by excluding `.tsx`/`.jsx` and common non-resolver "*resolver*" filename patterns (e.g., DNS/promise/dependency/path/module resolvers).
   - Avoided Micronaut HTTP false positives by excluding common gRPC/RPC client class naming patterns.
 
 ### Changed
