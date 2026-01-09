@@ -133,12 +133,17 @@ class Pattern:
         if self._annotation_re:
             for ann in annotations:
                 ann_name = ann.get("name", "") if isinstance(ann, dict) else str(ann)
-                if self._annotation_re.match(ann_name):
+                match = self._annotation_re.match(ann_name)
+                if match:
                     result["matched_annotation"] = ann_name
                     if self.extract_path and isinstance(ann, dict):
                         path = self._extract_value(ann, self.extract_path)
                         if path:
                             result["path"] = path
+                    if self.extract_method:
+                        method = self._extract_http_method_from_annotation(ann, match, ann_name)
+                        if method:
+                            result["method"] = method
                     return result
 
         # Try parameter type match
@@ -220,6 +225,33 @@ class Pattern:
                     return str(methods[0]).upper()
                 elif methods:
                     return str(methods).upper()
+
+        return None
+
+    def _extract_http_method_from_annotation(
+        self, metadata: dict[str, Any] | str, match: re.Match, ann_name: str
+    ) -> str | None:
+        """Extract HTTP method from annotation match.
+
+        Args:
+            metadata: Annotation metadata
+            match: Regex match object from annotation name
+            ann_name: The matched annotation name (e.g., "@GetMapping")
+
+        Returns:
+            HTTP method string (GET, POST, etc.) or None.
+        """
+        if self.extract_method == "annotation_prefix":
+            # Extract method from the first regex capture group
+            # e.g., @GetMapping -> "Get" capture group -> "GET"
+            groups = match.groups()
+            if groups:
+                return groups[0].upper()
+        elif self.extract_method == "annotation_name_upper":
+            # Use the annotation name directly (strip @ prefix)
+            if ann_name.startswith("@"):
+                return ann_name[1:].upper()
+            return ann_name.upper()
 
         return None
 

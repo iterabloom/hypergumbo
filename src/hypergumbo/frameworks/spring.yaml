@@ -1,0 +1,76 @@
+# Spring Framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Spring Boot/Spring MVC annotations for controllers, routes, services.
+# Symbols matching these patterns get enriched with concept metadata.
+
+id: spring
+language: java
+
+patterns:
+  # HTTP route annotations - @GetMapping, @PostMapping, etc.
+  - concept: route
+    annotation: "^@(Get|Post|Put|Delete|Patch)Mapping$"
+    extract_path: "value"
+    extract_method: "annotation_prefix"
+
+  # Generic request mapping - @RequestMapping
+  - concept: route
+    annotation: "^@RequestMapping$"
+    extract_path: "value"
+    # Method extracted from 'method' attribute (e.g., RequestMethod.GET)
+
+  # REST controller - @RestController
+  - concept: controller
+    annotation: "^@RestController$"
+
+  # MVC controller - @Controller
+  - concept: controller
+    annotation: "^@Controller$"
+
+  # Service layer - @Service
+  - concept: service
+    annotation: "^@Service$"
+
+  # Data repository - @Repository
+  - concept: repository
+    annotation: "^@Repository$"
+
+  # Generic component - @Component
+  - concept: component
+    annotation: "^@Component$"
+
+  # Configuration class - @Configuration
+  - concept: configuration
+    annotation: "^@Configuration$"
+
+  # Bean definition - @Bean
+  - concept: bean
+    annotation: "^@Bean$"
+
+  # Entity class - @Entity
+  - concept: model
+    annotation: "^@Entity$"
+
+  # Table mapping - @Table
+  - concept: model
+    annotation: "^@Table$"
+
+  # Exception handler - @ExceptionHandler
+  - concept: error_handler
+    annotation: "^@ExceptionHandler$"
+
+  # Scheduled task - @Scheduled
+  - concept: task
+    annotation: "^@Scheduled$"
+
+  # Event listener - @EventListener
+  - concept: event_handler
+    annotation: "^@EventListener$"
+
+  # Async method - @Async
+  - concept: async
+    annotation: "^@Async$"
+
+linkers:
+  - http
+  - database_query
