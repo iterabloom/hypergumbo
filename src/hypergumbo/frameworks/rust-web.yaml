@@ -1,0 +1,114 @@
+# Rust Web Framework patterns (ADR-0003 v1.0.x)
+#
+# Matches common Rust web frameworks: Actix-web, Axum, Rocket, Warp.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Rust uses attribute macros and proc macros for route definitions.
+
+id: rust-web
+language: rust
+
+patterns:
+  # Actix-web route attributes
+  - concept: route
+    annotation: "^actix_web::get$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^actix_web::post$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^actix_web::put$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^actix_web::delete$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^actix_web::patch$"
+    extract_path: "args[0]"
+
+  # Actix-web route macro (generic)
+  - concept: route
+    annotation: "^actix_web::route$"
+    extract_path: "args[0]"
+
+  # Rocket route attributes
+  - concept: route
+    annotation: "^rocket::get$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^rocket::post$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^rocket::put$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^rocket::delete$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^rocket::patch$"
+    extract_path: "args[0]"
+
+  # Rocket generic route
+  - concept: route
+    annotation: "^rocket::route$"
+    extract_path: "args[0]"
+
+  # Axum route patterns (method routing via function names)
+  # Axum uses Router::route("/path", get(handler)) pattern
+  # These are typically detected via the handler function context
+  - concept: middleware
+    annotation: "^axum::middleware::from_fn$"
+
+  - concept: middleware
+    annotation: "^tower::ServiceExt"
+
+  # Actix-web middleware
+  - concept: middleware
+    annotation: "^actix_web::middleware::"
+
+  # Diesel ORM models
+  - concept: model
+    annotation: "^diesel::.*Insertable$"
+
+  - concept: model
+    annotation: "^diesel::.*Queryable$"
+
+  - concept: model
+    annotation: "^diesel::.*Identifiable$"
+
+  # SeaORM models
+  - concept: model
+    annotation: "^sea_orm::entity::.*Entity$"
+
+  - concept: model
+    annotation: "^sea_orm::DeriveEntityModel$"
+
+  # SQLx query patterns
+  - concept: repository
+    annotation: "^sqlx::query$"
+
+  - concept: repository
+    annotation: "^sqlx::query_as$"
+
+  # Tokio async tasks
+  - concept: task
+    annotation: "^tokio::spawn$"
+
+  - concept: task
+    annotation: "^tokio::task::spawn$"
+
+  # Actix background tasks
+  - concept: task
+    annotation: "^actix_rt::spawn$"
+
+linkers:
+  - http
+  - database_query

@@ -3780,3 +3780,194 @@ class TestGoWebPatterns:
         model = next(s for s in enriched if s.name == "User")
         assert "concepts" in model.meta
         assert any(c["concept"] == "model" for c in model.meta["concepts"])
+
+
+class TestRustWebPatterns:
+    """Tests for Rust web framework patterns (Actix-web, Rocket, Axum)."""
+
+    def setup_method(self) -> None:
+        """Clear pattern cache before each test."""
+        clear_pattern_cache()
+
+    def test_actix_get_route(self) -> None:
+        """Actix-web @get annotation matches route pattern."""
+        symbol = Symbol(
+            id="test:handlers.rs:1:get_users:function",
+            name="get_users",
+            kind="function",
+            language="rust",
+            path="handlers.rs",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "actix_web::get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"rust-web"})
+
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "route"
+        assert concepts[0]["path"] == "/users"
+
+    def test_actix_post_route(self) -> None:
+        """Actix-web @post annotation matches route pattern."""
+        symbol = Symbol(
+            id="test:handlers.rs:1:create_user:function",
+            name="create_user",
+            kind="function",
+            language="rust",
+            path="handlers.rs",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "actix_web::post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"rust-web"})
+
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "route"
+        assert concepts[0]["path"] == "/users"
+
+    def test_rocket_get_route(self) -> None:
+        """Rocket @get annotation matches route pattern."""
+        symbol = Symbol(
+            id="test:routes.rs:1:index:function",
+            name="index",
+            kind="function",
+            language="rust",
+            path="routes.rs",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "rocket::get", "args": ["/"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"rust-web"})
+
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "route"
+        assert concepts[0]["path"] == "/"
+
+    def test_rocket_post_route(self) -> None:
+        """Rocket @post annotation matches route pattern."""
+        symbol = Symbol(
+            id="test:routes.rs:1:create:function",
+            name="create",
+            kind="function",
+            language="rust",
+            path="routes.rs",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "rocket::post", "args": ["/items"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"rust-web"})
+
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "route"
+        assert concepts[0]["path"] == "/items"
+
+    def test_diesel_model(self) -> None:
+        """Diesel Queryable/Insertable derives match model pattern."""
+        symbol = Symbol(
+            id="test:models.rs:1:User:struct",
+            name="User",
+            kind="struct",
+            language="rust",
+            path="models.rs",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "diesel::Queryable", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"rust-web"})
+
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "model"
+
+    def test_tokio_spawn_task(self) -> None:
+        """Tokio spawn annotation matches task pattern."""
+        symbol = Symbol(
+            id="test:tasks.rs:1:background_job:function",
+            name="background_job",
+            kind="function",
+            language="rust",
+            path="tasks.rs",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "tokio::spawn", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"rust-web"})
+
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "task"
+
+    def test_multiple_rust_symbols(self) -> None:
+        """Multiple Rust symbols are enriched correctly."""
+        symbols = [
+            Symbol(
+                id="test:handlers.rs:1:get_users:function",
+                name="get_users",
+                kind="function",
+                language="rust",
+                path="handlers.rs",
+                span=Span(1, 10, 0, 0),
+                meta={
+                    "annotations": [
+                        {"name": "actix_web::get", "args": ["/users"], "kwargs": {}},
+                    ],
+                },
+            ),
+            Symbol(
+                id="test:models.rs:1:User:struct",
+                name="User",
+                kind="struct",
+                language="rust",
+                path="models.rs",
+                span=Span(1, 20, 0, 0),
+                meta={
+                    "annotations": [
+                        {"name": "diesel::Queryable", "args": [], "kwargs": {}},
+                    ],
+                },
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"rust-web"})
+
+        route = next(s for s in enriched if s.name == "get_users")
+        assert "concepts" in route.meta
+        assert any(c["concept"] == "route" for c in route.meta["concepts"])
+
+        model = next(s for s in enriched if s.name == "User")
+        assert "concepts" in model.meta
+        assert any(c["concept"] == "model" for c in model.meta["concepts"])
