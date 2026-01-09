@@ -99,7 +99,7 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
-# ASP.NET Core HTTP method attributes
+# ASP.NET Core HTTP method attributes (deprecated - use aspnet.yaml patterns)
 ASPNET_HTTP_ATTRIBUTES = {
     "HttpGet": "GET",
     "HttpPost": "POST",
@@ -109,6 +109,28 @@ ASPNET_HTTP_ATTRIBUTES = {
     "HttpHead": "HEAD",
     "HttpOptions": "OPTIONS",
 }
+
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
 
 
 def _detect_aspnet_route(
@@ -537,8 +559,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                # Check for ASP.NET Core route attributes
+                # Check for ASP.NET Core route attributes (deprecated - use YAML)
                 http_method, route_path = _detect_aspnet_route(node, source)
+                if http_method:
+                    _emit_route_deprecation_warning("ASP.NET Core")
 
                 # Extract all annotations for FRAMEWORK_PATTERNS phase
                 annotations = _extract_annotations(node, source)

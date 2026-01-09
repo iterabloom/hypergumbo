@@ -1859,3 +1859,152 @@ public class Roles {
         assert roles is not None
         assert "admin" in roles
         assert "user" in roles
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level route detection."""
+
+    def test_spring_boot_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Spring Boot route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        java_file = tmp_path / "Controller.java"
+        java_file.write_text("""
+@RestController
+public class Controller {
+    @GetMapping("/users")
+    public void getUsers() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have at least one deprecation warning for Spring
+        deprecation_warnings = [
+            warning for warning in w if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Spring" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_jaxrs_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """JAX-RS route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        java_file = tmp_path / "Resource.java"
+        java_file.write_text("""
+@Path("/items")
+public class Resource {
+    @GET
+    public void getItems() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have deprecation warning for JAX-RS
+        deprecation_warnings = [
+            warning for warning in w if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "JAX-RS" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_framework(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per framework."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple Spring Boot controllers
+        (tmp_path / "UserController.java").write_text("""
+@RestController
+public class UserController {
+    @GetMapping("/users")
+    public void getUsers() {}
+
+    @PostMapping("/users")
+    public void createUser() {}
+}
+""")
+        (tmp_path / "ItemController.java").write_text("""
+@RestController
+public class ItemController {
+    @GetMapping("/items")
+    public void getItems() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have exactly one Spring deprecation warning (deduplicated)
+        spring_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Spring" in str(warning.message)
+        ]
+        assert len(spring_warnings) == 1
+
+    def test_no_deprecation_warning_for_non_route_annotations(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for classes without route annotations."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+@Service
+public class UserService {
+    @Autowired
+    private UserRepository repo;
+
+    public void findAll() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have no deprecation warnings for route detection
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and ("Spring" in str(warning.message) or "JAX-RS" in str(warning.message))
+        ]
+        assert len(route_warnings) == 0

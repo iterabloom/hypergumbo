@@ -243,7 +243,30 @@ def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
     return modifiers
 
 
-# Spring Boot route annotation mappings
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
+
+
+# Spring Boot route annotation mappings (deprecated - use spring.yaml patterns)
 SPRING_MAPPING_ANNOTATIONS = {
     "GetMapping": "GET",
     "PostMapping": "POST",
@@ -811,12 +834,19 @@ def _extract_symbols(
                 # Extract all modifiers for the modifiers field
                 modifiers = _extract_modifiers(node, source)
 
-                # Check for Spring Boot route annotations
+                # Check for Spring Boot route annotations (deprecated - use YAML)
                 http_method, route_path = _detect_spring_boot_route(node, source)
+                detected_framework = "Spring" if http_method else None
 
-                # If not Spring Boot, check for JAX-RS annotations
+                # If not Spring Boot, check for JAX-RS annotations (deprecated)
                 if not http_method:
                     http_method, route_path = _detect_jaxrs_route(node, source)
+                    if http_method:
+                        detected_framework = "JAX-RS"
+
+                # Emit deprecation warning for analyzer-level route detection
+                if detected_framework:
+                    _emit_route_deprecation_warning(detected_framework)
 
                 # Build meta dict
                 meta: dict[str, object] | None = None
