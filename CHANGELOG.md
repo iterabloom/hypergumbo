@@ -81,6 +81,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - DRF permissions: `BasePermission`, `IsAuthenticated`, `IsAdminUser`, `AllowAny`
     - Django filters (django-filter): `FilterSet`, `Filter`
     - Celery tasks: `@shared_task`, `@task`, `@celery.task`
+  - Express.js patterns YAML (`express.yaml`) with patterns for:
+    - Route handlers: `app.get()`, `app.post()`, `app.put()`, `app.delete()`, `app.patch()`, etc.
+    - Router patterns: `router.get()`, `router.post()`, etc.
+    - Router route chaining: `router.route('/path')`
+    - Middleware: `app.use()`, `router.use()`
+    - Param middleware: `app.param()`, `router.param()`
+    - Passport.js strategies: `LocalStrategy`, `JwtStrategy`, `OAuth2Strategy`, etc.
+    - Common middleware: `helmet`, `cors`, `morgan`, `bodyParser`, etc.
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method

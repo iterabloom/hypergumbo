@@ -1,0 +1,70 @@
+# Express.js framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Express.js routing and middleware patterns.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Note: Express uses method chaining (app.get(), router.post()) similar to
+# Flask 2.0+. The decorator patterns here match against extracted call metadata.
+
+id: express
+language: javascript
+
+patterns:
+  # Express route handlers - app.get(), app.post(), etc.
+  - concept: route
+    decorator: "^(app|router|express)\\.(get|post|put|delete|patch|options|head|all)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Express Router - router.route('/path').get().post()
+  - concept: route
+    decorator: "^(app|router)\\.route$"
+    extract_path: "args[0]"
+
+  # Express middleware - app.use()
+  - concept: middleware
+    decorator: "^(app|router)\\.use$"
+
+  # Express param middleware - app.param('id', callback)
+  - concept: middleware
+    decorator: "^(app|router)\\.param$"
+
+  # Express error handler (4-argument function)
+  # Note: This pattern would need special handling in the analyzer
+  # to detect 4-parameter functions as error handlers
+
+  # Passport.js authentication strategies
+  - concept: auth_strategy
+    base_class: "^(Strategy|LocalStrategy|JwtStrategy|OAuth2Strategy|GoogleStrategy|FacebookStrategy|GitHubStrategy)$"
+
+  # Express session middleware
+  - concept: middleware
+    decorator: "^session$"
+
+  # Morgan logger middleware
+  - concept: middleware
+    decorator: "^morgan$"
+
+  # Helmet security middleware
+  - concept: middleware
+    decorator: "^helmet$"
+
+  # CORS middleware
+  - concept: middleware
+    decorator: "^cors$"
+
+  # Body-parser middleware
+  - concept: middleware
+    decorator: "^(bodyParser|json|urlencoded)$"
+
+  # Multer file upload
+  - concept: middleware
+    decorator: "^multer$"
+
+  # Express validator
+  - concept: middleware
+    decorator: "^(body|query|param|check|validationResult)$"
+
+linkers:
+  - http
+  - websocket

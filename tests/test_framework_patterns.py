@@ -2121,3 +2121,303 @@ class TestDjangoPatterns:
         task = next(s for s in enriched if s.name == "send_email")
         assert "concepts" in task.meta
         assert any(c["concept"] == "task" for c in task.meta["concepts"])
+
+
+class TestExpressPatterns:
+    """Tests for Express.js framework pattern matching."""
+
+    def test_express_app_get_route_pattern(self) -> None:
+        """Express app.get() matches route pattern with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None, "Express patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.js:10:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "app.get"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_express_router_post_route_pattern(self) -> None:
+        """Express router.post() matches route pattern with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes/users.js:5:createUser:function",
+            name="createUser",
+            kind="function",
+            language="javascript",
+            path="routes/users.js",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.post", "args": ["/"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "router.post"
+        assert results[0]["method"] == "POST"
+        assert results[0]["path"] == "/"
+
+    def test_express_put_route_pattern(self) -> None:
+        """Express app.put() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.js:20:updateUser:function",
+            name="updateUser",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.put", "args": ["/users/:id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "PUT"
+        assert results[0]["path"] == "/users/:id"
+
+    def test_express_delete_route_pattern(self) -> None:
+        """Express router.delete() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes/users.js:25:deleteUser:function",
+            name="deleteUser",
+            kind="function",
+            language="javascript",
+            path="routes/users.js",
+            span=Span(25, 35, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.delete", "args": ["/users/:id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "DELETE"
+
+    def test_express_middleware_pattern(self) -> None:
+        """Express app.use() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.js:1:authMiddleware:function",
+            name="authMiddleware",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.use", "args": ["/api"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+        assert results[0]["matched_decorator"] == "app.use"
+
+    def test_express_route_method_pattern(self) -> None:
+        """Express router.route('/path') matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes/users.js:10:usersRoute:function",
+            name="usersRoute",
+            kind="function",
+            language="javascript",
+            path="routes/users.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "router.route", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/users"
+
+    def test_express_passport_strategy_pattern(self) -> None:
+        """Passport.js LocalStrategy matches auth_strategy pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:config/passport.js:1:LocalAuth:class",
+            name="LocalAuth",
+            kind="class",
+            language="javascript",
+            path="config/passport.js",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["LocalStrategy"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth_strategy"
+        assert results[0]["matched_base_class"] == "LocalStrategy"
+
+    def test_express_param_middleware_pattern(self) -> None:
+        """Express app.param() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.js:5:idParam:function",
+            name="idParam",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.param", "args": ["id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+        assert results[0]["matched_decorator"] == "app.param"
+
+    def test_express_helmet_middleware_pattern(self) -> None:
+        """Helmet security middleware matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.js:3:security:function",
+            name="security",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(3, 5, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "helmet", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+        assert results[0]["matched_decorator"] == "helmet"
+
+    def test_express_enrich_symbols_integration(self) -> None:
+        """Express patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:app.js:10:getUsers:function",
+                name="getUsers",
+                kind="function",
+                language="javascript",
+                path="app.js",
+                span=Span(10, 20, 0, 0),
+                meta={"decorators": [{"name": "app.get", "args": ["/users"], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:app.js:1:authMiddleware:function",
+                name="authMiddleware",
+                kind="function",
+                language="javascript",
+                path="app.js",
+                span=Span(1, 10, 0, 0),
+                meta={"decorators": [{"name": "app.use", "args": ["/api"], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:config/passport.js:1:LocalAuth:class",
+                name="LocalAuth",
+                kind="class",
+                language="javascript",
+                path="config/passport.js",
+                span=Span(1, 30, 0, 0),
+                meta={"base_classes": ["LocalStrategy"]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"express"})
+
+        # Check that concepts were added
+        route = next(s for s in enriched if s.name == "getUsers")
+        assert "concepts" in route.meta
+        assert any(c["concept"] == "route" for c in route.meta["concepts"])
+        assert any(c.get("method") == "GET" for c in route.meta["concepts"])
+
+        middleware = next(s for s in enriched if s.name == "authMiddleware")
+        assert "concepts" in middleware.meta
+        assert any(c["concept"] == "middleware" for c in middleware.meta["concepts"])
+
+        auth = next(s for s in enriched if s.name == "LocalAuth")
+        assert "concepts" in auth.meta
+        assert any(c["concept"] == "auth_strategy" for c in auth.meta["concepts"])
