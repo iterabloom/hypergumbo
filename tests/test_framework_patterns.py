@@ -1784,3 +1784,340 @@ patterns:
         assert len(results) == 1
         # Unknown extraction mode should not add method
         assert "method" not in results[0]
+
+
+class TestDjangoPatterns:
+    """Tests for Django framework pattern matching."""
+
+    def test_django_api_view_decorator(self) -> None:
+        """Django REST Framework @api_view decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None, "Django patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:views.py:10:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "api_view", "args": [], "kwargs": {"methods": ["GET", "POST"]}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "api_view"
+        assert results[0]["method"] == "GET"  # First method from list
+
+    def test_django_apiview_base_class(self) -> None:
+        """Django REST Framework APIView base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:views.py:1:UserView:class",
+            name="UserView",
+            kind="class",
+            language="python",
+            path="views.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["APIView"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "APIView"
+
+    def test_django_model_viewset_base_class(self) -> None:
+        """Django REST Framework ModelViewSet base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:views.py:1:UserViewSet:class",
+            name="UserViewSet",
+            kind="class",
+            language="python",
+            path="views.py",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["ModelViewSet"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "ModelViewSet"
+
+    def test_django_model_serializer_base_class(self) -> None:
+        """Django REST Framework ModelSerializer base class matches serializer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:serializers.py:1:UserSerializer:class",
+            name="UserSerializer",
+            kind="class",
+            language="python",
+            path="serializers.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ModelSerializer"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer"
+        assert results[0]["matched_base_class"] == "ModelSerializer"
+
+    def test_django_generic_view_base_class(self) -> None:
+        """Django generic ListView base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:views.py:1:UserListView:class",
+            name="UserListView",
+            kind="class",
+            language="python",
+            path="views.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ListView"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "ListView"
+
+    def test_django_model_base_class(self) -> None:
+        """Django Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models.py:1:User:class",
+            name="User",
+            kind="class",
+            language="python",
+            path="models.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+        assert results[0]["matched_base_class"] == "Model"
+
+    def test_django_model_form_base_class(self) -> None:
+        """Django ModelForm base class matches form pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:forms.py:1:UserForm:class",
+            name="UserForm",
+            kind="class",
+            language="python",
+            path="forms.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ModelForm"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "form"
+        assert results[0]["matched_base_class"] == "ModelForm"
+
+    def test_django_admin_register_decorator(self) -> None:
+        """Django admin.register decorator matches admin pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:admin.py:1:UserAdmin:class",
+            name="UserAdmin",
+            kind="class",
+            language="python",
+            path="admin.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "admin.register", "args": ["User"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "admin"
+        assert results[0]["matched_decorator"] == "admin.register"
+
+    def test_django_receiver_decorator(self) -> None:
+        """Django receiver decorator matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:signals.py:1:user_created:function",
+            name="user_created",
+            kind="function",
+            language="python",
+            path="signals.py",
+            span=Span(1, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "receiver", "args": ["post_save"], "kwargs": {"sender": "User"}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+        assert results[0]["matched_decorator"] == "receiver"
+
+    def test_django_base_command_base_class(self) -> None:
+        """Django BaseCommand base class matches command pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:commands/import_data.py:1:Command:class",
+            name="Command",
+            kind="class",
+            language="python",
+            path="commands/import_data.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["BaseCommand"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "command"
+        assert results[0]["matched_base_class"] == "BaseCommand"
+
+    def test_django_celery_shared_task_decorator(self) -> None:
+        """Celery @shared_task decorator matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tasks.py:1:send_email:function",
+            name="send_email",
+            kind="function",
+            language="python",
+            path="tasks.py",
+            span=Span(1, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "shared_task", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_decorator"] == "shared_task"
+
+    def test_django_enrich_symbols_integration(self) -> None:
+        """Django patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:views.py:1:UserViewSet:class",
+                name="UserViewSet",
+                kind="class",
+                language="python",
+                path="views.py",
+                span=Span(1, 50, 0, 0),
+                meta={"base_classes": ["ModelViewSet"]},
+            ),
+            Symbol(
+                id="test:models.py:1:User:class",
+                name="User",
+                kind="class",
+                language="python",
+                path="models.py",
+                span=Span(1, 30, 0, 0),
+                meta={"base_classes": ["Model"]},
+            ),
+            Symbol(
+                id="test:tasks.py:1:send_email:function",
+                name="send_email",
+                kind="function",
+                language="python",
+                path="tasks.py",
+                span=Span(1, 15, 0, 0),
+                meta={"decorators": [{"name": "shared_task", "args": [], "kwargs": {}}]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"django"})
+
+        # Check that concepts were added
+        viewset = next(s for s in enriched if s.name == "UserViewSet")
+        assert "concepts" in viewset.meta
+        assert any(c["concept"] == "controller" for c in viewset.meta["concepts"])
+
+        model = next(s for s in enriched if s.name == "User")
+        assert "concepts" in model.meta
+        assert any(c["concept"] == "model" for c in model.meta["concepts"])
+
+        task = next(s for s in enriched if s.name == "send_email")
+        assert "concepts" in task.meta
+        assert any(c["concept"] == "task" for c in task.meta["concepts"])
