@@ -2,14 +2,28 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v0.9.0
+- Released **tool** is at: v0.9.1
 - Released **schema** is at: v0.2.0
 
 This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-01-09
+## [0.9.1] - 2026-01-09
+
+### Fixed
+- **Incomplete v0.9.0 release:** The v0.9.0 release was accidentally built from the wrong branch
+  and did not include the ADR-0003 implementation (framework patterns, `--frameworks` flag,
+  semantic entry detection, etc.). This release includes all the features described in the
+  v0.9.0 changelog. Users should upgrade from v0.9.0 to v0.9.1.
+
+### Added
+- Regenerated `docs/ARCHITECTURE.md` with current codebase metrics.
+
+## [0.9.0] - 2026-01-09 (INCOMPLETE RELEASE)
+
+> **Warning:** This release was built from the wrong branch and is missing most features
+> described below. Please use v0.9.1 instead.
 
 ### Changed (Breaking)
 - **Schema version 0.2.0:** The output schema version bumped from 0.1.0 to 0.2.0.

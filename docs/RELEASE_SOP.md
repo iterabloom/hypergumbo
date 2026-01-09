@@ -218,7 +218,7 @@ This script:
 
 ```bash
 # Human runs this after merging the PR
-./scripts/tag-release 0.9.0
+./scripts/tag-release 0.9.1
 ```
 
 This script:

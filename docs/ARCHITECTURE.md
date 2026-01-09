@@ -5,8 +5,8 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 572e6c586ba5
-  hypergumbo: 0.6.9
+  commit: 83810f78db4d
+  hypergumbo: 0.9.0
   python: 3.12.3
 -->
 
@@ -14,8 +14,8 @@ GENERATION METADATA (for drift detection):
 
 hypergumbo analyzed its own source code and found:
 - **107** Python modules (68 analyzers, 14 linkers)
-- **1687** symbols (functions, classes, methods)
-- **6136** edges (calls, imports, instantiates)
+- **1688** symbols (functions, classes, methods)
+- **6143** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (98%), Yaml (2%) · 126 files · ~48,386 LOC
+Python (98%), Yaml (2%) · 126 files · ~48,452 LOC
 
 ## Structure
 
@@ -111,7 +111,7 @@ Python (98%), Yaml (2%) · 126 files · ~48,386 LOC
 ### `hypergumbo/analyze/py.py`
 - `_format_annotation(node: ast.expr) -> str` (function) — Format a type annotation node to a readable string.
 
-(... and 1553 more symbols across 89 other files)
+(... and 1554 more symbols across 89 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
 - `_node_text` - we omitted 6 appearances of `_node_text`
@@ -186,7 +186,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1687 Symbols + 6136 Edges
+│  analyzers  │────▶│     IR      │  1688 Symbols + 6143 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -212,7 +212,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 | `Span` | class | 322 | ir.py |
 | `iter_tree` | function | 160 | base.py |
 | `find_files` | function | 147 | discovery.py |
-| `node_text` | function | 130 | base.py |
+| `node_text` | function | 131 | base.py |
 | `Edge` | class | 127 | ir.py |
 | `AnalysisRun` | class | 92 | ir.py |
 | `Pass` | class | 66 | catalog.py |
