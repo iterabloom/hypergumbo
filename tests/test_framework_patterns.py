@@ -777,3 +777,302 @@ patterns:
 
         # Second symbol should remain unchanged (no meta to match against)
         # It won't match because it has no base_classes
+
+
+class TestFlaskPatterns:
+    """Tests for Flask framework pattern matching."""
+
+    def test_flask_get_route_pattern(self) -> None:
+        """Flask 2.0+ @app.get decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None, "Flask patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.py:1:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "app.get"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_flask_post_route_pattern(self) -> None:
+        """Flask @app.post decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:create_user:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_flask_classic_route_pattern(self) -> None:
+        """Classic Flask @app.route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:handle:function",
+            name="handle",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "app.route",
+                        "args": ["/api/data"],
+                        "kwargs": {"methods": ["POST", "PUT"]},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/api/data"
+        assert results[0]["method"] == "POST"  # First method
+
+    def test_flask_blueprint_route_pattern(self) -> None:
+        """Flask blueprint route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes.py:1:get_item:function",
+            name="get_item",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "blueprint.get", "args": ["/items/<id>"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/items/<id>"
+
+    def test_flask_bp_route_pattern(self) -> None:
+        """Flask bp.route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:routes.py:1:delete_item:function",
+            name="delete_item",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "bp.delete", "args": ["/items/<id>"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "DELETE"
+
+    def test_flask_before_request_hook(self) -> None:
+        """Flask @app.before_request matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:check_auth:function",
+            name="check_auth",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.before_request", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_flask_errorhandler(self) -> None:
+        """Flask @app.errorhandler matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:handle_404:function",
+            name="handle_404",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.errorhandler", "args": [404], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_flask_restful_resource(self) -> None:
+        """Flask-RESTful Resource base class matches api_resource pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:resources.py:1:UserResource:class",
+            name="UserResource",
+            kind="class",
+            language="python",
+            path="resources.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Resource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "api_resource"
+
+    def test_flask_wtf_form(self) -> None:
+        """Flask-WTF FlaskForm base class matches form pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:forms.py:1:LoginForm:class",
+            name="LoginForm",
+            kind="class",
+            language="python",
+            path="forms.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["FlaskForm"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "form"
+
+    def test_flask_sqlalchemy_model(self) -> None:
+        """Flask-SQLAlchemy db.Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models.py:1:User:class",
+            name="User",
+            kind="class",
+            language="python",
+            path="models.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["db.Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_flask_enrich_symbols_integration(self) -> None:
+        """Integration test: enrich_symbols adds Flask route concepts."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:app.py:1:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"flask"})
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        route_concept = enriched[0].meta["concepts"][0]
+        assert route_concept["concept"] == "route"
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/users"
+        assert route_concept["framework"] == "flask"
