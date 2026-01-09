@@ -154,6 +154,33 @@ class TestPattern:
         assert result["concept"] == "dependency"
         assert result["matched_parameter_type"] == "Depends"
 
+    def test_pattern_handles_none_parameter_type(self) -> None:
+        """Pattern handles None parameter type without crashing."""
+        pattern = Pattern(
+            concept="dependency",
+            parameter_type=r"^Depends$",
+        )
+
+        # Symbol with None type value (not missing, but explicitly None)
+        symbol = Symbol(
+            id="test:file.py:1:func:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "parameters": [
+                    {"name": "db", "type": None},  # Explicit None
+                    {"name": "user"},  # Missing type key
+                ],
+            },
+        )
+
+        # Should not crash, and should return None (no match)
+        result = pattern.matches(symbol)
+        assert result is None
+
     def test_pattern_no_match(self) -> None:
         """Pattern returns None when no match found."""
         pattern = Pattern(
