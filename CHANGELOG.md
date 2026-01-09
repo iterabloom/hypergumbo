@@ -35,6 +35,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Route decorators: `@app.get("/path")`, `@router.post("/path")`, etc.
     - Pydantic models: `class Item(BaseModel)`
     - Dependency injection: `Depends(get_db)`, `BackgroundTasks`
+  - Flask patterns YAML (`flask.yaml`) with patterns for:
+    - Flask 2.0+ route shortcuts: `@app.get("/path")`, `@bp.post("/path")`
+    - Classic routes: `@app.route("/path", methods=["GET"])`
+    - Blueprint routes: `@blueprint.route("/path")`
+    - Request hooks: `@app.before_request`, `@app.after_request`, `@app.teardown_request`
+    - Error handlers: `@app.errorhandler(404)`
+    - Flask-RESTful Resources: `class UserResource(Resource)`
+    - Flask-WTF forms: `class LoginForm(FlaskForm)`
+    - Flask-SQLAlchemy models: `class User(db.Model)`
   - Pattern matching extracts HTTP method from decorator suffix and path from args
 - **Linker conditional execution (ADR-0003 Item 10):** Linkers now respect activation conditions:
   - `run_all_linkers()` filters linkers based on detected frameworks and languages
