@@ -7,18 +7,18 @@ Version Distinction
 -------------------
 **SCHEMA_VERSION vs Tool Version:**
 
-- **SCHEMA_VERSION** (defined here as "0.1.0"): The output format version.
-  This version is embedded in every JSON output as `schema_version`.
-  It only increments when there are breaking changes to the output schema
-  (new required fields, changed field types, removed fields, etc.).
-  Consumers can use this to check compatibility with their parsers.
+- **SCHEMA_VERSION** (defined here): The output format version, embedded in
+  every JSON output as `schema_version`. It only increments when there are
+  breaking changes to the output schema (new required fields, changed field
+  types, removed fields, etc.). Consumers can use this to check compatibility
+  with their parsers.
 
-- **__version__** (in __init__.py, currently "0.5.0"): The tool/package version.
-  This increments with every release (new analyzers, bug fixes, performance
-  improvements, CLI changes, etc.). It does NOT indicate output format changes.
+- **__version__** (in __init__.py): The tool/package version. This increments
+  with every release (new analyzers, bug fixes, performance improvements,
+  CLI changes, etc.). It does NOT indicate output format changes.
 
-These versions evolve independently. The tool can have many releases (0.5.0,
-0.6.0, 1.0.0...) while the schema stays at 0.1.0 if the output format is stable.
+These versions evolve independently. The tool can have many releases while
+the schema stays stable if the output format doesn't change.
 
 How It Works
 ------------

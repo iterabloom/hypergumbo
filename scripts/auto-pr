@@ -333,14 +333,16 @@ except Exception:
 		sleep 10
 	done
 
-	# Merge
+	# Merge using squash to preserve DCO sign-off
+	# Regular merge commits created via API lack DCO sign-off, causing CI failures
+	# when those commits are later included in PRs to main. Squash avoids this.
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
 	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
 		-H "Authorization: token $TOKEN" \
 		-H "Content-Type: application/json" \
-		-d '{"do": "merge", "delete_branch_after_merge": true}' \
+		-d '{"do": "squash", "delete_branch_after_merge": true}' \
 		"$API_BASE/pulls/$PR_NUM/merge")
 
 	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
@@ -587,14 +589,16 @@ except Exception:
 		sleep 10
 	done
 
-	# Merge
+	# Merge using squash to preserve DCO sign-off
+	# Regular merge commits created via API lack DCO sign-off, causing CI failures
+	# when those commits are later included in PRs to main. Squash avoids this.
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
 	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
 		-H "Authorization: token $TOKEN" \
 		-H "Content-Type: application/json" \
-		-d '{"do": "merge", "delete_branch_after_merge": true}' \
+		-d '{"do": "squash", "delete_branch_after_merge": true}' \
 		"$API_BASE/pulls/$PR_NUM/merge")
 
 	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then

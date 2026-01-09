@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from hypergumbo.schema import SCHEMA_VERSION
 from hypergumbo.cli import (
     cmd_init,
     cmd_run,
@@ -71,7 +72,7 @@ def test_cmd_run_creates_behavior_map(tmp_path: Path) -> None:
     assert out_path.exists()
 
     data = json.loads(out_path.read_text())
-    assert data["schema_version"] == "0.2.0"
+    assert data["schema_version"] == SCHEMA_VERSION
 
 
 def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
