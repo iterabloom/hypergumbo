@@ -57,10 +57,17 @@ Detection is based on:
 
 Confidence Scores
 -----------------
+Base confidence by detection method:
 - 0.95: Decorator-based (very reliable)
 - 0.90: Django urls.py imports, NestJS *.controller.ts (explicit conventions)
 - 0.85: File-pattern-based (Electron, Express route files)
 - 0.70: Name-pattern-based (heuristic, may have false positives)
+
+Connectivity Boost:
+- Entrypoints with outgoing edges get a confidence boost (up to +0.25)
+- Boost formula: min(0.25, log(1 + out_edges) / 10)
+- This ranks "interesting" entrypoints higher (those that call many functions)
+- Entrypoints are sorted by final confidence (highest first)
 
 Current Limitations
 -------------------
@@ -70,7 +77,9 @@ Current Limitations
 """
 from __future__ import annotations
 
+import math
 import warnings
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from typing import List
@@ -1912,5 +1921,23 @@ def detect_entrypoints(
         if ep.symbol_id not in seen_ids:
             seen_ids.add(ep.symbol_id)
             unique_entrypoints.append(ep)
+
+    # Boost confidence based on connectivity (outgoing edges)
+    # An entrypoint that calls many other functions is more "interesting"
+    outgoing_counts: dict[str, int] = defaultdict(int)
+    for edge in edges:
+        outgoing_counts[edge.src] += 1
+
+    for ep in unique_entrypoints:
+        out_edges = outgoing_counts.get(ep.symbol_id, 0)
+        if out_edges > 0:
+            # Logarithmic boost: diminishing returns for very high counts
+            # log(1 + 10) / 10 ≈ 0.24, log(1 + 100) / 10 ≈ 0.46
+            # Cap at 0.25 to avoid overwhelming the base confidence
+            connectivity_boost = min(0.25, math.log(1 + out_edges) / 10)
+            ep.confidence = min(1.0, ep.confidence + connectivity_boost)
+
+    # Sort by confidence (highest first) for better --entry auto behavior
+    unique_entrypoints.sort(key=lambda ep: ep.confidence, reverse=True)
 
     return unique_entrypoints
