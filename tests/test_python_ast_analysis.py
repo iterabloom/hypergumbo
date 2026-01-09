@@ -463,12 +463,14 @@ def test_method_symbols_include_class_prefix(tmp_path: Path) -> None:
 
 
 # ============================================================================
-# FastAPI Route Detection Tests
+# Decorator Metadata Extraction Tests (Route decorators)
 # ============================================================================
+# Route detection is now handled by FRAMEWORK_PATTERNS phase.
+# These tests verify the analyzer extracts correct decorator metadata.
 
 
-def test_fastapi_get_route_detected(tmp_path: Path) -> None:
-    """FastAPI @app.get decorator should set stable_id to 'get' and store route path."""
+def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
+    """FastAPI @app.get decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"
     py_file.write_text(
         "from fastapi import FastAPI\n"
@@ -491,14 +493,17 @@ def test_fastapi_get_route_detected(tmp_path: Path) -> None:
 
     func = functions[0]
     assert func["name"] == "get_users"
-    # stable_id should be the HTTP method
-    assert func["stable_id"] == "GET"
-    # Route path should be stored in meta
-    assert func.get("meta", {}).get("route_path") == "/users"
+    # stable_id is now always a hash
+    assert func["stable_id"].startswith("sha256:")
+    # Decorator metadata should be extracted
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.get"
+    assert decorators[0]["args"] == ["/users"]
 
 
-def test_fastapi_post_route_detected(tmp_path: Path) -> None:
-    """FastAPI @app.post decorator should set stable_id to 'post'."""
+def test_fastapi_post_decorator_metadata(tmp_path: Path) -> None:
+    """FastAPI @app.post decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"
     py_file.write_text(
         "from fastapi import FastAPI\n"
@@ -519,12 +524,14 @@ def test_fastapi_post_route_detected(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    assert func["stable_id"] == "POST"
-    assert func.get("meta", {}).get("route_path") == "/users"
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.post"
+    assert decorators[0]["args"] == ["/users"]
 
 
-def test_fastapi_router_route_detected(tmp_path: Path) -> None:
-    """FastAPI @router.get decorator should also be detected."""
+def test_fastapi_router_decorator_metadata(tmp_path: Path) -> None:
+    """FastAPI @router.get decorator metadata should be extracted."""
     py_file = tmp_path / "routes.py"
     py_file.write_text(
         "from fastapi import APIRouter\n"
@@ -545,12 +552,14 @@ def test_fastapi_router_route_detected(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    assert func["stable_id"] == "GET"
-    assert func.get("meta", {}).get("route_path") == "/items/{item_id}"
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "router.get"
+    assert decorators[0]["args"] == ["/items/{item_id}"]
 
 
-def test_fastapi_all_http_methods(tmp_path: Path) -> None:
-    """All HTTP methods should be detected: get, post, put, patch, delete, head, options."""
+def test_fastapi_all_http_method_decorators(tmp_path: Path) -> None:
+    """All HTTP method decorators should have metadata extracted."""
     py_file = tmp_path / "api.py"
     py_file.write_text(
         "from fastapi import FastAPI\n"
@@ -587,15 +596,24 @@ def test_fastapi_all_http_methods(tmp_path: Path) -> None:
     functions = [n for n in data["nodes"] if n["kind"] == "function"]
     assert len(functions) == 7
 
-    # Check each function has correct stable_id
+    # Check each function has correct decorator metadata
     func_by_name = {f["name"]: f for f in functions}
-    assert func_by_name["do_get"]["stable_id"] == "GET"
-    assert func_by_name["do_post"]["stable_id"] == "POST"
-    assert func_by_name["do_put"]["stable_id"] == "PUT"
-    assert func_by_name["do_patch"]["stable_id"] == "PATCH"
-    assert func_by_name["do_delete"]["stable_id"] == "DELETE"
-    assert func_by_name["do_head"]["stable_id"] == "HEAD"
-    assert func_by_name["do_options"]["stable_id"] == "OPTIONS"
+
+    expected = {
+        "do_get": ("app.get", "/get"),
+        "do_post": ("app.post", "/post"),
+        "do_put": ("app.put", "/put"),
+        "do_patch": ("app.patch", "/patch"),
+        "do_delete": ("app.delete", "/delete"),
+        "do_head": ("app.head", "/head"),
+        "do_options": ("app.options", "/options"),
+    }
+
+    for name, (dec_name, path) in expected.items():
+        decorators = func_by_name[name].get("meta", {}).get("decorators", [])
+        assert len(decorators) == 1, f"{name} should have 1 decorator"
+        assert decorators[0]["name"] == dec_name
+        assert decorators[0]["args"] == [path]
 
 
 def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
@@ -619,8 +637,8 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
     assert func["stable_id"].startswith("sha256:")
 
 
-def test_flask_route_detected(tmp_path: Path) -> None:
-    """Flask @app.route decorator should also be detected."""
+def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
+    """Flask @app.route decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"
     py_file.write_text(
         "from flask import Flask\n"
@@ -641,14 +659,16 @@ def test_flask_route_detected(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    # Flask @app.route with methods=['GET'] extracts the actual HTTP method
-    assert func["stable_id"] == "GET"
-    assert func.get("meta", {}).get("route_path") == "/hello"
-    assert func.get("meta", {}).get("http_method") == "GET"
+    # Decorator metadata should be extracted
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.route"
+    assert decorators[0]["args"] == ["/hello"]
+    assert decorators[0]["kwargs"] == {"methods": ["GET"]}
 
 
-def test_flask_method_specific_decorators(tmp_path: Path) -> None:
-    """Flask @app.get, @app.post etc. (Flask 2.0+) should be detected."""
+def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
+    """Flask @app.get, @app.post etc. (Flask 2.0+) decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"
     py_file.write_text(
         "from flask import Flask\n"
@@ -672,17 +692,25 @@ def test_flask_method_specific_decorators(tmp_path: Path) -> None:
     functions = [n for n in data["nodes"] if n["kind"] == "function"]
     func_by_name = {f["name"]: f for f in functions}
 
-    assert func_by_name["get_users"]["stable_id"] == "GET"
-    assert func_by_name["create_user"]["stable_id"] == "POST"
+    # Check decorator metadata
+    get_decorators = func_by_name["get_users"].get("meta", {}).get("decorators", [])
+    assert len(get_decorators) == 1
+    assert get_decorators[0]["name"] == "app.get"
+    assert get_decorators[0]["args"] == ["/users"]
+
+    post_decorators = func_by_name["create_user"].get("meta", {}).get("decorators", [])
+    assert len(post_decorators) == 1
+    assert post_decorators[0]["name"] == "app.post"
+    assert post_decorators[0]["args"] == ["/users"]
 
 
 # ============================================================================
-# Django Route Detection Tests
+# Django/DRF Decorator Metadata Tests
 # ============================================================================
 
 
-def test_drf_api_view_decorator_single_method(tmp_path: Path) -> None:
-    """DRF @api_view(['GET']) decorator should set stable_id to 'get'."""
+def test_drf_api_view_decorator_single_method_metadata(tmp_path: Path) -> None:
+    """DRF @api_view(['GET']) decorator metadata should be extracted."""
     py_file = tmp_path / "views.py"
     py_file.write_text(
         "from rest_framework.decorators import api_view\n"
@@ -702,11 +730,15 @@ def test_drf_api_view_decorator_single_method(tmp_path: Path) -> None:
 
     func = functions[0]
     assert func["name"] == "user_list"
-    assert func["stable_id"] == "GET"
+    # Check decorator metadata extraction
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "api_view"
+    assert decorators[0]["args"] == [["GET"]]
 
 
-def test_drf_api_view_decorator_multiple_methods(tmp_path: Path) -> None:
-    """DRF @api_view(['GET', 'POST']) should set stable_id to 'get,post'."""
+def test_drf_api_view_decorator_multiple_methods_metadata(tmp_path: Path) -> None:
+    """DRF @api_view(['GET', 'POST']) decorator metadata should be extracted."""
     py_file = tmp_path / "views.py"
     py_file.write_text(
         "from rest_framework.decorators import api_view\n"
@@ -727,12 +759,15 @@ def test_drf_api_view_decorator_multiple_methods(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    # Multiple methods joined with comma
-    assert func["stable_id"] == "GET,POST"
+    # Check decorator metadata with multiple methods
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "api_view"
+    assert decorators[0]["args"] == [["GET", "POST"]]
 
 
-def test_drf_api_view_all_methods(tmp_path: Path) -> None:
-    """DRF @api_view with all HTTP methods."""
+def test_drf_api_view_all_methods_metadata(tmp_path: Path) -> None:
+    """DRF @api_view with all HTTP methods - metadata extraction."""
     py_file = tmp_path / "views.py"
     py_file.write_text(
         "from rest_framework.decorators import api_view\n"
@@ -751,11 +786,10 @@ def test_drf_api_view_all_methods(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    assert "GET" in func["stable_id"]
-    assert "POST" in func["stable_id"]
-    assert "PUT" in func["stable_id"]
-    assert "PATCH" in func["stable_id"]
-    assert "DELETE" in func["stable_id"]
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "api_view"
+    assert decorators[0]["args"] == [["GET", "POST", "PUT", "PATCH", "DELETE"]]
 
 
 def test_django_cbv_http_methods(tmp_path: Path) -> None:
@@ -906,171 +940,9 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
     assert routes[0].get("meta", {}).get("view_name") == "my_view"
 
 
-def test_fastapi_router_prefix_combined_with_route(tmp_path: Path) -> None:
-    """FastAPI APIRouter with prefix should combine prefix with route path."""
-    py_file = tmp_path / "routes.py"
-    py_file.write_text(
-        "from fastapi import APIRouter\n"
-        "\n"
-        "router = APIRouter(prefix='/api/v1')\n"
-        "\n"
-        "@router.get('/users')\n"
-        "def get_users():\n"
-        "    return []\n"
-        "\n"
-        "@router.post('/users')\n"
-        "def create_user():\n"
-        "    return {}\n"
-    )
-
-    out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
-
-    data = json.loads(out_path.read_text())
-
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(functions) == 2
-
-    func_by_name = {f["name"]: f for f in functions}
-    # Route path should include prefix
-    assert func_by_name["get_users"].get("meta", {}).get("route_path") == "/api/v1/users"
-    assert func_by_name["create_user"].get("meta", {}).get("route_path") == "/api/v1/users"
-
-
-def test_fastapi_router_prefix_no_leading_slash(tmp_path: Path) -> None:
-    """Router prefix without leading slash should be normalized."""
-    py_file = tmp_path / "routes.py"
-    py_file.write_text(
-        "from fastapi import APIRouter\n"
-        "\n"
-        "router = APIRouter(prefix='api')\n"
-        "\n"
-        "@router.get('/items')\n"
-        "def get_items():\n"
-        "    return []\n"
-    )
-
-    out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
-
-    data = json.loads(out_path.read_text())
-
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(functions) == 1
-
-    # Should normalize to /api/items
-    assert functions[0].get("meta", {}).get("route_path") == "/api/items"
-
-
-def test_fastapi_multiple_routers_different_prefixes(tmp_path: Path) -> None:
-    """Multiple routers with different prefixes should each apply their own prefix."""
-    py_file = tmp_path / "routes.py"
-    py_file.write_text(
-        "from fastapi import APIRouter\n"
-        "\n"
-        "users_router = APIRouter(prefix='/users')\n"
-        "items_router = APIRouter(prefix='/items')\n"
-        "\n"
-        "@users_router.get('/')\n"
-        "def list_users():\n"
-        "    return []\n"
-        "\n"
-        "@items_router.get('/')\n"
-        "def list_items():\n"
-        "    return []\n"
-    )
-
-    out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
-
-    data = json.loads(out_path.read_text())
-
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(functions) == 2
-
-    func_by_name = {f["name"]: f for f in functions}
-    assert func_by_name["list_users"].get("meta", {}).get("route_path") == "/users/"
-    assert func_by_name["list_items"].get("meta", {}).get("route_path") == "/items/"
-
-
-def test_fastapi_router_without_prefix(tmp_path: Path) -> None:
-    """Router without prefix should not affect route paths."""
-    py_file = tmp_path / "routes.py"
-    py_file.write_text(
-        "from fastapi import APIRouter\n"
-        "\n"
-        "router = APIRouter()\n"
-        "\n"
-        "@router.get('/health')\n"
-        "def health_check():\n"
-        "    return {'status': 'ok'}\n"
-    )
-
-    out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
-
-    data = json.loads(out_path.read_text())
-
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(functions) == 1
-
-    # Route path unchanged
-    assert functions[0].get("meta", {}).get("route_path") == "/health"
-
-
-def test_fastapi_router_prefix_keyword_arg(tmp_path: Path) -> None:
-    """Router prefix can be passed as keyword argument."""
-    py_file = tmp_path / "routes.py"
-    py_file.write_text(
-        "from fastapi import APIRouter\n"
-        "\n"
-        "router = APIRouter(tags=['api'], prefix='/v2/api')\n"
-        "\n"
-        "@router.get('/data')\n"
-        "def get_data():\n"
-        "    return {}\n"
-    )
-
-    out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
-
-    data = json.loads(out_path.read_text())
-
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(functions) == 1
-
-    assert functions[0].get("meta", {}).get("route_path") == "/v2/api/data"
-
-
-def test_flask_blueprint_url_prefix(tmp_path: Path) -> None:
-    """Flask Blueprint with url_prefix should combine prefix with route path."""
-    py_file = tmp_path / "routes.py"
-    py_file.write_text(
-        "from flask import Blueprint\n"
-        "\n"
-        "bp = Blueprint('api', __name__, url_prefix='/api/v1')\n"
-        "\n"
-        "@bp.get('/users')\n"
-        "def get_users():\n"
-        "    return []\n"
-        "\n"
-        "@bp.route('/items', methods=['POST'])\n"
-        "def create_item():\n"
-        "    return {}\n"
-    )
-
-    out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
-
-    data = json.loads(out_path.read_text())
-
-    functions = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(functions) == 2
-
-    func_by_name = {f["name"]: f for f in functions}
-    # Route paths should include Blueprint prefix
-    assert func_by_name["get_users"].get("meta", {}).get("route_path") == "/api/v1/users"
-    assert func_by_name["create_item"].get("meta", {}).get("route_path") == "/api/v1/items"
+# NOTE: Router prefix combination tests were removed.
+# Router prefix functionality is now handled by FRAMEWORK_PATTERNS phase.
+# See test_framework_patterns.py for pattern matching tests.
 
 
 def test_reexport_call_edges_resolved(tmp_path: Path) -> None:

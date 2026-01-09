@@ -49,6 +49,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - Prefers `meta.concepts[].path` and `meta.concepts[].method` (FRAMEWORK_PATTERNS phase)
   - Falls back to legacy `meta.route_path` and `meta.http_method` when no route concept
   - Enables route linking for symbols enriched by framework pattern YAML files
+- **Routes command concept metadata support:** The `hypergumbo routes` command now detects routes via:
+  - Concept metadata (`meta.concepts[].concept == "route"`) from FRAMEWORK_PATTERNS phase
+  - Falls back to legacy HTTP method stable_id detection
+
+### Changed
+- **Python analyzer purified (ADR-0003 Item 9):** Route detection removed from Python analyzer:
+  - Route detection now happens in FRAMEWORK_PATTERNS phase via YAML pattern files
+  - Analyzer continues to extract rich decorator metadata (`meta.decorators`) for pattern matching
+  - Removed `_detect_route_decorator()`, `_extract_router_prefixes()`, `_combine_prefix_and_path()` functions
+  - All functions now use hash-based `stable_id` (route methods no longer set as stable_id)
+  - Router prefix combination removed (can be implemented in FRAMEWORK_PATTERNS later)
+  - Django CBV HTTP method detection retained (method name based, not decorator-based)
+  - Django URL pattern detection retained (different detection mechanism)
 
 ### Deprecated
 - **Packs (ADR-0003 Item 5):** The `Pack` and `PackConfig` classes now emit deprecation warnings. Framework-specific analysis is now handled by linker activation conditions rather than packs. Existing code using packs will continue to work but should be migrated to use the new `--frameworks` flag instead.
