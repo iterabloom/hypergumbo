@@ -4477,3 +4477,238 @@ class TestKoaPatterns:
         mw = next(s for s in enriched if s.name == "logger")
         assert "concepts" in mw.meta
         assert any(c["concept"] == "middleware" for c in mw.meta["concepts"])
+
+
+class TestAspNetPatterns:
+    """Tests for ASP.NET Core framework pattern matching."""
+
+    def test_aspnet_http_get_route_pattern(self) -> None:
+        """ASP.NET HttpGet attribute matches route pattern with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None, "ASP.NET patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UsersController.cs:10:GetUsers:method",
+            name="UsersController.GetUsers",
+            kind="method",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "HttpGet", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_annotation"] == "HttpGet"
+        assert results[0]["path"] == "/users"
+        assert results[0]["method"] == "GET"
+
+    def test_aspnet_http_post_route_pattern(self) -> None:
+        """ASP.NET HttpPost attribute matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersController.cs:20:CreateUser:method",
+            name="UsersController.CreateUser",
+            kind="method",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "HttpPost", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+        assert results[0]["path"] == "/users"
+
+    def test_aspnet_http_put_route_pattern(self) -> None:
+        """ASP.NET HttpPut attribute matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersController.cs:30:UpdateUser:method",
+            name="UsersController.UpdateUser",
+            kind="method",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "HttpPut", "args": ["{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "PUT"
+        assert results[0]["path"] == "{id}"
+
+    def test_aspnet_http_delete_route_pattern(self) -> None:
+        """ASP.NET HttpDelete attribute matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersController.cs:40:DeleteUser:method",
+            name="UsersController.DeleteUser",
+            kind="method",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(40, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "HttpDelete", "args": ["{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "DELETE"
+
+    def test_aspnet_api_controller_pattern(self) -> None:
+        """ASP.NET ApiController attribute matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersController.cs:1:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "ApiController", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_aspnet_authorize_pattern(self) -> None:
+        """ASP.NET Authorize attribute matches auth_middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:SecureController.cs:10:SecureMethod:method",
+            name="SecureController.SecureMethod",
+            kind="method",
+            language="csharp",
+            path="Controllers/SecureController.cs",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "Authorize", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth_middleware"
+
+    def test_aspnet_validation_pattern(self) -> None:
+        """ASP.NET validation attributes match validator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("aspnet")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserModel.cs:10:Name:property",
+            name="User.Name",
+            kind="property",
+            language="csharp",
+            path="Models/User.cs",
+            span=Span(10, 12, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "Required", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "validator"
+
+    def test_aspnet_enrich_symbols(self) -> None:
+        """ASP.NET symbols are enriched with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:UsersController.cs:10:GetUsers:method",
+                name="UsersController.GetUsers",
+                kind="method",
+                language="csharp",
+                path="Controllers/UsersController.cs",
+                span=Span(10, 20, 0, 0),
+                meta={
+                    "annotations": [
+                        {"name": "HttpGet", "args": ["/users"], "kwargs": {}},
+                    ],
+                },
+            ),
+            Symbol(
+                id="test:UsersController.cs:1:UsersController:class",
+                name="UsersController",
+                kind="class",
+                language="csharp",
+                path="Controllers/UsersController.cs",
+                span=Span(1, 50, 0, 0),
+                meta={
+                    "annotations": [
+                        {"name": "ApiController", "args": [], "kwargs": {}},
+                    ],
+                },
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"aspnet"})
+
+        route = next(s for s in enriched if s.name == "UsersController.GetUsers")
+        assert "concepts" in route.meta
+        assert any(c["concept"] == "route" for c in route.meta["concepts"])
+
+        controller = next(s for s in enriched if s.name == "UsersController")
+        assert "concepts" in controller.meta
+        assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
