@@ -1,0 +1,113 @@
+# Phoenix Framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Phoenix/Elixir conventions for controllers, channels, LiveView, etc.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Phoenix uses Elixir macros (use, import) for behavior injection.
+# These are captured as "decorators" in the metadata.
+
+id: phoenix
+language: elixir
+
+patterns:
+  # Controllers - use Phoenix.Controller or MyAppWeb :controller
+  - concept: controller
+    decorator: "^use Phoenix\\.Controller$"
+
+  - concept: controller
+    decorator: "^use .*Web, :controller$"
+
+  # LiveView - real-time server-rendered views
+  - concept: liveview
+    decorator: "^use Phoenix\\.LiveView$"
+
+  - concept: liveview
+    decorator: "^use .*Web, :live_view$"
+
+  # LiveComponent - reusable LiveView components
+  - concept: component
+    decorator: "^use Phoenix\\.LiveComponent$"
+
+  - concept: component
+    decorator: "^use .*Web, :live_component$"
+
+  # Channels - WebSocket handlers
+  - concept: websocket_handler
+    decorator: "^use Phoenix\\.Channel$"
+
+  - concept: websocket_handler
+    decorator: "^use .*Web, :channel$"
+
+  # Ecto Schemas - database models
+  - concept: model
+    decorator: "^use Ecto\\.Schema$"
+
+  # Ecto Changesets (often in schema modules)
+  - concept: model
+    decorator: "^import Ecto\\.Changeset$"
+
+  # Plugs - middleware
+  - concept: middleware
+    decorator: "^use Plug\\.Builder$"
+
+  - concept: middleware
+    decorator: "^use Plug\\.Router$"
+
+  # Phoenix Router
+  - concept: router
+    decorator: "^use Phoenix\\.Router$"
+
+  - concept: router
+    decorator: "^use .*Web, :router$"
+
+  # Phoenix View (deprecated in favor of components)
+  - concept: view
+    decorator: "^use Phoenix\\.View$"
+
+  - concept: view
+    decorator: "^use .*Web, :view$"
+
+  # Phoenix HTML helpers
+  - concept: view
+    decorator: "^use Phoenix\\.HTML$"
+
+  # Phoenix Component (new in 1.7+)
+  - concept: component
+    decorator: "^use Phoenix\\.Component$"
+
+  # GenServer - background processes
+  - concept: task
+    decorator: "^use GenServer$"
+
+  # Supervisor - process supervision
+  - concept: supervisor
+    decorator: "^use Supervisor$"
+
+  # Agent - simple state management
+  - concept: task
+    decorator: "^use Agent$"
+
+  # Task - async operations
+  - concept: task
+    decorator: "^use Task$"
+
+  # Oban workers (job processing)
+  - concept: task
+    decorator: "^use Oban\\.Worker$"
+
+  # Broadway (data ingestion)
+  - concept: task
+    decorator: "^use Broadway$"
+
+  # Absinthe GraphQL
+  - concept: graphql_schema
+    decorator: "^use Absinthe\\.Schema$"
+
+  - concept: graphql_resolver
+    decorator: "^use Absinthe\\.Schema\\.Notation$"
+
+linkers:
+  - http
+  - websocket
+  - graphql
+  - message_queue

@@ -2966,3 +2966,298 @@ class TestRailsPatterns:
         job = next(s for s in enriched if s.name == "EmailJob")
         assert "concepts" in job.meta
         assert any(c["concept"] == "task" for c in job.meta["concepts"])
+
+
+class TestPhoenixPatterns:
+    """Tests for Phoenix (Elixir) framework pattern matching."""
+
+    def test_phoenix_controller_pattern(self) -> None:
+        """Phoenix controller macro matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None, "Phoenix patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:user_controller.ex:1:UserController:module",
+            name="UserController",
+            kind="module",
+            language="elixir",
+            path="lib/my_app_web/controllers/user_controller.ex",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Phoenix.Controller", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_decorator"] == "use Phoenix.Controller"
+
+    def test_phoenix_web_controller_pattern(self) -> None:
+        """Phoenix Web controller macro matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:page_controller.ex:1:PageController:module",
+            name="PageController",
+            kind="module",
+            language="elixir",
+            path="lib/my_app_web/controllers/page_controller.ex",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use MyAppWeb, :controller", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_phoenix_liveview_pattern(self) -> None:
+        """Phoenix LiveView macro matches liveview pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:user_live.ex:1:UserLive:module",
+            name="UserLive",
+            kind="module",
+            language="elixir",
+            path="lib/my_app_web/live/user_live.ex",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Phoenix.LiveView", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "liveview"
+        assert results[0]["matched_decorator"] == "use Phoenix.LiveView"
+
+    def test_phoenix_channel_pattern(self) -> None:
+        """Phoenix Channel macro matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:room_channel.ex:1:RoomChannel:module",
+            name="RoomChannel",
+            kind="module",
+            language="elixir",
+            path="lib/my_app_web/channels/room_channel.ex",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Phoenix.Channel", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+        assert results[0]["matched_decorator"] == "use Phoenix.Channel"
+
+    def test_phoenix_ecto_schema_pattern(self) -> None:
+        """Ecto Schema macro matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:user.ex:1:User:module",
+            name="User",
+            kind="module",
+            language="elixir",
+            path="lib/my_app/accounts/user.ex",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Ecto.Schema", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+        assert results[0]["matched_decorator"] == "use Ecto.Schema"
+
+    def test_phoenix_genserver_pattern(self) -> None:
+        """GenServer macro matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:worker.ex:1:Worker:module",
+            name="Worker",
+            kind="module",
+            language="elixir",
+            path="lib/my_app/worker.ex",
+            span=Span(1, 60, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use GenServer", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_decorator"] == "use GenServer"
+
+    def test_phoenix_oban_worker_pattern(self) -> None:
+        """Oban Worker macro matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:email_worker.ex:1:EmailWorker:module",
+            name="EmailWorker",
+            kind="module",
+            language="elixir",
+            path="lib/my_app/workers/email_worker.ex",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Oban.Worker", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_decorator"] == "use Oban.Worker"
+
+    def test_phoenix_absinthe_schema_pattern(self) -> None:
+        """Absinthe Schema macro matches graphql_schema pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:schema.ex:1:Schema:module",
+            name="Schema",
+            kind="module",
+            language="elixir",
+            path="lib/my_app_web/schema.ex",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Absinthe.Schema", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "graphql_schema"
+        assert results[0]["matched_decorator"] == "use Absinthe.Schema"
+
+    def test_phoenix_plug_builder_pattern(self) -> None:
+        """Plug.Builder macro matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:auth_plug.ex:1:AuthPlug:module",
+            name="AuthPlug",
+            kind="module",
+            language="elixir",
+            path="lib/my_app_web/plugs/auth_plug.ex",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Plug.Builder", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+        assert results[0]["matched_decorator"] == "use Plug.Builder"
+
+    def test_phoenix_enrich_symbols_integration(self) -> None:
+        """Phoenix patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:user_controller.ex:1:UserController:module",
+                name="UserController",
+                kind="module",
+                language="elixir",
+                path="lib/my_app_web/controllers/user_controller.ex",
+                span=Span(1, 50, 0, 0),
+                meta={"decorators": [{"name": "use Phoenix.Controller", "args": [], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:user.ex:1:User:module",
+                name="User",
+                kind="module",
+                language="elixir",
+                path="lib/my_app/accounts/user.ex",
+                span=Span(1, 40, 0, 0),
+                meta={"decorators": [{"name": "use Ecto.Schema", "args": [], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:room_channel.ex:1:RoomChannel:module",
+                name="RoomChannel",
+                kind="module",
+                language="elixir",
+                path="lib/my_app_web/channels/room_channel.ex",
+                span=Span(1, 50, 0, 0),
+                meta={"decorators": [{"name": "use Phoenix.Channel", "args": [], "kwargs": {}}]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"phoenix"})
+
+        # Check that concepts were added
+        controller = next(s for s in enriched if s.name == "UserController")
+        assert "concepts" in controller.meta
+        assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
+
+        model = next(s for s in enriched if s.name == "User")
+        assert "concepts" in model.meta
+        assert any(c["concept"] == "model" for c in model.meta["concepts"])
+
+        channel = next(s for s in enriched if s.name == "RoomChannel")
+        assert "concepts" in channel.meta
+        assert any(c["concept"] == "websocket_handler" for c in channel.meta["concepts"])
