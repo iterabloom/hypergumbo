@@ -1,0 +1,74 @@
+# Hapi.js framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Hapi.js (@hapi/hapi) routing and plugin patterns.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Hapi uses a configuration-based approach: server.route({ method, path, handler })
+# The decorator patterns here match against the extracted call metadata.
+
+id: hapi
+language: javascript
+
+patterns:
+  # Hapi server.route() - main routing method
+  # Called as server.route({ method: 'GET', path: '/users', handler: fn })
+  - concept: route
+    decorator: "^server\\.route$"
+    extract_path: "kwargs.path"
+    extract_method: "kwargs.method"
+
+  # Hapi route shorthand - server.route({ method, path }) when array
+  - concept: route
+    decorator: "^server\\.routes$"
+
+  # Hapi plugin registration - server.register()
+  - concept: plugin
+    decorator: "^server\\.register$"
+
+  # Hapi server methods - server.method()
+  - concept: service_method
+    decorator: "^server\\.method$"
+
+  # Hapi decorate - server.decorate()
+  - concept: extension
+    decorator: "^server\\.decorate$"
+
+  # Hapi extension points - server.ext()
+  - concept: middleware
+    decorator: "^server\\.ext$"
+
+  # Hapi auth strategy - server.auth.strategy()
+  - concept: auth_strategy
+    decorator: "^server\\.auth\\.strategy$"
+
+  # Hapi auth default - server.auth.default()
+  - concept: auth_config
+    decorator: "^server\\.auth\\.default$"
+
+  # Hapi caching - server.cache()
+  - concept: cache
+    decorator: "^server\\.cache$"
+
+  # Hapi views (Vision plugin) - server.views()
+  - concept: view_config
+    decorator: "^server\\.views$"
+
+  # Hapi events - server.events.on()
+  - concept: event_handler
+    decorator: "^server\\.events\\.on$"
+
+  # Hapi lifecycle - server.start(), server.stop()
+  - concept: lifecycle
+    decorator: "^server\\.(start|stop|initialize)$"
+
+  # Joi validation (commonly used with Hapi)
+  - concept: validator
+    decorator: "^Joi\\.(object|string|number|array|date|boolean|alternatives)$"
+
+  # Boom error responses (commonly used with Hapi)
+  - concept: error_handler
+    decorator: "^Boom\\.(badRequest|unauthorized|forbidden|notFound|internal|boomify)$"
+
+linkers:
+  - http
+  - websocket
