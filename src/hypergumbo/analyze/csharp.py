@@ -163,6 +163,95 @@ def _detect_aspnet_route(
     return None, None
 
 
+def _extract_annotations(
+    node: "tree_sitter.Node", source: bytes
+) -> list[dict[str, object]]:
+    """Extract all C# attributes from a node (class, interface, method, etc).
+
+    C# attributes appear in attribute_list children. Each attribute may have:
+    - name: The attribute name (e.g., "HttpGet", "Route", "ApiController")
+    - args: Positional arguments from attribute_argument_list
+    - kwargs: Named arguments (name = value pairs)
+
+    Returns list of attribute info dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    annotations: list[dict[str, object]] = []
+
+    for child in node.children:
+        if child.type == "attribute_list":
+            # attribute_list contains one or more attributes
+            for attr in child.children:
+                if attr.type == "attribute":
+                    attr_info: dict[str, object] = {"name": "", "args": [], "kwargs": {}}
+
+                    # Get the attribute name (may be qualified like System.Serializable)
+                    for attr_child in attr.children:
+                        if attr_child.type == "identifier":
+                            attr_info["name"] = _node_text(attr_child, source)
+                        elif attr_child.type == "qualified_name":
+                            attr_info["name"] = _node_text(attr_child, source)
+
+                    # Extract arguments from attribute_argument_list
+                    arg_list = _find_child_by_type(attr, "attribute_argument_list")
+                    if arg_list:
+                        args: list[str] = []
+                        kwargs: dict[str, str] = {}
+
+                        for arg in arg_list.children:
+                            if arg.type == "attribute_argument":
+                                # Check if it's a named argument via assignment_expression
+                                assign_expr = _find_child_by_type(
+                                    arg, "assignment_expression"
+                                )
+                                if assign_expr:
+                                    # Named argument: name = value
+                                    name_node = _find_child_by_type(
+                                        assign_expr, "identifier"
+                                    )
+                                    arg_name = (
+                                        _node_text(name_node, source)
+                                        if name_node
+                                        else ""
+                                    )
+
+                                    # Value is the string_literal after =
+                                    for assign_child in assign_expr.children:
+                                        if assign_child.type == "string_literal":
+                                            value = _node_text(assign_child, source)
+                                            if value.startswith('"') and value.endswith(
+                                                '"'
+                                            ):
+                                                value = value[1:-1]
+                                            if arg_name:
+                                                kwargs[arg_name] = value
+                                            break
+                                else:
+                                    # Positional argument
+                                    for arg_child in arg.children:
+                                        if arg_child.type == "string_literal":
+                                            value = _node_text(arg_child, source)
+                                            # Strip quotes from string literals
+                                            if value.startswith('"') and value.endswith(
+                                                '"'
+                                            ):
+                                                value = value[1:-1]
+                                            args.append(value)
+                                            break
+                                        else:
+                                            # Non-string literal (e.g., number, bool)
+                                            value = _node_text(arg_child, source)
+                                            args.append(value)
+                                            break
+
+                        attr_info["args"] = args
+                        attr_info["kwargs"] = kwargs
+
+                    if attr_info["name"]:
+                        annotations.append(attr_info)
+
+    return annotations
+
+
 def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tree_sitter.Node"]:
     """Find all children of given type."""
     return [child for child in node.children if child.type == type_name]
@@ -335,6 +424,12 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract annotations for FRAMEWORK_PATTERNS phase
+                annotations = _extract_annotations(node, source)
+                meta: dict[str, object] | None = None
+                if annotations:
+                    meta = {"annotations": annotations}
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
                     name=name,
@@ -349,6 +444,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -444,17 +540,22 @@ def _extract_symbols_from_file(
                 # Check for ASP.NET Core route attributes
                 http_method, route_path = _detect_aspnet_route(node, source)
 
+                # Extract all annotations for FRAMEWORK_PATTERNS phase
+                annotations = _extract_annotations(node, source)
+
                 # Build meta dict
-                meta: dict[str, str] | None = None
+                meta: dict[str, object] | None = None
                 stable_id: str | None = None
 
-                if http_method or route_path:
+                if http_method or route_path or annotations:
                     meta = {}
                     if route_path:
                         meta["route_path"] = route_path
                     if http_method:
                         meta["http_method"] = http_method
                         stable_id = http_method
+                    if annotations:
+                        meta["annotations"] = annotations
 
                 # Extract signature
                 signature = _extract_csharp_signature(node, source, is_constructor=False)

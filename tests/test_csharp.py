@@ -725,3 +725,196 @@ public class Processor {
         methods = [s for s in result.symbols if s.kind == "method" and "Process" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "(string[] inputs) byte[]"
+
+
+class TestAnnotationExtraction:
+    """Tests for C# attribute/annotation extraction for FRAMEWORK_PATTERNS phase."""
+
+    def test_method_annotation_with_positional_arg(self, tmp_path: Path) -> None:
+        """Extracts method attribute with positional argument."""
+        (tmp_path / "Controller.cs").write_text("""
+using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
+public class UsersController : ControllerBase
+{
+    [HttpGet("/users")]
+    public IActionResult GetUsers()
+    {
+        return Ok();
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+
+        method = methods[0]
+        assert method.meta is not None
+        assert "annotations" in method.meta
+
+        annotations = method.meta["annotations"]
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "HttpGet"
+        assert annotations[0]["args"] == ["/users"]
+        assert annotations[0]["kwargs"] == {}
+
+    def test_class_annotation_no_args(self, tmp_path: Path) -> None:
+        """Extracts class attribute without arguments."""
+        (tmp_path / "Controller.cs").write_text("""
+using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
+public class UsersController : ControllerBase
+{
+    public IActionResult Index() => Ok();
+}
+""")
+        result = analyze_csharp(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class"]
+        controller = next(c for c in classes if c.name == "UsersController")
+
+        assert controller.meta is not None
+        assert "annotations" in controller.meta
+
+        annotations = controller.meta["annotations"]
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "ApiController"
+        assert annotations[0]["args"] == []
+        assert annotations[0]["kwargs"] == {}
+
+    def test_annotation_with_named_argument(self, tmp_path: Path) -> None:
+        """Extracts attribute with named argument."""
+        (tmp_path / "Model.cs").write_text("""
+using System.ComponentModel.DataAnnotations;
+
+public class User
+{
+    [StringLength(50, MinimumLength = 3)]
+    public string Name { get; set; }
+}
+""")
+        # Properties aren't currently captured with annotations,
+        # but let's test with a method that has named args
+        (tmp_path / "Controller.cs").write_text("""
+using Microsoft.AspNetCore.Mvc;
+
+public class TestController
+{
+    [Route("api/test", Name = "GetTest")]
+    public IActionResult GetTest()
+    {
+        return Ok();
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method = next(m for m in methods if "GetTest" in m.name)
+
+        assert method.meta is not None
+        assert "annotations" in method.meta
+
+        annotations = method.meta["annotations"]
+        route_ann = next(a for a in annotations if a["name"] == "Route")
+        assert route_ann["args"] == ["api/test"]
+        assert route_ann["kwargs"] == {"Name": "GetTest"}
+
+    def test_multiple_annotations_on_method(self, tmp_path: Path) -> None:
+        """Extracts multiple attributes from a single method."""
+        (tmp_path / "Controller.cs").write_text("""
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+
+public class SecureController
+{
+    [Authorize]
+    [HttpPost("/data")]
+    public IActionResult PostData()
+    {
+        return Ok();
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+
+        method = methods[0]
+        assert method.meta is not None
+        assert "annotations" in method.meta
+
+        annotations = method.meta["annotations"]
+        assert len(annotations) == 2
+
+        names = {a["name"] for a in annotations}
+        assert names == {"Authorize", "HttpPost"}
+
+    def test_http_method_detection_with_annotations(self, tmp_path: Path) -> None:
+        """Both http_method and annotations are populated for route attributes."""
+        (tmp_path / "Controller.cs").write_text("""
+using Microsoft.AspNetCore.Mvc;
+
+public class ItemsController
+{
+    [HttpGet("{id}")]
+    public IActionResult GetItem(int id)
+    {
+        return Ok();
+    }
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method = methods[0]
+
+        # Should have both http_method (for backward compat) and annotations
+        assert method.meta is not None
+        assert method.meta.get("http_method") == "GET"
+        assert method.meta.get("route_path") == "{id}"
+        assert "annotations" in method.meta
+        assert method.meta["annotations"][0]["name"] == "HttpGet"
+
+    def test_qualified_attribute_name(self, tmp_path: Path) -> None:
+        """Extracts qualified attribute names (e.g., System.Serializable)."""
+        (tmp_path / "Model.cs").write_text("""
+[System.Serializable]
+public class DataModel
+{
+    [System.ComponentModel.Description("User name")]
+    public void Process() {}
+}
+""")
+        result = analyze_csharp(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class"]
+        class_sym = classes[0]
+
+        assert class_sym.meta is not None
+        assert "annotations" in class_sym.meta
+        assert class_sym.meta["annotations"][0]["name"] == "System.Serializable"
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method = methods[0]
+        assert method.meta is not None
+        assert "annotations" in method.meta
+        assert method.meta["annotations"][0]["name"] == "System.ComponentModel.Description"
+
+    def test_non_string_positional_args(self, tmp_path: Path) -> None:
+        """Extracts non-string positional arguments (numbers, bools)."""
+        (tmp_path / "Model.cs").write_text("""
+public class UserModel
+{
+    [Range(1, 100)]
+    public void SetAge(int age) {}
+}
+""")
+        result = analyze_csharp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method = methods[0]
+
+        assert method.meta is not None
+        assert "annotations" in method.meta
+        # The Range attribute has two numeric arguments
+        annotations = method.meta["annotations"]
+        range_ann = next(a for a in annotations if a["name"] == "Range")
+        assert range_ann["args"] == ["1", "100"]

@@ -154,6 +154,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Passport auth: `passport.authenticate()`, `passport.use()`
     - JWT middleware: `jwt()`
     - Common middleware: `helmet`, `cors`, `logger`, `compress`
+  - ASP.NET Core patterns YAML (`aspnet.yaml`) with patterns for:
+    - HTTP route attributes: `[HttpGet]`, `[HttpPost]`, `[HttpPut]`, `[HttpDelete]`, `[HttpPatch]`
+    - Route attribute: `[Route("path")]`
+    - Controllers: `[ApiController]`, `[Controller]`
+    - Authorization: `[Authorize]`, `[AllowAnonymous]`
+    - Validation: `[Required]`, `[StringLength]`, `[Range]`, etc.
+    - Entity Framework: `[Table]`, `[Key]`, `[Column]`, etc.
+    - SignalR hubs via base class: `Hub`
+  - **C# analyzer annotation extraction:** C# analyzer now captures full attribute metadata:
+    - Extracts all C# attributes (not just HTTP routes) into `meta.annotations`
+    - Supports positional arguments: `[Route("/users")]` → `args: ["/users"]`
+    - Supports named arguments: `[Route("path", Name = "GetUsers")]` → `kwargs: {"Name": "GetUsers"}`
+    - Supports qualified names: `[System.Serializable]` → `name: "System.Serializable"`
+    - Class-level attribute extraction for `[ApiController]`, `[Authorize]`, etc.
+    - Enables FRAMEWORK_PATTERNS phase for ASP.NET Core semantic detection
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method

@@ -1,0 +1,99 @@
+# ASP.NET Core framework patterns (ADR-0003 v1.0.x)
+#
+# Matches ASP.NET Core MVC/Web API patterns for controllers, routes, services.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# ASP.NET Core uses C# attributes like [HttpGet], [Route], [ApiController].
+# The annotation patterns here match against extracted attribute metadata.
+
+id: aspnet
+language: csharp
+
+patterns:
+  # HTTP route attributes - [HttpGet], [HttpPost], etc.
+  - concept: route
+    annotation: "^Http(Get|Post|Put|Delete|Patch|Head|Options)$"
+    extract_path: "args[0]"
+    extract_method: "annotation_prefix"
+
+  # Generic route attribute - [Route]
+  - concept: route
+    annotation: "^Route$"
+    extract_path: "args[0]"
+
+  # API controller - [ApiController]
+  - concept: controller
+    annotation: "^ApiController$"
+
+  # MVC controller - [Controller]
+  - concept: controller
+    annotation: "^Controller$"
+
+  # Authorization - [Authorize]
+  - concept: auth_middleware
+    annotation: "^Authorize$"
+
+  # Allow anonymous - [AllowAnonymous]
+  - concept: auth_config
+    annotation: "^AllowAnonymous$"
+
+  # Action filters
+  - concept: middleware
+    annotation: "^(ServiceFilter|TypeFilter|ActionFilter)$"
+
+  # Model binding - [FromBody], [FromQuery], etc.
+  - concept: parameter_binding
+    annotation: "^From(Body|Query|Route|Header|Form|Services)$"
+
+  # Validation attributes
+  - concept: validator
+    annotation: "^(Required|StringLength|Range|RegularExpression|MaxLength|MinLength|Compare|EmailAddress|Phone|CreditCard|Url)$"
+
+  # Model state validation
+  - concept: validator
+    annotation: "^Validate$"
+
+  # Entity Framework Core models
+  - concept: model
+    annotation: "^(Table|Key|Column|ForeignKey|NotMapped|DatabaseGenerated)$"
+
+  # Dependency injection attributes
+  - concept: dependency
+    annotation: "^(Inject|FromServices)$"
+
+  # Response type hints
+  - concept: response_type
+    annotation: "^Produces(ResponseType)?$"
+
+  # Consumes content type
+  - concept: request_type
+    annotation: "^Consumes$"
+
+  # Caching
+  - concept: cache
+    annotation: "^(ResponseCache|OutputCache)$"
+
+  # CORS
+  - concept: cors
+    annotation: "^(EnableCors|DisableCors)$"
+
+  # API versioning
+  - concept: versioning
+    annotation: "^ApiVersion$"
+
+  # Swagger/OpenAPI
+  - concept: documentation
+    annotation: "^(SwaggerOperation|SwaggerResponse|OpenApi)$"
+
+  # SignalR hub
+  - concept: websocket_hub
+    base_class: "^Hub$"
+
+  # Background services
+  - concept: background_service
+    base_class: "^(BackgroundService|IHostedService)$"
+
+linkers:
+  - http
+  - websocket
+  - database_query
