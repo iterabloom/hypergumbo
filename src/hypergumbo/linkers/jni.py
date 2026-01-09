@@ -41,6 +41,7 @@ from typing import Optional
 
 from ..ir import AnalysisRun, Edge, Symbol
 from .registry import (
+    LinkerActivation,
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
@@ -264,6 +265,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
     priority=10,  # Early priority - JNI linking should happen before other linkers
     description="Java/C/C++ JNI bridge - links native method declarations to C/C++ implementations",
     requirements=JNI_REQUIREMENTS,
+    activation=LinkerActivation(language_pairs=[("java", "c"), ("java", "cpp")]),
 )
 def jni_linker(ctx: LinkerContext) -> LinkerResult:
     """JNI linker for registry-based dispatch.

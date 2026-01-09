@@ -1280,3 +1280,164 @@ fn greet(name: &str) -> String {
         as_dict = funcs[0].to_dict()
         assert "signature" in as_dict
         assert as_dict["signature"] == "(name: &str) -> String"
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestRustRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level Rust route detection."""
+
+    def test_axum_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Axum route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import rust as rust_module
+        from hypergumbo.analyze.rust import analyze_rust
+
+        # Reset the warning deduplication set
+        rust_module._deprecated_route_warnings_emitted.clear()
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+use axum::{routing::get, Router};
+
+async fn hello() -> &'static str {
+    "Hello, World!"
+}
+
+pub fn routes() -> Router {
+    Router::new()
+        .route("/", get(hello))
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_rust(tmp_path)
+
+        # Should have at least one deprecation warning for Axum
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Axum" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_actix_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Actix-web route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import rust as rust_module
+        from hypergumbo.analyze.rust import analyze_rust
+
+        # Reset the warning deduplication set
+        rust_module._deprecated_route_warnings_emitted.clear()
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+use actix_web::{get, web, HttpResponse};
+
+#[get("/users")]
+async fn get_users() -> HttpResponse {
+    HttpResponse::Ok().body("users")
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_rust(tmp_path)
+
+        # Should have deprecation warning for Actix-web
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Actix" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_framework(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per framework."""
+        import warnings
+        from hypergumbo.analyze import rust as rust_module
+        from hypergumbo.analyze.rust import analyze_rust
+
+        # Reset the warning deduplication set
+        rust_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple files with Actix routes
+        (tmp_path / "users.rs").write_text("""
+#[get("/users")]
+async fn get_users() -> HttpResponse {
+    HttpResponse::Ok().body("users")
+}
+
+#[post("/users")]
+async fn create_user() -> HttpResponse {
+    HttpResponse::Ok().body("created")
+}
+""")
+        (tmp_path / "items.rs").write_text("""
+#[get("/items")]
+async fn get_items() -> HttpResponse {
+    HttpResponse::Ok().body("items")
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_rust(tmp_path)
+
+        # Should have exactly one Actix deprecation warning (deduplicated)
+        actix_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Actix" in str(warning.message)
+        ]
+        assert len(actix_warnings) == 1
+
+    def test_no_deprecation_warning_without_route_macros(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for files without route macros."""
+        import warnings
+        from hypergumbo.analyze import rust as rust_module
+        from hypergumbo.analyze.rust import analyze_rust
+
+        # Reset the warning deduplication set
+        rust_module._deprecated_route_warnings_emitted.clear()
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+pub struct User {
+    pub name: String,
+}
+
+impl User {
+    pub fn new(name: String) -> Self {
+        User { name }
+    }
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_rust(tmp_path)
+
+        # Should have no deprecation warnings for route detection
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and ("Axum" in str(warning.message) or "Actix" in str(warning.message))
+        ]
+        assert len(route_warnings) == 0

@@ -630,3 +630,114 @@ end
         methods = [s for s in result.symbols if s.kind == "method" and s.name == "answer"]
         assert len(methods) == 1
         assert methods[0].signature == "()"
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestRailsRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level Rails route detection."""
+
+    def test_rails_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Rails route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import ruby as ruby_module
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        # Reset the warning deduplication set
+        ruby_module._deprecated_route_warnings_emitted.clear()
+
+        routes_file = tmp_path / "routes.rb"
+        routes_file.write_text("""
+Rails.application.routes.draw do
+  get '/users', to: 'users#index'
+  post '/users', to: 'users#create'
+end
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_ruby(tmp_path)
+
+        # Should have at least one deprecation warning for Rails
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Rails" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_session(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per session."""
+        import warnings
+        from hypergumbo.analyze import ruby as ruby_module
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        # Reset the warning deduplication set
+        ruby_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple route files
+        (tmp_path / "routes.rb").write_text("""
+get '/users', to: 'users#index'
+post '/users', to: 'users#create'
+""")
+        (tmp_path / "admin_routes.rb").write_text("""
+get '/admin', to: 'admin#index'
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_ruby(tmp_path)
+
+        # Should have exactly one Rails deprecation warning (deduplicated)
+        rails_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Rails" in str(warning.message)
+        ]
+        assert len(rails_warnings) == 1
+
+    def test_no_deprecation_warning_without_route_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for files without route calls."""
+        import warnings
+        from hypergumbo.analyze import ruby as ruby_module
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        # Reset the warning deduplication set
+        ruby_module._deprecated_route_warnings_emitted.clear()
+
+        rb_file = tmp_path / "model.rb"
+        rb_file.write_text("""
+class User
+  def initialize(name)
+    @name = name
+  end
+
+  def greet
+    "Hello, #{@name}!"
+  end
+end
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_ruby(tmp_path)
+
+        # Should have no deprecation warnings for route detection
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Rails" in str(warning.message)
+        ]
+        assert len(route_warnings) == 0

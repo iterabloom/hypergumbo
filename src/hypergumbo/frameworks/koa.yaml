@@ -1,0 +1,89 @@
+# Koa.js framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Koa.js routing and middleware patterns.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Koa is minimalist; most routing uses koa-router or @koa/router.
+# The decorator patterns here match against extracted call metadata.
+
+id: koa
+language: javascript
+
+patterns:
+  # koa-router / @koa/router route handlers
+  - concept: route
+    decorator: "^router\\.(get|post|put|delete|patch|head|options|all)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Router prefix
+  - concept: route
+    decorator: "^router\\.prefix$"
+    extract_path: "args[0]"
+
+  # Router use - middleware on router
+  - concept: middleware
+    decorator: "^router\\.use$"
+
+  # Router param - parameter middleware
+  - concept: middleware
+    decorator: "^router\\.param$"
+
+  # Router allowedMethods
+  - concept: middleware
+    decorator: "^router\\.allowedMethods$"
+
+  # Koa app.use() - global middleware
+  - concept: middleware
+    decorator: "^(app|koa)\\.use$"
+
+  # Koa context extensions - ctx.body, ctx.status, etc.
+  # These are typically detected in function bodies rather than decorators
+
+  # koa-body / koa-bodyparser
+  - concept: middleware
+    decorator: "^(koaBody|bodyParser)$"
+
+  # koa-session
+  - concept: middleware
+    decorator: "^session$"
+
+  # koa-passport
+  - concept: auth_strategy
+    decorator: "^passport\\.(use|authenticate|initialize|session)$"
+
+  # koa-jwt
+  - concept: auth_middleware
+    decorator: "^jwt$"
+
+  # koa-helmet (security headers)
+  - concept: middleware
+    decorator: "^helmet$"
+
+  # koa-cors
+  - concept: middleware
+    decorator: "^cors$"
+
+  # koa-static / koa-send
+  - concept: middleware
+    decorator: "^(serve|send|static)$"
+
+  # koa-views / koa-ejs
+  - concept: view_middleware
+    decorator: "^(views|render)$"
+
+  # koa-logger
+  - concept: middleware
+    decorator: "^logger$"
+
+  # koa-compress
+  - concept: middleware
+    decorator: "^compress$"
+
+  # koa-mount (for mounting sub-applications)
+  - concept: middleware
+    decorator: "^mount$"
+
+linkers:
+  - http
+  - websocket

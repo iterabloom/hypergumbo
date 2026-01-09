@@ -78,5 +78,6 @@ def new_behavior_map() -> Dict[str, Any]:
         "features": [],
         "metrics": {},
         "limits": {},
+        "entrypoints": [],
     }
 

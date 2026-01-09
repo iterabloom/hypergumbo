@@ -60,6 +60,7 @@ from typing import Iterator
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
 from .registry import (
+    LinkerActivation,
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
@@ -590,6 +591,7 @@ def _resolve_unresolved_grpc_edges(
     priority=30,  # Run after analyzers but before dependency linker
     description="gRPC/Protobuf RPC pattern linking across languages",
     requirements=GRPC_REQUIREMENTS,
+    activation=LinkerActivation(frameworks=["grpc", "protobuf"]),
 )
 def grpc_linker(ctx: LinkerContext) -> LinkerResult:
     """gRPC linker for registry-based dispatch.

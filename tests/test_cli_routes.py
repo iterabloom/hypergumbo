@@ -300,6 +300,60 @@ def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
     assert "->" in out  # Route path arrow
 
 
+def test_cmd_routes_with_concept_metadata(tmp_path: Path, capsys) -> None:
+    """Routes with meta.concepts (FRAMEWORK_PATTERNS phase) display correctly."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_users:function",
+                "name": "get_users",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "sha256:abc123",  # Hash stable_id, not HTTP method
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users", "method": "GET"}]
+                },
+            },
+            {
+                "id": "python:src/api.py:6-10:create_user:function",
+                "name": "create_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Route paths should be extracted from concept metadata
+    assert "/users" in out
+    assert "get_users" in out
+    assert "create_user" in out
+    assert "GET" in out
+    assert "POST" in out
+    assert "->" in out  # Route path arrow
+
+
 def test_main_with_routes(tmp_path: Path, capsys) -> None:
     """Main with routes command."""
     behavior_map = {

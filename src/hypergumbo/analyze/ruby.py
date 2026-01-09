@@ -45,8 +45,30 @@ if TYPE_CHECKING:
 PASS_ID = "ruby-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# HTTP methods for Rails route detection
+# HTTP methods for Rails route detection (deprecated - use rails.yaml patterns)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
 
 
 def find_ruby_files(repo_root: Path) -> Iterator[Path]:
@@ -398,10 +420,11 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
 
-        # Rails route detection
+        # Rails route detection (deprecated - use YAML patterns)
         elif node.type == "call":
             http_method, route_path, controller_action = _detect_rails_route(node, source)
             if http_method:
+                _emit_route_deprecation_warning("Rails")
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 

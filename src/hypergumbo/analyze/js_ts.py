@@ -7,6 +7,20 @@ This analyzer uses tree-sitter to parse JS/TS/Svelte files and extract:
 - Method call relationships (edges)
 - Object instantiation relationships (edges)
 
+Rich Metadata (ADR-0003)
+------------------------
+Class and method symbols include rich metadata in their `meta` field:
+
+**Class metadata:**
+- `decorators`: List of decorator dicts with name, args, kwargs
+  Example: `@Controller('/users')` → `{"name": "Controller", "args": ["/users"], "kwargs": {}}`
+- `base_classes`: List of base class/interface names including generics
+  Example: `extends Repository<User> implements IService` → `["Repository<User>", "IService"]`
+
+**Method metadata:**
+- `decorators`: List of decorator dicts with name, args, kwargs
+- `route_path`: NestJS route path if detected (legacy, also in decorators)
+
 If tree-sitter is not installed, the analyzer gracefully degrades and
 reports the pass as skipped with reason.
 
@@ -303,7 +317,35 @@ def _extract_namespace_imports(
 
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
+# Deprecated - use express.yaml, hapi.yaml, koa.yaml patterns
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+# Known router/app receiver names for route detection (ADR-0003)
+# Only calls like app.get(), router.post(), etc. are treated as routes.
+# This prevents false positives from test mocks like fetchMock.get().
+ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
+
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
 
 
 # Use find_child_by_field from base.py (imported above)
@@ -435,6 +477,31 @@ def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | 
     return None  # pragma: no cover
 
 
+def _get_receiver_name(member_expr: "tree_sitter.Node", source: bytes) -> str | None:
+    """Extract the receiver (object) name from a member_expression.
+
+    For 'app.get()', returns 'app'.
+    For 'router.route("/path").get()', returns 'router' (traverses chain).
+    For 'fetchMock.get()', returns 'fetchMock'.
+
+    Returns None if the receiver cannot be determined.
+    """
+    # Get the object part of the member_expression (first child before '.')
+    for child in member_expr.children:
+        if child.type == "identifier":
+            return _node_text(child, source).lower()
+        elif child.type == "call_expression":
+            # Chained call: router.route('/path').get()
+            # Recurse into the call's callee to find the root receiver
+            for subchild in child.children:
+                if subchild.type == "member_expression":
+                    return _get_receiver_name(subchild, source)
+        elif child.type == "member_expression":  # pragma: no cover
+            # Nested member: express.Router().get()
+            return _get_receiver_name(child, source)
+    return None
+
+
 def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
     """Detect if a call_expression is an Express-style route registration.
 
@@ -447,8 +514,11 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     - router.route('/path').get(handler)  (chained syntax)
     - router.route('/path').post(handler).get(handler)  (multiple chained)
 
-    The call must be of form <expr>.<http_method>('/path', ...) where http_method is
-    get, post, put, patch, delete, head, or options.
+    The call must be of form <receiver>.<http_method>('/path', ...) where:
+    - receiver is in ROUTER_RECEIVER_NAMES (app, router, express, server, fastify, koa)
+    - http_method is get, post, put, patch, delete, head, or options
+
+    This prevents false positives from test mocks like fetchMock.get().
     """
     if node.type != "call_expression":  # pragma: no cover
         return None, None
@@ -463,6 +533,11 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
             args_node = child
 
     if callee_node is None or args_node is None:
+        return None, None
+
+    # Validate the receiver is a known router/app name (ADR-0003)
+    receiver_name = _get_receiver_name(callee_node, source)
+    if receiver_name not in ROUTER_RECEIVER_NAMES:
         return None, None
 
     # Get the method name from the member_expression
@@ -632,6 +707,191 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _ts_value_to_python(node: "tree_sitter.Node", source: bytes) -> str | int | float | bool | list | None:
+    """Convert a tree-sitter AST node to a Python value representation.
+
+    Handles strings, numbers, booleans, arrays, and identifiers.
+    Returns the value or a string representation for identifiers.
+    """
+    if node.type == "string":
+        # Strip quotes from string literals
+        text = _node_text(node, source)
+        # Handle both single and double quotes
+        if len(text) >= 2:
+            if (text[0] == '"' and text[-1] == '"') or (text[0] == "'" and text[-1] == "'"):
+                return text[1:-1]
+        return text  # pragma: no cover
+    elif node.type == "template_string":
+        # Template string (backtick): extract content without quotes
+        text = _node_text(node, source)
+        if len(text) >= 2 and text[0] == '`' and text[-1] == '`':
+            return text[1:-1]
+        return text  # pragma: no cover
+    elif node.type == "number":
+        text = _node_text(node, source)
+        try:
+            if '.' in text:
+                return float(text)
+            return int(text)
+        except ValueError:  # pragma: no cover
+            return text
+    elif node.type in ("true", "false"):
+        return node.type == "true"
+    elif node.type == "array":
+        result = []
+        for child in node.children:
+            if child.type not in ("[", "]", ","):
+                result.append(_ts_value_to_python(child, source))
+        return result
+    elif node.type == "identifier":
+        # Return identifier as a string (variable reference)
+        return _node_text(node, source)
+    elif node.type == "member_expression":
+        # Handle qualified names like AuthGuard.jwt
+        return _node_text(node, source)
+    # For other types, return the text representation
+    return _node_text(node, source)  # pragma: no cover
+
+
+def _extract_decorator_info(
+    dec_node: "tree_sitter.Node", source: bytes
+) -> dict[str, object]:
+    """Extract full decorator information including arguments.
+
+    Returns a dict with:
+    - name: decorator name (e.g., "Injectable", "Controller")
+    - args: list of positional arguments
+    - kwargs: dict of keyword arguments (always empty for JS/TS decorators)
+
+    TypeScript decorators don't have named kwargs like Python, so kwargs is always {}.
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    # Decorator can be: @Name, @Name(), @Name(arg1, arg2)
+    for child in dec_node.children:
+        if child.type == "call_expression":
+            # @Decorator() or @Decorator(args)
+            for call_child in child.children:
+                if call_child.type == "identifier":
+                    name = _node_text(call_child, source)
+                elif call_child.type == "member_expression":
+                    name = _node_text(call_child, source)
+                elif call_child.type == "arguments":
+                    for arg in call_child.children:
+                        if arg.type not in ("(", ")", ","):
+                            args.append(_ts_value_to_python(arg, source))
+        elif child.type == "identifier":  # pragma: no cover
+            # @Decorator without parens (rare in TS but possible)
+            name = _node_text(child, source)
+        elif child.type == "member_expression":  # pragma: no cover
+            # @module.Decorator without parens
+            name = _node_text(child, source)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_decorators(
+    node: "tree_sitter.Node", source: bytes
+) -> list[dict[str, object]]:
+    """Extract all decorators for a class or method node.
+
+    Decorators appear as sibling nodes before the decorated node,
+    or as children with type 'decorator' in some grammars.
+
+    Returns list of decorator info dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    decorators: list[dict[str, object]] = []
+
+    # Check for decorator children (some grammars nest decorators inside the declaration)
+    for child in node.children:
+        if child.type == "decorator":
+            dec_info = _extract_decorator_info(child, source)
+            if dec_info["name"]:
+                decorators.append(dec_info)
+
+    # Check siblings before this node (TypeScript pattern)
+    parent = node.parent
+    if parent is not None:
+        idx = None
+        for i, sibling in enumerate(parent.children):
+            if sibling == node:
+                idx = i
+                break
+
+        if idx is not None:
+            # Look backward for decorator siblings
+            for i in range(idx - 1, -1, -1):
+                sibling = parent.children[i]
+                if sibling.type == "decorator":
+                    dec_info = _extract_decorator_info(sibling, source)
+                    if dec_info["name"]:
+                        decorators.insert(0, dec_info)  # Maintain order
+                else:
+                    # Stop at non-decorator (e.g., another method or statement)
+                    if sibling.type not in ("comment", "decorator"):
+                        break
+
+    return decorators
+
+
+def _extract_base_classes(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Extract base classes from a class_declaration node.
+
+    Handles:
+    - extends clause: class Foo extends Bar
+    - implements clause: class Foo implements IBar, IBaz
+    - generic types: class Foo extends Bar<T>
+
+    Supports both TypeScript (nested extends_clause) and JavaScript (flat) grammars.
+
+    Returns list of base class/interface names.
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        if child.type == "class_heritage":
+            # class_heritage contains extends_clause and/or implements_clause
+            for heritage_child in child.children:
+                if heritage_child.type == "extends_clause":
+                    # TypeScript: extends_clause contains the base class
+                    # May have identifier/type_identifier followed by type_arguments
+                    base_name = ""
+                    type_args = ""
+                    for extends_child in heritage_child.children:
+                        if extends_child.type in ("identifier", "type_identifier"):
+                            base_name = _node_text(extends_child, source)
+                        elif extends_child.type == "member_expression":
+                            # React.Component style
+                            base_name = _node_text(extends_child, source)
+                        elif extends_child.type == "generic_type":
+                            # Explicit generic type like Repository<User>
+                            base_name = _node_text(extends_child, source)  # pragma: no cover
+                        elif extends_child.type == "type_arguments":
+                            # Separate type arguments like <User>
+                            type_args = _node_text(extends_child, source)
+                    if base_name:
+                        base_classes.append(base_name + type_args)
+                elif heritage_child.type == "implements_clause":
+                    # implements_clause contains interface list
+                    for impl_child in heritage_child.children:
+                        if impl_child.type in ("identifier", "type_identifier"):
+                            base_classes.append(_node_text(impl_child, source))
+                        elif impl_child.type == "generic_type":
+                            base_classes.append(_node_text(impl_child, source))
+                elif heritage_child.type == "identifier":
+                    # JavaScript: class_heritage directly contains identifier
+                    base_classes.append(_node_text(heritage_child, source))
+                elif heritage_child.type == "member_expression":
+                    # JavaScript: qualified base class like React.Component
+                    base_classes.append(_node_text(heritage_child, source))
+
+    return base_classes
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -661,10 +921,11 @@ def _extract_symbols(
         if id(node) in processed_handlers:
             continue
 
-        # Express-style route handler detection: app.get('/path', handler)
+        # Express-style route handler detection: app.get('/path', handler) - deprecated
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
+                _emit_route_deprecation_warning("Express")
                 handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
                 if handler_node:
                     # Mark the handler as processed to avoid extracting it again
@@ -802,6 +1063,18 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+
+                # Extract decorator and base class metadata
+                meta: dict[str, object] | None = None
+                decorators = _extract_decorators(node, source)
+                base_classes = _extract_base_classes(node, source)
+                if decorators or base_classes:
+                    meta = {}
+                    if decorators:
+                        meta["decorators"] = decorators
+                    if base_classes:
+                        meta["base_classes"] = base_classes
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class", lang),
                     name=name,
@@ -811,6 +1084,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 
@@ -909,7 +1183,16 @@ def _extract_symbols(
 
                 http_method, route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
-                meta = {"route_path": route_path} if route_path else None
+
+                # Build meta with decorators and route_path
+                meta: dict[str, object] | None = None
+                decorators = _extract_decorators(node, source)
+                if decorators or route_path:
+                    meta = {}
+                    if decorators:
+                        meta["decorators"] = decorators
+                    if route_path:
+                        meta["route_path"] = route_path
 
                 signature = _extract_jsts_signature(node, source)
 

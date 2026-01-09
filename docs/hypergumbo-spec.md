@@ -1636,13 +1636,31 @@ This prefers well-connected entries, producing richer slices.
 
 See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-migration-path) for the authoritative migration plan.
 
-| Version | Focus | Entry Detection Impact |
-|---------|-------|------------------------|
-| **v0.6.x** | Path heuristics + exclusions | Current state |
-| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata |
-| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata |
-| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) |
-| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure |
+| Version | Focus | Entry Detection Impact | Status |
+|---------|-------|------------------------|--------|
+| **v0.6.x** | Path heuristics + exclusions | Current state | 🟩 |
+| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata | 🟩 |
+| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata | 🟩 |
+| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) | 🟩 |
+| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure | 🟨 |
+
+**v0.8.x (complete):**
+- 🟩 `framework_patterns.py` module with YAML-driven pattern matching
+- 🟩 FastAPI patterns YAML (`fastapi.yaml`)
+- 🟩 `enrich_symbols()` called in CLI pipeline after analyzers
+- 🟩 Linkers respect activation conditions (conditional execution)
+- 🟩 Flask, NestJS, Spring Boot, Django, Express, Celery, Rails, Phoenix, Laravel, Go Web patterns
+- 🟩 HTTP linker supports concept metadata from FRAMEWORK_PATTERNS phase
+
+**v0.9.x (complete):**
+- 🟩 Semantic entry detection via `_detect_from_concepts()` in entrypoints.py
+- 🟩 Path heuristics deprecated with warnings
+- 🟩 CLI `main()` detection retained as non-deprecated fallback
+- 🟩 ASP.NET Core, Rust web (Actix, Axum, Rocket, Diesel, SeaORM), Hapi, Koa patterns
+
+**v1.0.x (in progress):**
+- 🟩 Deprecation warnings added to all analyzer-level route detection
+- 🟧 Remaining: purify analyzers by removing framework logic entirely (post-deprecation)
 
 ## 9) Testing & quality bar
 

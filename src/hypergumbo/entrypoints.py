@@ -57,10 +57,17 @@ Detection is based on:
 
 Confidence Scores
 -----------------
+Base confidence by detection method:
 - 0.95: Decorator-based (very reliable)
 - 0.90: Django urls.py imports, NestJS *.controller.ts (explicit conventions)
 - 0.85: File-pattern-based (Electron, Express route files)
 - 0.70: Name-pattern-based (heuristic, may have false positives)
+
+Connectivity Boost:
+- Entrypoints with outgoing edges get a confidence boost (up to +0.25)
+- Boost formula: min(0.25, log(1 + out_edges) / 10)
+- This ranks "interesting" entrypoints higher (those that call many functions)
+- Entrypoints are sorted by final confidence (highest first)
 
 Current Limitations
 -------------------
@@ -70,11 +77,39 @@ Current Limitations
 """
 from __future__ import annotations
 
+import math
+import warnings
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
 from .ir import Symbol, Edge
+
+# Track which path-based deprecation warnings have been emitted (once per framework)
+_deprecated_path_warnings_emitted: set[str] = set()
+
+
+def _emit_path_deprecation_warning(framework: str) -> None:
+    """Emit a deprecation warning for path-based entrypoint detection.
+
+    ADR-0003 v0.9.x deprecates path-based heuristics in favor of semantic
+    detection via concept metadata from FRAMEWORK_PATTERNS. This function
+    emits a warning once per framework per session.
+
+    Args:
+        framework: Name of the framework (e.g., "Express", "NestJS").
+    """
+    if framework in _deprecated_path_warnings_emitted:
+        return
+    _deprecated_path_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} path-based entrypoint detection is deprecated. "
+        f"Use a framework YAML pattern file (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,  # Point to detect_entrypoints caller
+    )
 
 
 class EntrypointKind(Enum):
@@ -359,6 +394,67 @@ def _is_test_file(path: str) -> bool:
     return False
 
 
+def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect entrypoints from semantic concept metadata.
+
+    ADR-0003 v0.9.x introduces semantic entry detection: the FRAMEWORK_PATTERNS
+    phase enriches symbols with concept metadata (meta.concepts) based on
+    decorator/pattern matching. This function checks for entrypoint-worthy
+    concepts like "route", "task", "cli_command".
+
+    Benefits:
+    - Higher confidence (0.95) since based on actual decorator/pattern matching
+    - Eliminates false positives (e.g., React Router files won't have route concepts)
+    - Framework-aware detection (concepts include framework info)
+
+    Currently detected concepts:
+    - "route" -> HTTP_ROUTE with high confidence
+
+    Args:
+        symbols: All symbols with potential concept metadata.
+
+    Returns:
+        List of entrypoints detected via semantic concepts.
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        if not sym.meta:
+            continue
+        concepts = sym.meta.get("concepts", [])
+        if not concepts:
+            continue
+
+        for concept in concepts:
+            if not isinstance(concept, dict):
+                continue
+
+            concept_type = concept.get("concept")
+            if concept_type == "route":
+                # Route concept -> HTTP_ROUTE with high confidence
+                method = concept.get("method", "")
+                path = concept.get("path", "")
+                if method and path:
+                    label = f"HTTP {method.upper()} {path}"
+                elif method:
+                    label = f"HTTP {method.upper()} route"
+                elif path:
+                    label = f"HTTP route {path}"
+                else:
+                    label = "HTTP route"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.HTTP_ROUTE,
+                    confidence=0.95,
+                    label=label,
+                ))
+                break  # Only one entrypoint per symbol per concept type
+
+            # Future: Add support for task, cli_command, websocket, etc.
+
+    return entrypoints
+
+
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect HTTP route entrypoints from decorators."""
     entrypoints = []
@@ -414,6 +510,10 @@ def _detect_cli_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
 def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Electron app entrypoints from file names.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use electron.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Only matches specific Electron file patterns to minimize false positives.
     Tracks files already seen to emit one entry point per file, not per symbol.
     """
@@ -431,6 +531,7 @@ def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
         filename = _get_filename(sym.path)
 
         if filename in ELECTRON_MAIN_FILES:
+            _emit_path_deprecation_warning("Electron")
             seen_files.add(sym.path)
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
@@ -439,6 +540,7 @@ def _detect_electron_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
                 label="Electron main",
             ))
         elif filename in ELECTRON_PRELOAD_FILES:
+            _emit_path_deprecation_warning("Electron")
             seen_files.add(sym.path)
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
@@ -480,6 +582,10 @@ def _is_express_route_file(path: str, language: str) -> bool:
 def _detect_express_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Express.js route handlers from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use express.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Express routes are typically defined in files named routes.js/ts,
     router.js/ts, or files inside a routes/ directory.
 
@@ -493,6 +599,7 @@ def _detect_express_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_express_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Express")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.EXPRESS_ROUTE,
@@ -525,6 +632,10 @@ def _is_nestjs_controller_file(path: str, language: str) -> bool:
 def _detect_nestjs_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect NestJS controller endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use nestjs.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     NestJS uses a naming convention of *.controller.ts for controller files.
     Classes and methods in these files are API endpoints.
 
@@ -538,6 +649,7 @@ def _detect_nestjs_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_nestjs_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("NestJS")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.NESTJS_CONTROLLER,
@@ -570,6 +682,10 @@ def _is_spring_controller_file(path: str, language: str) -> bool:
 def _detect_spring_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Spring Boot controller endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use spring.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Spring Boot uses a naming convention of *Controller.java or *Resource.java
     for controller files. Classes and methods in these files are API endpoints.
 
@@ -583,6 +699,7 @@ def _detect_spring_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_spring_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Spring Boot")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.SPRING_CONTROLLER,
@@ -616,6 +733,10 @@ def _is_rails_controller_file(path: str, language: str) -> bool:
 def _detect_rails_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Rails controller actions from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use rails.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Rails uses a naming convention of *_controller.rb for controller files
     inside the app/controllers/ directory. Methods in these files are actions.
 
@@ -629,6 +750,7 @@ def _detect_rails_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_rails_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Rails")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.RAILS_CONTROLLER,
@@ -669,6 +791,10 @@ def _is_phoenix_controller_file(path: str, language: str) -> bool:
 def _detect_phoenix_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Phoenix controller actions from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use phoenix.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Phoenix uses a naming convention of *_controller.ex for controller files
     inside the lib/*_web/controllers/ directory. Also detects LiveView files
     (*_live.ex in lib/*_web/live/).
@@ -683,6 +809,7 @@ def _detect_phoenix_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_phoenix_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Phoenix")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.PHOENIX_CONTROLLER,
@@ -717,6 +844,10 @@ def _is_go_handler_file(path: str, language: str) -> bool:
 def _detect_go_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Go framework handlers from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use go-web.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Go web frameworks (Gin, Echo, Fiber, Chi) typically use:
     - *_handler.go or *_controller.go naming
     - handlers/ or controllers/ directories
@@ -731,6 +862,7 @@ def _detect_go_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_go_handler_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Go")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.GO_HANDLER,
@@ -764,6 +896,10 @@ def _is_laravel_controller_file(path: str, language: str) -> bool:
 def _detect_laravel_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Laravel controller actions from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use laravel.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Laravel uses a naming convention of *Controller.php for controller files
     inside the app/Http/Controllers/ directory.
 
@@ -777,6 +913,7 @@ def _detect_laravel_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_laravel_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Laravel")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.LARAVEL_CONTROLLER,
@@ -811,6 +948,10 @@ def _is_rust_handler_file(path: str, language: str) -> bool:
 def _detect_rust_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Rust framework handlers from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use rust.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Rust web frameworks (Actix-web, Axum, Rocket, Warp) typically use:
     - *_handler.rs or *_controller.rs naming
     - handlers/ or controllers/ directories
@@ -825,6 +966,7 @@ def _detect_rust_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_rust_handler_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Rust")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.RUST_HANDLER,
@@ -859,6 +1001,10 @@ def _is_aspnet_controller_file(path: str, language: str) -> bool:
 def _detect_aspnet_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect ASP.NET Core controller endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use aspnet.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     ASP.NET Core uses a naming convention of *Controller.cs for controller files,
     typically in a Controllers/ directory. Methods in these files are actions.
 
@@ -872,6 +1018,7 @@ def _detect_aspnet_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_aspnet_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("ASP.NET Core")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.ASPNET_CONTROLLER,
@@ -912,6 +1059,10 @@ def _is_sinatra_route_file(path: str, language: str) -> bool:
 def _detect_sinatra_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Sinatra route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use sinatra.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Sinatra is a lightweight Ruby web framework. Routes are typically
     defined in app.rb, application.rb, server.rb, or files in routes/.
 
@@ -925,6 +1076,7 @@ def _detect_sinatra_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_sinatra_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Sinatra")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.SINATRA_ROUTE,
@@ -959,6 +1111,10 @@ def _is_ktor_route_file(path: str, language: str) -> bool:
 def _detect_ktor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Ktor route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use ktor.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Ktor is a Kotlin web framework. Routes are typically defined in
     files named *Routes.kt, *Routing.kt, or in routes/routing directories.
 
@@ -972,6 +1128,7 @@ def _detect_ktor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_ktor_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Ktor")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.KTOR_ROUTE,
@@ -1011,6 +1168,10 @@ def _is_vapor_route_file(path: str, language: str) -> bool:
 def _detect_vapor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Vapor route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use vapor.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Vapor is a Swift web framework. Routes are typically defined in
     files named *Controller.swift, routes.swift, or in Controllers/Routes directories.
 
@@ -1024,6 +1185,7 @@ def _detect_vapor_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_vapor_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Vapor")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.VAPOR_ROUTE,
@@ -1063,6 +1225,10 @@ def _is_plug_route_file(path: str, language: str) -> bool:
 def _detect_plug_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Plug route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use plug.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Plug is Elixir's HTTP middleware library. Routes are typically defined
     in files named router.ex, *_router.ex, or *_plug.ex.
 
@@ -1076,6 +1242,7 @@ def _detect_plug_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_plug_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Plug")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.PLUG_ROUTE,
@@ -1116,6 +1283,10 @@ def _is_hapi_route_file(path: str, language: str) -> bool:
 def _detect_hapi_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Hapi route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use hapi.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Hapi is a Node.js web framework. Routes are typically defined in
     files ending in routes.js/ts or in routes/plugins directories.
 
@@ -1129,6 +1300,7 @@ def _detect_hapi_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_hapi_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Hapi")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.HAPI_ROUTE,
@@ -1159,6 +1331,10 @@ def _is_fastify_route_file(path: str, language: str) -> bool:
 def _detect_fastify_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Fastify route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use fastify.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Fastify is a Node.js web framework. Routes are typically defined in
     files with .routes., .route., or .schema. patterns.
 
@@ -1172,6 +1348,7 @@ def _detect_fastify_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_fastify_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Fastify")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.FASTIFY_ROUTE,
@@ -1208,6 +1385,10 @@ def _is_koa_route_file(path: str, language: str) -> bool:
 def _detect_koa_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Koa route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use koa.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Koa is a Node.js web framework. Routes are typically defined in
     files with .router., .controller., or .middleware. patterns.
 
@@ -1221,6 +1402,7 @@ def _detect_koa_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_koa_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Koa")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.KOA_ROUTE,
@@ -1261,6 +1443,10 @@ def _is_grape_api_file(path: str, language: str) -> bool:
 def _detect_grape_apis(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Grape API endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use grape.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Grape is a Ruby API framework. APIs are typically defined in
     files ending in _api.rb or in api/endpoints/entities directories.
 
@@ -1274,6 +1460,7 @@ def _detect_grape_apis(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_grape_api_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Grape")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.GRAPE_API,
@@ -1330,6 +1517,10 @@ def _is_tornado_handler_file(path: str, language: str) -> bool:
 def _detect_tornado_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Tornado handler endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use tornado.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Tornado is a Python web framework. Handlers are typically defined in
     files ending in _handler.py or in handlers/views directories.
 
@@ -1343,6 +1534,7 @@ def _detect_tornado_handlers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_tornado_handler_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Tornado")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.TORNADO_HANDLER,
@@ -1388,6 +1580,10 @@ def _is_aiohttp_view_file(path: str, language: str) -> bool:
 def _detect_aiohttp_views(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Aiohttp view endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use aiohttp.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Aiohttp is a Python async web framework. Views are typically defined in
     files ending in _view.py or _resource.py, or in resources/ directories.
 
@@ -1401,6 +1597,7 @@ def _detect_aiohttp_views(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_aiohttp_view_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Aiohttp")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.AIOHTTP_VIEW,
@@ -1440,6 +1637,10 @@ def _is_slim_route_file(path: str, language: str) -> bool:
 def _detect_slim_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Slim route endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use slim.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Slim is a PHP micro framework. Routes are typically defined in
     routes.php files, middleware files, or in Actions/Handlers directories.
 
@@ -1453,6 +1654,7 @@ def _detect_slim_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_slim_route_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Slim")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.SLIM_ROUTE,
@@ -1498,6 +1700,10 @@ def _is_micronaut_controller_file(path: str, language: str) -> bool:
 def _detect_micronaut_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect Micronaut controller endpoints from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use micronaut.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     Micronaut is a Java/Kotlin microframework. Controllers are typically
     in *Controller.java/kt files or in controller/ directories.
     Also detects Micronaut HTTP clients (*Client.java/kt).
@@ -1512,6 +1718,7 @@ def _detect_micronaut_controllers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_micronaut_controller_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("Micronaut")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.MICRONAUT_CONTROLLER,
@@ -1582,6 +1789,10 @@ def _is_graphql_server_file(path: str, language: str) -> bool:
 def _detect_graphql_servers(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect GraphQL server entry points from file patterns.
 
+    .. deprecated:: 0.9.0
+        Path-based detection is deprecated. Use graphql.yaml patterns
+        with --frameworks for semantic detection via concept metadata.
+
     GraphQL servers (Apollo Server, GraphQL Yoga, Mercurius, etc.) typically
     define resolvers in files named resolvers.js/ts, or with .resolver.js/ts
     suffixes. Schema files and typeDefs files are also entry points.
@@ -1596,6 +1807,7 @@ def _detect_graphql_servers(symbols: List[Symbol]) -> List[Entrypoint]:
             continue
 
         if _is_graphql_server_file(sym.path, sym.language):
+            _emit_path_deprecation_warning("GraphQL")
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.GRAPHQL_SERVER,
@@ -1650,6 +1862,11 @@ def detect_entrypoints(
 ) -> List[Entrypoint]:
     """Detect entrypoints in the codebase.
 
+    Detection priority (first match wins during deduplication):
+    1. Semantic detection from concept metadata (FRAMEWORK_PATTERNS phase)
+    2. Decorator-based detection (high confidence)
+    3. Path-based heuristics (fallback for frameworks without YAML patterns)
+
     Uses heuristics to find:
     - HTTP routes (FastAPI, Flask decorators)
     - CLI entrypoints (main guard, Click commands)
@@ -1664,7 +1881,12 @@ def detect_entrypoints(
     """
     entrypoints: List[Entrypoint] = []
 
-    # Detect different types of entrypoints
+    # Semantic detection from concept metadata (highest priority)
+    # This runs FIRST so it wins during deduplication, preventing
+    # path-based heuristics from creating duplicate/lower-confidence entries
+    entrypoints.extend(_detect_from_concepts(nodes))
+
+    # Detect different types of entrypoints (fallback for non-semantic detection)
     entrypoints.extend(_detect_http_routes(nodes))
     entrypoints.extend(_detect_cli_entrypoints(nodes))
     entrypoints.extend(_detect_electron_entrypoints(nodes))
@@ -1699,5 +1921,23 @@ def detect_entrypoints(
         if ep.symbol_id not in seen_ids:
             seen_ids.add(ep.symbol_id)
             unique_entrypoints.append(ep)
+
+    # Boost confidence based on connectivity (outgoing edges)
+    # An entrypoint that calls many other functions is more "interesting"
+    outgoing_counts: dict[str, int] = defaultdict(int)
+    for edge in edges:
+        outgoing_counts[edge.src] += 1
+
+    for ep in unique_entrypoints:
+        out_edges = outgoing_counts.get(ep.symbol_id, 0)
+        if out_edges > 0:
+            # Logarithmic boost: diminishing returns for very high counts
+            # log(1 + 10) / 10 ≈ 0.24, log(1 + 100) / 10 ≈ 0.46
+            # Cap at 0.25 to avoid overwhelming the base confidence
+            connectivity_boost = min(0.25, math.log(1 + out_edges) / 10)
+            ep.confidence = min(1.0, ep.confidence + connectivity_boost)
+
+    # Sort by confidence (highest first) for better --entry auto behavior
+    unique_entrypoints.sort(key=lambda ep: ep.confidence, reverse=True)
 
     return unique_entrypoints

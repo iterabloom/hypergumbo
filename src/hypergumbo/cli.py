@@ -79,6 +79,7 @@ from .compact import (
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
+from .framework_patterns import enrich_symbols
 
 
 def _find_git_root(start_path: Path) -> Optional[Path]:
@@ -261,6 +262,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     tiers = getattr(args, "tiers", None)
     exclude_tests = getattr(args, "exclude_tests", False)
     extra_excludes = getattr(args, "extra_excludes", [])
+    frameworks = getattr(args, "frameworks", None)
 
     run_behavior_map(
         repo_root=repo_root,
@@ -272,6 +274,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         tiers=tiers,
         exclude_tests=exclude_tests,
         extra_excludes=extra_excludes,
+        frameworks=frameworks,
     )
     return 0
 
@@ -317,8 +320,17 @@ def _edge_from_dict(d: Dict[str, Any]) -> Edge:
 
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
-    repo_root = Path(args.path).resolve()
+    path_arg = Path(args.path).resolve()
     out_path = Path(args.out)
+
+    # Smart detection: if path is a .json file, treat it as --input automatically
+    # This provides better UX: `hypergumbo slice results.json` just works
+    if path_arg.suffix == ".json" and path_arg.is_file() and not args.input:
+        args.input = str(path_arg)
+        # Use parent directory as repo_root (or cwd if file is in cwd)
+        repo_root = path_arg.parent if path_arg.parent != Path.cwd() else Path.cwd()
+    else:
+        repo_root = path_arg
 
     # Determine input: use --input if provided, otherwise run analysis
     if args.input:
@@ -575,19 +587,35 @@ def cmd_routes(args: argparse.Namespace) -> int:
     nodes = behavior_map.get("nodes", [])
 
     # Find route handlers - symbols with HTTP method markers in stable_id
+    # or route concepts in meta.concepts
     routes: list[dict] = []
     for node in nodes:
-        stable_id = node.get("stable_id", "")
-        if stable_id:
-            # Check if stable_id is an HTTP method or comma-separated list of methods
-            # e.g., "get", "post", or "get,post" for DRF @api_view(['GET', 'POST'])
-            stable_id_lower = stable_id.lower()
-            methods = stable_id_lower.split(",")
-            if all(m.strip() in HTTP_METHODS for m in methods):
-                # Apply language filter
-                if args.language and node.get("language") != args.language:
-                    continue
-                routes.append(node)
+        is_route = False
+
+        # Check for route concept in meta.concepts (FRAMEWORK_PATTERNS phase)
+        meta = node.get("meta") or {}
+        concepts = meta.get("concepts", [])
+        for concept in concepts:
+            if isinstance(concept, dict) and concept.get("concept") == "route":
+                is_route = True
+                break
+
+        # Fall back to checking stable_id for HTTP methods (legacy)
+        if not is_route:
+            stable_id = node.get("stable_id", "")
+            if stable_id:
+                # Check if stable_id is an HTTP method or comma-separated list of methods
+                # e.g., "get", "post", or "get,post" for DRF @api_view(['GET', 'POST'])
+                stable_id_lower = stable_id.lower()
+                methods = stable_id_lower.split(",")
+                if all(m.strip() in HTTP_METHODS for m in methods):
+                    is_route = True
+
+        if is_route:
+            # Apply language filter
+            if args.language and node.get("language") != args.language:
+                continue
+            routes.append(node)
 
     if not routes:
         print("No API routes found in the behavior map.")
@@ -610,12 +638,27 @@ def cmd_routes(args: argparse.Namespace) -> int:
         print(f"{file_path}:")
         for route in file_routes:
             name = route.get("name", "")
-            method = route.get("stable_id", "").upper()
             span = route.get("span", {})
             line = span.get("start_line", 0)
-            # Include route path if available
             meta = route.get("meta", {}) or {}
-            route_path = meta.get("route_path", "")
+
+            # Try concept metadata first (FRAMEWORK_PATTERNS phase)
+            route_path = None
+            method = None
+            concepts = meta.get("concepts", [])
+            for concept in concepts:
+                if isinstance(concept, dict) and concept.get("concept") == "route":
+                    route_path = concept.get("path")
+                    method = concept.get("method")
+                    break
+
+            # Fall back to legacy metadata
+            if not route_path:
+                route_path = meta.get("route_path", "")
+            if not method:
+                method = meta.get("http_method") or route.get("stable_id", "")
+
+            method = method.upper() if method else ""
             if route_path:
                 print(f"  [{method}] {route_path} -> {name} (line {line})")
             else:
@@ -1104,6 +1147,15 @@ Output files:
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
     )
+    p_run.add_argument(
+        "--frameworks",
+        type=str,
+        default=None,
+        metavar="SPEC",
+        help="Framework detection mode: 'none' (skip), 'all' (exhaustive), "
+             "or comma-separated list (e.g., 'fastapi,celery'). "
+             "Default: auto-detect based on detected languages.",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -1437,6 +1489,7 @@ def run_behavior_map(
     tiers: str | None = None,
     exclude_tests: bool = False,
     extra_excludes: list[str] | None = None,
+    frameworks: str | None = None,
 ) -> None:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -1459,11 +1512,16 @@ def run_behavior_map(
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
             Affects profile detection (language stats). Use for excluding
             project-specific files like "*.json" or "vendor".
+        frameworks: Framework specification (ADR-0003):
+            - None: Auto-detect (default)
+            - "none": Skip framework detection
+            - "all": Check all frameworks for detected languages
+            - "fastapi,celery": Only check specified frameworks
     """
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
-    profile = detect_profile(repo_root, extra_excludes=extra_excludes)
+    profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks)
     behavior_map["profile"] = profile.to_dict()
 
     # Detect internal package roots for supply chain classification
@@ -1474,6 +1532,12 @@ def run_behavior_map(
     analysis_runs, all_symbols, all_edges, limits, captured_symbols = run_all_analyzers(
         repo_root, max_files=max_files
     )
+
+    # Enrich symbols with framework concept metadata (ADR-0003 v0.8.x)
+    # This applies YAML-based patterns to add concept info (route, model, etc.)
+    # to symbols based on their decorators, base classes, and annotations.
+    detected_frameworks = set(profile.frameworks)
+    enrich_symbols(all_symbols, detected_frameworks)
 
     # Run cross-language linkers
     #
@@ -1490,6 +1554,8 @@ def run_behavior_map(
         symbols=all_symbols,
         edges=all_edges,
         captured_symbols=captured_symbols,
+        detected_frameworks=set(profile.frameworks),
+        detected_languages=set(profile.languages.keys()),
     )
     for _linker_name, linker_result in run_all_linkers(linker_ctx):
         if linker_result.run is not None:
@@ -1558,6 +1624,10 @@ def run_behavior_map(
 
     # Compute metrics from analyzed nodes and edges
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
+
+    # Detect and store entrypoints (computed from symbols, persisted for convenience)
+    entrypoints = detect_entrypoints(all_symbols, all_edges)
+    behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
 
     # Compute supply chain summary
     # Note: derived_paths would be tracked during file discovery in a full implementation

@@ -537,7 +537,7 @@ class TestGrpcLinkerRegistration:
     def test_linker_is_registered(self) -> None:
         """gRPC linker is registered with the registry."""
         # Import the module to trigger registration
-        import hypergumbo.linkers.grpc  # noqa: F401
+        import hypergumbo.linkers.grpc
         from hypergumbo.linkers.registry import get_linker
 
         linker = get_linker("grpc")
@@ -686,3 +686,47 @@ class TestGrpcUnresolvedEdgeResolution:
         assert len(resolved) == 1
         # Should prefer the one matching package hint (checkout/pb)
         assert resolved[0].dst == correct_sym.id
+
+    def test_resolves_using_ctx_symbols(self, tmp_path: Path) -> None:
+        """_resolve_unresolved_grpc_edges also looks up symbols from ctx.symbols."""
+        from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
+        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo.linkers.registry import LinkerContext
+
+        # Create an unresolved edge from Go analyzer
+        unresolved_edge = Edge.create(
+            src="go:main.go:10-20:main:function",
+            dst="go:github.com/pkg/pb:0-0:RegisterUserServer:unresolved",
+            edge_type="calls",
+            line=15,
+            confidence=0.5,
+            origin="go-analyzer",
+            origin_run_id="test",
+        )
+
+        # Create a symbol that can resolve the edge - placed in ctx.symbols
+        register_sym = Symbol(
+            id="grpc:user_grpc.pb.go:100:UserService:grpc_server",
+            name="RegisterUserServer",
+            kind="grpc_server",
+            language="go",
+            path=str(tmp_path / "pkg/pb/user_grpc.pb.go"),
+            span=Span(100, 110, 0, 0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+        )
+
+        # Pass the symbol via ctx.symbols instead of the second argument
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            edges=[unresolved_edge],
+            symbols=[register_sym],  # Symbol is in ctx.symbols
+        )
+        run = AnalysisRun.create("grpc-linker-v1", "test")
+
+        # Empty linker_symbols, so ctx.symbols is the only source
+        resolved = _resolve_unresolved_grpc_edges(ctx, [], run)
+
+        assert len(resolved) == 1
+        assert resolved[0].src == unresolved_edge.src
+        assert resolved[0].dst == register_sym.id

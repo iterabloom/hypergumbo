@@ -13,6 +13,7 @@ Analysis proceeds in two passes for cross-file resolution:
 - Extract methods nested inside classes
 - Build import mappings for cross-file resolution
 - Compute stable_id (signature-based) and shape_id (structure-based)
+- Extract rich metadata (decorators, base classes, parameters) per ADR-0003
 
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
@@ -27,7 +28,7 @@ Detected Patterns
 - Method calls: self.method(), obj.method()
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
-- Django URL patterns: path(), re_path(), url() calls in urls.py
+- Django URL patterns: path(), re_path(), url() calls in urls.py (deprecated)
 
 ID Schemes
 ----------
@@ -36,15 +37,27 @@ ID Schemes
 - **shape_id**: sha256 of AST structure (control flow, nesting).
   Detects clones with different variable names.
 
+Rich Metadata (ADR-0003)
+------------------------
+Symbols include structured metadata in `meta` dict:
+- **decorators**: List of decorator info with name, args, kwargs.
+  Example: `[{"name": "app.get", "args": ["/users"], "kwargs": {"tags": ["api"]}}]`
+- **base_classes**: List of base class names for classes.
+  Example: `["BaseModel", "Generic[T]"]`
+- **parameters**: List of parameter info for functions/methods.
+  Example: `[{"name": "x", "type": "int", "default": False}]`
+
 Why This Design
 ---------------
 - Built-in ast module requires no dependencies and handles all Python syntax
 - Two-pass approach enables cross-file call resolution via imports
 - col_offset == 0 heuristic distinguishes top-level from nested functions
 - Import resolution handles both absolute and relative imports
+- Rich metadata enables future FRAMEWORK_PATTERNS phase for semantic detection
 """
 import ast
 import hashlib
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -78,11 +91,156 @@ def _make_module_id(module_name: str) -> str:
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
 
-# Django URL pattern functions
+# Django URL pattern functions (deprecated - use django.yaml patterns)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
-# Router constructors that support prefix argument
-ROUTER_CONSTRUCTORS = {"APIRouter", "Blueprint"}
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
+
+
+def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
+    """Convert an AST expression to a Python value representation.
+
+    For simple literals, returns the actual value.
+    For complex expressions (names, calls, etc.), returns string representation.
+    """
+    if isinstance(node, ast.Constant):
+        # Handle Ellipsis (...) which is not JSON-serializable
+        if node.value is ...:
+            return "..."
+        return node.value
+    elif isinstance(node, ast.Name):
+        # Variable reference - return name as string
+        return node.id
+    elif isinstance(node, ast.List):
+        return [_ast_value_to_python(elt) for elt in node.elts]
+    elif isinstance(node, ast.Tuple):
+        return [_ast_value_to_python(elt) for elt in node.elts]
+    elif isinstance(node, ast.Dict):
+        result = {}
+        for k, v in zip(node.keys, node.values, strict=True):
+            if k is not None:
+                key = _ast_value_to_python(k)
+                if isinstance(key, str):
+                    result[key] = _ast_value_to_python(v)
+        return result
+    elif isinstance(node, ast.Attribute):
+        # e.g., SomeClass.field -> "SomeClass.field"
+        return _format_annotation(node)
+    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        # Negative number
+        val = _ast_value_to_python(node.operand)
+        if isinstance(val, (int, float)):
+            return -val
+        return f"-{val}"  # pragma: no cover - defensive for non-numeric negation
+    else:
+        # Complex expression - return string representation
+        return _format_annotation(node) or "<complex>"  # pragma: no cover
+
+
+def _extract_decorator_info(dec: ast.expr) -> dict[str, object]:
+    """Extract full decorator information including arguments.
+
+    Returns a dict with:
+        name: Decorator name (e.g., "app.get", "dataclass")
+        args: List of positional arguments
+        kwargs: Dict of keyword arguments
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    if isinstance(dec, ast.Name):
+        # @decorator
+        name = dec.id
+    elif isinstance(dec, ast.Attribute):
+        # @module.decorator (without call)
+        name = _format_annotation(dec)
+    elif isinstance(dec, ast.Call):
+        # @decorator(...) or @module.decorator(...)
+        if isinstance(dec.func, ast.Name):
+            name = dec.func.id
+        elif isinstance(dec.func, ast.Attribute):
+            name = _format_annotation(dec.func)
+        else:
+            name = "<unknown>"  # pragma: no cover - defensive for unusual decorator forms
+
+        # Extract positional arguments
+        for arg in dec.args:
+            args.append(_ast_value_to_python(arg))
+
+        # Extract keyword arguments
+        for kw in dec.keywords:
+            if kw.arg is not None:  # Skip **kwargs unpacking
+                kwargs[kw.arg] = _ast_value_to_python(kw.value)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_parameters_info(
+    args: ast.arguments, exclude_self: bool = False
+) -> list[dict[str, object]]:
+    """Extract structured parameter information from function arguments.
+
+    Args:
+        args: AST arguments node
+        exclude_self: If True, skip 'self' and 'cls' parameters
+
+    Returns:
+        List of dicts with name, type, and default keys
+    """
+    params: list[dict[str, object]] = []
+    defaults_offset = len(args.args) - len(args.defaults)
+
+    for i, arg in enumerate(args.args):
+        if exclude_self and i == 0 and arg.arg in ("self", "cls"):
+            continue
+        has_default = i >= defaults_offset
+        type_str = _format_annotation(arg.annotation) if arg.annotation else None
+        params.append({
+            "name": arg.arg,
+            "type": type_str if type_str else None,
+            "default": has_default,
+        })
+
+    # Handle *args
+    if args.vararg:
+        type_str = _format_annotation(args.vararg.annotation) if args.vararg.annotation else None
+        params.append({
+            "name": f"*{args.vararg.arg}",
+            "type": type_str if type_str else None,
+            "default": False,
+        })
+
+    # Handle **kwargs
+    if args.kwarg:
+        type_str = _format_annotation(args.kwarg.annotation) if args.kwarg.annotation else None
+        params.append({
+            "name": f"**{args.kwarg.arg}",
+            "type": type_str if type_str else None,
+            "default": False,
+        })
+
+    return params
 
 
 def _format_annotation(node: ast.expr) -> str:
@@ -179,92 +337,6 @@ def _format_function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, max
         sig = sig[:max_len - 1] + "…"
 
     return sig
-
-
-def _extract_router_prefixes(tree: ast.Module) -> dict[str, str]:
-    """Extract router variable names and their prefixes.
-
-    Detects patterns like:
-    - router = APIRouter(prefix='/api/v1')
-    - router = APIRouter(prefix='/api')
-    - api = Blueprint('api', __name__, url_prefix='/api')
-
-    Returns dict mapping variable name to prefix string.
-    """
-    prefixes: dict[str, str] = {}
-
-    for node in ast.walk(tree):
-        # Look for assignments: name = SomeRouter(...)
-        if not isinstance(node, ast.Assign):
-            continue
-
-        # Must have exactly one target that's a Name
-        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
-            continue
-
-        var_name = node.targets[0].id
-
-        # Must be a Call (constructor call)
-        if not isinstance(node.value, ast.Call):
-            continue
-
-        call = node.value
-
-        # Get constructor name
-        constructor_name = None
-        if isinstance(call.func, ast.Name):
-            constructor_name = call.func.id
-        elif isinstance(call.func, ast.Attribute):  # pragma: no cover
-            constructor_name = call.func.attr  # e.g., fastapi.APIRouter()
-
-        if constructor_name not in ROUTER_CONSTRUCTORS:
-            continue
-
-        # Extract prefix from arguments
-        prefix = None
-
-        # Check positional args - not common for prefix
-        # Check keyword args for 'prefix' or 'url_prefix' (Flask Blueprint)
-        for kw in call.keywords:
-            if kw.arg in ("prefix", "url_prefix"):
-                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                    prefix = kw.value.value
-                    break
-
-        if prefix:
-            prefixes[var_name] = prefix
-
-    return prefixes
-
-
-def _combine_prefix_and_path(prefix: str | None, path: str | None) -> str | None:
-    """Combine a router prefix with a route path.
-
-    Args:
-        prefix: The router prefix (e.g., '/api/v1')
-        path: The route path (e.g., '/users')
-
-    Returns:
-        Combined path (e.g., '/api/v1/users')
-    """
-    if not path:  # pragma: no cover
-        return None
-
-    if not prefix:  # pragma: no cover
-        return path
-
-    # Normalize prefix - ensure it starts with /
-    if not prefix.startswith("/"):
-        prefix = "/" + prefix
-
-    # Remove trailing slash from prefix to avoid double slashes
-    prefix = prefix.rstrip("/")
-
-    # Ensure path starts with /
-    if not path.startswith("/"):  # pragma: no cover
-        path = "/" + path
-
-    return prefix + path
 
 
 def _has_module_level_code(tree: ast.Module) -> bool:
@@ -368,108 +440,15 @@ def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, 
     return patterns
 
 
-def _detect_route_decorator(
-    node: ast.FunctionDef | ast.ClassDef,
-    router_prefixes: dict[str, str] | None = None,
-) -> tuple[str | None, str | None]:
-    """Detect if a function has a route decorator (FastAPI, Flask, DRF).
-
-    Returns (http_method, route_path) if a route decorator is found, else (None, None).
-
-    Supported patterns:
-    - @app.get("/path"), @router.post("/path")  # FastAPI/Flask 2.0+
-    - @app.route("/path")  # Flask
-    - @api_view(['GET', 'POST'])  # Django REST Framework
-
-    The decorator must be of form @<var>.<method>("/path") where method is an HTTP verb,
-    or @api_view(['METHOD', ...]) for DRF.
-
-    Args:
-        node: The function/class AST node
-        router_prefixes: Optional dict mapping router variable names to their prefixes
-    """
-    if not isinstance(node, ast.FunctionDef):
-        return None, None
-
-    if router_prefixes is None:
-        router_prefixes = {}
-
-    for dec in node.decorator_list:
-        # Route decorators are calls: @app.get("/path") or @api_view(['GET'])
-        if not isinstance(dec, ast.Call):
-            continue
-
-        # Check for DRF @api_view(['GET', 'POST']) pattern
-        if isinstance(dec.func, ast.Name) and dec.func.id == "api_view":
-            # Extract HTTP methods from first argument (should be a list)
-            if dec.args and isinstance(dec.args[0], ast.List):
-                methods = []
-                for elt in dec.args[0].elts:
-                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                        methods.append(elt.value.lower())
-                if methods:
-                    return ",".join(methods), None
-            continue
-
-        # The function being called should be an attribute: app.get
-        if not isinstance(dec.func, ast.Attribute):
-            continue
-
-        method_name = dec.func.attr.lower()
-        if method_name not in HTTP_METHODS:
-            continue
-
-        # Get the router variable name (e.g., 'router' in @router.get)
-        router_var_name = None
-        if isinstance(dec.func.value, ast.Name):
-            router_var_name = dec.func.value.id
-
-        # Extract the route path from the first argument
-        route_path = None
-        if dec.args:
-            first_arg = dec.args[0]
-            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-                route_path = first_arg.value
-
-        # For @app.route(), extract HTTP method from methods= keyword argument
-        if method_name == "route":
-            for kw in dec.keywords:
-                if kw.arg == "methods" and isinstance(kw.value, ast.List):
-                    methods = []
-                    for elt in kw.value.elts:
-                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                            methods.append(elt.value.lower())
-                    if methods:
-                        method_name = ",".join(methods)
-                        break
-
-        # Apply router prefix if available
-        if router_var_name and router_var_name in router_prefixes:
-            prefix = router_prefixes[router_var_name]
-            route_path = _combine_prefix_and_path(prefix, route_path)
-
-        return method_name, route_path
-
-    return None, None
-
-
 def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
-    For route handlers (FastAPI, Flask), returns the HTTP method directly
-    (e.g., "get", "post") to enable route discovery.
-
-    For other functions, returns:
+    Returns:
     sha256({kind}:{param_count}:{arity_flags}:{decorators})
 
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
     """
-    # Check for route decorators first (now handled directly in symbol creation)
-    http_method, _ = _detect_route_decorator(node)
-    if http_method:  # pragma: no cover
-        return http_method
-
     kind = "function" if isinstance(node, ast.FunctionDef) else "class"
 
     # Extract signature info for functions
@@ -876,9 +855,6 @@ def _extract_file_analysis(
         symbols.append(module_symbol)
         symbol_by_name["<module>"] = module_symbol
 
-    # Extract router prefixes (e.g., APIRouter(prefix='/api/v1'))
-    router_prefixes = _extract_router_prefixes(tree)
-
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             class_name = node.name
@@ -890,6 +866,22 @@ def _extract_file_analysis(
                 start_col=node.col_offset,
                 end_col=end_col,
             )
+
+            # Build rich metadata for class (ADR-0003)
+            class_meta: dict[str, object] = {}
+
+            # Extract decorators with arguments
+            if node.decorator_list:
+                class_meta["decorators"] = [
+                    _extract_decorator_info(dec) for dec in node.decorator_list
+                ]
+
+            # Extract base classes
+            if node.bases:
+                class_meta["base_classes"] = [
+                    _format_annotation(base) for base in node.bases
+                ]
+
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
@@ -901,6 +893,7 @@ def _extract_file_analysis(
                 shape_id=_compute_shape_id(node),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 lines_of_code=_compute_lines_of_code(node),
+                meta=class_meta if class_meta else None,
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -924,6 +917,20 @@ def _extract_file_analysis(
                     if item.name.lower() in HTTP_METHODS:
                         stable_id = item.name.upper()
 
+                    # Build rich metadata for method (ADR-0003)
+                    method_meta: dict[str, object] = {}
+
+                    # Extract decorators with arguments
+                    if item.decorator_list:
+                        method_meta["decorators"] = [
+                            _extract_decorator_info(dec) for dec in item.decorator_list
+                        ]
+
+                    # Extract structured parameters (excluding self/cls)
+                    params = _extract_parameters_info(item.args, exclude_self=True)
+                    if params:
+                        method_meta["parameters"] = params
+
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
@@ -936,6 +943,7 @@ def _extract_file_analysis(
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         lines_of_code=_compute_lines_of_code(item),
                         signature=_format_function_signature(item),
+                        meta=method_meta if method_meta else None,
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
@@ -956,15 +964,21 @@ def _extract_file_analysis(
                     start_col=node.col_offset,
                     end_col=end_col,
                 )
-                # Check for route decorator to store route_path in meta
-                http_method, route_path = _detect_route_decorator(node, router_prefixes)
-                if route_path or http_method:
-                    # Uppercase HTTP methods (handle comma-separated for DRF api_view)
-                    http_method_upper = ",".join(m.upper() for m in http_method.split(",")) if http_method else None
-                    meta = {"route_path": route_path, "http_method": http_method_upper}
-                else:
-                    http_method_upper = None
-                    meta = None
+
+                # Build rich metadata for function (ADR-0003)
+                # Route detection moved to FRAMEWORK_PATTERNS phase
+                func_meta: dict[str, object] = {}
+
+                # Extract decorators with arguments
+                if node.decorator_list:
+                    func_meta["decorators"] = [
+                        _extract_decorator_info(dec) for dec in node.decorator_list
+                    ]
+
+                # Extract structured parameters
+                params = _extract_parameters_info(node.args, exclude_self=False)
+                if params:
+                    func_meta["parameters"] = params
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
@@ -973,10 +987,9 @@ def _extract_file_analysis(
                     language="python",
                     path=str(py_file),
                     span=span,
-                    # For routes, use HTTP method as stable_id for route discovery
-                    stable_id=http_method_upper if http_method_upper else _compute_stable_id(node),
+                    stable_id=_compute_stable_id(node),
                     shape_id=_compute_shape_id(node),
-                    meta=meta,
+                    meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
                     signature=_format_function_signature(node),
@@ -984,8 +997,10 @@ def _extract_file_analysis(
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
 
-    # Detect Django URL patterns (path, re_path, url calls)
+    # Detect Django URL patterns (path, re_path, url calls) - deprecated
     django_patterns = _extract_django_url_patterns(tree)
+    if django_patterns:
+        _emit_route_deprecation_warning("Django")
     for start_line, end_line, route_path, view_name in django_patterns:
         span = Span(
             start_line=start_line,

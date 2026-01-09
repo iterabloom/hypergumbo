@@ -21,5 +21,6 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert isinstance(bm["features"], list)
     assert isinstance(bm["metrics"], dict)
     assert isinstance(bm["limits"], dict)
+    assert isinstance(bm["entrypoints"], list)
     assert "generated_at" in bm
 

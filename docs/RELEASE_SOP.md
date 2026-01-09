@@ -214,9 +214,11 @@ This script:
 
 #### Step 3: Human Creates Signed Tag
 
+**Before running:** Have both your Codeberg SSH key passphrase and GPG signing key passphrase ready. The script makes multiple SSH connections and a GPG signing operation in quick succession, and passphrase timeouts between steps can cause the push to fail.
+
 ```bash
 # Human runs this after merging the PR
-./scripts/tag-release 0.8.0
+./scripts/tag-release 0.9.1
 ```
 
 This script:

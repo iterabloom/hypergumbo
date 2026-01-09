@@ -1,4 +1,5 @@
 """Tests for entrypoint detection heuristics."""
+import pytest
 
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import (
@@ -16,6 +17,7 @@ def make_symbol(
     end_line: int = 5,
     language: str = "python",
     decorators: list[str] | None = None,
+    meta: dict | None = None,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -32,6 +34,7 @@ def make_symbol(
         origin="python-ast-v1",
         origin_run_id="uuid:test",
         stable_id=stable_id,
+        meta=meta,
     )
 
 
@@ -3213,3 +3216,532 @@ class TestIsTestFile:
         # These hit endswith("fakes") and endswith("mocks") specifically
         assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
         assert _is_test_file("internal/servicemocks/client.go")
+
+
+class TestSemanticEntryDetection:
+    """Tests for semantic entry detection from concept metadata.
+
+    ADR-0003 v0.9.x introduces semantic entry detection: detecting entrypoints
+    based on enriched symbol metadata (meta.concepts) from the FRAMEWORK_PATTERNS
+    phase, rather than path-based heuristics.
+
+    Semantic detection has:
+    - Higher confidence (0.95) since it's based on actual decorator/pattern matching
+    - Priority over path-based detection
+    - Framework-aware labels
+    """
+
+    def test_detect_route_concept(self) -> None:
+        """Symbol with route concept in meta.concepts is detected as route."""
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].symbol_id == sym.id
+        # Semantic detection should have high confidence
+        assert route_eps[0].confidence >= 0.95
+
+    def test_detect_post_route_concept(self) -> None:
+        """Symbol with POST route concept is detected as route."""
+        sym = make_symbol(
+            "create_user",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "POST"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+    def test_route_concept_includes_path_in_label(self) -> None:
+        """Route concept label includes the path from concept metadata."""
+        sym = make_symbol(
+            "get_item",
+            path="src/api/items.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/items/{id}", "method": "GET"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Label should include method and/or path info
+        assert "GET" in route_eps[0].label or "/items" in route_eps[0].label
+
+    def test_semantic_detection_priority_over_path_heuristics(self) -> None:
+        """Semantic detection takes priority, avoiding duplicate detection.
+
+        If a symbol is detected via concept metadata, it should NOT also be
+        detected via path heuristics (which could produce duplicates or
+        lower-confidence entries).
+        """
+        # Symbol in Express route file BUT also has concept metadata
+        sym = make_symbol(
+            "getUsers",
+            path="src/routes/users.js",  # Express path pattern
+            language="javascript",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only be detected once, not twice
+        all_eps = [e for e in entrypoints if e.symbol_id == sym.id]
+        assert len(all_eps) == 1
+        # And it should be the semantic detection (high confidence)
+        assert all_eps[0].confidence >= 0.95
+
+    def test_multiple_route_concepts_in_file(self) -> None:
+        """Multiple symbols with route concepts are all detected."""
+        sym1 = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        sym2 = make_symbol(
+            "create_user",
+            path="src/api/users.py",
+            start_line=20,
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "POST"}]},
+        )
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 2
+
+    def test_model_concept_not_detected_as_entrypoint(self) -> None:
+        """Model concept is NOT an entrypoint (models are not entry kinds)."""
+        sym = make_symbol(
+            "User",
+            kind="class",
+            path="src/models/user.py",
+            meta={
+                "concepts": [{"concept": "model", "framework": "fastapi"}]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Models are not entrypoints
+        assert len(entrypoints) == 0
+
+    def test_no_concepts_falls_back_to_path_heuristics(self) -> None:
+        """Without concept metadata, path heuristics still work as fallback."""
+        # Express route file but no concept metadata
+        sym = make_symbol(
+            "getUsers",
+            path="src/routes/users.js",
+            language="javascript",
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should be detected by Express path heuristics
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+        # Path heuristics have lower confidence
+        assert express_eps[0].confidence < 0.95
+
+    def test_empty_concepts_list_falls_back(self) -> None:
+        """Empty concepts list falls back to path heuristics."""
+        sym = make_symbol(
+            "getUsers",
+            path="src/routes/users.js",
+            language="javascript",
+            meta={"concepts": []},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should still be detected by Express path heuristics
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+
+    def test_react_router_not_detected_with_semantic(self) -> None:
+        """React Router files without route concepts are NOT detected as routes.
+
+        This is the key false positive elimination: React Router files in
+        routes/*.tsx should NOT be flagged as Express/API routes because
+        they don't have route concept metadata from FRAMEWORK_PATTERNS.
+        """
+        # React Router file - has a route-like path but no concept metadata
+        sym = make_symbol(
+            "Dashboard",
+            path="frontend/src/routes/dashboard.tsx",
+            language="typescript",
+            kind="function",
+            # No meta - React files don't get route concepts
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should NOT be detected as any route type
+        # (The .tsx exclusion prevents Express/Hapi detection)
+        route_like_eps = [
+            e for e in entrypoints
+            if e.kind in (
+                EntrypointKind.HTTP_ROUTE,
+                EntrypointKind.EXPRESS_ROUTE,
+                EntrypointKind.HAPI_ROUTE,
+            )
+        ]
+        assert len(route_like_eps) == 0
+
+    def test_non_dict_concept_skipped(self) -> None:
+        """Non-dict concepts in the list are skipped."""
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    "invalid_string_concept",  # Not a dict - should be skipped
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+    def test_route_concept_method_only(self) -> None:
+        """Route concept with only method (no path) still detected."""
+        sym = make_symbol(
+            "create_resource",
+            path="src/api/resources.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": "POST"}  # No path
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Label should include method
+        assert "POST" in route_eps[0].label
+        assert "route" in route_eps[0].label.lower()
+
+    def test_route_concept_path_only(self) -> None:
+        """Route concept with only path (no method) still detected."""
+        sym = make_symbol(
+            "handle_request",
+            path="src/api/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/api/v1/resource"}  # No method
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Label should include path
+        assert "/api/v1/resource" in route_eps[0].label
+
+    def test_route_concept_no_method_no_path(self) -> None:
+        """Route concept with neither method nor path still detected."""
+        sym = make_symbol(
+            "wildcard_handler",
+            path="src/api/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "route"}  # Minimal route concept
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Should have a generic label
+
+
+class TestDeprecationWarnings:
+    """Tests for deprecation warnings on path-based heuristics.
+
+    ADR-0003 v0.9.x deprecates path-based entrypoint detection in favor
+    of semantic detection via concept metadata from FRAMEWORK_PATTERNS.
+    """
+
+    def test_express_route_emits_deprecation_warning(self) -> None:
+        """Express route detection via path emits deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "get_users",
+            path="src/routes/users.js",
+            language="javascript",
+            kind="function",
+        )
+
+        # Reset the warning tracker so warning fires even if already seen
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        with pytest.warns(DeprecationWarning, match="path-based"):
+            detect_entrypoints([sym], [])
+
+    def test_nestjs_controller_emits_deprecation_warning(self) -> None:
+        """NestJS controller detection via path emits deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "UserController",
+            path="src/users/users.controller.ts",
+            language="typescript",
+            kind="class",
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        with pytest.warns(DeprecationWarning, match="path-based"):
+            detect_entrypoints([sym], [])
+
+    def test_cli_detection_no_deprecation_warning(self) -> None:
+        """CLI detection does NOT emit deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "main",
+            path="src/main.py",
+            language="python",
+            kind="function",
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        # Should not raise DeprecationWarning
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym], [])
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
+
+    def test_semantic_detection_no_deprecation_warning(self) -> None:
+        """Semantic detection via concepts does NOT emit deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            language="python",
+            kind="function",
+            meta={"concepts": [{"concept": "route", "method": "GET"}]},
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        # Should not raise DeprecationWarning
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym], [])
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
+
+    def test_decorator_detection_no_deprecation_warning(self) -> None:
+        """Decorator-based HTTP route detection does NOT emit deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            language="python",
+            kind="function",
+            decorators=["get", "route"],  # Decorators
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        # Should not raise DeprecationWarning
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym], [])
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
+
+    def test_deprecation_warning_once_per_framework(self) -> None:
+        """Deprecation warning fires only once per framework per session."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym1 = make_symbol(
+            "get_users",
+            path="src/routes/users.js",
+            language="javascript",
+            kind="function",
+        )
+        sym2 = make_symbol(
+            "get_orders",
+            path="src/routes/orders.js",
+            language="javascript",
+            kind="function",
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym1], [])
+            detect_entrypoints([sym2], [])
+            express_warnings = [
+                x for x in w
+                if issubclass(x.category, DeprecationWarning)
+                and "Express" in str(x.message)
+            ]
+            # Only ONE warning for Express across both calls
+            assert len(express_warnings) == 1
+
+
+class TestConnectivityBasedRanking:
+    """Tests for connectivity-based entrypoint ranking."""
+
+    def test_entrypoints_sorted_by_connectivity(self) -> None:
+        """Entrypoints with more outgoing edges should rank higher."""
+        # Create three main() functions with same base confidence
+        main_a = make_symbol("main", path="a.py", language="python")
+        main_b = make_symbol("main", path="b.py", language="python")
+        main_c = make_symbol("main", path="c.py", language="python")
+
+        # Create helper functions that main_b and main_c call
+        helper1 = make_symbol("helper1", path="helpers.py", language="python")
+        helper2 = make_symbol("helper2", path="helpers.py", language="python", start_line=10, end_line=15)
+        helper3 = make_symbol("helper3", path="helpers.py", language="python", start_line=20, end_line=25)
+
+        nodes = [main_a, main_b, main_c, helper1, helper2, helper3]
+
+        # main_a calls nothing (0 edges)
+        # main_b calls 1 helper (1 edge)
+        # main_c calls 3 helpers (3 edges)
+        edges = [
+            Edge.create(src=main_b.id, dst=helper1.id, edge_type="calls", line=2),
+            Edge.create(src=main_c.id, dst=helper1.id, edge_type="calls", line=2),
+            Edge.create(src=main_c.id, dst=helper2.id, edge_type="calls", line=3),
+            Edge.create(src=main_c.id, dst=helper3.id, edge_type="calls", line=4),
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        # Should find all three main functions
+        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+        assert len(main_eps) == 3
+
+        # main_c (3 edges) should rank first, main_b (1 edge) second, main_a (0 edges) last
+        assert main_eps[0].symbol_id == main_c.id, "main_c with 3 edges should rank first"
+        assert main_eps[1].symbol_id == main_b.id, "main_b with 1 edge should rank second"
+        assert main_eps[2].symbol_id == main_a.id, "main_a with 0 edges should rank last"
+
+    def test_connectivity_boost_increases_confidence(self) -> None:
+        """Entrypoints with more edges should have higher confidence scores."""
+        main_isolated = make_symbol("main", path="isolated.py", language="python")
+        main_connected = make_symbol("main", path="connected.py", language="python")
+        helper = make_symbol("helper", path="helper.py", language="python")
+
+        nodes = [main_isolated, main_connected, helper]
+
+        # main_connected calls helper multiple times (simulated by multiple edges)
+        edges = [
+            Edge.create(src=main_connected.id, dst=helper.id, edge_type="calls", line=i)
+            for i in range(10)  # 10 outgoing edges
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        main_eps = {ep.symbol_id: ep for ep in entrypoints if "main" in ep.symbol_id}
+
+        # Connected main should have higher confidence than isolated one
+        assert main_eps[main_connected.id].confidence > main_eps[main_isolated.id].confidence
+
+    def test_all_entrypoints_still_returned(self) -> None:
+        """Connectivity ranking should not filter out any entrypoints."""
+        # Create many main functions
+        mains = [
+            make_symbol("main", path=f"file{i}.py", language="python", start_line=i)
+            for i in range(10)
+        ]
+        helper = make_symbol("helper", path="helper.py", language="python")
+
+        nodes = mains + [helper]
+
+        # Only first main has edges
+        edges = [Edge.create(src=mains[0].id, dst=helper.id, edge_type="calls", line=1)]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        # All 10 main functions should be returned
+        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+        assert len(main_eps) == 10, "All entrypoints should be returned regardless of connectivity"
+
+    def test_incoming_edges_not_counted(self) -> None:
+        """Only outgoing edges should affect ranking, not incoming edges."""
+        main_caller = make_symbol("main", path="caller.py", language="python")
+        main_callee = make_symbol("main", path="callee.py", language="python")
+        other = make_symbol("other", path="other.py", language="python")
+
+        nodes = [main_caller, main_callee, other]
+
+        # main_caller calls main_callee (main_callee has incoming edge, not outgoing)
+        # main_caller also calls other
+        edges = [
+            Edge.create(src=main_caller.id, dst=main_callee.id, edge_type="calls", line=1),
+            Edge.create(src=main_caller.id, dst=other.id, edge_type="calls", line=2),
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+
+        # main_caller (2 outgoing) should rank before main_callee (0 outgoing)
+        assert main_eps[0].symbol_id == main_caller.id
+        assert main_eps[1].symbol_id == main_callee.id

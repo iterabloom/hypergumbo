@@ -45,7 +45,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerActivation, LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = "graphql-linker-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -334,6 +334,7 @@ GRAPHQL_REQUIREMENTS = [
     priority=60,  # Run after analyzers have produced GraphQL symbols
     description="GraphQL client-schema linking (gql calls to operations)",
     requirements=GRAPHQL_REQUIREMENTS,
+    activation=LinkerActivation(frameworks=["graphql"]),
 )
 def graphql_linker(ctx: LinkerContext) -> LinkerResult:
     """GraphQL linker for registry-based dispatch.

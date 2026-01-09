@@ -1422,3 +1422,589 @@ public class Main {
             None,
         )
         assert call_edge is not None
+
+
+# ============================================================================
+# Java Annotation Metadata Tests (Phase 5)
+# ============================================================================
+
+
+class TestAnnotationMetadata:
+    """Tests for extracting annotation metadata from Java classes and methods."""
+
+    def test_class_annotation_simple(self, tmp_path: Path) -> None:
+        """Extracts simple class annotation without arguments."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "User.java").write_text("""
+@Entity
+public class User {
+    private String name;
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        assert classes[0].name == "User"
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Entity"
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {}
+
+    def test_class_annotation_with_string_arg(self, tmp_path: Path) -> None:
+        """Extracts class annotation with string argument."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "User.java").write_text("""
+@Table(name = "users")
+public class User {
+    private String name;
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Table"
+        assert decorators[0]["kwargs"].get("name") == "users"
+
+    def test_method_annotation_simple(self, tmp_path: Path) -> None:
+        """Extracts simple method annotation."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "UserService.java").write_text("""
+public class UserService {
+    @Autowired
+    public void setRepository() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Autowired"
+        assert decorators[0]["args"] == []
+
+    def test_method_annotation_with_args(self, tmp_path: Path) -> None:
+        """Extracts method annotation with arguments."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Controller.java").write_text("""
+public class Controller {
+    @GetMapping("/users")
+    public void getUsers() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        # Should have at least one decorator
+        assert len(decorators) >= 1
+        get_mapping = next((d for d in decorators if d["name"] == "GetMapping"), None)
+        assert get_mapping is not None
+        assert get_mapping["args"] == ["/users"]
+
+    def test_multiple_annotations_on_method(self, tmp_path: Path) -> None:
+        """Extracts multiple annotations from a method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Controller.java").write_text("""
+public class Controller {
+    @Override
+    @GetMapping("/items")
+    public void getItems() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) >= 2
+        decorator_names = [d["name"] for d in decorators]
+        assert "Override" in decorator_names
+        assert "GetMapping" in decorator_names
+
+    def test_multiple_annotations_on_class(self, tmp_path: Path) -> None:
+        """Extracts multiple annotations from a class."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "User.java").write_text("""
+@Entity
+@Table(name = "users")
+public class User {
+    private Long id;
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 2
+        decorator_names = [d["name"] for d in decorators]
+        assert "Entity" in decorator_names
+        assert "Table" in decorator_names
+
+    def test_annotation_with_boolean_value(self, tmp_path: Path) -> None:
+        """Extracts annotation with boolean value."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "User.java").write_text("""
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class User {
+    private String name;
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "JsonIgnoreProperties"
+        # Check kwargs has ignoreUnknown
+        assert "ignoreUnknown" in decorators[0]["kwargs"]
+
+    def test_interface_annotation(self, tmp_path: Path) -> None:
+        """Extracts annotation from interface."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "UserRepo.java").write_text("""
+@Repository
+public interface UserRepo {
+    void save();
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        interfaces = [s for s in result.symbols if s.kind == "interface"]
+        assert len(interfaces) == 1
+        meta = interfaces[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Repository"
+
+
+class TestJavaBaseClassMetadata:
+    """Tests for extracting base class information from Java classes."""
+
+    def test_class_extends_single(self, tmp_path: Path) -> None:
+        """Extracts single base class from extends clause."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Admin.java").write_text("""
+public class Admin extends User {
+    private boolean isSuper;
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert "User" in base_classes
+
+    def test_class_implements_single(self, tmp_path: Path) -> None:
+        """Extracts single interface from implements clause."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "UserService.java").write_text("""
+public class UserService implements IUserService {
+    public void findAll() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert "IUserService" in base_classes
+
+    def test_class_implements_multiple(self, tmp_path: Path) -> None:
+        """Extracts multiple interfaces from implements clause."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "UserService.java").write_text("""
+public class UserService implements IUserService, Serializable, Comparable<User> {
+    public void findAll() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) >= 3
+        assert "IUserService" in base_classes
+        assert "Serializable" in base_classes
+
+    def test_class_extends_and_implements(self, tmp_path: Path) -> None:
+        """Extracts both extends and implements clauses."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "AdminService.java").write_text("""
+public class AdminService extends BaseService implements IAdminService {
+    public void manage() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert "BaseService" in base_classes
+        assert "IAdminService" in base_classes
+
+    def test_interface_extends(self, tmp_path: Path) -> None:
+        """Extracts base interfaces from interface extends clause."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "IUserRepo.java").write_text("""
+public interface IUserRepo extends JpaRepository, CrudRepository {
+    void findByName(String name);
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        interfaces = [s for s in result.symbols if s.kind == "interface"]
+        assert len(interfaces) == 1
+        meta = interfaces[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert "JpaRepository" in base_classes
+        assert "CrudRepository" in base_classes
+
+    def test_generic_base_class(self, tmp_path: Path) -> None:
+        """Extracts generic base class with type parameters."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "UserRepo.java").write_text("""
+public class UserRepo extends Repository<User, Long> {
+    public User findById(Long id) { return null; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) >= 1
+        # Should include the generic type info
+        assert any("Repository" in bc for bc in base_classes)
+
+    def test_class_no_inheritance(self, tmp_path: Path) -> None:
+        """Class without extends/implements has empty base_classes."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Simple.java").write_text("""
+public class Simple {
+    public void doSomething() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        # Either empty list or key not present
+        assert base_classes == [] or "base_classes" not in meta
+
+    def test_interface_extends_generic_type(self, tmp_path: Path) -> None:
+        """Extracts generic type from interface extends clause."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "IUserRepo.java").write_text("""
+public interface IUserRepo extends Repository<User, Long> {
+    void save();
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        interfaces = [s for s in result.symbols if s.kind == "interface"]
+        assert len(interfaces) == 1
+        meta = interfaces[0].meta or {}
+        base_classes = meta.get("base_classes", [])
+        assert len(base_classes) == 1
+        # Should include generic type info
+        assert "Repository<User, Long>" in base_classes or "Repository" in base_classes[0]
+
+
+class TestAnnotationValueTypes:
+    """Tests for various annotation value types."""
+
+    def test_annotation_with_integer_value(self, tmp_path: Path) -> None:
+        """Extracts annotation with integer value."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "RateLimited.java").write_text("""
+@RateLimit(maxRequests = 100)
+public class RateLimited {
+    public void call() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "RateLimit"
+        # Integer value should be extracted
+        assert decorators[0]["kwargs"].get("maxRequests") == 100
+
+    def test_annotation_with_hex_integer_value(self, tmp_path: Path) -> None:
+        """Extracts annotation with hexadecimal integer value."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Permissions.java").write_text("""
+@Permission(mask = 0xFF)
+public class Permissions {
+    public void check() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Permission"
+        # Hex value should be converted to int
+        assert decorators[0]["kwargs"].get("mask") == 255
+
+    def test_annotation_with_float_value(self, tmp_path: Path) -> None:
+        """Extracts annotation with float value."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Timeout.java").write_text("""
+@Timeout(seconds = 30.5)
+public class Timeout {
+    public void wait() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Timeout"
+        # Float value should be extracted
+        assert decorators[0]["kwargs"].get("seconds") == 30.5
+
+    def test_annotation_with_array_value(self, tmp_path: Path) -> None:
+        """Extracts annotation with array value."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "Roles.java").write_text("""
+@Authorized(roles = {"admin", "user"})
+public class Roles {
+    public void access() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Authorized"
+        # Array value should be extracted
+        roles = decorators[0]["kwargs"].get("roles")
+        assert roles is not None
+        assert "admin" in roles
+        assert "user" in roles
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level route detection."""
+
+    def test_spring_boot_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Spring Boot route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        java_file = tmp_path / "Controller.java"
+        java_file.write_text("""
+@RestController
+public class Controller {
+    @GetMapping("/users")
+    public void getUsers() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have at least one deprecation warning for Spring
+        deprecation_warnings = [
+            warning for warning in w if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Spring" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_jaxrs_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """JAX-RS route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        java_file = tmp_path / "Resource.java"
+        java_file.write_text("""
+@Path("/items")
+public class Resource {
+    @GET
+    public void getItems() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have deprecation warning for JAX-RS
+        deprecation_warnings = [
+            warning for warning in w if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "JAX-RS" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_framework(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per framework."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple Spring Boot controllers
+        (tmp_path / "UserController.java").write_text("""
+@RestController
+public class UserController {
+    @GetMapping("/users")
+    public void getUsers() {}
+
+    @PostMapping("/users")
+    public void createUser() {}
+}
+""")
+        (tmp_path / "ItemController.java").write_text("""
+@RestController
+public class ItemController {
+    @GetMapping("/items")
+    public void getItems() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have exactly one Spring deprecation warning (deduplicated)
+        spring_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Spring" in str(warning.message)
+        ]
+        assert len(spring_warnings) == 1
+
+    def test_no_deprecation_warning_for_non_route_annotations(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for classes without route annotations."""
+        import warnings
+        from hypergumbo.analyze import java as java_module
+        from hypergumbo.analyze.java import analyze_java
+
+        # Reset the warning deduplication set
+        java_module._deprecated_route_warnings_emitted.clear()
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+@Service
+public class UserService {
+    @Autowired
+    private UserRepository repo;
+
+    public void findAll() {}
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_java(tmp_path)
+
+        # Should have no deprecation warnings for route detection
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and ("Spring" in str(warning.message) or "JAX-RS" in str(warning.message))
+        ]
+        assert len(route_warnings) == 0

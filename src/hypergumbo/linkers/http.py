@@ -437,13 +437,26 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             continue
 
         for route in route_symbols:
+            # Try concept metadata first (FRAMEWORK_PATTERNS phase)
+            concept_path, concept_method = _get_route_info_from_concept(route)
+
+            # Fall back to legacy meta if no concept
+            if concept_path:
+                route_path = concept_path
+                route_method = concept_method
+            else:
+                route_path = route.meta.get("route_path", "") if route.meta else ""
+                route_method = (
+                    route.meta.get("http_method", route.stable_id)
+                    if route.meta
+                    else route.stable_id
+                )
+
             # Must match HTTP method
-            route_method = route.meta.get("http_method", route.stable_id)
             if route_method and route_method.upper() != call.method.upper():
                 continue
 
             # Must match route path
-            route_path = route.meta.get("route_path", "")
             if not route_path:  # pragma: no cover
                 continue
 
@@ -490,16 +503,44 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 # =============================================================================
 
 
+def _has_route_concept(symbol: Symbol) -> bool:
+    """Check if symbol has a route concept in meta.concepts."""
+    if not symbol.meta:
+        return False
+    concepts = symbol.meta.get("concepts", [])
+    return any(c.get("concept") == "route" for c in concepts if isinstance(c, dict))
+
+
+def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
+    """Extract route path and method from concept metadata.
+
+    Returns:
+        Tuple of (route_path, http_method) from the first route concept,
+        or (None, None) if no route concept exists.
+    """
+    if not symbol.meta:
+        return None, None
+
+    concepts = symbol.meta.get("concepts", [])
+    for concept in concepts:
+        if isinstance(concept, dict) and concept.get("concept") == "route":
+            return concept.get("path"), concept.get("method")
+    return None, None
+
+
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
     """Extract route symbols from context.
 
     Route symbols are either:
     - kind="route" (Ruby, Go, Rust analyzers)
-    - have meta.route_path (Python, JS framework analyzers)
+    - have meta.route_path (Python, JS framework analyzers - legacy)
+    - have route concept in meta.concepts (FRAMEWORK_PATTERNS phase)
     """
     return [
         s for s in ctx.symbols
-        if s.kind == "route" or (s.meta and s.meta.get("route_path"))
+        if s.kind == "route"
+        or (s.meta and s.meta.get("route_path"))
+        or _has_route_concept(s)
     ]
 
 

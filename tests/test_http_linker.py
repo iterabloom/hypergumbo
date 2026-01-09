@@ -573,3 +573,254 @@ class TestVariableUrlPatterns:
         assert len(result.edges) == 1
         assert result.edges[0].meta["url_type"] == "literal"
         assert result.edges[0].confidence == 0.9  # Same language, literal URL
+
+
+class TestConceptMetadataSupport:
+    """Tests for concept metadata support from FRAMEWORK_PATTERNS phase."""
+
+    def test_links_to_symbol_with_route_concept(self, tmp_path):
+        """Links HTTP calls to symbols with route concept in meta.concepts."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users")')
+
+        # Symbol with concept metadata (from FRAMEWORK_PATTERNS phase)
+        route_symbol = Symbol(
+            id="main.py::get_users::function",
+            name="get_users",
+            kind="function",  # Not "route" - detected via concept
+            path=str(tmp_path / "main.py"),
+            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+            language="python",
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/api/users"], "kwargs": {}},
+                ],
+                "concepts": [
+                    {"concept": "route", "path": "/api/users", "method": "GET"},
+                ],
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == route_symbol.id
+        assert result.edges[0].meta["http_method"] == "GET"
+
+    def test_links_to_symbol_with_post_route_concept(self, tmp_path):
+        """Links POST calls to symbols with POST route concept."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/items", { method: "POST" })')
+
+        route_symbol = Symbol(
+            id="routes.py::create_item::function",
+            name="create_item",
+            kind="function",
+            path=str(tmp_path / "routes.py"),
+            span=Span(start_line=5, start_col=0, end_line=15, end_col=0),
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/api/items", "method": "POST"},
+                ],
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["http_method"] == "POST"
+
+    def test_concept_method_must_match(self, tmp_path):
+        """HTTP method in concept must match call method."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users", { method: "DELETE" })')
+
+        route_symbol = Symbol(
+            id="main.py::get_users::function",
+            name="get_users",
+            kind="function",
+            path=str(tmp_path / "main.py"),
+            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/api/users", "method": "GET"},
+                ],
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        # Should not match - DELETE != GET
+        assert len(result.edges) == 0
+
+    def test_concept_path_with_parameters(self, tmp_path):
+        """Matches parameterized paths in concept metadata."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/items/123")')
+
+        route_symbol = Symbol(
+            id="main.py::delete_item::function",
+            name="delete_item",
+            kind="function",
+            path=str(tmp_path / "main.py"),
+            span=Span(start_line=30, start_col=0, end_line=40, end_col=0),
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/api/items/{id}", "method": "GET"},
+                ],
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+
+    def test_prefers_concept_over_legacy_meta(self, tmp_path):
+        """When both concept and legacy meta exist, uses concept."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/new-path")')
+
+        # Symbol has both concept and legacy metadata
+        route_symbol = Symbol(
+            id="main.py::handler::function",
+            name="handler",
+            kind="function",
+            path=str(tmp_path / "main.py"),
+            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+            language="python",
+            meta={
+                # Legacy meta (should be ignored when concept present)
+                "route_path": "/api/old-path",
+                "http_method": "POST",
+                # Concept meta (takes precedence)
+                "concepts": [
+                    {"concept": "route", "path": "/api/new-path", "method": "GET"},
+                ],
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        # Should match new-path from concept, not old-path from legacy
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["url_path"] == "/api/new-path"
+
+    def test_falls_back_to_legacy_meta(self, tmp_path):
+        """Falls back to legacy meta when no route concept exists."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users")')
+
+        # Symbol with only legacy metadata (no concepts)
+        route_symbol = Symbol(
+            id="main.py::get_users::function",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "main.py"),
+            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+            language="python",
+            stable_id="GET",
+            meta={
+                "route_path": "/api/users",
+                "http_method": "GET",
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+
+    def test_ignores_non_route_concepts(self, tmp_path):
+        """Symbols with non-route concepts don't match as routes."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users")')
+
+        # Symbol with model concept (not route)
+        model_symbol = Symbol(
+            id="models.py::User::class",
+            name="User",
+            kind="class",
+            path=str(tmp_path / "models.py"),
+            span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "model", "matched_base_class": "BaseModel"},
+                ],
+            },
+        )
+
+        result = link_http(tmp_path, [model_symbol])
+
+        # No route concept, shouldn't match
+        assert len(result.edges) == 0
+
+    def test_get_route_info_from_symbol_without_meta(self):
+        """_get_route_info_from_concept handles symbols with meta=None."""
+        from hypergumbo.linkers.http import _get_route_info_from_concept
+
+        symbol = Symbol(
+            id="test::func",
+            name="func",
+            kind="function",
+            path="test.py",
+            span=Span(start_line=1, start_col=0, end_line=5, end_col=0),
+            language="python",
+            meta=None,  # No metadata
+        )
+
+        path, method = _get_route_info_from_concept(symbol)
+        assert path is None
+        assert method is None
+
+    def test_get_route_symbols_includes_concept_routes(self, tmp_path):
+        """_get_route_symbols finds symbols with route concepts."""
+        from hypergumbo.linkers.http import _get_route_symbols
+        from hypergumbo.linkers.registry import LinkerContext
+
+        concept_route = Symbol(
+            id="main.py::handler::function",
+            name="handler",
+            kind="function",  # Not "route"
+            path="main.py",
+            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/api/test", "method": "GET"},
+                ],
+            },
+        )
+
+        legacy_route = Symbol(
+            id="old.py::get_users::function",
+            name="get_users",
+            kind="route",
+            path="old.py",
+            span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
+            language="python",
+            meta={"route_path": "/api/users", "http_method": "GET"},
+        )
+
+        non_route = Symbol(
+            id="utils.py::helper::function",
+            name="helper",
+            kind="function",
+            path="utils.py",
+            span=Span(start_line=1, start_col=0, end_line=5, end_col=0),
+            language="python",
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[concept_route, legacy_route, non_route],
+        )
+
+        routes = _get_route_symbols(ctx)
+
+        assert len(routes) == 2
+        assert concept_route in routes
+        assert legacy_route in routes
+        assert non_route not in routes

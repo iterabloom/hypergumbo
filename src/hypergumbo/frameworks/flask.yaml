@@ -1,0 +1,43 @@
+# Flask framework patterns (ADR-0003 v0.8.x)
+#
+# Matches Flask route decorators, blueprint patterns, and common extensions.
+# Symbols matching these patterns get enriched with concept metadata.
+
+id: flask
+language: python
+
+patterns:
+  # Flask 2.0+ shortcut routes - @app.get("/path"), @app.post("/path"), etc.
+  - concept: route
+    decorator: "^(app|blueprint|bp)\\.(get|post|put|delete|patch|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Classic Flask route - @app.route("/path"), @app.route("/path", methods=["GET"])
+  - concept: route
+    decorator: "^(app|blueprint|bp)\\.route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # Before/after request hooks
+  - concept: middleware
+    decorator: "^(app|blueprint|bp)\\.(before_request|after_request|teardown_request)$"
+
+  # Error handlers - @app.errorhandler(404)
+  - concept: error_handler
+    decorator: "^(app|blueprint|bp)\\.errorhandler$"
+
+  # Flask-RESTful Resource class
+  - concept: api_resource
+    base_class: "^(flask_restful\\.)?Resource$"
+
+  # Flask-WTF form
+  - concept: form
+    base_class: "^(flask_wtf\\.)?FlaskForm$"
+
+  # Flask-SQLAlchemy model
+  - concept: model
+    base_class: "^db\\.Model$"
+
+linkers:
+  - http

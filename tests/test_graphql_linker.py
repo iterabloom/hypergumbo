@@ -224,3 +224,42 @@ const GET_USERS = gql`query GetUsers { users { id } }`;
         graphql_edges = [e for e in result.edges if e.edge_type == "graphql_calls"]
         assert len(graphql_edges) == 1
         assert operation_symbol.id in graphql_edges[0].dst
+
+
+class TestGraphQLLinkerRegistered:
+    """Tests for the registered graphql_linker function."""
+
+    def test_graphql_linker_returns_result(self, tmp_path: Path) -> None:
+        """graphql_linker function returns LinkerResult."""
+        from hypergumbo.linkers.graphql import graphql_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = graphql_linker(ctx)
+
+        assert result is not None
+        assert hasattr(result, "symbols")
+        assert hasattr(result, "edges")
+
+    def test_graphql_linker_extracts_operations(self, tmp_path: Path) -> None:
+        """graphql_linker extracts GraphQL operation symbols from context."""
+        from hypergumbo.linkers.graphql import graphql_linker
+        from hypergumbo.linkers.registry import LinkerContext
+
+        # Create a GraphQL operation symbol in the context
+        operation_sym = Symbol(
+            id="graphql:schema.graphql:1-3:GetUsers:query",
+            name="GetUsers",
+            kind="query",
+            language="graphql",
+            path="schema.graphql",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+        )
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[operation_sym])
+        result = graphql_linker(ctx)
+
+        assert result is not None
+        # The linker should still work even if no client calls are found
+        assert isinstance(result.symbols, list)
+        assert isinstance(result.edges, list)

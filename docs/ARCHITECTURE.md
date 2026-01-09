@@ -5,17 +5,17 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7adfcdc07367
-  hypergumbo: 0.6.0
+  commit: 83810f78db4d
+  hypergumbo: 0.9.0
   python: 3.12.3
 -->
 
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **105** Python modules (68 analyzers, 14 linkers)
-- **1638** symbols (functions, classes, methods)
-- **5966** edges (calls, imports, instantiates)
+- **107** Python modules (68 analyzers, 14 linkers)
+- **1688** symbols (functions, classes, methods)
+- **6143** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (100%) · 109 files · ~45,031 LOC
+Python (98%), Yaml (2%) · 126 files · ~48,452 LOC
 
 ## Structure
 
@@ -46,10 +46,12 @@ Python (100%) · 109 files · ~45,031 LOC
 - `hypergumbo/cli.py`
 - `hypergumbo/metrics.py`
 - `hypergumbo/compact.py`
+- `hypergumbo/framework_patterns.py`
 - `hypergumbo/slice.py`
 - `hypergumbo/entrypoints.py`
 - `hypergumbo/build_grammars.py`
 - `hypergumbo/__main__.py`
+- `hypergumbo/sketch_embeddings.py`
 - `hypergumbo/llm_assist.py`
 - `hypergumbo/profile.py`
 - `hypergumbo/plan.py`
@@ -63,9 +65,7 @@ Python (100%) · 109 files · ~45,031 LOC
 - `hypergumbo/analyze/sql.py`
 - `hypergumbo/analyze/capnp.py`
 - `hypergumbo/analyze/groovy.py`
-- `hypergumbo/analyze/registry.py`
-- `hypergumbo/analyze/xml_config.py`
-- ... and 79 more files
+- ... and 81 more files
 
 ## Entry Points
 
@@ -81,8 +81,8 @@ Python (100%) · 109 files · ~45,031 LOC
 - `Edge` (class) — A relationship between two symbols (e.g., function calls).
 
 ### `hypergumbo/analyze/base.py`
+- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) ★ — Extract text content for a tree-sitter node.
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
-- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text content for a tree-sitter node.
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
@@ -90,13 +90,14 @@ Python (100%) · 109 files · ~45,031 LOC
 ### `hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
 
+### `hypergumbo/entrypoints.py`
+- `Entrypoint` (class) — A detected entrypoint in the codebase.
+- `_emit_path_deprecation_warning(framework: str) -> None` (function) — Emit a deprecation warning for path-based entrypoint detection.
+- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+
 ### `hypergumbo/analyze/julia.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 - `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/entrypoints.py`
-- `Entrypoint` (class) — A detected entrypoint in the codebase.
-- `_get_filename(path: str) -> str` (function) — Extract filename from path.
 
 ### `hypergumbo/analyze/rust.py`
 - `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
@@ -107,10 +108,13 @@ Python (100%) · 109 files · ~45,031 LOC
 ### `hypergumbo/linkers/registry.py`
 - `LinkerResult` (class) — Result from running a linker.
 
-(... and 1499 more symbols across 87 other files)
+### `hypergumbo/analyze/py.py`
+- `_format_annotation(node: ast.expr) -> str` (function) — Format a type annotation node to a readable string.
+
+(... and 1554 more symbols across 89 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 8 appearances of `_node_text`
+- `_node_text` - we omitted 6 appearances of `_node_text`
 - `_find_child_by_type` - we omitted 5 appearances
 
 ## All Files
@@ -167,13 +171,7 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `hypergumbo/analyze/php.py`
 - `hypergumbo/analyze/powershell.py`
 - `hypergumbo/analyze/proto.py`
-- `hypergumbo/analyze/py.py`
-- `hypergumbo/analyze/r_lang.py`
-- `hypergumbo/analyze/registry.py`
-- `hypergumbo/analyze/ruby.py`
-- `hypergumbo/analyze/rust.py`
-- `hypergumbo/analyze/scala.py`
-- ... and 51 more files
+- ... and 74 more files
 ```
 
 ## Data Flow
@@ -188,7 +186,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1638 Symbols + 5966 Edges
+│  analyzers  │────▶│     IR      │  1688 Symbols + 6143 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -210,12 +208,12 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 333 | ir.py |
+| `Symbol` | class | 334 | ir.py |
 | `Span` | class | 322 | ir.py |
 | `iter_tree` | function | 160 | base.py |
 | `find_files` | function | 147 | discovery.py |
+| `node_text` | function | 131 | base.py |
 | `Edge` | class | 127 | ir.py |
-| `node_text` | function | 98 | base.py |
 | `AnalysisRun` | class | 92 | ir.py |
 | `Pass` | class | 66 | catalog.py |
 | `_find_child_by_type` | function | 30 | julia.py |
@@ -229,6 +227,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`compact`**: Compact output mode with coverage-based truncation and residual sum...
 - **`discovery`**: File discovery with exclude patterns.
 - **`entrypoints`**: Entrypoint detection heuristics for code analysis.
+- **`framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003 v0.8.x).
 - **`ir`**: Internal Representation (IR) for code analysis.
 - **`limits`**: Limits tracking for behavior map output.
 - **`llm_assist`**: LLM-assisted capsule plan generation.
@@ -238,6 +237,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`selection.language_proportional`**: Language-proportional symbol selection utilities.
 - **`selection.token_budget`**: Token estimation and budget management for LLM-aware output.
+- **`sketch_embeddings`**: Embedding-based config extraction for sketch generation.
 - **`slice`**: Graph slicing for LLM context extraction.
 - **`supply_chain`**: Supply chain classification for code analysis.
 - **`user_config`**: User configuration management for hypergumbo.
@@ -382,6 +382,74 @@ Provenance tracking for reproducibility:
 3. Match patterns across existing symbols
 4. Create cross-language edges
 5. Add tests in `tests/test_<name>_linker.py`
+
+## Framework Patterns Architecture (ADR-0003)
+
+> **Note:** This section is manually maintained. See `docs/adr/0003-architectural-analysis-and-revision-plan.md` for the full design rationale.
+
+ADR-0003 introduced a layered architecture for framework-aware analysis:
+
+```
+Source Files
+     │
+     ▼
+┌─────────────────┐
+│    Analyzers    │  Extract language-level metadata only
+│   (py.py, etc.) │  - Decorators, annotations, base classes
+└─────────────────┘  - No framework-specific interpretation
+     │
+     ▼
+┌─────────────────────────┐
+│  FRAMEWORK_PATTERNS     │  Data-driven symbol enrichment
+│  (framework_patterns.py)│  - YAML pattern files define framework patterns
+└─────────────────────────┘  - Symbols enriched with concept metadata
+     │
+     ▼
+┌─────────────────┐
+│    Linkers      │  Cross-language edge creation
+│   (http.py, etc)│  - Use concept metadata for matching
+└─────────────────┘  - Fall back to legacy meta.route_path
+```
+
+### Key Components
+
+- **`framework_patterns.py`**: Loads and applies YAML pattern files
+- **`frameworks/*.yaml`**: Pattern definitions for each framework
+- **`meta.concepts`**: List of matched concepts on enriched symbols
+- **`meta.annotations`/`meta.decorators`**: Raw metadata for pattern matching
+
+### Adding a New Framework Pattern
+
+1. Create `src/hypergumbo/frameworks/<framework>.yaml`
+2. Define patterns matching decorator/annotation names
+3. Specify concept types (route, model, task, etc.)
+4. Add extraction methods for path/method if needed
+5. Add tests in `tests/test_framework_patterns.py`
+
+Example pattern:
+```yaml
+id: myframework
+language: python
+
+patterns:
+  - concept: route
+    decorator: "^myapp\\.(get|post|put|delete)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+```
+
+### Migration Status (v1.0.x)
+
+Analyzer-level route detection is deprecated. Deprecation warnings fire when:
+- Spring Boot/JAX-RS routes detected in Java
+- Django URL patterns detected in Python
+- ASP.NET Core routes detected in C#
+- Axum/Actix routes detected in Rust
+- Rails routes detected in Ruby
+- Laravel routes detected in PHP
+- Express routes detected in JavaScript/TypeScript
+
+Use `--frameworks` flag with YAML patterns instead.
 
 ---
 

@@ -11,6 +11,34 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Instantiation: new ClassName() (edges)
 - Native method declarations for JNI bridge detection
 
+Rich Metadata Extraction (ADR-0003)
+-----------------------------------
+Symbols include rich metadata in the `meta` field:
+
+- **decorators**: List of annotation info dicts with:
+  - name: Annotation name (e.g., "Entity", "Table", "GetMapping")
+  - args: Positional arguments (e.g., ["/users"] for @GetMapping("/users"))
+  - kwargs: Keyword arguments (e.g., {"name": "users"} for @Table(name = "users"))
+  - Supports string, integer, float, boolean, and array values
+
+- **base_classes**: List of extended/implemented classes/interfaces
+  - Includes generic type parameters (e.g., "Repository<User, Long>")
+  - Combines extends clause and implements clause
+
+Example:
+    @Entity
+    @Table(name = "users")
+    public class User extends BaseModel implements Serializable {}
+
+    Results in meta:
+    {
+        "decorators": [
+            {"name": "Entity", "args": [], "kwargs": {}},
+            {"name": "Table", "args": [], "kwargs": {"name": "users"}}
+        ],
+        "base_classes": ["BaseModel", "Serializable"]
+    }
+
 If tree-sitter-java is not installed, the analyzer gracefully degrades
 and returns an empty result.
 
@@ -215,7 +243,30 @@ def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
     return modifiers
 
 
-# Spring Boot route annotation mappings
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
+
+
+# Spring Boot route annotation mappings (deprecated - use spring.yaml patterns)
 SPRING_MAPPING_ANNOTATIONS = {
     "GetMapping": "GET",
     "PostMapping": "POST",
@@ -502,6 +553,157 @@ def _get_class_ancestors(
     return list(reversed(ancestors))
 
 
+def _java_value_to_python(
+    node: "tree_sitter.Node", source: bytes
+) -> str | int | float | bool | list | None:
+    """Convert a Java tree-sitter AST node to a Python value representation.
+
+    Handles strings, numbers, booleans, and identifiers.
+    Returns the value or a string representation for identifiers.
+    """
+    if node.type == "string_literal":
+        # Strip quotes from string literals
+        text = _node_text(node, source)
+        return text.strip('"')
+    elif node.type in ("decimal_integer_literal", "hex_integer_literal"):
+        text = _node_text(node, source)
+        try:
+            if text.startswith("0x") or text.startswith("0X"):
+                return int(text, 16)
+            return int(text)
+        except ValueError:  # pragma: no cover
+            return text
+    elif node.type in ("decimal_floating_point_literal",):
+        text = _node_text(node, source)
+        try:
+            return float(text.rstrip("fFdD"))
+        except ValueError:  # pragma: no cover
+            return text
+    elif node.type in ("true", "false"):
+        return node.type == "true"
+    elif node.type == "identifier":
+        return _node_text(node, source)
+    elif node.type == "field_access":
+        # Handle Enum.VALUE or Class.constant
+        return _node_text(node, source)
+    elif node.type in ("array_initializer", "element_value_array_initializer"):
+        # Handle array values: {value1, value2}
+        result = []
+        for child in node.children:
+            if child.type not in ("{", "}", ","):
+                result.append(_java_value_to_python(child, source))
+        return result
+    # For other types, return the text representation
+    return _node_text(node, source)  # pragma: no cover
+
+
+def _extract_annotation_info(
+    annotation_node: "tree_sitter.Node", source: bytes
+) -> dict[str, object]:
+    """Extract full annotation information including arguments.
+
+    Returns a dict with:
+    - name: annotation name (e.g., "Entity", "Table")
+    - args: list of positional arguments (string values without names)
+    - kwargs: dict of keyword arguments (name=value pairs)
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    for child in annotation_node.children:
+        if child.type == "identifier":
+            name = _node_text(child, source)
+        elif child.type == "annotation_argument_list":
+            for arg_child in child.children:
+                if arg_child.type == "string_literal":
+                    # Simple string argument: @Annotation("value")
+                    args.append(_java_value_to_python(arg_child, source))
+                elif arg_child.type == "element_value_pair":
+                    # Named argument: @Annotation(key = value)
+                    key = None
+                    value = None
+                    found_key = False
+                    for pair_child in arg_child.children:
+                        if pair_child.type == "identifier" and not found_key:
+                            key = _node_text(pair_child, source)
+                            found_key = True
+                        elif pair_child.type not in ("=", "identifier") or found_key:
+                            if pair_child.type != "=":
+                                value = _java_value_to_python(pair_child, source)
+                    if key and value is not None:
+                        kwargs[key] = value
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_annotations(
+    node: "tree_sitter.Node", source: bytes
+) -> list[dict[str, object]]:
+    """Extract all annotations from a Java node (class, interface, method, etc).
+
+    Annotations appear in a 'modifiers' child node.
+
+    Returns list of annotation info dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    decorators: list[dict[str, object]] = []
+
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_child in child.children:
+                if mod_child.type in ("annotation", "marker_annotation"):
+                    dec_info = _extract_annotation_info(mod_child, source)
+                    if dec_info["name"]:
+                        decorators.append(dec_info)
+
+    return decorators
+
+
+def _extract_base_classes(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Extract base classes/interfaces from a Java class or interface declaration.
+
+    Handles:
+    - extends clause: class Foo extends Bar
+    - implements clause: class Foo implements IBar, IBaz
+    - interface extends: interface Foo extends IBar, IBaz
+    - generic types: class Foo extends Bar<T>
+
+    Returns list of base class/interface names.
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        if child.type == "superclass":
+            # extends clause for classes
+            for super_child in child.children:
+                if super_child.type == "type_identifier":
+                    base_classes.append(_node_text(super_child, source))
+                elif super_child.type == "generic_type":
+                    base_classes.append(_node_text(super_child, source))
+        elif child.type == "super_interfaces":
+            # implements clause for classes
+            for iface_child in child.children:
+                if iface_child.type == "type_list":
+                    for type_child in iface_child.children:
+                        if type_child.type == "type_identifier":
+                            base_classes.append(_node_text(type_child, source))
+                        elif type_child.type == "generic_type":
+                            base_classes.append(_node_text(type_child, source))
+        elif child.type == "extends_interfaces":
+            # extends clause for interfaces
+            for ext_child in child.children:
+                if ext_child.type == "type_list":
+                    for type_child in ext_child.children:
+                        if type_child.type == "type_identifier":
+                            base_classes.append(_node_text(type_child, source))
+                        elif type_child.type == "generic_type":
+                            base_classes.append(_node_text(type_child, source))
+
+    return base_classes
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -527,6 +729,18 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+
+                # Extract annotations and base class metadata
+                meta: dict[str, object] | None = None
+                decorators = _extract_annotations(node, source)
+                base_classes = _extract_base_classes(node, source)
+                if decorators or base_classes:
+                    meta = {}
+                    if decorators:
+                        meta["decorators"] = decorators
+                    if base_classes:
+                        meta["base_classes"] = base_classes
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "class"),
                     name=full_name,
@@ -536,6 +750,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 
@@ -551,6 +766,18 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+
+                # Extract annotations and base class metadata
+                meta: dict[str, object] | None = None
+                decorators = _extract_annotations(node, source)
+                base_classes = _extract_base_classes(node, source)
+                if decorators or base_classes:
+                    meta = {}
+                    if decorators:
+                        meta["decorators"] = decorators
+                    if base_classes:
+                        meta["base_classes"] = base_classes
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "interface"),
                     name=full_name,
@@ -560,6 +787,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 
@@ -606,22 +834,36 @@ def _extract_symbols(
                 # Extract all modifiers for the modifiers field
                 modifiers = _extract_modifiers(node, source)
 
-                # Check for Spring Boot route annotations
+                # Check for Spring Boot route annotations (deprecated - use YAML)
                 http_method, route_path = _detect_spring_boot_route(node, source)
+                detected_framework = "Spring" if http_method else None
 
-                # If not Spring Boot, check for JAX-RS annotations
+                # If not Spring Boot, check for JAX-RS annotations (deprecated)
                 if not http_method:
                     http_method, route_path = _detect_jaxrs_route(node, source)
+                    if http_method:
+                        detected_framework = "JAX-RS"
+
+                # Emit deprecation warning for analyzer-level route detection
+                if detected_framework:
+                    _emit_route_deprecation_warning(detected_framework)
 
                 # Build meta dict
-                meta: dict[str, str | bool] | None = None
+                meta: dict[str, object] | None = None
                 stable_id: str | None = None
 
+                # Extract all annotations for rich metadata
+                decorators = _extract_annotations(node, source)
+                if decorators:
+                    meta = {"decorators": decorators}
+
                 if is_native:
-                    meta = {"is_native": True}
+                    if meta is None:
+                        meta = {}
+                    meta["is_native"] = True
 
                 if http_method or route_path:
-                    if meta is None:
+                    if meta is None:  # pragma: no cover
                         meta = {}
                     if route_path:
                         meta["route_path"] = route_path

@@ -1,0 +1,43 @@
+# FastAPI framework patterns (ADR-0003 v0.8.x)
+#
+# Matches FastAPI route decorators, Pydantic models, and Depends injection.
+# Symbols matching these patterns get enriched with concept metadata.
+
+id: fastapi
+language: python
+
+patterns:
+  # Route patterns - @app.get("/path"), @router.post("/path"), etc.
+  - concept: route
+    decorator: "^(app|router)\\.(get|post|put|delete|patch|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Generic route - @app.route("/path", methods=["POST"])
+  - concept: route
+    decorator: "^(app|router)\\.route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # APIRouter with prefix - router = APIRouter(prefix="/api/v1")
+  # Note: This pattern won't match directly since it's an assignment,
+  # but the prefix info should be in symbol metadata
+
+  # Pydantic model - class User(BaseModel):
+  - concept: model
+    base_class: "^(pydantic\\.)?BaseModel$"
+
+  # Dependency injection - def endpoint(db: Session = Depends(get_db)):
+  - concept: dependency
+    parameter_type: "^Depends$"
+
+  # Background task parameter - def endpoint(background_tasks: BackgroundTasks):
+  - concept: background_task
+    parameter_type: "^BackgroundTasks$"
+
+  # Request/Response parameters
+  - concept: request
+    parameter_type: "^(Request|Response)$"
+
+linkers:
+  - http

@@ -88,6 +88,10 @@ class LinkerContext:
     edges: list[Edge] = field(default_factory=list)
     captured_symbols: dict[str, list[Symbol]] = field(default_factory=dict)
 
+    # Framework and language detection results (for linker filtering)
+    detected_frameworks: set[str] = field(default_factory=set)
+    detected_languages: set[str] = field(default_factory=set)
+
     # Cached indexes, built lazily
     _symbol_by_id: dict[str, "Symbol"] | None = field(
         default=None, init=False, repr=False
@@ -274,6 +278,62 @@ LinkerFunc = Callable[[LinkerContext], LinkerResult]
 
 
 @dataclass
+class LinkerActivation:
+    """Activation conditions for a linker (ADR-0003).
+
+    Linkers have different activation conditions:
+    - Protocol linkers: always=True (run unconditionally)
+    - Framework linkers: frameworks=["grpc"] (run if framework detected)
+    - Language-pair linkers: language_pairs=[("java", "c")] (run if both present)
+
+    Activation is evaluated as:
+    - If always=True: always run
+    - Otherwise: run if ANY framework matches OR ANY language pair matches
+
+    Attributes:
+        always: If True, linker always runs (protocol linkers)
+        frameworks: List of frameworks that trigger this linker
+        language_pairs: List of (lang1, lang2) tuples; linker runs if both present
+    """
+
+    always: bool = False
+    frameworks: list[str] = field(default_factory=list)
+    language_pairs: list[tuple[str, str]] = field(default_factory=list)
+
+    def should_run(
+        self,
+        detected_frameworks: set[str],
+        detected_languages: set[str],
+    ) -> bool:
+        """Check if this linker should run given detected frameworks/languages.
+
+        Args:
+            detected_frameworks: Set of detected framework names
+            detected_languages: Set of detected language names
+
+        Returns:
+            True if the linker should run, False otherwise.
+        """
+        if self.always:
+            return True
+
+        # Check framework conditions (any match)
+        if self.frameworks:
+            for fw in self.frameworks:
+                if fw in detected_frameworks:
+                    return True
+
+        # Check language pair conditions (any pair with both present)
+        if self.language_pairs:
+            for lang1, lang2 in self.language_pairs:
+                if lang1 in detected_languages and lang2 in detected_languages:
+                    return True
+
+        # No conditions met, and not always=True
+        return False
+
+
+@dataclass
 class LinkerRequirement:
     """A requirement for a linker to produce useful edges.
 
@@ -300,6 +360,7 @@ class RegisteredLinker:
             Early linkers (JNI) run first; late linkers (dependency) run last.
         description: Human-readable description
         requirements: List of requirements the linker needs to produce useful edges.
+        activation: Conditions under which this linker should run (ADR-0003).
     """
 
     name: str
@@ -307,6 +368,7 @@ class RegisteredLinker:
     priority: int = 50
     description: str = ""
     requirements: list[LinkerRequirement] = field(default_factory=list)
+    activation: LinkerActivation = field(default_factory=lambda: LinkerActivation(always=True))
 
 
 # Global registry of linkers
@@ -318,6 +380,7 @@ def register_linker(
     priority: int = 50,
     description: str = "",
     requirements: list[LinkerRequirement] | None = None,
+    activation: LinkerActivation | None = None,
 ) -> Callable[[LinkerFunc], LinkerFunc]:
     """Decorator to register a linker function.
 
@@ -327,13 +390,20 @@ def register_linker(
         description: Human-readable description of what the linker does.
         requirements: List of requirements the linker needs. When requirements
             are unmet (check returns 0), the linker may produce no edges.
+        activation: Conditions under which this linker should run (ADR-0003).
+            If None, defaults to always=True (protocol linker behavior).
 
     Returns:
         Decorator that registers the function and returns it unchanged.
 
     Example:
-        @register_linker("ipc", priority=50, description="IPC patterns")
-        def link_ipc(ctx: LinkerContext) -> LinkerResult:
+        @register_linker(
+            "grpc",
+            priority=30,
+            description="gRPC service linking",
+            activation=LinkerActivation(frameworks=["grpc", "protobuf"]),
+        )
+        def link_grpc(ctx: LinkerContext) -> LinkerResult:
             ...
     """
 
@@ -344,10 +414,32 @@ def register_linker(
             priority=priority,
             description=description,
             requirements=requirements or [],
+            activation=activation or LinkerActivation(always=True),
         )
         return func
 
     return decorator
+
+
+def should_run_linker(
+    name: str,
+    detected_frameworks: set[str],
+    detected_languages: set[str],
+) -> bool:
+    """Check if a linker should run given detected frameworks/languages.
+
+    Args:
+        name: The linker identifier
+        detected_frameworks: Set of detected framework names
+        detected_languages: Set of detected language names
+
+    Returns:
+        True if the linker should run, False if not found or shouldn't run.
+    """
+    linker = _LINKER_REGISTRY.get(name)
+    if linker is None:  # pragma: no cover - defensive for unknown linker
+        return False
+    return linker.activation.should_run(detected_frameworks, detected_languages)
 
 
 def get_linker(name: str) -> RegisteredLinker | None:
@@ -397,12 +489,17 @@ def run_linker(
 def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     """Run all registered linkers in priority order.
 
+    Linkers are filtered by their activation conditions:
+    - always=True: Run unconditionally (protocol linkers)
+    - frameworks=[...]: Run if any framework is detected
+    - language_pairs=[...]: Run if both languages in a pair are detected
+
     After all linkers run, a post-processing pass connects synthetic nodes
     (grpc_stub, mq_publisher, etc.) to their enclosing functions. This
     enables slice traversal from application code through linker boundaries.
 
     Args:
-        ctx: LinkerContext with all inputs
+        ctx: LinkerContext with all inputs (including detected_frameworks/languages)
 
     Returns:
         List of (name, result) tuples in execution order.
@@ -410,8 +507,14 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     results = []
     all_linker_symbols: list[Symbol] = []
 
-    # Run all registered linkers
+    # Run linkers that pass activation check
     for linker in get_all_linkers():
+        # Check if linker should run based on detected frameworks/languages
+        if not linker.activation.should_run(
+            ctx.detected_frameworks, ctx.detected_languages
+        ):
+            continue  # Skip inactive linkers
+
         result = linker.func(ctx)
         results.append((linker.name, result))
         all_linker_symbols.extend(result.symbols)

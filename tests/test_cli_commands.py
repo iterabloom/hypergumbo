@@ -1694,3 +1694,152 @@ def test_find_git_root_at_root_itself(tmp_path: Path) -> None:
 
     result = _find_git_root(tmp_path)
     assert result == tmp_path
+
+
+def test_cmd_run_includes_entrypoints(tmp_path: Path) -> None:
+    """Test that cmd_run includes entrypoints in the JSON output."""
+    # Create a Python file with a main function (detected as CLI entrypoint)
+    (tmp_path / "main.py").write_text("""
+def main():
+    print("Hello")
+
+if __name__ == "__main__":
+    main()
+""")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "results.json")
+
+    result = cmd_run(args)
+    assert result == 0
+
+    data = json.loads((tmp_path / "results.json").read_text())
+
+    # Verify entrypoints section exists
+    assert "entrypoints" in data
+    assert isinstance(data["entrypoints"], list)
+
+    # Should have at least one entrypoint (the main function)
+    assert len(data["entrypoints"]) >= 1
+
+    # Check entrypoint structure
+    ep = data["entrypoints"][0]
+    assert "symbol_id" in ep
+    assert "kind" in ep
+    assert "confidence" in ep
+    assert "label" in ep
+
+
+def test_cmd_slice_smart_json_detection(tmp_path: Path, capsys) -> None:
+    """Test that slice auto-detects JSON files as input."""
+    # Create a behavior map file
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:main.py:1-2:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            }
+        ],
+        "edges": [],
+    }
+    json_file = tmp_path / "results.json"
+    json_file.write_text(json.dumps(behavior_map))
+
+    # Call slice with just the JSON file path (no --input flag)
+    args = FakeArgs()
+    args.path = str(json_file)  # JSON file as path, not --input
+    args.input = None
+    args.entry = "auto"
+    args.list_entries = True
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.reverse = False
+    args.max_tier = None
+    args.language = None
+    args.inline = False
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should detect the main function as an entrypoint
+    assert "main" in out or "entrypoint" in out.lower()
+
+
+def test_cmd_slice_smart_json_detection_does_not_override_explicit_input(
+    tmp_path: Path, capsys
+) -> None:
+    """Test that --input flag takes precedence over smart detection."""
+    # Create two behavior map files with different "main" functions
+    behavior_map1 = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:a.py:1-2:main_from_file1:function",
+                "name": "main",  # This would be detected as CLI entrypoint
+                "kind": "function",
+                "language": "python",
+                "path": "a.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            }
+        ],
+        "edges": [],
+    }
+    behavior_map2 = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:b.py:1-2:main_from_file2:function",
+                "name": "main",  # This would be detected as CLI entrypoint
+                "kind": "function",
+                "language": "python",
+                "path": "b.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            }
+        ],
+        "edges": [],
+    }
+
+    json_file1 = tmp_path / "results1.json"
+    json_file1.write_text(json.dumps(behavior_map1))
+    json_file2 = tmp_path / "results2.json"
+    json_file2.write_text(json.dumps(behavior_map2))
+
+    # Call slice with JSON file as path but also explicit --input
+    args = FakeArgs()
+    args.path = str(json_file1)  # This would be auto-detected
+    args.input = str(json_file2)  # But explicit --input should win
+    args.entry = "auto"
+    args.list_entries = True
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.reverse = False
+    args.max_tier = None
+    args.language = None
+    args.inline = False
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should use json_file2 (explicit --input), so b.py should appear (not a.py)
+    assert "b.py" in out
+    assert "a.py" not in out
