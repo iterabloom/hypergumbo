@@ -3,13 +3,25 @@
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Released **tool** is at: v0.6.9
-- Released **schema** is at: v0.1.0
+- Released **schema** is at: v0.2.0
 
 This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
 ## [Unreleased]
 
+### Changed (Breaking)
+- **Schema version 0.2.0:** The output schema version bumped from 0.1.0 to 0.2.0.
+  - New `entrypoints` field added to behavior map output. This field contains detected
+    entrypoints computed from symbols, persisting them for downstream consumers.
+
 ### Added
+- **Entrypoints in JSON output:** The behavior map now includes an `entrypoints` array
+  containing all detected entrypoints with their stable IDs, paths, and metadata.
+  Previously entrypoints were computed dynamically by the slice command but not persisted.
+- **Smart JSON detection in slice command:** When passing a `.json` file as the positional
+  argument to `hypergumbo slice`, it's now automatically treated as `--input` rather than
+  a repo path. This fixes confusing behavior where `hypergumbo slice results.json <symbol>`
+  would fail silently. The `--input` flag still takes precedence if explicitly provided.
 - **`--frameworks` flag (ADR-0003 Item 3):** Control framework detection with new CLI option:
   - `--frameworks=none`: Skip framework detection entirely (base analysis only)
   - `--frameworks=all`: Check all known framework patterns for detected languages

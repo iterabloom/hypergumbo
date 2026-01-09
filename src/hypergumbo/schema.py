@@ -46,7 +46,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v1"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"
@@ -78,5 +78,6 @@ def new_behavior_map() -> Dict[str, Any]:
         "features": [],
         "metrics": {},
         "limits": {},
+        "entrypoints": [],
     }
 

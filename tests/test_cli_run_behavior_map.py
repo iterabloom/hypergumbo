@@ -23,7 +23,7 @@ def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     assert out_path.exists(), "hypergumbo.results.json was not created"
 
     data = json.loads(out_path.read_text())
-    assert data["schema_version"] == "0.1.0"
+    assert data["schema_version"] == "0.2.0"
     assert data["view"] == "behavior_map"
 
 

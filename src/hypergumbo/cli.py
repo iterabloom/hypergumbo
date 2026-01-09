@@ -320,8 +320,17 @@ def _edge_from_dict(d: Dict[str, Any]) -> Edge:
 
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
-    repo_root = Path(args.path).resolve()
+    path_arg = Path(args.path).resolve()
     out_path = Path(args.out)
+
+    # Smart detection: if path is a .json file, treat it as --input automatically
+    # This provides better UX: `hypergumbo slice results.json` just works
+    if path_arg.suffix == ".json" and path_arg.is_file() and not args.input:
+        args.input = str(path_arg)
+        # Use parent directory as repo_root (or cwd if file is in cwd)
+        repo_root = path_arg.parent if path_arg.parent != Path.cwd() else Path.cwd()
+    else:
+        repo_root = path_arg
 
     # Determine input: use --input if provided, otherwise run analysis
     if args.input:
@@ -1615,6 +1624,10 @@ def run_behavior_map(
 
     # Compute metrics from analyzed nodes and edges
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
+
+    # Detect and store entrypoints (computed from symbols, persisted for convenience)
+    entrypoints = detect_entrypoints(all_symbols, all_edges)
+    behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
 
     # Compute supply chain summary
     # Note: derived_paths would be tracked during file discovery in a full implementation
