@@ -578,19 +578,35 @@ def cmd_routes(args: argparse.Namespace) -> int:
     nodes = behavior_map.get("nodes", [])
 
     # Find route handlers - symbols with HTTP method markers in stable_id
+    # or route concepts in meta.concepts
     routes: list[dict] = []
     for node in nodes:
-        stable_id = node.get("stable_id", "")
-        if stable_id:
-            # Check if stable_id is an HTTP method or comma-separated list of methods
-            # e.g., "get", "post", or "get,post" for DRF @api_view(['GET', 'POST'])
-            stable_id_lower = stable_id.lower()
-            methods = stable_id_lower.split(",")
-            if all(m.strip() in HTTP_METHODS for m in methods):
-                # Apply language filter
-                if args.language and node.get("language") != args.language:
-                    continue
-                routes.append(node)
+        is_route = False
+
+        # Check for route concept in meta.concepts (FRAMEWORK_PATTERNS phase)
+        meta = node.get("meta") or {}
+        concepts = meta.get("concepts", [])
+        for concept in concepts:
+            if isinstance(concept, dict) and concept.get("concept") == "route":
+                is_route = True
+                break
+
+        # Fall back to checking stable_id for HTTP methods (legacy)
+        if not is_route:
+            stable_id = node.get("stable_id", "")
+            if stable_id:
+                # Check if stable_id is an HTTP method or comma-separated list of methods
+                # e.g., "get", "post", or "get,post" for DRF @api_view(['GET', 'POST'])
+                stable_id_lower = stable_id.lower()
+                methods = stable_id_lower.split(",")
+                if all(m.strip() in HTTP_METHODS for m in methods):
+                    is_route = True
+
+        if is_route:
+            # Apply language filter
+            if args.language and node.get("language") != args.language:
+                continue
+            routes.append(node)
 
     if not routes:
         print("No API routes found in the behavior map.")
@@ -613,12 +629,27 @@ def cmd_routes(args: argparse.Namespace) -> int:
         print(f"{file_path}:")
         for route in file_routes:
             name = route.get("name", "")
-            method = route.get("stable_id", "").upper()
             span = route.get("span", {})
             line = span.get("start_line", 0)
-            # Include route path if available
             meta = route.get("meta", {}) or {}
-            route_path = meta.get("route_path", "")
+
+            # Try concept metadata first (FRAMEWORK_PATTERNS phase)
+            route_path = None
+            method = None
+            concepts = meta.get("concepts", [])
+            for concept in concepts:
+                if isinstance(concept, dict) and concept.get("concept") == "route":
+                    route_path = concept.get("path")
+                    method = concept.get("method")
+                    break
+
+            # Fall back to legacy metadata
+            if not route_path:
+                route_path = meta.get("route_path", "")
+            if not method:
+                method = meta.get("http_method") or route.get("stable_id", "")
+
+            method = method.upper() if method else ""
             if route_path:
                 print(f"  [{method}] {route_path} -> {name} (line {line})")
             else:
