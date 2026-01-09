@@ -1,0 +1,100 @@
+# Ruby on Rails framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Rails conventions for controllers, models, jobs, mailers, and more.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Note: Rails uses convention-over-configuration. Routes are defined in
+# config/routes.rb, not via decorators. This file focuses on matching
+# Rails classes by their inheritance patterns.
+
+id: rails
+language: ruby
+
+patterns:
+  # Controllers - inherit from ApplicationController or ActionController::Base
+  - concept: controller
+    base_class: "^ApplicationController$"
+
+  - concept: controller
+    base_class: "^ActionController::Base$"
+
+  - concept: controller
+    base_class: "^ActionController::API$"
+
+  # Models - inherit from ApplicationRecord or ActiveRecord::Base
+  - concept: model
+    base_class: "^ApplicationRecord$"
+
+  - concept: model
+    base_class: "^ActiveRecord::Base$"
+
+  # Jobs - inherit from ApplicationJob or ActiveJob::Base
+  - concept: task
+    base_class: "^ApplicationJob$"
+
+  - concept: task
+    base_class: "^ActiveJob::Base$"
+
+  # Mailers - inherit from ApplicationMailer or ActionMailer::Base
+  - concept: mailer
+    base_class: "^ApplicationMailer$"
+
+  - concept: mailer
+    base_class: "^ActionMailer::Base$"
+
+  # Channels (Action Cable) - inherit from ApplicationCable::Channel
+  - concept: websocket_handler
+    base_class: "^ApplicationCable::Channel$"
+
+  - concept: websocket_handler
+    base_class: "^ActionCable::Channel::Base$"
+
+  # Connections (Action Cable) - inherit from ApplicationCable::Connection
+  - concept: websocket_connection
+    base_class: "^ApplicationCable::Connection$"
+
+  - concept: websocket_connection
+    base_class: "^ActionCable::Connection::Base$"
+
+  # Serializers (ActiveModelSerializers)
+  - concept: serializer
+    base_class: "^ActiveModel::Serializer$"
+
+  - concept: serializer
+    base_class: "^ApplicationSerializer$"
+
+  # Form objects
+  - concept: form
+    base_class: "^ActiveModel::Model$"
+
+  # Validators
+  - concept: validator
+    base_class: "^ActiveModel::Validator$"
+
+  - concept: validator
+    base_class: "^ActiveModel::EachValidator$"
+
+  # Services (common Rails pattern - no specific base class)
+  # Service objects typically don't have a standard base class
+
+  # Policies (Pundit authorization)
+  - concept: policy
+    base_class: "^ApplicationPolicy$"
+
+  # Decorators (Draper)
+  - concept: decorator
+    base_class: "^Draper::Decorator$"
+
+  - concept: decorator
+    base_class: "^ApplicationDecorator$"
+
+  # Sidekiq workers (common with Rails)
+  - concept: task
+    base_class: "^Sidekiq::Worker$"
+
+  # Rake tasks are not classes, so can't be matched here
+
+linkers:
+  - http
+  - websocket
+  - database_query
