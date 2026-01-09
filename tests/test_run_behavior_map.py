@@ -1,6 +1,7 @@
 import json
 
 from hypergumbo.cli import run_behavior_map
+from hypergumbo.schema import SCHEMA_VERSION
 
 
 def test_run_behavior_map_writes_behavior_map_json(tmp_path):
@@ -15,7 +16,7 @@ def test_run_behavior_map_writes_behavior_map_json(tmp_path):
 
     data = json.loads(out_path.read_text())
 
-    assert data["schema_version"] == "0.1.0"
+    assert data["schema_version"] == SCHEMA_VERSION
     assert data["view"] == "behavior_map"
     assert data["confidence_model"] == "hypergumbo-evidence-v1"
     assert data["analysis_incomplete"] is False

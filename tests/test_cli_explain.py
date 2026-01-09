@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from hypergumbo.schema import SCHEMA_VERSION
 from hypergumbo.cli import cmd_explain, main
 
 
@@ -14,7 +15,7 @@ class FakeArgs:
 def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
     """Explain shows detailed info about a symbol."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-10:foo:function",
@@ -57,7 +58,7 @@ def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_shows_callers_and_callees(tmp_path: Path, capsys) -> None:
     """Explain shows callers (who calls this) and callees (what this calls)."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:main:function",
@@ -126,7 +127,7 @@ def test_cmd_explain_shows_callers_and_callees(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_symbol_not_found(tmp_path: Path, capsys) -> None:
     """Explain reports error when symbol not found."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:foo:function",
@@ -158,7 +159,7 @@ def test_cmd_explain_symbol_not_found(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
     """Explain lists all matches when multiple symbols match."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:process:function",
@@ -201,7 +202,7 @@ def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_with_input_file(tmp_path: Path, capsys) -> None:
     """Explain can read from specified input file."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:bar:function",
@@ -257,7 +258,7 @@ def test_cmd_explain_no_results_file(tmp_path: Path) -> None:
 def test_main_with_explain(tmp_path: Path, capsys) -> None:
     """Main with explain command."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:test:function",
@@ -284,7 +285,7 @@ def test_main_with_explain(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_shows_no_callers_callees(tmp_path: Path, capsys) -> None:
     """Explain shows appropriate message when no callers or callees exist."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:isolated:function",

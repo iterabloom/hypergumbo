@@ -1,11 +1,11 @@
-from hypergumbo.schema import new_behavior_map
+from hypergumbo.schema import new_behavior_map, SCHEMA_VERSION
 
 
 def test_new_behavior_map_has_required_top_level_fields():
     bm = new_behavior_map()
 
     # Fixed identifiers
-    assert bm["schema_version"] == "0.1.0"
+    assert bm["schema_version"] == SCHEMA_VERSION
     assert bm["view"] == "behavior_map"
     assert bm["confidence_model"] == "hypergumbo-evidence-v1"
     assert bm["stable_id_scheme"] == "hypergumbo-stableid-v1"
