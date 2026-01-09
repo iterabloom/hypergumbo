@@ -215,6 +215,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - Warnings fire once per framework per session to avoid spam
   - Non-deprecated methods: semantic detection (`_detect_from_concepts`), decorator detection (`_detect_http_routes`), CLI detection (`_detect_cli_entrypoints`)
   - Migration path: Create framework YAML pattern files and use `--frameworks` flag
+- **Analyzer-level route detection (ADR-0003 v1.0.x):** All analyzer-level framework route detection now emits deprecation warnings:
+  - **Java:** Spring Boot (`@GetMapping`, `@PostMapping`, etc.) and JAX-RS (`@GET`, `@POST`, etc.)
+  - **Python:** Django URL patterns (`path()`, `re_path()`, `url()`)
+  - **C#:** ASP.NET Core attributes (`[HttpGet]`, `[HttpPost]`, etc.)
+  - **Rust:** Axum (`.route("/path", get(handler))`) and Actix-web (`#[get("/path")]`)
+  - **Ruby:** Rails route DSL (`get`, `post`, `resources`)
+  - **PHP:** Laravel routes (`Route::get()`, `Route::post()`, etc.)
+  - **JavaScript/TypeScript:** Express-style routes (`app.get()`, `router.post()`, etc.)
+  - Warnings fire once per framework per session to avoid spam
+  - Migration path: Use framework YAML patterns (--frameworks) for semantic detection
 
 ## [0.6.9] - 2026-01-07
 
