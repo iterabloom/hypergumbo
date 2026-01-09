@@ -52,6 +52,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Routes command concept metadata support:** The `hypergumbo routes` command now detects routes via:
   - Concept metadata (`meta.concepts[].concept == "route"`) from FRAMEWORK_PATTERNS phase
   - Falls back to legacy HTTP method stable_id detection
+- **Semantic entry detection (ADR-0003 Item 11):** Entrypoint detection now uses enriched metadata:
+  - New `_detect_from_concepts()` function checks `meta.concepts` for route concepts
+  - Semantic detection has highest priority (runs before path-based heuristics)
+  - High confidence (0.95) since based on actual decorator/pattern matching
+  - Eliminates false positives (e.g., React Router files without route concepts won't be flagged)
+  - Fallback to path-based heuristics for frameworks without YAML patterns
 
 ### Changed
 - **Python analyzer purified (ADR-0003 Item 9):** Route detection removed from Python analyzer:
