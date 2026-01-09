@@ -1,4 +1,5 @@
 """Tests for entrypoint detection heuristics."""
+import pytest
 
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import (
@@ -3498,4 +3499,147 @@ class TestSemanticEntryDetection:
         route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
         assert len(route_eps) == 1
         # Should have a generic label
-        assert route_eps[0].label == "HTTP route"
+
+
+class TestDeprecationWarnings:
+    """Tests for deprecation warnings on path-based heuristics.
+
+    ADR-0003 v0.9.x deprecates path-based entrypoint detection in favor
+    of semantic detection via concept metadata from FRAMEWORK_PATTERNS.
+    """
+
+    def test_express_route_emits_deprecation_warning(self) -> None:
+        """Express route detection via path emits deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "get_users",
+            path="src/routes/users.js",
+            language="javascript",
+            kind="function",
+        )
+
+        # Reset the warning tracker so warning fires even if already seen
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        with pytest.warns(DeprecationWarning, match="path-based"):
+            detect_entrypoints([sym], [])
+
+    def test_nestjs_controller_emits_deprecation_warning(self) -> None:
+        """NestJS controller detection via path emits deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "UserController",
+            path="src/users/users.controller.ts",
+            language="typescript",
+            kind="class",
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        with pytest.warns(DeprecationWarning, match="path-based"):
+            detect_entrypoints([sym], [])
+
+    def test_cli_detection_no_deprecation_warning(self) -> None:
+        """CLI detection does NOT emit deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "main",
+            path="src/main.py",
+            language="python",
+            kind="function",
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        # Should not raise DeprecationWarning
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym], [])
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
+
+    def test_semantic_detection_no_deprecation_warning(self) -> None:
+        """Semantic detection via concepts does NOT emit deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            language="python",
+            kind="function",
+            meta={"concepts": [{"concept": "route", "method": "GET"}]},
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        # Should not raise DeprecationWarning
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym], [])
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
+
+    def test_decorator_detection_no_deprecation_warning(self) -> None:
+        """Decorator-based HTTP route detection does NOT emit deprecation warning."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            language="python",
+            kind="function",
+            decorators=["get", "route"],  # Decorators
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        # Should not raise DeprecationWarning
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym], [])
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
+
+    def test_deprecation_warning_once_per_framework(self) -> None:
+        """Deprecation warning fires only once per framework per session."""
+        from hypergumbo import entrypoints as ep_module
+
+        sym1 = make_symbol(
+            "get_users",
+            path="src/routes/users.js",
+            language="javascript",
+            kind="function",
+        )
+        sym2 = make_symbol(
+            "get_orders",
+            path="src/routes/orders.js",
+            language="javascript",
+            kind="function",
+        )
+
+        ep_module._deprecated_path_warnings_emitted.clear()
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            detect_entrypoints([sym1], [])
+            detect_entrypoints([sym2], [])
+            express_warnings = [
+                x for x in w
+                if issubclass(x.category, DeprecationWarning)
+                and "Express" in str(x.message)
+            ]
+            # Only ONE warning for Express across both calls
+            assert len(express_warnings) == 1

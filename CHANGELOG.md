@@ -174,6 +174,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Deprecated
 - **Packs (ADR-0003 Item 5):** The `Pack` and `PackConfig` classes now emit deprecation warnings. Framework-specific analysis is now handled by linker activation conditions rather than packs. Existing code using packs will continue to work but should be migrated to use the new `--frameworks` flag instead.
+- **Path-based entrypoint heuristics (ADR-0003 Item 13):** All path-based entrypoint detection functions now emit deprecation warnings:
+  - Detection based on file paths/naming patterns (e.g., `routes/`, `*Controller.ts`) is deprecated
+  - Prefer semantic detection via concept metadata from FRAMEWORK_PATTERNS phase
+  - Warnings fire once per framework per session to avoid spam
+  - Non-deprecated methods: semantic detection (`_detect_from_concepts`), decorator detection (`_detect_http_routes`), CLI detection (`_detect_cli_entrypoints`)
+  - Migration path: Create framework YAML pattern files and use `--frameworks` flag
 
 ## [0.6.9] - 2026-01-07
 
