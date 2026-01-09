@@ -2688,3 +2688,281 @@ class TestCeleryPatterns:
         handler = next(s for s in enriched if s.name == "on_task_success")
         assert "concepts" in handler.meta
         assert any(c["concept"] == "event_handler" for c in handler.meta["concepts"])
+
+
+class TestRailsPatterns:
+    """Tests for Ruby on Rails framework pattern matching."""
+
+    def test_rails_application_controller_pattern(self) -> None:
+        """Rails ApplicationController base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None, "Rails patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:users_controller.rb:1:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="ruby",
+            path="app/controllers/users_controller.rb",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["ApplicationController"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "ApplicationController"
+
+    def test_rails_action_controller_base_pattern(self) -> None:
+        """Rails ActionController::Base base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:api_controller.rb:1:ApiController:class",
+            name="ApiController",
+            kind="class",
+            language="ruby",
+            path="app/controllers/api_controller.rb",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ActionController::Base"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "ActionController::Base"
+
+    def test_rails_application_record_pattern(self) -> None:
+        """Rails ApplicationRecord base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:user.rb:1:User:class",
+            name="User",
+            kind="class",
+            language="ruby",
+            path="app/models/user.rb",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["ApplicationRecord"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+        assert results[0]["matched_base_class"] == "ApplicationRecord"
+
+    def test_rails_application_job_pattern(self) -> None:
+        """Rails ApplicationJob base class matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:email_job.rb:1:EmailJob:class",
+            name="EmailJob",
+            kind="class",
+            language="ruby",
+            path="app/jobs/email_job.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ApplicationJob"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_base_class"] == "ApplicationJob"
+
+    def test_rails_application_mailer_pattern(self) -> None:
+        """Rails ApplicationMailer base class matches mailer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:user_mailer.rb:1:UserMailer:class",
+            name="UserMailer",
+            kind="class",
+            language="ruby",
+            path="app/mailers/user_mailer.rb",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ApplicationMailer"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "mailer"
+        assert results[0]["matched_base_class"] == "ApplicationMailer"
+
+    def test_rails_application_cable_channel_pattern(self) -> None:
+        """Rails ApplicationCable::Channel base class matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:chat_channel.rb:1:ChatChannel:class",
+            name="ChatChannel",
+            kind="class",
+            language="ruby",
+            path="app/channels/chat_channel.rb",
+            span=Span(1, 25, 0, 0),
+            meta={
+                "base_classes": ["ApplicationCable::Channel"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+        assert results[0]["matched_base_class"] == "ApplicationCable::Channel"
+
+    def test_rails_active_model_serializer_pattern(self) -> None:
+        """Rails ActiveModel::Serializer base class matches serializer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:user_serializer.rb:1:UserSerializer:class",
+            name="UserSerializer",
+            kind="class",
+            language="ruby",
+            path="app/serializers/user_serializer.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ActiveModel::Serializer"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer"
+        assert results[0]["matched_base_class"] == "ActiveModel::Serializer"
+
+    def test_rails_pundit_policy_pattern(self) -> None:
+        """Rails ApplicationPolicy base class matches policy pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:user_policy.rb:1:UserPolicy:class",
+            name="UserPolicy",
+            kind="class",
+            language="ruby",
+            path="app/policies/user_policy.rb",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ApplicationPolicy"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "policy"
+        assert results[0]["matched_base_class"] == "ApplicationPolicy"
+
+    def test_rails_sidekiq_worker_pattern(self) -> None:
+        """Sidekiq::Worker base class matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:hard_worker.rb:1:HardWorker:class",
+            name="HardWorker",
+            kind="class",
+            language="ruby",
+            path="app/workers/hard_worker.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Sidekiq::Worker"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_base_class"] == "Sidekiq::Worker"
+
+    def test_rails_enrich_symbols_integration(self) -> None:
+        """Rails patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:users_controller.rb:1:UsersController:class",
+                name="UsersController",
+                kind="class",
+                language="ruby",
+                path="app/controllers/users_controller.rb",
+                span=Span(1, 50, 0, 0),
+                meta={"base_classes": ["ApplicationController"]},
+            ),
+            Symbol(
+                id="test:user.rb:1:User:class",
+                name="User",
+                kind="class",
+                language="ruby",
+                path="app/models/user.rb",
+                span=Span(1, 40, 0, 0),
+                meta={"base_classes": ["ApplicationRecord"]},
+            ),
+            Symbol(
+                id="test:email_job.rb:1:EmailJob:class",
+                name="EmailJob",
+                kind="class",
+                language="ruby",
+                path="app/jobs/email_job.rb",
+                span=Span(1, 20, 0, 0),
+                meta={"base_classes": ["ApplicationJob"]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"rails"})
+
+        # Check that concepts were added
+        controller = next(s for s in enriched if s.name == "UsersController")
+        assert "concepts" in controller.meta
+        assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
+
+        model = next(s for s in enriched if s.name == "User")
+        assert "concepts" in model.meta
+        assert any(c["concept"] == "model" for c in model.meta["concepts"])
+
+        job = next(s for s in enriched if s.name == "EmailJob")
+        assert "concepts" in job.meta
+        assert any(c["concept"] == "task" for c in job.meta["concepts"])

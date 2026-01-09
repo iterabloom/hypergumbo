@@ -95,6 +95,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Task signals: `@task_prerun.connect`, `@task_success.connect`, `@task_failure.connect`, etc.
     - Worker signals: `@worker_ready.connect`, `@worker_init.connect`, etc.
     - Custom Task base classes
+  - Ruby on Rails patterns YAML (`rails.yaml`) with patterns for:
+    - Controllers: `ApplicationController`, `ActionController::Base`, `ActionController::API`
+    - Models: `ApplicationRecord`, `ActiveRecord::Base`
+    - Jobs: `ApplicationJob`, `ActiveJob::Base`
+    - Mailers: `ApplicationMailer`, `ActionMailer::Base`
+    - Channels (Action Cable): `ApplicationCable::Channel`, `ActionCable::Channel::Base`
+    - Serializers: `ActiveModel::Serializer`, `ApplicationSerializer`
+    - Pundit policies: `ApplicationPolicy`
+    - Draper decorators: `Draper::Decorator`, `ApplicationDecorator`
+    - Sidekiq workers: `Sidekiq::Worker`
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method
