@@ -16,6 +16,7 @@ def make_symbol(
     end_line: int = 5,
     language: str = "python",
     decorators: list[str] | None = None,
+    meta: dict | None = None,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -32,6 +33,7 @@ def make_symbol(
         origin="python-ast-v1",
         origin_run_id="uuid:test",
         stable_id=stable_id,
+        meta=meta,
     )
 
 
@@ -3213,3 +3215,287 @@ class TestIsTestFile:
         # These hit endswith("fakes") and endswith("mocks") specifically
         assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
         assert _is_test_file("internal/servicemocks/client.go")
+
+
+class TestSemanticEntryDetection:
+    """Tests for semantic entry detection from concept metadata.
+
+    ADR-0003 v0.9.x introduces semantic entry detection: detecting entrypoints
+    based on enriched symbol metadata (meta.concepts) from the FRAMEWORK_PATTERNS
+    phase, rather than path-based heuristics.
+
+    Semantic detection has:
+    - Higher confidence (0.95) since it's based on actual decorator/pattern matching
+    - Priority over path-based detection
+    - Framework-aware labels
+    """
+
+    def test_detect_route_concept(self) -> None:
+        """Symbol with route concept in meta.concepts is detected as route."""
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].symbol_id == sym.id
+        # Semantic detection should have high confidence
+        assert route_eps[0].confidence >= 0.95
+
+    def test_detect_post_route_concept(self) -> None:
+        """Symbol with POST route concept is detected as route."""
+        sym = make_symbol(
+            "create_user",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "POST"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+    def test_route_concept_includes_path_in_label(self) -> None:
+        """Route concept label includes the path from concept metadata."""
+        sym = make_symbol(
+            "get_item",
+            path="src/api/items.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/items/{id}", "method": "GET"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Label should include method and/or path info
+        assert "GET" in route_eps[0].label or "/items" in route_eps[0].label
+
+    def test_semantic_detection_priority_over_path_heuristics(self) -> None:
+        """Semantic detection takes priority, avoiding duplicate detection.
+
+        If a symbol is detected via concept metadata, it should NOT also be
+        detected via path heuristics (which could produce duplicates or
+        lower-confidence entries).
+        """
+        # Symbol in Express route file BUT also has concept metadata
+        sym = make_symbol(
+            "getUsers",
+            path="src/routes/users.js",  # Express path pattern
+            language="javascript",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only be detected once, not twice
+        all_eps = [e for e in entrypoints if e.symbol_id == sym.id]
+        assert len(all_eps) == 1
+        # And it should be the semantic detection (high confidence)
+        assert all_eps[0].confidence >= 0.95
+
+    def test_multiple_route_concepts_in_file(self) -> None:
+        """Multiple symbols with route concepts are all detected."""
+        sym1 = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        sym2 = make_symbol(
+            "create_user",
+            path="src/api/users.py",
+            start_line=20,
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "POST"}]},
+        )
+        nodes = [sym1, sym2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 2
+
+    def test_model_concept_not_detected_as_entrypoint(self) -> None:
+        """Model concept is NOT an entrypoint (models are not entry kinds)."""
+        sym = make_symbol(
+            "User",
+            kind="class",
+            path="src/models/user.py",
+            meta={
+                "concepts": [{"concept": "model", "framework": "fastapi"}]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Models are not entrypoints
+        assert len(entrypoints) == 0
+
+    def test_no_concepts_falls_back_to_path_heuristics(self) -> None:
+        """Without concept metadata, path heuristics still work as fallback."""
+        # Express route file but no concept metadata
+        sym = make_symbol(
+            "getUsers",
+            path="src/routes/users.js",
+            language="javascript",
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should be detected by Express path heuristics
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+        # Path heuristics have lower confidence
+        assert express_eps[0].confidence < 0.95
+
+    def test_empty_concepts_list_falls_back(self) -> None:
+        """Empty concepts list falls back to path heuristics."""
+        sym = make_symbol(
+            "getUsers",
+            path="src/routes/users.js",
+            language="javascript",
+            meta={"concepts": []},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should still be detected by Express path heuristics
+        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
+        assert len(express_eps) == 1
+
+    def test_react_router_not_detected_with_semantic(self) -> None:
+        """React Router files without route concepts are NOT detected as routes.
+
+        This is the key false positive elimination: React Router files in
+        routes/*.tsx should NOT be flagged as Express/API routes because
+        they don't have route concept metadata from FRAMEWORK_PATTERNS.
+        """
+        # React Router file - has a route-like path but no concept metadata
+        sym = make_symbol(
+            "Dashboard",
+            path="frontend/src/routes/dashboard.tsx",
+            language="typescript",
+            kind="function",
+            # No meta - React files don't get route concepts
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should NOT be detected as any route type
+        # (The .tsx exclusion prevents Express/Hapi detection)
+        route_like_eps = [
+            e for e in entrypoints
+            if e.kind in (
+                EntrypointKind.HTTP_ROUTE,
+                EntrypointKind.EXPRESS_ROUTE,
+                EntrypointKind.HAPI_ROUTE,
+            )
+        ]
+        assert len(route_like_eps) == 0
+
+    def test_non_dict_concept_skipped(self) -> None:
+        """Non-dict concepts in the list are skipped."""
+        sym = make_symbol(
+            "get_users",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    "invalid_string_concept",  # Not a dict - should be skipped
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+    def test_route_concept_method_only(self) -> None:
+        """Route concept with only method (no path) still detected."""
+        sym = make_symbol(
+            "create_resource",
+            path="src/api/resources.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": "POST"}  # No path
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Label should include method
+        assert "POST" in route_eps[0].label
+        assert "route" in route_eps[0].label.lower()
+
+    def test_route_concept_path_only(self) -> None:
+        """Route concept with only path (no method) still detected."""
+        sym = make_symbol(
+            "handle_request",
+            path="src/api/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/api/v1/resource"}  # No method
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Label should include path
+        assert "/api/v1/resource" in route_eps[0].label
+
+    def test_route_concept_no_method_no_path(self) -> None:
+        """Route concept with neither method nor path still detected."""
+        sym = make_symbol(
+            "wildcard_handler",
+            path="src/api/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "route"}  # Minimal route concept
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        # Should have a generic label
+        assert route_eps[0].label == "HTTP route"

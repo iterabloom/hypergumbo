@@ -359,6 +359,67 @@ def _is_test_file(path: str) -> bool:
     return False
 
 
+def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
+    """Detect entrypoints from semantic concept metadata.
+
+    ADR-0003 v0.9.x introduces semantic entry detection: the FRAMEWORK_PATTERNS
+    phase enriches symbols with concept metadata (meta.concepts) based on
+    decorator/pattern matching. This function checks for entrypoint-worthy
+    concepts like "route", "task", "cli_command".
+
+    Benefits:
+    - Higher confidence (0.95) since based on actual decorator/pattern matching
+    - Eliminates false positives (e.g., React Router files won't have route concepts)
+    - Framework-aware detection (concepts include framework info)
+
+    Currently detected concepts:
+    - "route" -> HTTP_ROUTE with high confidence
+
+    Args:
+        symbols: All symbols with potential concept metadata.
+
+    Returns:
+        List of entrypoints detected via semantic concepts.
+    """
+    entrypoints = []
+
+    for sym in symbols:
+        if not sym.meta:
+            continue
+        concepts = sym.meta.get("concepts", [])
+        if not concepts:
+            continue
+
+        for concept in concepts:
+            if not isinstance(concept, dict):
+                continue
+
+            concept_type = concept.get("concept")
+            if concept_type == "route":
+                # Route concept -> HTTP_ROUTE with high confidence
+                method = concept.get("method", "")
+                path = concept.get("path", "")
+                if method and path:
+                    label = f"HTTP {method.upper()} {path}"
+                elif method:
+                    label = f"HTTP {method.upper()} route"
+                elif path:
+                    label = f"HTTP route {path}"
+                else:
+                    label = "HTTP route"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.HTTP_ROUTE,
+                    confidence=0.95,
+                    label=label,
+                ))
+                break  # Only one entrypoint per symbol per concept type
+
+            # Future: Add support for task, cli_command, websocket, etc.
+
+    return entrypoints
+
+
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect HTTP route entrypoints from decorators."""
     entrypoints = []
@@ -1650,6 +1711,11 @@ def detect_entrypoints(
 ) -> List[Entrypoint]:
     """Detect entrypoints in the codebase.
 
+    Detection priority (first match wins during deduplication):
+    1. Semantic detection from concept metadata (FRAMEWORK_PATTERNS phase)
+    2. Decorator-based detection (high confidence)
+    3. Path-based heuristics (fallback for frameworks without YAML patterns)
+
     Uses heuristics to find:
     - HTTP routes (FastAPI, Flask decorators)
     - CLI entrypoints (main guard, Click commands)
@@ -1664,7 +1730,12 @@ def detect_entrypoints(
     """
     entrypoints: List[Entrypoint] = []
 
-    # Detect different types of entrypoints
+    # Semantic detection from concept metadata (highest priority)
+    # This runs FIRST so it wins during deduplication, preventing
+    # path-based heuristics from creating duplicate/lower-confidence entries
+    entrypoints.extend(_detect_from_concepts(nodes))
+
+    # Detect different types of entrypoints (fallback for non-semantic detection)
     entrypoints.extend(_detect_http_routes(nodes))
     entrypoints.extend(_detect_cli_entrypoints(nodes))
     entrypoints.extend(_detect_electron_entrypoints(nodes))
