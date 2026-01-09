@@ -150,9 +150,9 @@ class Pattern:
         if self._param_type_re:
             for param in parameters:
                 param_type = (
-                    param.get("type", "") if isinstance(param, dict) else str(param)
+                    param.get("type") or "" if isinstance(param, dict) else str(param)
                 )
-                if self._param_type_re.match(param_type):
+                if param_type and self._param_type_re.match(param_type):
                     result["matched_parameter_type"] = param_type
                     return result
 
