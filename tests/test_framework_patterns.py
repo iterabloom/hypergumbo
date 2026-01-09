@@ -1383,10 +1383,11 @@ class TestSpringPatterns:
     def test_spring_get_mapping_pattern(self) -> None:
         """Spring @GetMapping annotation matches route pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None, "Spring patterns YAML should exist"
 
+        # Java analyzer stores annotations as decorators without @ prefix
         symbol = Symbol(
             id="test:UserController.java:10:getUsers:method",
             name="getUsers",
@@ -1395,8 +1396,8 @@ class TestSpringPatterns:
             path="UserController.java",
             span=Span(10, 20, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@GetMapping", "value": "/users"},
+                "decorators": [
+                    {"name": "GetMapping", "args": ["/users"], "kwargs": {}},
                 ],
             },
         )
@@ -1405,14 +1406,14 @@ class TestSpringPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
-        assert results[0]["matched_annotation"] == "@GetMapping"
+        assert results[0]["matched_decorator"] == "GetMapping"
         assert results[0]["method"] == "GET"
         assert results[0]["path"] == "/users"
 
     def test_spring_post_mapping_pattern(self) -> None:
         """Spring @PostMapping annotation matches route pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1424,8 +1425,8 @@ class TestSpringPatterns:
             path="UserController.java",
             span=Span(20, 30, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@PostMapping", "value": "/users"},
+                "decorators": [
+                    {"name": "PostMapping", "args": ["/users"], "kwargs": {}},
                 ],
             },
         )
@@ -1439,7 +1440,7 @@ class TestSpringPatterns:
     def test_spring_rest_controller_pattern(self) -> None:
         """Spring @RestController annotation matches controller pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1451,8 +1452,8 @@ class TestSpringPatterns:
             path="UserController.java",
             span=Span(1, 100, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@RestController"},
+                "decorators": [
+                    {"name": "RestController", "args": [], "kwargs": {}},
                 ],
             },
         )
@@ -1465,7 +1466,7 @@ class TestSpringPatterns:
     def test_spring_service_pattern(self) -> None:
         """Spring @Service annotation matches service pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1477,8 +1478,8 @@ class TestSpringPatterns:
             path="UserService.java",
             span=Span(1, 200, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@Service"},
+                "decorators": [
+                    {"name": "Service", "args": [], "kwargs": {}},
                 ],
             },
         )
@@ -1491,7 +1492,7 @@ class TestSpringPatterns:
     def test_spring_repository_pattern(self) -> None:
         """Spring @Repository annotation matches repository pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1503,8 +1504,8 @@ class TestSpringPatterns:
             path="UserRepository.java",
             span=Span(1, 50, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@Repository"},
+                "decorators": [
+                    {"name": "Repository", "args": [], "kwargs": {}},
                 ],
             },
         )
@@ -1517,7 +1518,7 @@ class TestSpringPatterns:
     def test_spring_entity_pattern(self) -> None:
         """Spring @Entity annotation matches model pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1529,8 +1530,8 @@ class TestSpringPatterns:
             path="User.java",
             span=Span(1, 50, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@Entity"},
+                "decorators": [
+                    {"name": "Entity", "args": [], "kwargs": {}},
                 ],
             },
         )
@@ -1543,7 +1544,7 @@ class TestSpringPatterns:
     def test_spring_scheduled_task_pattern(self) -> None:
         """Spring @Scheduled annotation matches task pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1555,8 +1556,8 @@ class TestSpringPatterns:
             path="TaskScheduler.java",
             span=Span(10, 20, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@Scheduled"},
+                "decorators": [
+                    {"name": "Scheduled", "args": [], "kwargs": {}},
                 ],
             },
         )
@@ -1569,7 +1570,7 @@ class TestSpringPatterns:
     def test_spring_put_mapping_pattern(self) -> None:
         """Spring @PutMapping annotation matches route pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1581,8 +1582,8 @@ class TestSpringPatterns:
             path="UserController.java",
             span=Span(30, 40, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@PutMapping", "value": "/users/{id}"},
+                "decorators": [
+                    {"name": "PutMapping", "args": ["/users/{id}"], "kwargs": {}},
                 ],
             },
         )
@@ -1597,7 +1598,7 @@ class TestSpringPatterns:
     def test_spring_delete_mapping_pattern(self) -> None:
         """Spring @DeleteMapping annotation matches route pattern."""
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("spring")
+        pattern_def = load_framework_patterns("spring-boot")
 
         assert pattern_def is not None
 
@@ -1609,8 +1610,8 @@ class TestSpringPatterns:
             path="UserController.java",
             span=Span(40, 50, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@DeleteMapping", "value": "/users/{id}"},
+                "decorators": [
+                    {"name": "DeleteMapping", "args": ["/users/{id}"], "kwargs": {}},
                 ],
             },
         )
@@ -1633,13 +1634,13 @@ class TestSpringPatterns:
             path="UserController.java",
             span=Span(10, 20, 0, 0),
             meta={
-                "annotations": [
-                    {"name": "@GetMapping", "value": "/users"},
+                "decorators": [
+                    {"name": "GetMapping", "args": ["/users"], "kwargs": {}},
                 ],
             },
         )
 
-        enriched = enrich_symbols([symbol], {"spring"})
+        enriched = enrich_symbols([symbol], {"spring-boot"})
 
         assert len(enriched) == 1
         assert "concepts" in enriched[0].meta
@@ -1647,7 +1648,7 @@ class TestSpringPatterns:
         assert route_concept["concept"] == "route"
         assert route_concept["method"] == "GET"
         assert route_concept["path"] == "/users"
-        assert route_concept["framework"] == "spring"
+        assert route_concept["framework"] == "spring-boot"
 
 
 class TestAnnotationMethodExtraction:

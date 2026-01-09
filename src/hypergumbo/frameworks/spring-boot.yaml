@@ -3,73 +3,73 @@
 # Matches Spring Boot/Spring MVC annotations for controllers, routes, services.
 # Symbols matching these patterns get enriched with concept metadata.
 
-id: spring
+id: spring-boot
 language: java
 
 patterns:
   # HTTP route annotations - @GetMapping, @PostMapping, etc.
+  # Note: Java annotations are stored in decorators field by the Java analyzer
   - concept: route
-    annotation: "^@(Get|Post|Put|Delete|Patch)Mapping$"
-    extract_path: "value"
-    extract_method: "annotation_prefix"
+    decorator: "^(Get|Post|Put|Delete|Patch)Mapping$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
 
   # Generic request mapping - @RequestMapping
   - concept: route
-    annotation: "^@RequestMapping$"
-    extract_path: "value"
-    # Method extracted from 'method' attribute (e.g., RequestMethod.GET)
+    decorator: "^RequestMapping$"
+    extract_path: "args[0]"
 
   # REST controller - @RestController
   - concept: controller
-    annotation: "^@RestController$"
+    decorator: "^RestController$"
 
   # MVC controller - @Controller
   - concept: controller
-    annotation: "^@Controller$"
+    decorator: "^Controller$"
 
   # Service layer - @Service
   - concept: service
-    annotation: "^@Service$"
+    decorator: "^Service$"
 
   # Data repository - @Repository
   - concept: repository
-    annotation: "^@Repository$"
+    decorator: "^Repository$"
 
   # Generic component - @Component
   - concept: component
-    annotation: "^@Component$"
+    decorator: "^Component$"
 
   # Configuration class - @Configuration
   - concept: configuration
-    annotation: "^@Configuration$"
+    decorator: "^Configuration$"
 
   # Bean definition - @Bean
   - concept: bean
-    annotation: "^@Bean$"
+    decorator: "^Bean$"
 
   # Entity class - @Entity
   - concept: model
-    annotation: "^@Entity$"
+    decorator: "^Entity$"
 
   # Table mapping - @Table
   - concept: model
-    annotation: "^@Table$"
+    decorator: "^Table$"
 
   # Exception handler - @ExceptionHandler
   - concept: error_handler
-    annotation: "^@ExceptionHandler$"
+    decorator: "^ExceptionHandler$"
 
   # Scheduled task - @Scheduled
   - concept: task
-    annotation: "^@Scheduled$"
+    decorator: "^Scheduled$"
 
   # Event listener - @EventListener
   - concept: event_handler
-    annotation: "^@EventListener$"
+    decorator: "^EventListener$"
 
   # Async method - @Async
   - concept: async
-    annotation: "^@Async$"
+    decorator: "^Async$"
 
 linkers:
   - http
