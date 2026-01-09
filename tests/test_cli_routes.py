@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from hypergumbo.schema import SCHEMA_VERSION
 from hypergumbo.cli import cmd_routes, main
 
 
@@ -14,7 +15,7 @@ class FakeArgs:
 def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
     """Routes command shows HTTP API endpoints."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/api.py:1-5:get_user:function",
@@ -69,7 +70,7 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
 def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:
     """Routes can be filtered by language."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/api.py:1-5:get_data:function",
@@ -112,7 +113,7 @@ def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:
 def test_cmd_routes_no_routes_found(tmp_path: Path, capsys) -> None:
     """Routes command reports when no routes found."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/utils.py:1-5:helper:function",
@@ -144,7 +145,7 @@ def test_cmd_routes_no_routes_found(tmp_path: Path, capsys) -> None:
 def test_cmd_routes_with_input_file(tmp_path: Path, capsys) -> None:
     """Routes can read from specified input file."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/api.py:1-5:delete_user:function",
@@ -201,7 +202,7 @@ def test_cmd_routes_no_results_file(tmp_path: Path) -> None:
 def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
     """Routes are grouped by file path."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/users.py:1-5:get_user:function",
@@ -253,7 +254,7 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
 def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
     """Routes with meta.route_path display the route path."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/api.py:1-5:get_user:function",
@@ -302,7 +303,7 @@ def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
 def test_main_with_routes(tmp_path: Path, capsys) -> None:
     """Main with routes command."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/api.py:1-5:update_item:function",

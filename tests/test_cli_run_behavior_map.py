@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hypergumbo.schema import SCHEMA_VERSION
+
 
 def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     # Project root is the repo root (two levels up from this test file)
@@ -23,7 +25,7 @@ def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     assert out_path.exists(), "hypergumbo.results.json was not created"
 
     data = json.loads(out_path.read_text())
-    assert data["schema_version"] == "0.1.0"
+    assert data["schema_version"] == SCHEMA_VERSION
     assert data["view"] == "behavior_map"
 
 

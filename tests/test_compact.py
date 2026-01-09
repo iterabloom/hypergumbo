@@ -4,6 +4,8 @@ This module tests the coverage-based truncation and bag-of-words
 summarization for LLM-friendly output.
 """
 import pytest
+
+from hypergumbo.schema import SCHEMA_VERSION
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.compact import (
     tokenize_name,
@@ -457,7 +459,7 @@ class TestFormatCompactBehaviorMap:
         edges = [make_edge(symbols[1].id, symbols[0].id)]
 
         behavior_map = {
-            "schema_version": "0.1.0",
+            "schema_version": SCHEMA_VERSION,
             "nodes": [s.to_dict() for s in symbols],
             "edges": [e.to_dict() for e in edges],
         }
@@ -618,7 +620,7 @@ class TestEstimateBehaviorMapTokens:
     def test_basic_behavior_map(self):
         """Basic behavior map token estimation."""
         behavior_map = {
-            "schema_version": "0.1.0",
+            "schema_version": SCHEMA_VERSION,
             "nodes": [{"id": "a", "name": "foo"}],
             "edges": [],
         }
@@ -738,7 +740,7 @@ class TestFormatTieredBehaviorMap:
         edges = [make_edge(symbols[1].id, symbols[0].id)]
 
         behavior_map = {
-            "schema_version": "0.1.0",
+            "schema_version": SCHEMA_VERSION,
             "nodes": [s.to_dict() for s in symbols],
             "edges": [e.to_dict() for e in edges],
         }

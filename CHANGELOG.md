@@ -2,13 +2,248 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v0.6.9
-- Released **schema** is at: v0.1.0
+- Released **tool** is at: v0.9.0
+- Released **schema** is at: v0.2.0
 
 This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-01-09
+
+### Changed (Breaking)
+- **Schema version 0.2.0:** The output schema version bumped from 0.1.0 to 0.2.0.
+  - New `entrypoints` field added to behavior map output. This field contains detected
+    entrypoints computed from symbols, persisting them for downstream consumers.
+
+### Added
+- **Entrypoints in JSON output:** The behavior map now includes an `entrypoints` array
+  containing all detected entrypoints with their stable IDs, paths, and metadata.
+  Previously entrypoints were computed dynamically by the slice command but not persisted.
+- **Smart JSON detection in slice command:** When passing a `.json` file as the positional
+  argument to `hypergumbo slice`, it's now automatically treated as `--input` rather than
+  a repo path. This fixes confusing behavior where `hypergumbo slice results.json <symbol>`
+  would fail silently. The `--input` flag still takes precedence if explicitly provided.
+- **Connectivity-based entrypoint ranking:** Entrypoints are now ranked by graph connectivity
+  in addition to detection confidence. An entrypoint with many outgoing edges (calls to other
+  functions) is considered more "interesting" and ranks higher. This makes `--entry auto`
+  automatically select the most connected entrypoint, improving slice quality for codebases
+  with many entrypoints (e.g., test suites with many `main` functions).
+- **`--frameworks` flag (ADR-0003 Item 3):** Control framework detection with new CLI option:
+  - `--frameworks=none`: Skip framework detection entirely (base analysis only)
+  - `--frameworks=all`: Check all known framework patterns for detected languages
+  - `--frameworks=fastapi,celery`: Only check specified frameworks (explicit mode)
+  - Default (no flag): Auto-detect based on detected languages (existing behavior)
+  - Output includes `framework_mode` field indicating which mode was used
+- **Linker activation conditions (ADR-0003 Item 4):** Linkers now have structured activation criteria:
+  - `always`: Protocol linkers (HTTP, WebSocket, MQ) always run
+  - `frameworks`: Framework linkers (gRPC, GraphQL) only run when framework detected
+  - `language_pairs`: Language-pair linkers (JNI, Swift-ObjC) only run when both languages present
+  - New `LinkerActivation` dataclass and `should_run_linker()` helper in registry
+- **Rich metadata extraction (ADR-0003 Phase 1-5):** Analyzers now capture rich metadata:
+  - **Python:** Full decorator info with args/kwargs, base classes, and structured parameters
+  - **JavaScript/TypeScript:** Decorator extraction with arguments (e.g., `@Controller('/users')` → `{"name": "Controller", "args": ["/users"], "kwargs": {}}`), base class extraction from `extends`/`implements` clauses including generic types (e.g., `extends Repository<User>` → `["Repository<User>"]`)
+  - **Java:** Full annotation info with args/kwargs (e.g., `@Table(name = "users")` → `{"name": "Table", "args": [], "kwargs": {"name": "users"}}`), base class extraction from `extends`/`implements` clauses including generic types. Supports integer, float, boolean, string, and array annotation values.
+- This metadata enables the future FRAMEWORK_PATTERNS phase for semantic entry detection per ADR-0003.
+- **FRAMEWORK_PATTERNS phase (ADR-0003 Items 6-8):** Data-driven symbol enrichment:
+  - New `framework_patterns.py` module with `Pattern`, `FrameworkPatternDef` dataclasses
+  - Framework patterns defined in YAML files (`src/hypergumbo/frameworks/*.yaml`)
+  - `enrich_symbols()` matches patterns against symbol metadata and adds concept annotations
+  - Symbols gain `meta.concepts` list with framework-specific semantics (route, model, dependency, etc.)
+  - FastAPI patterns YAML (`fastapi.yaml`) with patterns for:
+    - Route decorators: `@app.get("/path")`, `@router.post("/path")`, etc.
+    - Pydantic models: `class Item(BaseModel)`
+    - Dependency injection: `Depends(get_db)`, `BackgroundTasks`
+  - Flask patterns YAML (`flask.yaml`) with patterns for:
+    - Flask 2.0+ route shortcuts: `@app.get("/path")`, `@bp.post("/path")`
+    - Classic routes: `@app.route("/path", methods=["GET"])`
+    - Blueprint routes: `@blueprint.route("/path")`
+    - Request hooks: `@app.before_request`, `@app.after_request`, `@app.teardown_request`
+    - Error handlers: `@app.errorhandler(404)`
+    - Flask-RESTful Resources: `class UserResource(Resource)`
+    - Flask-WTF forms: `class LoginForm(FlaskForm)`
+    - Flask-SQLAlchemy models: `class User(db.Model)`
+  - NestJS patterns YAML (`nestjs.yaml`) with patterns for:
+    - HTTP route decorators: `@Get()`, `@Post()`, `@Put()`, `@Delete()`, etc. with path extraction
+    - Controllers: `@Controller('users')`
+    - Services: `@Injectable()`
+    - Modules: `@Module()`
+    - Guards: `@UseGuards(AuthGuard)`
+    - Interceptors: `@UseInterceptors(LoggingInterceptor)`
+    - Pipes: `@UsePipes(ValidationPipe)`
+    - Microservice event handlers: `@EventPattern()`, `@MessagePattern()`
+    - WebSocket gateway: `@WebSocketGateway()`, `@SubscribeMessage()`
+  - Spring Boot patterns YAML (`spring.yaml`) with patterns for:
+    - HTTP route annotations: `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`, `@PatchMapping` with path extraction
+    - Generic mapping: `@RequestMapping`
+    - Controllers: `@RestController`, `@Controller`
+    - Services: `@Service`
+    - Repositories: `@Repository`
+    - Components: `@Component`
+    - Configuration: `@Configuration`, `@Bean`
+    - Entity models: `@Entity`, `@Table`
+    - Exception handlers: `@ExceptionHandler`
+    - Scheduled tasks: `@Scheduled`
+    - Event listeners: `@EventListener`
+    - Async methods: `@Async`
+  - Django patterns YAML (`django.yaml`) with patterns for:
+    - Django REST Framework: `@api_view(['GET', 'POST'])` route decorator
+    - DRF class-based views: `APIView`, `ViewSet`, `ModelViewSet`, `GenericViewSet`
+    - DRF serializers: `Serializer`, `ModelSerializer`, `HyperlinkedModelSerializer`
+    - Django generic views: `View`, `TemplateView`, `ListView`, `DetailView`, `CreateView`, `UpdateView`, `DeleteView`, etc.
+    - Django models: `Model` base class
+    - Django forms: `Form`, `ModelForm` base classes
+    - Django admin: `@admin.register`, `ModelAdmin`, `TabularInline`, `StackedInline`
+    - Django signals: `@receiver` decorator
+    - Django management commands: `BaseCommand`
+    - Django middleware: `MiddlewareMixin`
+    - DRF permissions: `BasePermission`, `IsAuthenticated`, `IsAdminUser`, `AllowAny`
+    - Django filters (django-filter): `FilterSet`, `Filter`
+    - Celery tasks: `@shared_task`, `@task`, `@celery.task`
+  - Express.js patterns YAML (`express.yaml`) with patterns for:
+    - Route handlers: `app.get()`, `app.post()`, `app.put()`, `app.delete()`, `app.patch()`, etc.
+    - Router patterns: `router.get()`, `router.post()`, etc.
+    - Router route chaining: `router.route('/path')`
+    - Middleware: `app.use()`, `router.use()`
+    - Param middleware: `app.param()`, `router.param()`
+    - Passport.js strategies: `LocalStrategy`, `JwtStrategy`, `OAuth2Strategy`, etc.
+    - Common middleware: `helmet`, `cors`, `morgan`, `bodyParser`, etc.
+  - Celery patterns YAML (`celery.yaml`) with patterns for:
+    - Task decorators: `@shared_task`, `@task`, `@app.task`, `@celery.task`
+    - Periodic tasks: `@periodic_task` (Celery Beat)
+    - Task signals: `@task_prerun.connect`, `@task_success.connect`, `@task_failure.connect`, etc.
+    - Worker signals: `@worker_ready.connect`, `@worker_init.connect`, etc.
+    - Custom Task base classes
+  - Ruby on Rails patterns YAML (`rails.yaml`) with patterns for:
+    - Controllers: `ApplicationController`, `ActionController::Base`, `ActionController::API`
+    - Models: `ApplicationRecord`, `ActiveRecord::Base`
+    - Jobs: `ApplicationJob`, `ActiveJob::Base`
+    - Mailers: `ApplicationMailer`, `ActionMailer::Base`
+    - Channels (Action Cable): `ApplicationCable::Channel`, `ActionCable::Channel::Base`
+    - Serializers: `ActiveModel::Serializer`, `ApplicationSerializer`
+    - Pundit policies: `ApplicationPolicy`
+    - Draper decorators: `Draper::Decorator`, `ApplicationDecorator`
+    - Sidekiq workers: `Sidekiq::Worker`
+  - Phoenix (Elixir) patterns YAML (`phoenix.yaml`) with patterns for:
+    - Controllers: `Phoenix.Controller`, `MyAppWeb :controller`
+    - LiveView: `Phoenix.LiveView`, `Phoenix.LiveComponent`
+    - Channels: `Phoenix.Channel` (WebSocket handlers)
+    - Ecto models: `Ecto.Schema`
+    - Plugs: `Plug.Builder`, `Plug.Router` (middleware)
+    - GenServer/Agent/Task: Elixir OTP patterns
+    - Oban workers: Background job processing
+    - Absinthe: GraphQL schema and resolvers
+  - Laravel (PHP) patterns YAML (`laravel.yaml`) with patterns for:
+    - Controllers: `Controller` base class
+    - Eloquent models: `Model` base class
+    - Form requests: `FormRequest` validation
+    - Mailables: `Mailable` for emails
+    - Artisan commands: `Command` for CLI
+    - JSON resources: `JsonResource`, `ResourceCollection`
+    - Service providers: `ServiceProvider`
+    - Notifications: `Notification`
+    - Livewire components: `Livewire\Component`
+    - Jobs, events, listeners, policies, seeders
+  - Rust web framework patterns YAML (`rust-web.yaml`) with patterns for:
+    - Actix-web routes: `#[actix_web::get("/path")]`, `#[actix_web::post("/path")]`, etc.
+    - Rocket routes: `#[rocket::get("/path")]`, `#[rocket::post("/path")]`, etc.
+    - Diesel ORM models: `#[derive(Queryable)]`, `#[derive(Insertable)]`
+    - SeaORM models: `#[derive(DeriveEntityModel)]`
+    - Tokio async tasks: `tokio::spawn`
+  - Go web framework patterns YAML (`go-web.yaml`) with patterns for:
+    - Gin routes: `router.GET()`, `r.POST()`, etc.
+    - Echo routes: `e.GET()`, `echo.POST()`, etc.
+    - Fiber routes: `app.Get()`, `fiber.Post()`, etc.
+    - Chi routes: `r.Get()`, `mux.Delete()`, etc.
+    - net/http: `http.HandleFunc()`
+    - Middleware: `router.Use()`, `e.Use()`, etc.
+    - GORM models: `gorm.Model` embedding
+    - gRPC service and client definitions
+  - Hapi.js patterns YAML (`hapi.yaml`) with patterns for:
+    - Server routes: `server.route({ method, path, handler })`
+    - Plugin registration: `server.register()`
+    - Extension points: `server.ext()`
+    - Auth strategies: `server.auth.strategy()`
+    - Joi validation: `Joi.object()`, `Joi.string()`, etc.
+    - Boom error responses: `Boom.badRequest()`, `Boom.unauthorized()`, etc.
+  - Koa.js patterns YAML (`koa.yaml`) with patterns for:
+    - Router routes: `router.get()`, `router.post()`, etc. (via koa-router/@koa/router)
+    - Global middleware: `app.use()`
+    - Router middleware: `router.use()`, `router.param()`
+    - Passport auth: `passport.authenticate()`, `passport.use()`
+    - JWT middleware: `jwt()`
+    - Common middleware: `helmet`, `cors`, `logger`, `compress`
+  - ASP.NET Core patterns YAML (`aspnet.yaml`) with patterns for:
+    - HTTP route attributes: `[HttpGet]`, `[HttpPost]`, `[HttpPut]`, `[HttpDelete]`, `[HttpPatch]`
+    - Route attribute: `[Route("path")]`
+    - Controllers: `[ApiController]`, `[Controller]`
+    - Authorization: `[Authorize]`, `[AllowAnonymous]`
+    - Validation: `[Required]`, `[StringLength]`, `[Range]`, etc.
+    - Entity Framework: `[Table]`, `[Key]`, `[Column]`, etc.
+    - SignalR hubs via base class: `Hub`
+  - **C# analyzer annotation extraction:** C# analyzer now captures full attribute metadata:
+    - Extracts all C# attributes (not just HTTP routes) into `meta.annotations`
+    - Supports positional arguments: `[Route("/users")]` → `args: ["/users"]`
+    - Supports named arguments: `[Route("path", Name = "GetUsers")]` → `kwargs: {"Name": "GetUsers"}`
+    - Supports qualified names: `[System.Serializable]` → `name: "System.Serializable"`
+    - Class-level attribute extraction for `[ApiController]`, `[Authorize]`, etc.
+    - Enables FRAMEWORK_PATTERNS phase for ASP.NET Core semantic detection
+  - New extraction methods for Java annotations:
+    - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
+    - `annotation_name_upper`: Uses annotation name directly as method
+  - New extraction method `decorator_name_upper` for NestJS-style decorators where the decorator name IS the HTTP method
+  - Pattern matching extracts HTTP method from decorator suffix and path from args
+- **Linker conditional execution (ADR-0003 Item 10):** Linkers now respect activation conditions:
+  - `run_all_linkers()` filters linkers based on detected frameworks and languages
+  - LinkerContext extended with `detected_frameworks` and `detected_languages` fields
+  - gRPC linker only runs when grpc/protobuf framework detected
+  - GraphQL linker only runs when graphql framework detected
+  - Phoenix IPC linker only runs when phoenix framework detected
+  - JNI linker only runs when both Java and C/C++ present
+  - Swift-ObjC linker only runs when both Swift and Objective-C present
+  - Protocol linkers (HTTP, WebSocket, MQ) always run (user-controlled opt-out via `--linkers`)
+- **HTTP linker concept metadata support:** HTTP linker now extracts route info from concept metadata:
+  - Prefers `meta.concepts[].path` and `meta.concepts[].method` (FRAMEWORK_PATTERNS phase)
+  - Falls back to legacy `meta.route_path` and `meta.http_method` when no route concept
+  - Enables route linking for symbols enriched by framework pattern YAML files
+- **Routes command concept metadata support:** The `hypergumbo routes` command now detects routes via:
+  - Concept metadata (`meta.concepts[].concept == "route"`) from FRAMEWORK_PATTERNS phase
+  - Falls back to legacy HTTP method stable_id detection
+- **Semantic entry detection (ADR-0003 Item 11):** Entrypoint detection now uses enriched metadata:
+  - New `_detect_from_concepts()` function checks `meta.concepts` for route concepts
+  - Semantic detection has highest priority (runs before path-based heuristics)
+  - High confidence (0.95) since based on actual decorator/pattern matching
+  - Eliminates false positives (e.g., React Router files without route concepts won't be flagged)
+  - Fallback to path-based heuristics for frameworks without YAML patterns
+
+### Changed
+- **Python analyzer purified (ADR-0003 Item 9):** Route detection removed from Python analyzer:
+  - Route detection now happens in FRAMEWORK_PATTERNS phase via YAML pattern files
+  - Analyzer continues to extract rich decorator metadata (`meta.decorators`) for pattern matching
+  - Removed `_detect_route_decorator()`, `_extract_router_prefixes()`, `_combine_prefix_and_path()` functions
+  - All functions now use hash-based `stable_id` (route methods no longer set as stable_id)
+  - Router prefix combination removed (can be implemented in FRAMEWORK_PATTERNS later)
+  - Django CBV HTTP method detection retained (method name based, not decorator-based)
+  - Django URL pattern detection retained (different detection mechanism)
+
+### Deprecated
+- **Packs (ADR-0003 Item 5):** The `Pack` and `PackConfig` classes now emit deprecation warnings. Framework-specific analysis is now handled by linker activation conditions rather than packs. Existing code using packs will continue to work but should be migrated to use the new `--frameworks` flag instead.
+- **Path-based entrypoint heuristics (ADR-0003 Item 13):** All path-based entrypoint detection functions now emit deprecation warnings:
+  - Detection based on file paths/naming patterns (e.g., `routes/`, `*Controller.ts`) is deprecated
+  - Prefer semantic detection via concept metadata from FRAMEWORK_PATTERNS phase
+  - Warnings fire once per framework per session to avoid spam
+  - Non-deprecated methods: semantic detection (`_detect_from_concepts`), decorator detection (`_detect_http_routes`), CLI detection (`_detect_cli_entrypoints`)
+  - Migration path: Create framework YAML pattern files and use `--frameworks` flag
+- **Analyzer-level route detection (ADR-0003 v1.0.x):** All analyzer-level framework route detection now emits deprecation warnings:
+  - **Java:** Spring Boot (`@GetMapping`, `@PostMapping`, etc.) and JAX-RS (`@GET`, `@POST`, etc.)
+  - **Python:** Django URL patterns (`path()`, `re_path()`, `url()`)
+  - **C#:** ASP.NET Core attributes (`[HttpGet]`, `[HttpPost]`, etc.)
+  - **Rust:** Axum (`.route("/path", get(handler))`) and Actix-web (`#[get("/path")]`)
+  - **Ruby:** Rails route DSL (`get`, `post`, `resources`)
+  - **PHP:** Laravel routes (`Route::get()`, `Route::post()`, etc.)
+  - **JavaScript/TypeScript:** Express-style routes (`app.get()`, `router.post()`, etc.)
+  - Warnings fire once per framework per session to avoid spam
+  - Migration path: Use framework YAML patterns (--frameworks) for semantic detection
 
 ## [0.6.9] - 2026-01-07
 
@@ -24,10 +259,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tooling:** `find-uncovered` now auto-runs tests when needed, warns on stale coverage, and uses a visible `coverage-report.txt` cache.
 
 ### Fixed
+- **JavaScript/TypeScript route detection false positives (ADR-0003):** Fixed `fetchMock.get()`, `axios.post()`, and similar test/HTTP client calls being incorrectly detected as Express routes. Route detection now validates that the receiver is a known router object (`app`, `router`, `express`, `server`, `fastify`, `koa`) before matching HTTP method calls. This eliminates false positives from test mocking libraries like `fetch-mock` and HTTP clients.
 - **Entrypoint false positives reduced across frameworks:**
   - Excluded `.tsx`/`.jsx` React file-routing paths from Express/Hapi/Koa route detection.
-  - Avoided Tornado “handler” false positives by excluding common non-web handler filename patterns.
-  - Tightened GraphQL server detection by excluding `.tsx`/`.jsx` and common non-resolver “*resolver*” filename patterns (e.g., DNS/promise/dependency/path/module resolvers).
+  - Avoided Tornado "handler" false positives by excluding common non-web handler filename patterns.
+  - Tightened GraphQL server detection by excluding `.tsx`/`.jsx` and common non-resolver "*resolver*" filename patterns (e.g., DNS/promise/dependency/path/module resolvers).
   - Avoided Micronaut HTTP false positives by excluding common gRPC/RPC client class naming patterns.
 
 ### Changed

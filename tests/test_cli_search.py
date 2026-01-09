@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from hypergumbo.schema import SCHEMA_VERSION
 from hypergumbo.cli import cmd_search, main
 
 
@@ -15,7 +16,7 @@ def test_cmd_search_finds_exact_match(tmp_path: Path, capsys) -> None:
     """Search finds symbols by exact name match."""
     # Create a behavior map with some symbols
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:foo:function",
@@ -59,7 +60,7 @@ def test_cmd_search_finds_exact_match(tmp_path: Path, capsys) -> None:
 def test_cmd_search_fuzzy_match(tmp_path: Path, capsys) -> None:
     """Search finds symbols by fuzzy/partial match."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:getUserById:function",
@@ -103,7 +104,7 @@ def test_cmd_search_fuzzy_match(tmp_path: Path, capsys) -> None:
 def test_cmd_search_filter_by_kind(tmp_path: Path, capsys) -> None:
     """Search can filter by symbol kind."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:User:class",
@@ -147,7 +148,7 @@ def test_cmd_search_filter_by_kind(tmp_path: Path, capsys) -> None:
 def test_cmd_search_filter_by_language(tmp_path: Path, capsys) -> None:
     """Search can filter by language."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:getData:function",
@@ -191,7 +192,7 @@ def test_cmd_search_filter_by_language(tmp_path: Path, capsys) -> None:
 def test_cmd_search_no_results(tmp_path: Path, capsys) -> None:
     """Search reports no results when nothing matches."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:foo:function",
@@ -226,7 +227,7 @@ def test_cmd_search_no_results(tmp_path: Path, capsys) -> None:
 def test_cmd_search_with_input_file(tmp_path: Path, capsys) -> None:
     """Search can read from specified input file."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:bar:function",
@@ -302,7 +303,7 @@ def test_cmd_search_respects_limit(tmp_path: Path, capsys) -> None:
         for i in range(10)
     ]
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": nodes,
         "edges": [],
     }
@@ -329,7 +330,7 @@ def test_cmd_search_respects_limit(tmp_path: Path, capsys) -> None:
 def test_main_with_search(tmp_path: Path, capsys) -> None:
     """Main with search command."""
     behavior_map = {
-        "schema_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
                 "id": "python:src/main.py:1-5:test:function",
