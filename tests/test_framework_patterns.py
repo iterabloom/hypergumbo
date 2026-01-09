@@ -1348,3 +1348,439 @@ class TestNestJSPatterns:
         assert route_concept["method"] == "GET"
         assert route_concept["path"] == "users"
         assert route_concept["framework"] == "nestjs"
+
+
+class TestSpringPatterns:
+    """Tests for Spring Framework pattern matching."""
+
+    def test_spring_get_mapping_pattern(self) -> None:
+        """Spring @GetMapping annotation matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None, "Spring patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UserController.java:10:getUsers:method",
+            name="getUsers",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@GetMapping", "value": "/users"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_annotation"] == "@GetMapping"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_spring_post_mapping_pattern(self) -> None:
+        """Spring @PostMapping annotation matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:20:createUser:method",
+            name="createUser",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@PostMapping", "value": "/users"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_spring_rest_controller_pattern(self) -> None:
+        """Spring @RestController annotation matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="UserController.java",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@RestController"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_spring_service_pattern(self) -> None:
+        """Spring @Service annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserService.java:1:UserService:class",
+            name="UserService",
+            kind="class",
+            language="java",
+            path="UserService.java",
+            span=Span(1, 200, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@Service"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_spring_repository_pattern(self) -> None:
+        """Spring @Repository annotation matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserRepository.java:1:UserRepository:interface",
+            name="UserRepository",
+            kind="interface",
+            language="java",
+            path="UserRepository.java",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@Repository"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "repository"
+
+    def test_spring_entity_pattern(self) -> None:
+        """Spring @Entity annotation matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:User.java:1:User:class",
+            name="User",
+            kind="class",
+            language="java",
+            path="User.java",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@Entity"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_spring_scheduled_task_pattern(self) -> None:
+        """Spring @Scheduled annotation matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:TaskScheduler.java:10:runDaily:method",
+            name="runDaily",
+            kind="method",
+            language="java",
+            path="TaskScheduler.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@Scheduled"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+
+    def test_spring_put_mapping_pattern(self) -> None:
+        """Spring @PutMapping annotation matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:30:updateUser:method",
+            name="updateUser",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@PutMapping", "value": "/users/{id}"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "PUT"
+        assert results[0]["path"] == "/users/{id}"
+
+    def test_spring_delete_mapping_pattern(self) -> None:
+        """Spring @DeleteMapping annotation matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:40:deleteUser:method",
+            name="deleteUser",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(40, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@DeleteMapping", "value": "/users/{id}"},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "DELETE"
+
+    def test_spring_enrich_symbols_integration(self) -> None:
+        """Integration test: enrich_symbols adds Spring route concepts."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:UserController.java:10:getUsers:method",
+            name="getUsers",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@GetMapping", "value": "/users"},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"spring"})
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        route_concept = enriched[0].meta["concepts"][0]
+        assert route_concept["concept"] == "route"
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/users"
+        assert route_concept["framework"] == "spring"
+
+
+class TestAnnotationMethodExtraction:
+    """Tests for annotation-based method extraction modes."""
+
+    def test_annotation_name_upper_extraction(self, tmp_path: Path) -> None:
+        """Test annotation_name_upper extraction mode."""
+        clear_pattern_cache()
+
+        # Create a custom YAML file with annotation_name_upper extraction
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    annotation: "^@(GET|POST|PUT|DELETE)$"
+    extract_method: "annotation_name_upper"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:Resource.java:1:getAll:method",
+            name="getAll",
+            kind="method",
+            language="java",
+            path="Resource.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@GET"},
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "GET"
+
+    def test_annotation_name_upper_without_at_prefix(self, tmp_path: Path) -> None:
+        """Test annotation_name_upper when annotation doesn't have @ prefix."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    annotation: "^(GET|POST)$"
+    extract_method: "annotation_name_upper"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:Resource.java:1:getAll:method",
+            name="getAll",
+            kind="method",
+            language="java",
+            path="Resource.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "GET"},  # No @ prefix
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["method"] == "GET"
+
+    def test_annotation_no_method_extraction(self, tmp_path: Path) -> None:
+        """Test annotation matching with no method extraction configured."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: service
+    annotation: "^@Service$"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:UserService.java:1:UserService:class",
+            name="UserService",
+            kind="class",
+            language="java",
+            path="UserService.java",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@Service"},
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+        # No method field since no extraction configured
+        assert "method" not in results[0]
+
+    def test_annotation_unknown_extraction_mode(self, tmp_path: Path) -> None:
+        """Test annotation matching with unknown extraction mode returns no method."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    annotation: "^@Get$"
+    extract_method: "unknown_mode"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:Controller.java:1:get:method",
+            name="get",
+            kind="method",
+            language="java",
+            path="Controller.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "@Get"},
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        # Unknown extraction mode should not add method
+        assert "method" not in results[0]

@@ -54,6 +54,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Pipes: `@UsePipes(ValidationPipe)`
     - Microservice event handlers: `@EventPattern()`, `@MessagePattern()`
     - WebSocket gateway: `@WebSocketGateway()`, `@SubscribeMessage()`
+  - Spring Boot patterns YAML (`spring.yaml`) with patterns for:
+    - HTTP route annotations: `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`, `@PatchMapping` with path extraction
+    - Generic mapping: `@RequestMapping`
+    - Controllers: `@RestController`, `@Controller`
+    - Services: `@Service`
+    - Repositories: `@Repository`
+    - Components: `@Component`
+    - Configuration: `@Configuration`, `@Bean`
+    - Entity models: `@Entity`, `@Table`
+    - Exception handlers: `@ExceptionHandler`
+    - Scheduled tasks: `@Scheduled`
+    - Event listeners: `@EventListener`
+    - Async methods: `@Async`
+  - New extraction methods for Java annotations:
+    - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
+    - `annotation_name_upper`: Uses annotation name directly as method
   - New extraction method `decorator_name_upper` for NestJS-style decorators where the decorator name IS the HTTP method
   - Pattern matching extracts HTTP method from decorator suffix and path from args
 - **Linker conditional execution (ADR-0003 Item 10):** Linkers now respect activation conditions:
