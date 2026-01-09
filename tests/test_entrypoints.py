@@ -3643,3 +3643,105 @@ class TestDeprecationWarnings:
             ]
             # Only ONE warning for Express across both calls
             assert len(express_warnings) == 1
+
+
+class TestConnectivityBasedRanking:
+    """Tests for connectivity-based entrypoint ranking."""
+
+    def test_entrypoints_sorted_by_connectivity(self) -> None:
+        """Entrypoints with more outgoing edges should rank higher."""
+        # Create three main() functions with same base confidence
+        main_a = make_symbol("main", path="a.py", language="python")
+        main_b = make_symbol("main", path="b.py", language="python")
+        main_c = make_symbol("main", path="c.py", language="python")
+
+        # Create helper functions that main_b and main_c call
+        helper1 = make_symbol("helper1", path="helpers.py", language="python")
+        helper2 = make_symbol("helper2", path="helpers.py", language="python", start_line=10, end_line=15)
+        helper3 = make_symbol("helper3", path="helpers.py", language="python", start_line=20, end_line=25)
+
+        nodes = [main_a, main_b, main_c, helper1, helper2, helper3]
+
+        # main_a calls nothing (0 edges)
+        # main_b calls 1 helper (1 edge)
+        # main_c calls 3 helpers (3 edges)
+        edges = [
+            Edge.create(src=main_b.id, dst=helper1.id, edge_type="calls", line=2),
+            Edge.create(src=main_c.id, dst=helper1.id, edge_type="calls", line=2),
+            Edge.create(src=main_c.id, dst=helper2.id, edge_type="calls", line=3),
+            Edge.create(src=main_c.id, dst=helper3.id, edge_type="calls", line=4),
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        # Should find all three main functions
+        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+        assert len(main_eps) == 3
+
+        # main_c (3 edges) should rank first, main_b (1 edge) second, main_a (0 edges) last
+        assert main_eps[0].symbol_id == main_c.id, "main_c with 3 edges should rank first"
+        assert main_eps[1].symbol_id == main_b.id, "main_b with 1 edge should rank second"
+        assert main_eps[2].symbol_id == main_a.id, "main_a with 0 edges should rank last"
+
+    def test_connectivity_boost_increases_confidence(self) -> None:
+        """Entrypoints with more edges should have higher confidence scores."""
+        main_isolated = make_symbol("main", path="isolated.py", language="python")
+        main_connected = make_symbol("main", path="connected.py", language="python")
+        helper = make_symbol("helper", path="helper.py", language="python")
+
+        nodes = [main_isolated, main_connected, helper]
+
+        # main_connected calls helper multiple times (simulated by multiple edges)
+        edges = [
+            Edge.create(src=main_connected.id, dst=helper.id, edge_type="calls", line=i)
+            for i in range(10)  # 10 outgoing edges
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        main_eps = {ep.symbol_id: ep for ep in entrypoints if "main" in ep.symbol_id}
+
+        # Connected main should have higher confidence than isolated one
+        assert main_eps[main_connected.id].confidence > main_eps[main_isolated.id].confidence
+
+    def test_all_entrypoints_still_returned(self) -> None:
+        """Connectivity ranking should not filter out any entrypoints."""
+        # Create many main functions
+        mains = [
+            make_symbol("main", path=f"file{i}.py", language="python", start_line=i)
+            for i in range(10)
+        ]
+        helper = make_symbol("helper", path="helper.py", language="python")
+
+        nodes = mains + [helper]
+
+        # Only first main has edges
+        edges = [Edge.create(src=mains[0].id, dst=helper.id, edge_type="calls", line=1)]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        # All 10 main functions should be returned
+        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+        assert len(main_eps) == 10, "All entrypoints should be returned regardless of connectivity"
+
+    def test_incoming_edges_not_counted(self) -> None:
+        """Only outgoing edges should affect ranking, not incoming edges."""
+        main_caller = make_symbol("main", path="caller.py", language="python")
+        main_callee = make_symbol("main", path="callee.py", language="python")
+        other = make_symbol("other", path="other.py", language="python")
+
+        nodes = [main_caller, main_callee, other]
+
+        # main_caller calls main_callee (main_callee has incoming edge, not outgoing)
+        # main_caller also calls other
+        edges = [
+            Edge.create(src=main_caller.id, dst=main_callee.id, edge_type="calls", line=1),
+            Edge.create(src=main_caller.id, dst=other.id, edge_type="calls", line=2),
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+
+        # main_caller (2 outgoing) should rank before main_callee (0 outgoing)
+        assert main_eps[0].symbol_id == main_caller.id
+        assert main_eps[1].symbol_id == main_callee.id

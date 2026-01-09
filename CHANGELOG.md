@@ -22,6 +22,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   argument to `hypergumbo slice`, it's now automatically treated as `--input` rather than
   a repo path. This fixes confusing behavior where `hypergumbo slice results.json <symbol>`
   would fail silently. The `--input` flag still takes precedence if explicitly provided.
+- **Connectivity-based entrypoint ranking:** Entrypoints are now ranked by graph connectivity
+  in addition to detection confidence. An entrypoint with many outgoing edges (calls to other
+  functions) is considered more "interesting" and ranks higher. This makes `--entry auto`
+  automatically select the most connected entrypoint, improving slice quality for codebases
+  with many entrypoints (e.g., test suites with many `main` functions).
 - **`--frameworks` flag (ADR-0003 Item 3):** Control framework detection with new CLI option:
   - `--frameworks=none`: Skip framework detection entirely (base analysis only)
   - `--frameworks=all`: Check all known framework patterns for detected languages
