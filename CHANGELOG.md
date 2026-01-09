@@ -67,6 +67,20 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Scheduled tasks: `@Scheduled`
     - Event listeners: `@EventListener`
     - Async methods: `@Async`
+  - Django patterns YAML (`django.yaml`) with patterns for:
+    - Django REST Framework: `@api_view(['GET', 'POST'])` route decorator
+    - DRF class-based views: `APIView`, `ViewSet`, `ModelViewSet`, `GenericViewSet`
+    - DRF serializers: `Serializer`, `ModelSerializer`, `HyperlinkedModelSerializer`
+    - Django generic views: `View`, `TemplateView`, `ListView`, `DetailView`, `CreateView`, `UpdateView`, `DeleteView`, etc.
+    - Django models: `Model` base class
+    - Django forms: `Form`, `ModelForm` base classes
+    - Django admin: `@admin.register`, `ModelAdmin`, `TabularInline`, `StackedInline`
+    - Django signals: `@receiver` decorator
+    - Django management commands: `BaseCommand`
+    - Django middleware: `MiddlewareMixin`
+    - DRF permissions: `BasePermission`, `IsAuthenticated`, `IsAdminUser`, `AllowAny`
+    - Django filters (django-filter): `FilterSet`, `Filter`
+    - Celery tasks: `@shared_task`, `@task`, `@celery.task`
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method

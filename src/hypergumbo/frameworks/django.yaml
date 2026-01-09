@@ -1,0 +1,93 @@
+# Django framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Django and Django REST Framework decorators, base classes, and annotations.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Note: Django's URL routing is defined in urls.py via path()/re_path() calls,
+# not via decorators on views. This file focuses on view classes, models,
+# and DRF-specific patterns that CAN be matched via metadata.
+
+id: django
+language: python
+
+patterns:
+  # Django REST Framework - @api_view(['GET', 'POST'])
+  - concept: route
+    decorator: "^api_view$"
+    extract_method: "kwargs.methods"
+
+  # Django REST Framework - class-based API views
+  - concept: controller
+    base_class: "^APIView$"
+
+  # Django REST Framework - ViewSets
+  - concept: controller
+    base_class: "^(ModelViewSet|ViewSet|ReadOnlyModelViewSet|GenericViewSet)$"
+
+  # Django REST Framework - Serializers
+  - concept: serializer
+    base_class: "^(Serializer|ModelSerializer|HyperlinkedModelSerializer)$"
+
+  # Django class-based views - generic views
+  - concept: controller
+    base_class: "^(View|TemplateView|RedirectView)$"
+
+  # Django class-based views - display views
+  - concept: controller
+    base_class: "^(DetailView|ListView)$"
+
+  # Django class-based views - editing views
+  - concept: controller
+    base_class: "^(FormView|CreateView|UpdateView|DeleteView)$"
+
+  # Django class-based views - date-based views
+  - concept: controller
+    base_class: "^(ArchiveIndexView|YearArchiveView|MonthArchiveView|WeekArchiveView|DayArchiveView|DateDetailView)$"
+
+  # Django models
+  - concept: model
+    base_class: "^Model$"
+
+  # Django forms
+  - concept: form
+    base_class: "^(Form|ModelForm)$"
+
+  # Django admin - decorator registration
+  - concept: admin
+    decorator: "^admin\\.register$"
+
+  # Django admin - class-based
+  - concept: admin
+    base_class: "^(ModelAdmin|TabularInline|StackedInline)$"
+
+  # Django signals - @receiver decorator
+  - concept: event_handler
+    decorator: "^receiver$"
+
+  # Django management commands
+  - concept: command
+    base_class: "^BaseCommand$"
+
+  # Django middleware
+  - concept: middleware
+    base_class: "^MiddlewareMixin$"
+
+  # Django authentication backends
+  - concept: auth_backend
+    base_class: "^(BaseBackend|ModelBackend)$"
+
+  # Django permissions (DRF)
+  - concept: permission
+    base_class: "^(BasePermission|IsAuthenticated|IsAdminUser|AllowAny)$"
+
+  # Django filters (django-filter)
+  - concept: filter
+    base_class: "^(FilterSet|Filter)$"
+
+  # Celery tasks (often used with Django)
+  - concept: task
+    decorator: "^(shared_task|task|celery\\.task)$"
+
+linkers:
+  - http
+  - database_query
