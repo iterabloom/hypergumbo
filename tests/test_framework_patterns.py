@@ -2421,3 +2421,270 @@ class TestExpressPatterns:
         auth = next(s for s in enriched if s.name == "LocalAuth")
         assert "concepts" in auth.meta
         assert any(c["concept"] == "auth_strategy" for c in auth.meta["concepts"])
+
+
+class TestCeleryPatterns:
+    """Tests for Celery framework pattern matching."""
+
+    def test_celery_shared_task_decorator(self) -> None:
+        """Celery @shared_task decorator matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None, "Celery patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:tasks.py:10:send_email:function",
+            name="send_email",
+            kind="function",
+            language="python",
+            path="tasks.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "shared_task", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_decorator"] == "shared_task"
+
+    def test_celery_task_decorator(self) -> None:
+        """Celery @task decorator matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tasks.py:5:process_data:function",
+            name="process_data",
+            kind="function",
+            language="python",
+            path="tasks.py",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "task", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_decorator"] == "task"
+
+    def test_celery_app_task_decorator(self) -> None:
+        """Celery @app.task decorator matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tasks.py:15:generate_report:function",
+            name="generate_report",
+            kind="function",
+            language="python",
+            path="tasks.py",
+            span=Span(15, 25, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.task", "args": [], "kwargs": {"bind": True}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_decorator"] == "app.task"
+
+    def test_celery_periodic_task_decorator(self) -> None:
+        """Celery @periodic_task decorator matches scheduled_task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tasks.py:20:cleanup_expired:function",
+            name="cleanup_expired",
+            kind="function",
+            language="python",
+            path="tasks.py",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "periodic_task", "args": [], "kwargs": {"run_every": 3600}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "scheduled_task"
+        assert results[0]["matched_decorator"] == "periodic_task"
+
+    def test_celery_task_signal_decorator(self) -> None:
+        """Celery @task_success.connect signal decorator matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:signals.py:5:on_task_success:function",
+            name="on_task_success",
+            kind="function",
+            language="python",
+            path="signals.py",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "task_success.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+        assert results[0]["matched_decorator"] == "task_success.connect"
+
+    def test_celery_worker_signal_decorator(self) -> None:
+        """Celery @worker_ready.connect signal decorator matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:signals.py:10:on_worker_ready:function",
+            name="on_worker_ready",
+            kind="function",
+            language="python",
+            path="signals.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "worker_ready.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+        assert results[0]["matched_decorator"] == "worker_ready.connect"
+
+    def test_celery_task_base_class(self) -> None:
+        """Celery Task base class matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tasks.py:1:CustomTask:class",
+            name="CustomTask",
+            kind="class",
+            language="python",
+            path="tasks.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Task"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_base_class"] == "Task"
+
+    def test_celery_task_failure_signal(self) -> None:
+        """Celery @task_failure.connect signal matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("celery")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:signals.py:15:handle_failure:function",
+            name="handle_failure",
+            kind="function",
+            language="python",
+            path="signals.py",
+            span=Span(15, 25, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "task_failure.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+        assert results[0]["matched_decorator"] == "task_failure.connect"
+
+    def test_celery_enrich_symbols_integration(self) -> None:
+        """Celery patterns enrich symbols with concept metadata."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:tasks.py:10:send_email:function",
+                name="send_email",
+                kind="function",
+                language="python",
+                path="tasks.py",
+                span=Span(10, 20, 0, 0),
+                meta={"decorators": [{"name": "shared_task", "args": [], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:tasks.py:20:cleanup_expired:function",
+                name="cleanup_expired",
+                kind="function",
+                language="python",
+                path="tasks.py",
+                span=Span(20, 30, 0, 0),
+                meta={"decorators": [{"name": "periodic_task", "args": [], "kwargs": {}}]},
+            ),
+            Symbol(
+                id="test:signals.py:5:on_task_success:function",
+                name="on_task_success",
+                kind="function",
+                language="python",
+                path="signals.py",
+                span=Span(5, 15, 0, 0),
+                meta={"decorators": [{"name": "task_success.connect", "args": [], "kwargs": {}}]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, {"celery"})
+
+        # Check that concepts were added
+        task = next(s for s in enriched if s.name == "send_email")
+        assert "concepts" in task.meta
+        assert any(c["concept"] == "task" for c in task.meta["concepts"])
+
+        scheduled = next(s for s in enriched if s.name == "cleanup_expired")
+        assert "concepts" in scheduled.meta
+        assert any(c["concept"] == "scheduled_task" for c in scheduled.meta["concepts"])
+
+        handler = next(s for s in enriched if s.name == "on_task_success")
+        assert "concepts" in handler.meta
+        assert any(c["concept"] == "event_handler" for c in handler.meta["concepts"])

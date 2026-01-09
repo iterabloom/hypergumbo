@@ -89,6 +89,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Param middleware: `app.param()`, `router.param()`
     - Passport.js strategies: `LocalStrategy`, `JwtStrategy`, `OAuth2Strategy`, etc.
     - Common middleware: `helmet`, `cors`, `morgan`, `bodyParser`, etc.
+  - Celery patterns YAML (`celery.yaml`) with patterns for:
+    - Task decorators: `@shared_task`, `@task`, `@app.task`, `@celery.task`
+    - Periodic tasks: `@periodic_task` (Celery Beat)
+    - Task signals: `@task_prerun.connect`, `@task_success.connect`, `@task_failure.connect`, etc.
+    - Worker signals: `@worker_ready.connect`, `@worker_init.connect`, etc.
+    - Custom Task base classes
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method

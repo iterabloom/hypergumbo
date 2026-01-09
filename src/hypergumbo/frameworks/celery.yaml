@@ -1,0 +1,73 @@
+# Celery framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Celery task queue decorators and patterns.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Celery is a distributed task queue commonly used with Django/Flask
+# for background task processing, scheduled jobs, and async workflows.
+
+id: celery
+language: python
+
+patterns:
+  # Task decorators - @shared_task, @task, @app.task
+  - concept: task
+    decorator: "^shared_task$"
+
+  - concept: task
+    decorator: "^task$"
+
+  - concept: task
+    decorator: "^(celery|app)\\.task$"
+
+  # Periodic tasks - @periodic_task (Celery Beat)
+  - concept: scheduled_task
+    decorator: "^periodic_task$"
+
+  # Celery signals - @task_prerun.connect, @task_success.connect, etc.
+  - concept: event_handler
+    decorator: "^task_prerun\\.connect$"
+
+  - concept: event_handler
+    decorator: "^task_postrun\\.connect$"
+
+  - concept: event_handler
+    decorator: "^task_success\\.connect$"
+
+  - concept: event_handler
+    decorator: "^task_failure\\.connect$"
+
+  - concept: event_handler
+    decorator: "^task_retry\\.connect$"
+
+  - concept: event_handler
+    decorator: "^task_revoked\\.connect$"
+
+  - concept: event_handler
+    decorator: "^celeryd_init\\.connect$"
+
+  - concept: event_handler
+    decorator: "^worker_init\\.connect$"
+
+  - concept: event_handler
+    decorator: "^worker_ready\\.connect$"
+
+  - concept: event_handler
+    decorator: "^worker_shutting_down\\.connect$"
+
+  - concept: event_handler
+    decorator: "^worker_process_init\\.connect$"
+
+  # Custom Task base classes
+  - concept: task
+    base_class: "^Task$"
+
+  - concept: task
+    base_class: "^(celery\\.)?app\\.Task$"
+
+  # Celery configuration classes
+  - concept: configuration
+    base_class: "^CeleryConfig$"
+
+linkers:
+  - message_queue
