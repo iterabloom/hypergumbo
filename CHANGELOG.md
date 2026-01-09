@@ -105,6 +105,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Pundit policies: `ApplicationPolicy`
     - Draper decorators: `Draper::Decorator`, `ApplicationDecorator`
     - Sidekiq workers: `Sidekiq::Worker`
+  - Phoenix (Elixir) patterns YAML (`phoenix.yaml`) with patterns for:
+    - Controllers: `Phoenix.Controller`, `MyAppWeb :controller`
+    - LiveView: `Phoenix.LiveView`, `Phoenix.LiveComponent`
+    - Channels: `Phoenix.Channel` (WebSocket handlers)
+    - Ecto models: `Ecto.Schema`
+    - Plugs: `Plug.Builder`, `Plug.Router` (middleware)
+    - GenServer/Agent/Task: Elixir OTP patterns
+    - Oban workers: Background job processing
+    - Absinthe: GraphQL schema and resolvers
   - New extraction methods for Java annotations:
     - `annotation_prefix`: Extracts HTTP method from regex capture group (e.g., `@GetMapping` → `GET`)
     - `annotation_name_upper`: Uses annotation name directly as method
