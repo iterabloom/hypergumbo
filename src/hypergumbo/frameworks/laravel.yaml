@@ -4,11 +4,19 @@
 # Symbols matching these patterns get enriched with concept metadata.
 #
 # Laravel uses inheritance patterns and trait imports for behaviors.
+#
+# Note: Laravel routes are defined via facade method calls (Route::get(), etc.)
+# The PHP analyzer creates route symbols which are matched here by symbol_kind.
 
 id: laravel
 language: php
 
 patterns:
+  # Routes - symbols created by PHP analyzer for Route facade calls
+  # Matches: Route::get('/users', ...), Route::post('/login', ...), etc.
+  - concept: route
+    symbol_kind: "^route$"
+
   # Controllers - extend Controller
   - concept: controller
     base_class: "^Controller$"

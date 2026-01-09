@@ -66,6 +66,7 @@ class Pattern:
         base_class: Regex pattern to match against base class names
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types
+        symbol_kind: Regex pattern to match against symbol kind field
         extract_path: JSONPath-like expression to extract route path from metadata
         extract_method: How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)
     """
@@ -75,6 +76,7 @@ class Pattern:
     base_class: str | None = None
     annotation: str | None = None
     parameter_type: str | None = None
+    symbol_kind: str | None = None
     extract_path: str | None = None
     extract_method: str | None = None
 
@@ -85,6 +87,9 @@ class Pattern:
         self._annotation_re = re.compile(self.annotation) if self.annotation else None
         self._param_type_re = (
             re.compile(self.parameter_type) if self.parameter_type else None
+        )
+        self._symbol_kind_re = (
+            re.compile(self.symbol_kind) if self.symbol_kind else None
         )
 
     def matches(self, symbol: Symbol) -> dict[str, Any] | None:
@@ -155,6 +160,12 @@ class Pattern:
                 if param_type and self._param_type_re.match(param_type):
                     result["matched_parameter_type"] = param_type
                     return result
+
+        # Try symbol kind match
+        if self._symbol_kind_re:
+            if self._symbol_kind_re.match(symbol.kind):
+                result["matched_symbol_kind"] = symbol.kind
+                return result
 
         return None
 
@@ -290,6 +301,7 @@ class FrameworkPatternDef:
                 base_class=p.get("base_class"),
                 annotation=p.get("annotation"),
                 parameter_type=p.get("parameter_type"),
+                symbol_kind=p.get("symbol_kind"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
             ))

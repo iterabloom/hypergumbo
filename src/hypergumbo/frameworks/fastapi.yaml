@@ -39,5 +39,29 @@ patterns:
   - concept: request
     parameter_type: "^(Request|Response)$"
 
+  # OAuth2 authentication
+  - concept: auth
+    parameter_type: "^(OAuth2PasswordBearer|OAuth2AuthorizationCodeBearer|HTTPBasic|HTTPBearer)$"
+
+  # Security utilities
+  - concept: security
+    decorator: "^Depends$"
+
+  # Middleware decorator (Starlette)
+  - concept: middleware
+    decorator: "^(app|router)\\.middleware$"
+
+  # Exception handlers
+  - concept: error_handler
+    decorator: "^(app|router)\\.exception_handler$"
+
+  # Startup/shutdown events
+  - concept: lifecycle
+    decorator: "^(app|router)\\.(on_event|on_startup|on_shutdown)$"
+
+  # SQLModel (SQLAlchemy + Pydantic)
+  - concept: model
+    base_class: "^SQLModel$"
+
 linkers:
   - http

@@ -4,13 +4,18 @@
 # Symbols matching these patterns get enriched with concept metadata.
 #
 # Note: Rails uses convention-over-configuration. Routes are defined in
-# config/routes.rb, not via decorators. This file focuses on matching
-# Rails classes by their inheritance patterns.
+# config/routes.rb via DSL calls (get, post, resources, etc.). The Ruby
+# analyzer creates route symbols which are matched here by symbol_kind.
 
 id: rails
 language: ruby
 
 patterns:
+  # Routes - symbols created by Ruby analyzer for route DSL calls
+  # Matches: get '/users', post '/login', resources :users, etc.
+  - concept: route
+    symbol_kind: "^route$"
+
   # Controllers - inherit from ApplicationController or ActionController::Base
   - concept: controller
     base_class: "^ApplicationController$"

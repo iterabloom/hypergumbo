@@ -65,6 +65,18 @@ patterns:
   - concept: middleware
     decorator: "^(body|query|param|check|validationResult)$"
 
+  # Socket.io event handlers
+  - concept: websocket_handler
+    decorator: "^(socket|io)\\.on$"
+
+  # Socket.io emit (for connection patterns)
+  - concept: websocket_emitter
+    decorator: "^(socket|io)\\.(emit|broadcast)$"
+
+  # Socket.io namespace
+  - concept: websocket_namespace
+    decorator: "^io\\.of$"
+
 linkers:
   - http
   - websocket

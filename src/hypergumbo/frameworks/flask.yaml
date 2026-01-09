@@ -39,5 +39,33 @@ patterns:
   - concept: model
     base_class: "^db\\.Model$"
 
+  # Marshmallow schemas (validation/serialization)
+  - concept: serializer
+    base_class: "^(marshmallow\\.)?Schema$"
+
+  # Flask-Marshmallow schema
+  - concept: serializer
+    base_class: "^(ma\\.)?SQLAlchemySchema$"
+
+  - concept: serializer
+    base_class: "^(ma\\.)?SQLAlchemyAutoSchema$"
+
+  # Flask context processors
+  - concept: middleware
+    decorator: "^(app|blueprint|bp)\\.context_processor$"
+
+  # Flask-Login user loader
+  - concept: auth
+    decorator: "^login_manager\\.user_loader$"
+
+  # Flask CLI commands
+  - concept: command
+    decorator: "^(app|blueprint|bp)\\.cli\\.command$"
+
+  # Flask-SocketIO event handlers
+  - concept: websocket_handler
+    decorator: "^socketio\\.on$"
+
 linkers:
   - http
+  - websocket

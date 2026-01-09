@@ -446,6 +446,86 @@ class TestPattern:
         assert result is not None
         assert "method" not in result
 
+    def test_pattern_matches_symbol_kind(self) -> None:
+        """Pattern matches symbol by its kind field."""
+        pattern = Pattern(
+            concept="route",
+            symbol_kind=r"^route$",
+        )
+
+        symbol = Symbol(
+            id="test:routes.rb:1:get_users:route",
+            name="GET /users",
+            kind="route",  # Rails analyzer creates route symbols
+            language="ruby",
+            path="config/routes.rb",
+            span=Span(1, 1, 0, 20),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "route"
+        assert result["matched_symbol_kind"] == "route"
+
+    def test_pattern_symbol_kind_no_match(self) -> None:
+        """Pattern does not match when symbol kind doesn't match."""
+        pattern = Pattern(
+            concept="route",
+            symbol_kind=r"^route$",
+        )
+
+        symbol = Symbol(
+            id="test:app.rb:1:UsersController:class",
+            name="UsersController",
+            kind="class",  # Not a route
+            language="ruby",
+            path="app/controllers/users_controller.rb",
+            span=Span(1, 50, 0, 0),
+            meta={},
+        )
+
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_pattern_symbol_kind_with_regex(self) -> None:
+        """Pattern symbol_kind uses regex matching."""
+        pattern = Pattern(
+            concept="endpoint",
+            symbol_kind=r"^(route|endpoint|handler)$",
+        )
+
+        # Test with "route"
+        route_symbol = Symbol(
+            id="test:routes.rb:1:get:route",
+            name="GET /",
+            kind="route",
+            language="ruby",
+            path="routes.rb",
+            span=Span(1, 1, 0, 10),
+            meta={},
+        )
+        result = pattern.matches(route_symbol)
+        assert result is not None
+        assert result["matched_symbol_kind"] == "route"
+
+        # Test with "handler"
+        handler_symbol = Symbol(
+            id="test:handler.go:1:HandleGet:handler",
+            name="HandleGet",
+            kind="handler",
+            language="go",
+            path="handler.go",
+            span=Span(1, 10, 0, 0),
+            meta={},
+        )
+        result = pattern.matches(handler_symbol)
+        assert result is not None
+        assert result["matched_symbol_kind"] == "handler"
+
 
 class TestFrameworkPatternDef:
     """Tests for the FrameworkPatternDef dataclass."""
@@ -2995,6 +3075,58 @@ class TestRailsPatterns:
         assert "concepts" in job.meta
         assert any(c["concept"] == "task" for c in job.meta["concepts"])
 
+    def test_rails_route_symbol_kind_pattern(self) -> None:
+        """Rails route symbols (kind=route) match route pattern via symbol_kind."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        # Route symbol created by Ruby analyzer for 'get "/users"' DSL call
+        symbol = Symbol(
+            id="test:routes.rb:1:GET_users:route",
+            name="GET /users",
+            kind="route",
+            language="ruby",
+            path="config/routes.rb",
+            span=Span(1, 1, 0, 30),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_symbol_kind"] == "route"
+
+    def test_rails_resources_route_pattern(self) -> None:
+        """Rails resources route symbols match route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        # Route symbol for 'resources :users' DSL call
+        symbol = Symbol(
+            id="test:routes.rb:5:resources_users:route",
+            name="resources:users",
+            kind="route",
+            language="ruby",
+            path="config/routes.rb",
+            span=Span(5, 5, 0, 20),
+            meta={
+                "route_path": "users",
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
 
 class TestPhoenixPatterns:
     """Tests for Phoenix (Elixir) framework pattern matching."""
@@ -3567,6 +3699,59 @@ class TestLaravelPatterns:
         mailer = next(s for s in enriched if s.name == "WelcomeMail")
         assert "concepts" in mailer.meta
         assert any(c["concept"] == "mailer" for c in mailer.meta["concepts"])
+
+    def test_laravel_route_symbol_kind_pattern(self) -> None:
+        """Laravel route symbols (kind=route) match route pattern via symbol_kind."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        # Route symbol created by PHP analyzer for Route::get('/users', ...) call
+        symbol = Symbol(
+            id="test:web.php:1:GET_users:route",
+            name="GET /users",
+            kind="route",
+            language="php",
+            path="routes/web.php",
+            span=Span(1, 1, 0, 40),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_symbol_kind"] == "route"
+
+    def test_laravel_api_route_pattern(self) -> None:
+        """Laravel API route symbols match route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laravel")
+
+        assert pattern_def is not None
+
+        # Route symbol for Route::post('/api/login', ...) call
+        symbol = Symbol(
+            id="test:api.php:5:POST_api_login:route",
+            name="POST /api/login",
+            kind="route",
+            language="php",
+            path="routes/api.php",
+            span=Span(5, 5, 0, 50),
+            meta={
+                "http_method": "POST",
+                "route_path": "/api/login",
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
 
 
 class TestGoWebPatterns:
