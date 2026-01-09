@@ -3818,3 +3818,118 @@ class WeightedController {
         decorators = meta.get("decorators", [])
         assert len(decorators) == 1
         assert decorators[0]["args"] == [0.75]
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestExpressRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level Express route detection."""
+
+    def test_express_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Express route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        routes_file = tmp_path / "routes.js"
+        routes_file.write_text("""
+const express = require('express');
+const router = express.Router();
+
+router.get('/users', (req, res) => {
+    res.json([]);
+});
+
+router.post('/users', (req, res) => {
+    res.json({});
+});
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_javascript(tmp_path)
+
+        # Should have at least one deprecation warning for Express
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Express" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_session(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per session."""
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple route files
+        (tmp_path / "users.js").write_text("""
+router.get('/users', (req, res) => res.json([]));
+router.post('/users', (req, res) => res.json({}));
+""")
+        (tmp_path / "items.js").write_text("""
+router.get('/items', (req, res) => res.json([]));
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_javascript(tmp_path)
+
+        # Should have exactly one Express deprecation warning (deduplicated)
+        express_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Express" in str(warning.message)
+        ]
+        assert len(express_warnings) == 1
+
+    def test_no_deprecation_warning_without_route_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for files without Express route calls."""
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        js_file = tmp_path / "utils.js"
+        js_file.write_text("""
+function formatDate(date) {
+    return date.toISOString();
+}
+
+function calculateTotal(items) {
+    return items.reduce((sum, item) => sum + item.price, 0);
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_javascript(tmp_path)
+
+        # Should have no deprecation warnings for route detection
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Express" in str(warning.message)
+        ]
+        assert len(route_warnings) == 0

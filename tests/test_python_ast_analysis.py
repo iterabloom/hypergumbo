@@ -2735,3 +2735,117 @@ class TestParameterMetadata:
         meta = noop.get("meta") or {}
         params = meta.get("parameters", [])
         assert params == []
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestDjangoRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level Django route detection."""
+
+    def test_django_url_patterns_emit_deprecation_warning(
+        self, tmp_path: Path
+    ) -> None:
+        """Django URL pattern detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import py as py_module
+        from hypergumbo.analyze.py import _extract_file_analysis
+
+        # Reset the warning deduplication set
+        py_module._deprecated_route_warnings_emitted.clear()
+
+        urls_file = tmp_path / "urls.py"
+        urls_file.write_text("""
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('users/', views.user_list),
+    path('users/<int:pk>/', views.user_detail),
+]
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _extract_file_analysis(urls_file, tmp_path, tmp_path)
+
+        # Should have at least one deprecation warning for Django
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Django" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_session(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per session."""
+        import warnings
+        from hypergumbo.analyze import py as py_module
+        from hypergumbo.analyze.py import _extract_file_analysis
+
+        # Reset the warning deduplication set
+        py_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple URL files
+        (tmp_path / "urls.py").write_text("""
+from django.urls import path
+urlpatterns = [path('api/', views.api)]
+""")
+        (tmp_path / "api_urls.py").write_text("""
+from django.urls import path
+urlpatterns = [path('users/', views.users), path('items/', views.items)]
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _extract_file_analysis(tmp_path / "urls.py", tmp_path, tmp_path)
+            _extract_file_analysis(tmp_path / "api_urls.py", tmp_path, tmp_path)
+
+        # Should have exactly one Django deprecation warning (deduplicated)
+        django_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Django" in str(warning.message)
+        ]
+        assert len(django_warnings) == 1
+
+    def test_no_deprecation_warning_without_url_patterns(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for files without Django URL patterns."""
+        import warnings
+        from hypergumbo.analyze import py as py_module
+        from hypergumbo.analyze.py import _extract_file_analysis
+
+        # Reset the warning deduplication set
+        py_module._deprecated_route_warnings_emitted.clear()
+
+        py_file = tmp_path / "views.py"
+        py_file.write_text("""
+def user_list(request):
+    return HttpResponse("users")
+
+def user_detail(request, pk):
+    return HttpResponse(f"user {pk}")
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _extract_file_analysis(py_file, tmp_path, tmp_path)
+
+        # Should have no deprecation warnings for Django URL patterns
+        django_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Django" in str(warning.message)
+        ]
+        assert len(django_warnings) == 0

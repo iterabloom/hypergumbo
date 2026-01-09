@@ -317,7 +317,30 @@ def _extract_namespace_imports(
 
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
+# Deprecated - use express.yaml, hapi.yaml, koa.yaml patterns
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
 
 
 # Use find_child_by_field from base.py (imported above)
@@ -860,10 +883,11 @@ def _extract_symbols(
         if id(node) in processed_handlers:
             continue
 
-        # Express-style route handler detection: app.get('/path', handler)
+        # Express-style route handler detection: app.get('/path', handler) - deprecated
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
+                _emit_route_deprecation_warning("Express")
                 handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
                 if handler_node:
                     # Mark the handler as processed to avoid extracting it again

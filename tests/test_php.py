@@ -812,3 +812,112 @@ class Utils {
         methods = [s for s in result.symbols if s.kind == "method" and "process" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "($data)"
+
+
+# ============================================================================
+# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# ============================================================================
+
+
+class TestLaravelRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level Laravel route detection."""
+
+    def test_laravel_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """Laravel route detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import php as php_module
+        from hypergumbo.analyze.php import analyze_php
+
+        # Reset the warning deduplication set
+        php_module._deprecated_route_warnings_emitted.clear()
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::get('/users', [UserController::class, 'index']);
+Route::post('/users', [UserController::class, 'store']);
+?>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_php(tmp_path)
+
+        # Should have at least one deprecation warning for Laravel
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        warning_message = str(deprecation_warnings[0].message)
+        assert "Laravel" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_deprecation_warning_emitted_once_per_session(
+        self, tmp_path: Path
+    ) -> None:
+        """Deprecation warning is emitted only once per session."""
+        import warnings
+        from hypergumbo.analyze import php as php_module
+        from hypergumbo.analyze.php import analyze_php
+
+        # Reset the warning deduplication set
+        php_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple route files
+        (tmp_path / "web.php").write_text("""<?php
+Route::get('/users', 'UserController@index');
+Route::post('/users', 'UserController@store');
+?>""")
+        (tmp_path / "api.php").write_text("""<?php
+Route::get('/api/items', 'ItemController@index');
+?>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_php(tmp_path)
+
+        # Should have exactly one Laravel deprecation warning (deduplicated)
+        laravel_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Laravel" in str(warning.message)
+        ]
+        assert len(laravel_warnings) == 1
+
+    def test_no_deprecation_warning_without_route_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for files without Laravel route calls."""
+        import warnings
+        from hypergumbo.analyze import php as php_module
+        from hypergumbo.analyze.php import analyze_php
+
+        # Reset the warning deduplication set
+        php_module._deprecated_route_warnings_emitted.clear()
+
+        php_file = tmp_path / "User.php"
+        php_file.write_text("""<?php
+class User {
+    public function __construct($name) {
+        $this->name = $name;
+    }
+
+    public function greet() {
+        return "Hello, {$this->name}!";
+    }
+}
+?>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_php(tmp_path)
+
+        # Should have no deprecation warnings for route detection
+        route_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "Laravel" in str(warning.message)
+        ]
+        assert len(route_warnings) == 0

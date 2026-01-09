@@ -53,13 +53,35 @@ if TYPE_CHECKING:
 PASS_ID = "rust-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# Axum HTTP method functions that define route handlers
+# Axum HTTP method functions that define route handlers (deprecated - use rust-web.yaml)
 # Used in patterns like .route("/path", get(handler))
 AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
-# Actix-web attribute macros that define route handlers
+# Actix-web attribute macros that define route handlers (deprecated - use rust-web.yaml)
 # Used in patterns like #[get("/path")] async fn handler() {}
 ACTIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+
+# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
+# Framework-specific route detection is deprecated in favor of YAML patterns
+_deprecated_route_warnings_emitted: set[str] = set()
+
+
+def _emit_route_deprecation_warning(framework: str) -> None:
+    """Emit deprecation warning for analyzer-level route detection.
+
+    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    Warning emitted once per framework per session.
+    """
+    if framework in _deprecated_route_warnings_emitted:
+        return
+    _deprecated_route_warnings_emitted.add(framework)
+    warnings.warn(
+        f"{framework} analyzer-level route detection is deprecated. "
+        f"Use framework YAML patterns (--frameworks) for semantic detection. "
+        f"See ADR-0003 for migration guidance.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
 
 
 def find_rust_files(repo_root: Path) -> Iterator[Path]:
@@ -765,15 +787,19 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
         )
         all_edges.extend(edges)
 
-        # Extract route handlers (Axum and Actix-web)
+        # Extract route handlers (Axum and Actix-web) - deprecated
         try:
             source = rs_file.read_bytes()
             tree = parser.parse(source)
-            # Axum: .route("/path", get(handler))
+            # Axum: .route("/path", get(handler)) - deprecated - use YAML
             axum_routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
+            if axum_routes:
+                _emit_route_deprecation_warning("Axum")
             all_symbols.extend(axum_routes)
-            # Actix-web: #[get("/path")] async fn handler() {}
+            # Actix-web: #[get("/path")] async fn handler() {} - deprecated - use YAML
             actix_routes = _extract_actix_routes(tree.root_node, source, rs_file, run)
+            if actix_routes:
+                _emit_route_deprecation_warning("Actix-web")
             all_symbols.extend(actix_routes)
         except (OSError, IOError):
             pass  # Skip files that can't be read
