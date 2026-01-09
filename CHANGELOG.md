@@ -125,6 +125,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     - Notifications: `Notification`
     - Livewire components: `Livewire\Component`
     - Jobs, events, listeners, policies, seeders
+  - Rust web framework patterns YAML (`rust-web.yaml`) with patterns for:
+    - Actix-web routes: `#[actix_web::get("/path")]`, `#[actix_web::post("/path")]`, etc.
+    - Rocket routes: `#[rocket::get("/path")]`, `#[rocket::post("/path")]`, etc.
+    - Diesel ORM models: `#[derive(Queryable)]`, `#[derive(Insertable)]`
+    - SeaORM models: `#[derive(DeriveEntityModel)]`
+    - Tokio async tasks: `tokio::spawn`
   - Go web framework patterns YAML (`go-web.yaml`) with patterns for:
     - Gin routes: `router.GET()`, `r.POST()`, etc.
     - Echo routes: `e.GET()`, `echo.POST()`, etc.
