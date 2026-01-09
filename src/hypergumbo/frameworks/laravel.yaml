@@ -1,0 +1,138 @@
+# Laravel framework patterns (ADR-0003 v1.0.x)
+#
+# Matches Laravel conventions for controllers, models, jobs, events, etc.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Laravel uses inheritance patterns and trait imports for behaviors.
+
+id: laravel
+language: php
+
+patterns:
+  # Controllers - extend Controller
+  - concept: controller
+    base_class: "^Controller$"
+
+  - concept: controller
+    base_class: "^App\\\\Http\\\\Controllers\\\\Controller$"
+
+  # API Controllers
+  - concept: controller
+    base_class: "^ResourceController$"
+
+  # Models - extend Model (Eloquent)
+  - concept: model
+    base_class: "^Model$"
+
+  - concept: model
+    base_class: "^Illuminate\\\\Database\\\\Eloquent\\\\Model$"
+
+  # Form Requests - validation
+  - concept: form
+    base_class: "^FormRequest$"
+
+  - concept: form
+    base_class: "^Illuminate\\\\Foundation\\\\Http\\\\FormRequest$"
+
+  # Jobs (queued tasks)
+  - concept: task
+    base_class: "^Job$"
+
+  - concept: task
+    decorator: "^implements ShouldQueue$"
+
+  # Events
+  - concept: event
+    base_class: "^Event$"
+
+  # Event Listeners
+  - concept: event_handler
+    base_class: "^Listener$"
+
+  - concept: event_handler
+    decorator: "^implements ShouldQueue$"
+
+  # Mail (Mailables)
+  - concept: mailer
+    base_class: "^Mailable$"
+
+  - concept: mailer
+    base_class: "^Illuminate\\\\Mail\\\\Mailable$"
+
+  # Notifications
+  - concept: notification
+    base_class: "^Notification$"
+
+  - concept: notification
+    base_class: "^Illuminate\\\\Notifications\\\\Notification$"
+
+  # Middleware
+  - concept: middleware
+    base_class: "^Middleware$"
+
+  # Service Providers
+  - concept: provider
+    base_class: "^ServiceProvider$"
+
+  - concept: provider
+    base_class: "^Illuminate\\\\Support\\\\ServiceProvider$"
+
+  # Commands (Artisan)
+  - concept: command
+    base_class: "^Command$"
+
+  - concept: command
+    base_class: "^Illuminate\\\\Console\\\\Command$"
+
+  # Policies (authorization)
+  - concept: policy
+    base_class: "^Policy$"
+
+  # Resources (API transformation)
+  - concept: serializer
+    base_class: "^JsonResource$"
+
+  - concept: serializer
+    base_class: "^ResourceCollection$"
+
+  - concept: serializer
+    base_class: "^Illuminate\\\\Http\\\\Resources\\\\Json\\\\JsonResource$"
+
+  # Observers (model events)
+  - concept: event_handler
+    base_class: "^Observer$"
+
+  # Seeders (database)
+  - concept: seeder
+    base_class: "^Seeder$"
+
+  - concept: seeder
+    base_class: "^Illuminate\\\\Database\\\\Seeder$"
+
+  # Factories (testing)
+  - concept: factory
+    base_class: "^Factory$"
+
+  # Exceptions
+  - concept: error_handler
+    base_class: "^Exception$"
+
+  - concept: error_handler
+    base_class: "^Handler$"
+
+  # Broadcasting channels
+  - concept: websocket_handler
+    base_class: "^Channel$"
+
+  # Livewire components (if using Livewire)
+  - concept: component
+    base_class: "^Component$"
+
+  - concept: component
+    base_class: "^Livewire\\\\Component$"
+
+linkers:
+  - http
+  - websocket
+  - message_queue
+  - database_query
