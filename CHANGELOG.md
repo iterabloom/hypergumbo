@@ -34,6 +34,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Flask UsageContext (ADR-0003 v1.1.x):** Python analyzer emits `UsageContext` for
   Flask's `add_url_rule()` calls. Enables YAML-driven route detection for Flask apps
   using programmatic URL registration instead of decorators.
+- **Go Gin/Echo/Chi/Fiber UsageContext (ADR-0003 v1.1.x):** Go analyzer emits `UsageContext`
+  for route registration calls (`r.GET()`, `e.POST()`, `app.Get()`, etc.). Route detection
+  now uses YAML patterns in `go-web.yaml` via usage-based matching.
 
 ## [0.9.1] - 2026-01-09
 

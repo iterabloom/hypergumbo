@@ -1663,7 +1663,7 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Java analyzer purified: Spring Boot and JAX-RS route detection removed, now YAML-driven
 - 🟩 Python analyzer: Removed misleading Django deprecation warning (call-based, see note)
 - 🟩 JS/TS analyzer: NestJS (decorator-based) deprecated; Express (call-based) clarified
-- 🟩 Go analyzer: Clarified call-based route detection (Gin, Echo, Fiber) cannot migrate
+- 🟩 Go analyzer: Call-based route detection (Gin, Echo, Fiber) now uses UsageContext
 - 🟧 Ruby/Rust: Deferred to v1.1.x (require UsageContext for DSL/call-based patterns)
 
 **v1.1.x (in progress - UsageContext):**
@@ -1672,12 +1672,16 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Extend Pattern class with `UsagePatternSpec` and `matches_usage()` method
 - 🟩 Implement extraction DSL (`literal:`, `metadata.`, transforms)
 - 🟩 Add two-phase enrichment to `enrich_symbols()` (definition-based + usage-based)
-- 🟧 Migrate call-based frameworks: Django (`path()`), Express (`app.get()`), Go (`r.GET()`)
+- 🟩 Migrate Django (`path()`, `re_path()`, `url()`) - emits UsageContext, YAML patterns added
+- 🟩 Migrate Flask (`add_url_rule()`) - emits UsageContext, YAML patterns added
+- 🟩 Migrate Express (`app.get()`, `router.post()`) - emits UsageContext, YAML patterns added
+- 🟩 Migrate Go Gin/Echo/Chi/Fiber (`r.GET()`, `app.Post()`) - emits UsageContext, YAML patterns added
+- 🟧 Migrate Hapi (`server.route({ handler })`) - requires object property parsing
 - 🟧 Migrate DSL/block-based frameworks: Ruby Rails/Sinatra, Elixir Phoenix
 - 🟧 Migrate Rust call-based: Axum (`Router::route()`)
 - 🟧 Support file-based routing: Next.js, Nuxt (optional, lower priority)
 
-**Note on pattern types:** The current YAML pattern system (v1.0.x) matches **decorator/annotation metadata** on symbols. This works for Java annotations (`@GetMapping`), Python decorators (`@app.get`), NestJS decorators (`@Get()`), and Rust attribute macros (`#[get()]`). However, many frameworks use **call-based** patterns (Django `path()`, Express `app.get()`, Go `r.GET()`) or **DSL/block-based** patterns (Ruby Sinatra, Rails routes). These require the UsageContext extension (v1.1.x) which captures how symbols are *used*, not just how they're *defined*.
+**Note on pattern types:** The v1.0.x YAML pattern system matches **decorator/annotation metadata** on symbols. The v1.1.x UsageContext extension enables YAML patterns for **call-based** frameworks (Django, Express, Flask, Go Gin) by capturing how symbols are *used* in route registration calls. DSL/block-based patterns (Ruby Sinatra, Rails routes) and config-object patterns (Hapi) are planned for future work.
 
 ## 9) Testing & quality bar
 

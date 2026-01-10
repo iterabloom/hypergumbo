@@ -4027,112 +4027,121 @@ class TestLaravelPatterns:
 
 
 class TestGoWebPatterns:
-    """Tests for Go web framework pattern matching."""
+    """Tests for Go web framework pattern matching.
 
-    def test_go_gin_get_route_pattern(self) -> None:
-        """Gin router.GET matches route pattern with method extraction."""
+    Go web frameworks use call-based patterns (r.GET, e.POST) which are matched
+    via UsageContext (v1.1.x), not decorator metadata.
+    """
+
+    def test_go_gin_get_route_pattern_via_usage_context(self) -> None:
+        """Gin router.GET matches via UsageContext pattern."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("go-web")
 
         assert pattern_def is not None, "Go-web patterns YAML should exist"
 
-        symbol = Symbol(
-            id="test:main.go:10:getUsers:function",
-            name="getUsers",
-            kind="function",
-            language="go",
+        # Create a UsageContext for a Gin route call
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="router.GET",
+            position="args[last]",
             path="main.go",
-            span=Span(10, 20, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "router.GET", "args": ["/users"], "kwargs": {}},
-                ],
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:main.go:10:getUsers:function",
+            metadata={
+                "route_path": "/users",
+                "http_method": "GET",
+                "handler_name": "getUsers",
+                "receiver": "router",
             },
         )
 
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
-        assert results[0]["matched_decorator"] == "router.GET"
+        assert results[0]["path"] == "/users"
         assert results[0]["method"] == "GET"
 
-    def test_go_echo_post_route_pattern(self) -> None:
-        """Echo e.POST matches route pattern with method extraction."""
+    def test_go_echo_post_route_pattern_via_usage_context(self) -> None:
+        """Echo e.POST matches via UsageContext pattern."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("go-web")
 
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:handlers.go:15:createUser:function",
-            name="createUser",
-            kind="function",
-            language="go",
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="e.POST",
+            position="args[last]",
             path="handlers.go",
-            span=Span(15, 25, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "e.POST", "args": ["/users"], "kwargs": {}},
-                ],
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:handlers.go:15:createUser:function",
+            metadata={
+                "route_path": "/users",
+                "http_method": "POST",
+                "handler_name": "createUser",
+                "receiver": "e",
             },
         )
 
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
         assert results[0]["method"] == "POST"
 
-    def test_go_fiber_get_route_pattern(self) -> None:
-        """Fiber app.Get matches route pattern."""
+    def test_go_fiber_get_route_pattern_via_usage_context(self) -> None:
+        """Fiber app.Get matches via UsageContext pattern (lowercase method)."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("go-web")
 
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:main.go:20:getProduct:function",
-            name="getProduct",
-            kind="function",
-            language="go",
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.Get",
+            position="args[last]",
             path="main.go",
-            span=Span(20, 30, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "app.Get", "args": ["/products/:id"], "kwargs": {}},
-                ],
+            span=Span(20, 20, 0, 50),
+            symbol_ref="test:main.go:20:getProduct:function",
+            metadata={
+                "route_path": "/products/:id",
+                "http_method": "GET",
+                "handler_name": "getProduct",
+                "receiver": "app",
             },
         )
 
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
         assert results[0]["method"] == "GET"
 
-    def test_go_chi_delete_route_pattern(self) -> None:
-        """Chi r.Delete matches route pattern."""
+    def test_go_chi_delete_route_pattern_via_usage_context(self) -> None:
+        """Chi r.Delete matches via UsageContext pattern."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("go-web")
 
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:handlers.go:25:deleteUser:function",
-            name="deleteUser",
-            kind="function",
-            language="go",
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="r.Delete",
+            position="args[last]",
             path="handlers.go",
-            span=Span(25, 35, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "r.Delete", "args": ["/users/{id}"], "kwargs": {}},
-                ],
+            span=Span(25, 25, 0, 50),
+            symbol_ref="test:handlers.go:25:deleteUser:function",
+            metadata={
+                "route_path": "/users/{id}",
+                "http_method": "DELETE",
+                "handler_name": "deleteUser",
+                "receiver": "r",
             },
         )
 
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
@@ -4218,9 +4227,10 @@ class TestGoWebPatterns:
         assert results[0]["matched_base_class"] == "gorm.Model"
 
     def test_go_enrich_symbols_integration(self) -> None:
-        """Go web patterns enrich symbols with concept metadata."""
+        """Go web patterns enrich symbols via UsageContext matching."""
         clear_pattern_cache()
 
+        # Symbols representing handler functions
         symbols = [
             Symbol(
                 id="test:main.go:10:getUsers:function",
@@ -4229,7 +4239,7 @@ class TestGoWebPatterns:
                 language="go",
                 path="main.go",
                 span=Span(10, 20, 0, 0),
-                meta={"decorators": [{"name": "router.GET", "args": ["/users"], "kwargs": {}}]},
+                meta={},
             ),
             Symbol(
                 id="test:middleware.go:1:authMiddleware:function",
@@ -4251,17 +4261,41 @@ class TestGoWebPatterns:
             ),
         ]
 
-        enriched = enrich_symbols(symbols, {"go-web"})
+        # UsageContexts from route registration calls
+        usage_contexts = [
+            UsageContext.create(
+                kind="call",
+                context_name="router.GET",
+                position="args[last]",
+                path="main.go",
+                span=Span(10, 10, 0, 50),
+                symbol_ref="test:main.go:10:getUsers:function",
+                metadata={
+                    "route_path": "/users",
+                    "http_method": "GET",
+                    "handler_name": "getUsers",
+                    "receiver": "router",
+                },
+            ),
+        ]
 
-        # Check that concepts were added
+        enriched = enrich_symbols(symbols, {"go-web"}, usage_contexts=usage_contexts)
+
+        # Check that route symbol was enriched via UsageContext
         route = next(s for s in enriched if s.name == "getUsers")
         assert "concepts" in route.meta
         assert any(c["concept"] == "route" for c in route.meta["concepts"])
+        # Verify route metadata was extracted
+        route_concept = next(c for c in route.meta["concepts"] if c["concept"] == "route")
+        assert route_concept.get("path") == "/users"
+        assert route_concept.get("method") == "GET"
 
+        # Middleware still works via decorator patterns
         middleware = next(s for s in enriched if s.name == "authMiddleware")
         assert "concepts" in middleware.meta
         assert any(c["concept"] == "middleware" for c in middleware.meta["concepts"])
 
+        # GORM model still works via base_class patterns
         model = next(s for s in enriched if s.name == "User")
         assert "concepts" in model.meta
         assert any(c["concept"] == "model" for c in model.meta["concepts"])

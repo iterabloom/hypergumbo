@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import (
     AnalysisResult,
     FileAnalysis,
@@ -65,9 +65,8 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # Fiber uses lowercase: Get, Post, Put, Delete, Patch, Head, Options
 #
 # Note: Go web framework route detection uses method calls (r.GET, e.POST) rather
-# than decorators, so it must be detected at the analyzer level. This cannot be
-# migrated to YAML patterns which only match decorator/base_class metadata.
-# See ADR-0003 usage-context-patterns.md for future UsageContext-based approach.
+# than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
+# enables YAML patterns for call-based frameworks.
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
@@ -647,6 +646,126 @@ def _extract_go_routes(
     return routes
 
 
+def _extract_go_usage_contexts(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Go web framework route calls.
+
+    Creates UsageContext records that capture how handler functions are used
+    in Gin/Echo/Chi/Fiber route registration calls. These are matched against
+    YAML patterns in the enrichment phase.
+
+    Supported patterns:
+    - Gin: r.GET("/path", handler), router.POST("/users", createUser)
+    - Echo: e.GET("/path", handler), echo.POST("/users", createUser)
+    - Chi: r.Get("/path", handler), router.Post("/users", createUser)
+    - Fiber: app.Get("/path", handler), app.Post("/users", createUser)
+
+    Args:
+        node: The root tree-sitter node
+        source: Source file bytes
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+
+    Returns:
+        List of UsageContext records for Go route patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for n in iter_tree(node):
+        if n.type != "call_expression":
+            continue
+
+        func_node = find_child_by_field(n, "function")
+        if not func_node or func_node.type != "selector_expression":
+            continue
+
+        # Get the method name (e.g., GET, POST, Get, Post)
+        field_node = find_child_by_field(func_node, "field")
+        if not field_node:  # pragma: no cover
+            continue
+
+        method_name = node_text(field_node, source)
+        if method_name not in GO_HTTP_METHODS:
+            continue
+
+        # Get the receiver name (e.g., r, router, e, echo, app)
+        operand_node = find_child_by_field(func_node, "operand")
+        receiver_name = node_text(operand_node, source) if operand_node else None
+
+        # Extract arguments
+        args_node = find_child_by_field(n, "arguments")
+        if not args_node:  # pragma: no cover
+            continue
+
+        route_path = None
+        handler_name = None
+
+        for arg in args_node.children:
+            # First string literal is the route path
+            if arg.type == "interpreted_string_literal" and route_path is None:
+                content_node = find_child_by_type(arg, "interpreted_string_literal_content")
+                if content_node:
+                    route_path = node_text(content_node, source)
+                else:  # pragma: no cover
+                    route_path = node_text(arg, source).strip('"')
+
+            # Handler is usually an identifier after the path
+            elif arg.type == "identifier" and route_path is not None:
+                handler_name = node_text(arg, source)
+                break
+
+            # Handler could also be a selector (pkg.Handler)
+            elif arg.type == "selector_expression" and route_path is not None:
+                handler_name = node_text(arg, source)
+                break
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Try to resolve handler to a symbol reference
+        handler_ref = None
+        if handler_name and handler_name in symbol_by_name:
+            handler_ref = symbol_by_name[handler_name].id
+
+        # Normalize method name to uppercase
+        normalized_method = method_name.upper()
+
+        # Build full call name (e.g., "r.GET", "router.Post")
+        call_name = f"{receiver_name}.{method_name}" if receiver_name else method_name
+
+        # Normalize route path
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        span = Span(
+            start_line=n.start_point[0] + 1,
+            end_line=n.end_point[0] + 1,
+            start_col=n.start_point[1],
+            end_col=n.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="args[last]",  # Handler is typically last argument
+            path=str(file_path),
+            span=span,
+            symbol_ref=handler_ref,
+            metadata={
+                "route_path": normalized_path,
+                "http_method": normalized_method,
+                "handler_name": handler_name,
+                "receiver": receiver_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 @register_analyzer("go", priority=50)
 def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     """Analyze all Go files in a repository.
@@ -712,9 +831,10 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
                     global_symbols[symbol.name] = []
                 global_symbols[symbol.name].append(symbol)
 
-    # Pass 2: Extract edges and routes
+    # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
 
     for go_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -731,6 +851,12 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
             tree = parser.parse(source)
             routes = _extract_go_routes(tree.root_node, source, go_file, run)
             all_symbols.extend(routes)
+
+            # Extract usage contexts for YAML pattern matching (v1.1.x)
+            usage_contexts = _extract_go_usage_contexts(
+                tree.root_node, source, go_file, analysis.symbol_by_name
+            )
+            all_usage_contexts.extend(usage_contexts)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
 
@@ -741,5 +867,6 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

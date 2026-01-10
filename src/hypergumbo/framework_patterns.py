@@ -96,11 +96,11 @@ class UsagePatternSpec:
         Returns:
             True if all specified patterns match, False otherwise.
         """
-        if self._kind_re and not self._kind_re.match(ctx.kind):
+        if self._kind_re and not self._kind_re.search(ctx.kind):
             return False
-        if self._name_re and not self._name_re.match(ctx.context_name):
+        if self._name_re and not self._name_re.search(ctx.context_name):
             return False
-        if self._position_re and not self._position_re.match(ctx.position):
+        if self._position_re and not self._position_re.search(ctx.position):
             return False
         return True
 
