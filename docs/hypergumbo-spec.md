@@ -1662,9 +1662,10 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Deprecation warnings added to analyzer-level route detection (decorator-based frameworks)
 - 🟩 Java analyzer purified: Spring Boot and JAX-RS route detection removed, now YAML-driven
 - 🟩 Python analyzer: Removed misleading Django deprecation warning (see note below)
-- 🟧 Remaining: JS/TS, Go, Ruby, Rust analyzers still have framework logic to extract
+- 🟩 JS/TS analyzer: NestJS (decorator-based) deprecation warning added; Express (call-based) warning removed
+- 🟧 Remaining: Go, Ruby, Rust analyzers still have framework logic to extract
 
-**Note on call-based frameworks:** Django URL patterns (`path()`, `re_path()`) use function calls, not decorators. These cannot be migrated to the current YAML pattern system which matches symbol metadata. The [ADR-0003 Usage Context Patterns extension](adr/0003-usage-context-patterns.md) proposes a unified model to handle call-based, data-driven, and file-based framework patterns via YAML. Until implemented, call-based route detection remains in analyzers as a necessary special case.
+**Note on call-based frameworks:** Django URL patterns (`path()`, `re_path()`) and Express routing (`app.get()`, `router.post()`) use function calls, not decorators. These cannot be migrated to the current YAML pattern system which matches symbol metadata. The [ADR-0003 Usage Context Patterns extension](adr/0003-usage-context-patterns.md) proposes a unified model to handle call-based, data-driven, and file-based framework patterns via YAML. Until implemented, call-based route detection remains in analyzers as a necessary special case.
 
 ## 9) Testing & quality bar
 

@@ -3825,11 +3825,16 @@ class WeightedController {
 # ============================================================================
 
 
-class TestExpressRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level Express route detection."""
+class TestExpressRouteDetectionNoDeprecation:
+    """Tests verifying Express route detection does NOT emit deprecation warnings.
 
-    def test_express_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Express route detection emits deprecation warning."""
+    Express uses call-based patterns (app.get, router.post) which cannot be
+    migrated to YAML patterns (which only match decorator/base_class metadata).
+    See ADR-0003 usage-context-patterns.md for future UsageContext approach.
+    """
+
+    def test_express_route_no_deprecation_warning(self, tmp_path: Path) -> None:
+        """Express route detection does NOT emit deprecation warning (call-based)."""
         import warnings
         from hypergumbo.analyze import js_ts as js_ts_module
         from hypergumbo.analyze.js_ts import analyze_javascript
@@ -3853,86 +3858,20 @@ router.post('/users', (req, res) => {
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            analyze_javascript(tmp_path)
+            result = analyze_javascript(tmp_path)
 
-        # Should have at least one deprecation warning for Express
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Express" in warning_message
-        assert "deprecated" in warning_message.lower()
+        # Express routes SHOULD still be detected
+        route_symbols = [s for s in result.symbols if s.kind in ("route", "function") and s.meta and s.meta.get("route_path")]
+        assert len(route_symbols) >= 1, "Express routes should still be detected"
 
-    def test_deprecation_warning_emitted_once_per_session(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per session."""
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
-        from hypergumbo.analyze.js_ts import analyze_javascript
-
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple route files
-        (tmp_path / "users.js").write_text("""
-router.get('/users', (req, res) => res.json([]));
-router.post('/users', (req, res) => res.json({}));
-""")
-        (tmp_path / "items.js").write_text("""
-router.get('/items', (req, res) => res.json([]));
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_javascript(tmp_path)
-
-        # Should have exactly one Express deprecation warning (deduplicated)
+        # But NO deprecation warning for Express (call-based, can't migrate to YAML)
         express_warnings = [
             warning
             for warning in w
             if issubclass(warning.category, DeprecationWarning)
             and "Express" in str(warning.message)
         ]
-        assert len(express_warnings) == 1
-
-    def test_no_deprecation_warning_without_route_calls(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for files without Express route calls."""
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
-        from hypergumbo.analyze.js_ts import analyze_javascript
-
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
-
-        js_file = tmp_path / "utils.js"
-        js_file.write_text("""
-function formatDate(date) {
-    return date.toISOString();
-}
-
-function calculateTotal(items) {
-    return items.reduce((sum, item) => sum + item.price, 0);
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_javascript(tmp_path)
-
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Express" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
+        assert len(express_warnings) == 0, "Express should NOT emit deprecation warning"
 
     def test_fetchmock_get_not_detected_as_route(self, tmp_path: Path) -> None:
         """fetchMock.get() should NOT be detected as an Express route (ADR-0003).
@@ -4013,6 +3952,142 @@ http.get('/endpoint', callback);
             warning
             for warning in w
             if issubclass(warning.category, DeprecationWarning)
-            and "Express" in str(warning.message)
         ]
         assert len(route_warnings) == 0
+
+
+class TestNestJSRouteDetectionDeprecation:
+    """Tests for deprecation warnings on analyzer-level NestJS route detection.
+
+    NestJS uses decorator-based patterns (@Get, @Post) which CAN be migrated
+    to YAML patterns. See nestjs.yaml for the pattern definitions.
+    """
+
+    def test_nestjs_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
+        """NestJS decorator detection emits deprecation warning."""
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Get()
+    findAll() {
+        return [];
+    }
+
+    @Post()
+    create() {
+        return {};
+    }
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_javascript(tmp_path)
+
+        # Should have at least one deprecation warning for NestJS
+        deprecation_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1, "NestJS should emit deprecation warning"
+        warning_message = str(deprecation_warnings[0].message)
+        assert "NestJS" in warning_message
+        assert "deprecated" in warning_message.lower()
+
+    def test_nestjs_deprecation_warning_emitted_once_per_session(
+        self, tmp_path: Path
+    ) -> None:
+        """NestJS deprecation warning is emitted only once per session."""
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        # Create multiple NestJS controller files
+        (tmp_path / "users.controller.ts").write_text("""
+import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Get()
+    findAll() { return []; }
+
+    @Post()
+    create() { return {}; }
+}
+""")
+        (tmp_path / "items.controller.ts").write_text("""
+import { Controller, Get, Delete } from '@nestjs/common';
+
+@Controller('items')
+export class ItemsController {
+    @Get()
+    findAll() { return []; }
+
+    @Delete(':id')
+    remove() { return {}; }
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_javascript(tmp_path)
+
+        # Should have exactly one NestJS deprecation warning (deduplicated)
+        nestjs_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "NestJS" in str(warning.message)
+        ]
+        assert len(nestjs_warnings) == 1, "NestJS warning should be deduplicated"
+
+    def test_no_deprecation_warning_without_nestjs_decorators(
+        self, tmp_path: Path
+    ) -> None:
+        """No deprecation warning for files without NestJS route decorators."""
+        import warnings
+        from hypergumbo.analyze import js_ts as js_ts_module
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Reset the warning deduplication set
+        js_ts_module._deprecated_route_warnings_emitted.clear()
+
+        ts_file = tmp_path / "utils.ts"
+        ts_file.write_text("""
+export function formatDate(date: Date): string {
+    return date.toISOString();
+}
+
+export class Calculator {
+    add(a: number, b: number): number {
+        return a + b;
+    }
+}
+""")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            analyze_javascript(tmp_path)
+
+        # Should have no deprecation warnings for NestJS route detection
+        nestjs_warnings = [
+            warning
+            for warning in w
+            if issubclass(warning.category, DeprecationWarning)
+            and "NestJS" in str(warning.message)
+        ]
+        assert len(nestjs_warnings) == 0

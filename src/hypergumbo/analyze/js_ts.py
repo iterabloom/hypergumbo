@@ -317,7 +317,10 @@ def _extract_namespace_imports(
 
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
-# Deprecated - use express.yaml, hapi.yaml, koa.yaml patterns
+# Note: Express-style route detection uses function calls (app.get, router.post) rather
+# than decorators, so it must be detected at the analyzer level. This cannot be
+# migrated to YAML patterns which only match decorator/base_class metadata.
+# See ADR-0003 usage-context-patterns.md for future UsageContext-based approach.
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 # Known router/app receiver names for route detection (ADR-0003)
@@ -326,15 +329,19 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
 
 # Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
+# Only decorator-based frameworks (NestJS) should emit deprecation warnings.
+# Call-based frameworks (Express, Koa, etc.) cannot be migrated to YAML patterns.
 _deprecated_route_warnings_emitted: set[str] = set()
 
 
 def _emit_route_deprecation_warning(framework: str) -> None:
     """Emit deprecation warning for analyzer-level route detection.
 
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
+    This is deprecated in ADR-0003 v1.0.x for decorator-based frameworks.
     Warning emitted once per framework per session.
+
+    Note: Only call this for decorator-based frameworks (NestJS).
+    Call-based frameworks (Express, Koa) cannot be migrated to YAML patterns.
     """
     if framework in _deprecated_route_warnings_emitted:
         return
@@ -921,11 +928,12 @@ def _extract_symbols(
         if id(node) in processed_handlers:
             continue
 
-        # Express-style route handler detection: app.get('/path', handler) - deprecated
+        # Express-style route handler detection: app.get('/path', handler)
+        # Note: This is call-based, not decorator-based, so it cannot be migrated
+        # to YAML patterns. See ADR-0003 usage-context-patterns.md.
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
-                _emit_route_deprecation_warning("Express")
                 handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
                 if handler_node:
                     # Mark the handler as processed to avoid extracting it again
@@ -1183,6 +1191,11 @@ def _extract_symbols(
 
                 http_method, route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
+
+                # NestJS decorator detection is deprecated (ADR-0003 v1.0.x)
+                # Use YAML patterns in nestjs.yaml instead
+                if http_method:
+                    _emit_route_deprecation_warning("NestJS")
 
                 # Build meta with decorators and route_path
                 meta: dict[str, object] | None = None
