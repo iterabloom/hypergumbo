@@ -1642,7 +1642,7 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 | **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata | 🟩 |
 | **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata | 🟩 |
 | **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) | 🟩 |
-| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure | 🟨 |
+| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure | 🟩 |
 
 **v0.8.x (complete):**
 - 🟩 `framework_patterns.py` module with YAML-driven pattern matching
@@ -1664,7 +1664,8 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Python analyzer: Removed misleading Django deprecation warning (call-based, see note)
 - 🟩 JS/TS analyzer: NestJS (decorator-based) deprecated; Express (call-based) clarified
 - 🟩 Go analyzer: Call-based route detection (Gin, Echo, Fiber) now uses UsageContext
-- 🟧 Ruby/Rust: Deferred to v1.1.x (require UsageContext for DSL/call-based patterns)
+- 🟩 Ruby analyzer: Rails route DSL detection now uses UsageContext
+- 🟩 Rust analyzer: Axum call-based route detection now uses UsageContext
 
 **v1.1.x (in progress - UsageContext):**
 - 🟩 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
