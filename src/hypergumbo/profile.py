@@ -319,6 +319,7 @@ JAVA_FRAMEWORKS = {
     # Kotlin-specific
     "ktor": ["ktor", "io.ktor"],
     # Android
+    "android": ["com.android.application", "com.android.library", "android.app.Activity"],
     "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
 }
 

@@ -77,6 +77,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   lifecycle methods. Java analyzer now includes `parent_base_classes` in method metadata to
   enable pattern matching like `parent_base_class: "^Activity$"` + `method_name: "^onCreate$"`.
   New `android.yaml` framework pattern file supports all common Android entry points.
+- **Android framework detection:** Added "android" to `JAVA_FRAMEWORKS` detection patterns
+  in profile module. Detects Android projects via `com.android.application` or
+  `com.android.library` in build.gradle, enabling Android entrypoint pattern matching.
 - **Catalog command improvements:** Updated `hypergumbo catalog` output to:
   - Skip language detection for large directories (>200 entries) to avoid slow scans of $HOME
   - Show available framework YAML patterns (v1.1.x) with `--frameworks` hint
