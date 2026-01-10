@@ -1664,7 +1664,7 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Python analyzer: Removed misleading Django deprecation warning (call-based, see note)
 - 🟩 JS/TS analyzer: NestJS (decorator-based) deprecated; Express (call-based) clarified
 - 🟩 Go analyzer: Clarified call-based route detection (Gin, Echo, Fiber) cannot migrate
-- 🟩 Ruby/Rust: Deferred to v1.1.x (require UsageContext for DSL/call-based patterns)
+- 🟧 Ruby/Rust: Deferred to v1.1.x (require UsageContext for DSL/call-based patterns)
 
 **v1.1.x (planned - UsageContext):**
 - 🟧 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
