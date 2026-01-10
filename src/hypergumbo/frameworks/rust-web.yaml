@@ -1,14 +1,29 @@
-# Rust Web Framework patterns (ADR-0003 v1.0.x)
+# Rust Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches common Rust web frameworks: Actix-web, Axum, Rocket, Warp.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Rust uses attribute macros and proc macros for route definitions.
+# Definition-based patterns (v1.0.x): Match annotations for Actix-web, Rocket
+# Usage-based patterns (v1.1.x): Match call-based routing for Axum
 
 id: rust-web
 language: rust
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for Axum call-based routing
+
+  # Axum route handlers - .route("/path", get(handler))
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^route\\.(get|post|put|patch|delete|head|options|trace)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Actix-web route attributes
   - concept: route
     annotation: "^actix_web::get$"
@@ -61,9 +76,7 @@ patterns:
     annotation: "^rocket::route$"
     extract_path: "args[0]"
 
-  # Axum route patterns (method routing via function names)
-  # Axum uses Router::route("/path", get(handler)) pattern
-  # These are typically detected via the handler function context
+  # Axum middleware
   - concept: middleware
     annotation: "^axum::middleware::from_fn$"
 

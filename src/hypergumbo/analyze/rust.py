@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -53,8 +53,9 @@ if TYPE_CHECKING:
 PASS_ID = "rust-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# Axum HTTP method functions that define route handlers (deprecated - use rust-web.yaml)
+# Axum HTTP method functions that define route handlers
 # Used in patterns like .route("/path", get(handler))
+# Route symbols are created directly here but UsageContext records enable YAML pattern matching
 AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
 # Actix-web attribute macros that define route handlers (deprecated - use rust-web.yaml)
@@ -104,6 +105,7 @@ class RustAnalysisResult:
 
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
@@ -503,6 +505,147 @@ def _extract_axum_routes(
     return routes
 
 
+def _extract_axum_usage_contexts(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Axum route registrations.
+
+    Detects patterns like:
+    - .route("/path", get(handler))
+    - .route("/users", post(create_user).get(list_users))
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    # Use a stack-based approach to process nodes iteratively
+    stack = [node]
+    while stack:
+        current = stack.pop()
+
+        for child in current.children:
+            stack.append(child)
+
+            # Look for method call .route(...)
+            if child.type == "call_expression":
+                func_node = _find_child_by_field(child, "function")
+
+                if func_node and func_node.type == "field_expression":
+                    field_node = _find_child_by_field(func_node, "field")
+
+                    if field_node and _node_text(field_node, source) == "route":
+                        # Found .route() call - extract arguments
+                        args_node = _find_child_by_type(child, "arguments")
+                        if not args_node:  # pragma: no cover
+                            continue
+
+                        route_path = None
+                        for arg in args_node.children:
+                            if arg.type == "string_literal" and route_path is None:
+                                route_path = _node_text(arg, source).strip('"')
+                                break
+
+                        if not route_path:  # pragma: no cover
+                            continue
+
+                        # Extract handler calls (get(handler), post(handler), etc.)
+                        for arg in args_node.children:
+                            if arg.type == "call_expression":
+                                _extract_handler_usage_contexts(
+                                    arg, source, file_path, route_path,
+                                    symbol_by_name, contexts
+                                )
+
+    return contexts
+
+
+def _extract_handler_usage_contexts(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    route_path: str,
+    symbol_by_name: dict[str, Symbol],
+    contexts: list[UsageContext],
+) -> None:
+    """Extract UsageContext from handler chain like get(handler).post(handler2).
+
+    Iteratively traverses chained method calls.
+    """
+    current_call = call_node
+    while current_call is not None and current_call.type == "call_expression":
+        func_node = _find_child_by_field(current_call, "function")
+        if not func_node:
+            break  # pragma: no cover
+
+        next_call = None
+        method_name = None
+        handler_name = None
+
+        # Check if this is an HTTP method call like get(handler)
+        if func_node.type == "identifier":
+            method_name = _node_text(func_node, source)
+            if method_name in AXUM_HTTP_METHODS:
+                args_node = _find_child_by_type(current_call, "arguments")
+                if args_node:
+                    for arg in args_node.children:
+                        if arg.type == "identifier":
+                            handler_name = _node_text(arg, source)
+                            break
+
+        # Check for chained methods like get(h1).post(h2)
+        elif func_node.type == "field_expression":
+            field_node = _find_child_by_field(func_node, "field")
+            value_node = _find_child_by_field(func_node, "value")
+
+            if field_node:
+                method_name = _node_text(field_node, source)
+                if method_name in AXUM_HTTP_METHODS:
+                    args_node = _find_child_by_type(current_call, "arguments")
+                    if args_node:
+                        for arg in args_node.children:
+                            if arg.type == "identifier":
+                                handler_name = _node_text(arg, source)
+                                break
+
+            # Continue traversing the chain
+            if value_node and value_node.type == "call_expression":
+                next_call = value_node
+
+        # Create UsageContext if we found a valid handler
+        if method_name and method_name in AXUM_HTTP_METHODS and handler_name:
+            # Try to resolve handler to a symbol reference
+            handler_ref = None
+            if handler_name in symbol_by_name:
+                handler_ref = symbol_by_name[handler_name].id
+
+            span = Span(
+                start_line=current_call.start_point[0] + 1,
+                end_line=current_call.end_point[0] + 1,
+                start_col=current_call.start_point[1],
+                end_col=current_call.end_point[1],
+            )
+
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=f"route.{method_name}",  # e.g., "route.get", "route.post"
+                position="args[last]",
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "route_path": route_path,
+                    "http_method": method_name.upper(),
+                    "handler_name": handler_name,
+                },
+            )
+            contexts.append(ctx)
+
+        current_call = next_call
+
+
 def _extract_actix_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -775,9 +918,10 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges and Axum routes
+    # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
 
     for rs_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -787,21 +931,28 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
         )
         all_edges.extend(edges)
 
-        # Extract route handlers (Axum and Actix-web) - deprecated
+        # Extract route handlers and usage contexts
         try:
             source = rs_file.read_bytes()
             tree = parser.parse(source)
-            # Axum: .route("/path", get(handler)) - deprecated - use YAML
+            # Axum: .route("/path", get(handler)) - creates symbols and UsageContext
             axum_routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
             if axum_routes:
                 _emit_route_deprecation_warning("Axum")
             all_symbols.extend(axum_routes)
-            # Actix-web: #[get("/path")] async fn handler() {} - deprecated - use YAML
+
+            # Axum UsageContext for YAML pattern matching
+            usage_contexts = _extract_axum_usage_contexts(
+                tree.root_node, source, rs_file, analysis.symbol_by_name
+            )
+            all_usage_contexts.extend(usage_contexts)
+
+            # Actix-web: #[get("/path")] async fn handler() {} - definition-based
             actix_routes = _extract_actix_routes(tree.root_node, source, rs_file, run)
             if actix_routes:
                 _emit_route_deprecation_warning("Actix-web")
             all_symbols.extend(actix_routes)
-        except (OSError, IOError):
+        except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
 
     run.files_analyzed = len(file_analyses)
@@ -811,5 +962,6 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
     return RustAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

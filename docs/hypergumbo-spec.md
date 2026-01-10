@@ -1676,12 +1676,13 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Migrate Flask (`add_url_rule()`) - emits UsageContext, YAML patterns added
 - 🟩 Migrate Express (`app.get()`, `router.post()`) - emits UsageContext, YAML patterns added
 - 🟩 Migrate Go Gin/Echo/Chi/Fiber (`r.GET()`, `app.Post()`) - emits UsageContext, YAML patterns added
+- 🟩 Migrate Ruby Rails (`get '/path'`, `resources :users`) - emits UsageContext, YAML patterns added
+- 🟩 Migrate Rust Axum (`.route("/path", get(handler))`) - emits UsageContext, YAML patterns added
 - 🟧 Migrate Hapi (`server.route({ handler })`) - requires object property parsing
-- 🟧 Migrate DSL/block-based frameworks: Ruby Rails/Sinatra, Elixir Phoenix
-- 🟧 Migrate Rust call-based: Axum (`Router::route()`)
+- 🟧 Migrate DSL/block-based: Ruby Sinatra, Elixir Phoenix
 - 🟧 Support file-based routing: Next.js, Nuxt (optional, lower priority)
 
-**Note on pattern types:** The v1.0.x YAML pattern system matches **decorator/annotation metadata** on symbols. The v1.1.x UsageContext extension enables YAML patterns for **call-based** frameworks (Django, Express, Flask, Go Gin) by capturing how symbols are *used* in route registration calls. DSL/block-based patterns (Ruby Sinatra, Rails routes) and config-object patterns (Hapi) are planned for future work.
+**Note on pattern types:** The v1.0.x YAML pattern system matches **decorator/annotation metadata** on symbols. The v1.1.x UsageContext extension enables YAML patterns for **call-based** frameworks (Django, Express, Flask, Go Gin, Rails, Axum) by capturing how symbols are *used* in route registration calls. Config-object patterns (Hapi) and remaining DSL-based patterns (Sinatra) are planned for future work.
 
 ## 9) Testing & quality bar
 

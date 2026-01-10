@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -45,7 +45,8 @@ if TYPE_CHECKING:
 PASS_ID = "ruby-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# HTTP methods for Rails route detection (deprecated - use rails.yaml patterns)
+# HTTP methods for Rails route detection
+# Route symbols are created directly here but UsageContext records enable YAML pattern matching
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 # Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
@@ -91,6 +92,7 @@ class RubyAnalysisResult:
 
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
@@ -306,6 +308,110 @@ def _detect_rails_route(
                     resource_name = _node_text(arg, source).strip(":")
                     return "resources", resource_name, None
     return None, None, None
+
+
+def _extract_rails_usage_contexts(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Rails route DSL calls.
+
+    Detects patterns like:
+    - get '/users', to: 'users#index'
+    - post '/login', to: 'sessions#create'
+    - resources :users
+    - resource :profile
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    for n in iter_tree(node):
+        if n.type != "call":
+            continue
+
+        # Get the method name
+        method_node = None
+        for child in n.children:
+            if child.type == "identifier":
+                method_node = child
+                break
+
+        if method_node is None:  # pragma: no cover
+            continue
+
+        method_name = _node_text(method_node, source).lower()
+
+        # Check if it's an HTTP method route or resources
+        if method_name not in HTTP_METHODS and method_name not in ("resources", "resource"):
+            continue
+
+        # Extract route path from first argument
+        args_node = _find_child_by_field(n, "arguments")
+        if not args_node:  # pragma: no cover
+            continue
+
+        route_path = None
+        controller_action = None
+
+        for arg in args_node.children:
+            # String path for HTTP method routes
+            if arg.type == "string" and method_name in HTTP_METHODS:
+                content_node = _find_child_by_type(arg, "string_content")
+                if content_node:
+                    route_path = _node_text(content_node, source)
+                    break
+            # Symbol for resources/resource
+            elif arg.type == "simple_symbol" and method_name in ("resources", "resource"):
+                route_path = _node_text(arg, source).strip(":")
+                break
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Try to extract controller#action from 'to:' option
+        for arg in args_node.children:
+            if arg.type == "pair":
+                for pair_child in arg.children:
+                    if pair_child.type in ("hash_key_symbol", "simple_symbol"):
+                        key_text = _node_text(pair_child, source).strip(":")
+                        if key_text == "to":
+                            for sibling in arg.children:
+                                if sibling.type == "string":
+                                    content = _find_child_by_type(sibling, "string_content")
+                                    if content:
+                                        controller_action = _node_text(content, source)
+
+        # Build metadata
+        metadata: dict[str, str] = {
+            "route_path": route_path,
+            "http_method": method_name.upper() if method_name in HTTP_METHODS else "RESOURCES",
+        }
+        if controller_action:
+            metadata["controller_action"] = controller_action
+
+        # Create UsageContext
+        span = Span(
+            start_line=n.start_point[0] + 1,
+            end_line=n.end_point[0] + 1,
+            start_col=n.start_point[1],
+            end_col=n.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=method_name,  # e.g., "get", "post", "resources"
+            position="args[0]",
+            path=str(file_path),
+            span=span,
+            symbol_ref=None,  # Route DSL doesn't reference a handler symbol directly
+            metadata=metadata,
+        )
+        contexts.append(ctx)
+
+    return contexts
 
 
 @dataclass
@@ -635,9 +741,10 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges
+    # Pass 2: Extract edges and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
 
     for rb_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -647,6 +754,17 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
         )
         all_edges.extend(edges)
 
+        # Extract Rails route usage contexts
+        try:
+            source = rb_file.read_bytes()
+            tree = parser.parse(source)
+            usage_contexts = _extract_rails_usage_contexts(
+                tree.root_node, source, rb_file, analysis.symbol_by_name
+            )
+            all_usage_contexts.extend(usage_contexts)
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -654,5 +772,6 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
     return RubyAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

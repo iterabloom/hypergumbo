@@ -37,6 +37,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Go Gin/Echo/Chi/Fiber UsageContext (ADR-0003 v1.1.x):** Go analyzer emits `UsageContext`
   for route registration calls (`r.GET()`, `e.POST()`, `app.Get()`, etc.). Route detection
   now uses YAML patterns in `go-web.yaml` via usage-based matching.
+- **Ruby Rails UsageContext (ADR-0003 v1.1.x):** Ruby analyzer emits `UsageContext` for
+  Rails route DSL calls (`get '/path'`, `post '/path'`, `resources :users`). Route detection
+  now uses YAML patterns in `rails.yaml` via usage-based matching.
+- **Rust Axum UsageContext (ADR-0003 v1.1.x):** Rust analyzer emits `UsageContext` for
+  Axum route registrations (`.route("/path", get(handler))`). Route detection now uses
+  YAML patterns in `rust-web.yaml` via usage-based matching. Actix-web continues to use
+  definition-based patterns (annotation matching).
 
 ## [0.9.1] - 2026-01-09
 

@@ -1,18 +1,41 @@
-# Ruby on Rails framework patterns (ADR-0003 v1.0.x)
+# Ruby on Rails framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Rails conventions for controllers, models, jobs, mailers, and more.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Note: Rails uses convention-over-configuration. Routes are defined in
-# config/routes.rb via DSL calls (get, post, resources, etc.). The Ruby
-# analyzer creates route symbols which are matched here by symbol_kind.
+# Definition-based patterns (v1.0.x): Match base_class, symbol_kind for inheritance
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
 id: rails
 language: ruby
 
 patterns:
-  # Routes - symbols created by Ruby analyzer for route DSL calls
-  # Matches: get '/users', post '/login', resources :users, etc.
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing DSL
+
+  # Rails HTTP method routes - get '/path', post '/path', etc.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|head|options)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # Rails resource routes - resources :users, resource :profile
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^resources?$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:RESOURCES"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Keep symbol_kind pattern for backwards compatibility with symbols
+  # created directly by the Ruby analyzer
   - concept: route
     symbol_kind: "^route$"
 
