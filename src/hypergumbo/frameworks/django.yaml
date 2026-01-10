@@ -1,16 +1,49 @@
-# Django framework patterns (ADR-0003 v1.0.x)
+# Django framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
-# Matches Django and Django REST Framework decorators, base classes, and annotations.
-# Symbols matching these patterns get enriched with concept metadata.
+# Matches Django and Django REST Framework decorators, base classes, annotations,
+# and URL patterns via UsageContext.
 #
-# Note: Django's URL routing is defined in urls.py via path()/re_path() calls,
-# not via decorators on views. This file focuses on view classes, models,
-# and DRF-specific patterns that CAN be matched via metadata.
+# Definition-based patterns (v1.0.x): Match view classes, models, DRF decorators
+# Usage-based patterns (v1.1.x): Match URL routing via path()/re_path() calls
 
 id: django
 language: python
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based URL routing
+
+  # Django URL patterns - path("/route/", view_func)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^path$"
+      position: "^args\\[1\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:GET"
+
+  # Django URL patterns - re_path(r"^route/", view_func)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^re_path$"
+      position: "^args\\[1\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:GET"
+
+  # Django URL patterns - url(r"^route/", view_func) (deprecated but still used)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^url$"
+      position: "^args\\[1\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:GET"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Django REST Framework - @api_view(['GET', 'POST'])
   - concept: route
     decorator: "^api_view$"

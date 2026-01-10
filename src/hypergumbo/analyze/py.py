@@ -62,7 +62,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 
 
 def find_python_files(
@@ -420,6 +420,118 @@ def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, 
     return patterns
 
 
+def _extract_django_usage_contexts(
+    tree: ast.Module,
+    file_path: str,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Django URL patterns.
+
+    Creates UsageContext records that capture how view functions are used
+    in path(), re_path(), url() calls. These are matched against YAML
+    patterns in the enrichment phase.
+
+    Args:
+        tree: The parsed AST module
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+
+    Returns:
+        List of UsageContext records for Django URL patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        # Check if it's a Django URL function call
+        func_name = None
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+
+        if func_name not in DJANGO_URL_FUNCTIONS:
+            continue
+
+        # Extract the URL pattern from the first argument
+        if not node.args:  # pragma: no cover
+            continue
+
+        first_arg = node.args[0]
+        route_path = None
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            route_path = first_arg.value
+        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+            continue  # Skip dynamic patterns (f-strings)
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Extract view reference from second argument
+        view_ref = None
+        view_name = None
+        if len(node.args) >= 2:
+            second_arg = node.args[1]
+            if isinstance(second_arg, ast.Attribute):
+                # views.user_list -> check if we can resolve it
+                view_name = second_arg.attr
+            elif isinstance(second_arg, ast.Name):
+                # user_list -> check if it's defined locally
+                view_name = second_arg.id
+                # Try to resolve to a local symbol
+                if view_name in symbol_by_name:
+                    view_ref = symbol_by_name[view_name].id
+
+        # Build metadata with args info
+        args_values = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args_values.append(arg.value)
+            elif isinstance(arg, ast.Name):
+                args_values.append(arg.id)
+            elif isinstance(arg, ast.Attribute):
+                # views.func -> "views.func"
+                parts = []
+                current: ast.expr = arg
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if isinstance(current, ast.Name):
+                    parts.append(current.id)
+                args_values.append(".".join(reversed(parts)))
+            else:  # pragma: no cover
+                args_values.append("<expr>")
+
+        # Normalize route path - ensure it starts with /
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        span = Span(
+            start_line=node.lineno,
+            end_line=getattr(node, "end_lineno", node.lineno),
+            start_col=getattr(node, "col_offset", 0),
+            end_col=getattr(node, "end_col_offset", 0),
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=func_name,
+            position="args[1]",
+            path=file_path,
+            span=span,
+            symbol_ref=view_ref,
+            metadata={
+                "args": args_values,
+                "route_path": normalized_path,
+                "view_name": view_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
@@ -568,6 +680,7 @@ class AnalysisResult:
 
     symbols: list[Symbol]
     edges: list[Edge]
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
 
 
@@ -589,6 +702,8 @@ class FileAnalysis:
     module_imports: dict[str, str] = field(default_factory=dict)
     # The parsed AST tree (kept to avoid re-parsing)
     tree: ast.AST | None = None
+    # Usage contexts for call-based patterns (Django URL patterns, etc.)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
 
 
 def _detect_src_layout(repo_root: Path) -> Path | None:
@@ -1007,6 +1122,10 @@ def _extract_file_analysis(
         )
         symbols.append(symbol)
 
+    # Extract usage contexts for Django URL patterns (v1.1.x)
+    # This enables YAML-driven pattern matching for call-based frameworks
+    usage_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
+
     # Compute module name for import resolution
     if repo_root is not None:
         importing_module = _module_name_from_path(py_file, repo_root, source_root)
@@ -1019,6 +1138,7 @@ def _extract_file_analysis(
         imports=symbol_imports,
         module_imports=module_imports,
         tree=tree,
+        usage_contexts=usage_contexts,
     )
 
 
@@ -1253,14 +1373,18 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     """
     file_analysis = _extract_file_analysis(py_file)
     if file_analysis is None:
-        return AnalysisResult(symbols=[], edges=[])
+        return AnalysisResult(symbols=[], edges=[], usage_contexts=[])
 
     # For single-file analysis, only detect local calls
     edges = _extract_edges(
         file_analysis.tree, file_analysis.symbol_by_name, {}, {},
         file_analysis.module_imports
     )
-    return AnalysisResult(symbols=file_analysis.symbols, edges=edges)
+    return AnalysisResult(
+        symbols=file_analysis.symbols,
+        edges=edges,
+        usage_contexts=file_analysis.usage_contexts,
+    )
 
 
 def analyze_python(
@@ -1323,8 +1447,9 @@ def analyze_python(
                 global_symbols[(package_name, local_name)] = source_symbol
 
     # Second pass: extract edges with cross-file resolution
-    all_symbols = []
-    all_edges = []
+    all_symbols: list[Symbol] = []
+    all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
     for py_file, analysis in file_analyses.items():
         module_name = _module_name_from_path(py_file, repo_root, source_root)
 
@@ -1353,9 +1478,17 @@ def analyze_python(
             edge.origin_run_id = run.execution_id
         all_edges.extend(import_edges)
 
+        # Collect usage contexts (v1.1.x)
+        all_usage_contexts.extend(analysis.usage_contexts)
+
     # Update run metadata
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return AnalysisResult(symbols=all_symbols, edges=all_edges, run=run)
+    return AnalysisResult(
+        symbols=all_symbols,
+        edges=all_edges,
+        usage_contexts=all_usage_contexts,
+        run=run,
+    )
