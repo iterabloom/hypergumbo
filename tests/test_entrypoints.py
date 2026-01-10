@@ -4380,3 +4380,176 @@ class TestConnectivityBasedRanking:
         # main_caller (2 outgoing) should rank before main_callee (0 outgoing)
         assert main_eps[0].symbol_id == main_caller.id
         assert main_eps[1].symbol_id == main_callee.id
+
+
+class TestLifecycleHookConceptDetection:
+    """Tests for lifecycle_hook concept-based entrypoint detection (ADR-0003 v1.1.x).
+
+    The lifecycle_hook concept is used by android.yaml to match Android lifecycle
+    methods like Activity.onCreate(), Application.onCreate(), etc.
+    """
+
+    def test_detect_android_activity_from_concept(self) -> None:
+        """lifecycle_hook concept with Activity base creates ANDROID_ACTIVITY entrypoint."""
+        symbol = make_symbol(
+            name="MainActivity.onCreate",
+            path="MainActivity.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "AppCompatActivity",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.ANDROID_ACTIVITY
+        assert ep.confidence == 0.95
+        assert "MainActivity" in ep.label
+
+    def test_detect_android_application_from_concept(self) -> None:
+        """lifecycle_hook concept with Application base creates ANDROID_APPLICATION entrypoint."""
+        symbol = make_symbol(
+            name="MyApp.onCreate",
+            path="MyApp.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Application",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.ANDROID_APPLICATION
+        assert ep.confidence == 0.95
+        assert "MyApp" in ep.label
+
+    def test_detect_android_fragment_from_concept(self) -> None:
+        """lifecycle_hook concept with Fragment base creates CONTROLLER entrypoint."""
+        symbol = make_symbol(
+            name="HomeFragment.onCreate",
+            path="HomeFragment.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Fragment",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.CONTROLLER
+        assert ep.confidence == 0.95
+        assert "Fragment" in ep.label
+
+    def test_detect_android_service_from_concept(self) -> None:
+        """lifecycle_hook concept with Service base creates CONTROLLER entrypoint."""
+        symbol = make_symbol(
+            name="BackgroundService.onCreate",
+            path="BackgroundService.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Service",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.CONTROLLER
+        assert "Service" in ep.label
+
+    def test_detect_android_broadcast_receiver_from_concept(self) -> None:
+        """lifecycle_hook concept with BroadcastReceiver base creates CONTROLLER entrypoint."""
+        symbol = make_symbol(
+            name="PushReceiver.onReceive",
+            path="PushReceiver.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "BroadcastReceiver",
+                        "matched_method_name": "onReceive",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.CONTROLLER
+        assert "BroadcastReceiver" in ep.label
+
+    def test_no_duplicate_activity_entrypoints(self) -> None:
+        """Multiple lifecycle_hook concepts on same symbol don't create duplicates."""
+        symbol = make_symbol(
+            name="MainActivity.onCreate",
+            path="MainActivity.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Activity",
+                        "matched_method_name": "onCreate",
+                    },
+                    # Duplicate concept entry (shouldn't happen, but handle gracefully)
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Activity",
+                        "matched_method_name": "onCreate",
+                    },
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        # Should only create one entrypoint
+        activity_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.ANDROID_ACTIVITY]
+        assert len(activity_eps) == 1

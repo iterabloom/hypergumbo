@@ -1417,7 +1417,10 @@ def test_cmd_catalog_shows_all_passes(capsys) -> None:
     assert "python-ast-v1" in out
     assert "html-pattern-v1" in out
     assert "javascript-ts-v1" in out  # extras now shown by default
-    assert "Available Packs:" in out
+    # v1.1.x: Show framework patterns instead of deprecated packs
+    assert "Available Framework Patterns (v1.1.x):" in out
+    assert "--frameworks" in out
+    assert "Packs are deprecated" in out
 
 
 def test_cmd_catalog_shows_suggestions(capsys, tmp_path, monkeypatch) -> None:
@@ -1437,6 +1440,28 @@ def test_cmd_catalog_shows_suggestions(capsys, tmp_path, monkeypatch) -> None:
     out, _ = capsys.readouterr()
     assert "Suggested for current repo:" in out
     assert "python-ast-v1" in out
+
+
+def test_cmd_catalog_skips_large_directory(capsys, tmp_path, monkeypatch) -> None:
+    """Catalog skips language detection for large directories."""
+    # Create many files to trigger large directory detection
+    for i in range(250):  # More than 200 entries
+        (tmp_path / f"file{i}.txt").write_text("content")
+
+    # Change to temp directory
+    monkeypatch.chdir(tmp_path)
+    args = FakeArgs()
+
+    result = cmd_catalog(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "Large directory detected" in out
+    assert "skipping language suggestions" in out
+    # Should still show passes and frameworks
+    assert "Available Passes:" in out
+    assert "Available Framework Patterns" in out
 
 
 def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:

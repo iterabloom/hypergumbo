@@ -76,7 +76,7 @@ from .compact import (
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
-from .framework_patterns import enrich_symbols
+from .framework_patterns import enrich_symbols, get_frameworks_dir
 
 
 def _find_git_root(start_path: Path) -> Optional[Path]:
@@ -776,20 +776,46 @@ def cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _is_large_directory(path: Path, max_entries: int = 200) -> bool:
+    """Check if a directory has too many entries for quick scanning.
+
+    Returns True if the directory has more than max_entries immediate children
+    (files + directories). This is a heuristic to avoid scanning $HOME or
+    other very large directories.
+    """
+    try:
+        count = 0
+        for _ in path.iterdir():
+            count += 1
+            if count > max_entries:
+                return True
+        return False
+    except (PermissionError, OSError):  # pragma: no cover
+        return True  # Treat permission errors as "large" to skip scanning
+
+
 def cmd_catalog(args: argparse.Namespace) -> int:
     """Display available passes and packs.
 
     Shows:
     1. Suggested passes based on current repo (if any source files found)
     2. All available passes (core and extra)
-    3. Available packs
+    3. Available packs (deprecated)
+    4. Available framework YAML patterns (v1.1.x)
     """
     catalog = get_default_catalog()
     cwd = Path.cwd()
 
-    # Detect repo profile using existing language detection
-    profile = detect_profile(cwd)
-    detected_languages = set(profile.languages.keys())
+    # Check if this is a very large directory (e.g., $HOME) to avoid slow scans
+    detected_languages: set[str] = set()
+    if _is_large_directory(cwd):
+        print("Note: Large directory detected - skipping language suggestions.")
+        print("      Run from a specific project directory for suggestions.")
+        print()
+    else:
+        # Detect repo profile using existing language detection
+        profile = detect_profile(cwd)
+        detected_languages = set(profile.languages.keys())
 
     # Show suggested passes based on detected languages
     suggested = suggest_passes_for_languages(detected_languages)
@@ -811,10 +837,23 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         else:
             print(f"  - {p.id} (extra): {p.description}{status}")
 
+    # Show available framework YAML patterns (v1.1.x)
     print()
-    print("Available Packs:")
-    for pack in catalog.packs:
-        print(f"  - {pack.id}: {pack.description}")
+    print("Available Framework Patterns (v1.1.x):")
+    print("  Use --frameworks to specify which patterns to apply.")
+    frameworks_dir = get_frameworks_dir()
+    if frameworks_dir.exists():
+        yaml_files = sorted(frameworks_dir.glob("*.yaml"))
+        for yaml_file in yaml_files:
+            name = yaml_file.stem
+            print(f"  - {name}")
+    else:  # pragma: no cover - frameworks dir always exists in installed package
+        print("  (No framework patterns found)")
+
+    # Note about deprecated packs (suppress warning for now)
+    print()
+    print("Note: Packs are deprecated. Use --frameworks instead for semantic")
+    print("      detection of routes, controllers, tasks, etc.")
 
     return 0
 

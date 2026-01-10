@@ -72,6 +72,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   not detected when running slice without a pre-existing `hypergumbo.results.json` file.
 - **Symbol metadata preservation:** Fixed `_node_from_dict` to preserve the `meta` field when
   reconstructing symbols from JSON. This enables entrypoint detection based on route metadata.
+- **Android lifecycle hook detection (ADR-0003 v1.1.x):** Added YAML-based pattern matching
+  for Android Activity, Application, Fragment, Service, BroadcastReceiver, and ContentProvider
+  lifecycle methods. Java analyzer now includes `parent_base_classes` in method metadata to
+  enable pattern matching like `parent_base_class: "^Activity$"` + `method_name: "^onCreate$"`.
+  New `android.yaml` framework pattern file supports all common Android entry points.
+- **Catalog command improvements:** Updated `hypergumbo catalog` output to:
+  - Skip language detection for large directories (>200 entries) to avoid slow scans of $HOME
+  - Show available framework YAML patterns (v1.1.x) with `--frameworks` hint
+  - Add deprecation notice for packs (recommending `--frameworks` instead)
 
 ## [0.9.1] - 2026-01-09
 

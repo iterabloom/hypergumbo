@@ -529,6 +529,124 @@ class TestPattern:
         assert result is not None
         assert result["matched_symbol_kind"] == "handler"
 
+    def test_pattern_matches_parent_base_class(self) -> None:
+        """Pattern matches method by parent class's base classes."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^Activity$",
+            method_name=r"^onCreate$",
+        )
+
+        symbol = Symbol(
+            id="java:MainActivity.java:10-15:MainActivity.onCreate:method",
+            name="MainActivity.onCreate",
+            kind="method",
+            language="java",
+            path="MainActivity.java",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "parent_base_classes": ["Activity"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "lifecycle_hook"
+        assert result["matched_parent_base_class"] == "Activity"
+        assert result["matched_method_name"] == "onCreate"
+
+    def test_pattern_parent_base_class_no_match_wrong_base(self) -> None:
+        """Pattern doesn't match when parent base class doesn't match."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^Activity$",
+            method_name=r"^onCreate$",
+        )
+
+        symbol = Symbol(
+            id="java:MyService.java:10-15:MyService.onCreate:method",
+            name="MyService.onCreate",
+            kind="method",
+            language="java",
+            path="MyService.java",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "parent_base_classes": ["Service"],  # Not Activity
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_pattern_parent_base_class_no_match_wrong_method(self) -> None:
+        """Pattern doesn't match when method name doesn't match."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^Activity$",
+            method_name=r"^onCreate$",
+        )
+
+        symbol = Symbol(
+            id="java:MainActivity.java:10-15:MainActivity.onDestroy:method",
+            name="MainActivity.onDestroy",
+            kind="method",
+            language="java",
+            path="MainActivity.java",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "parent_base_classes": ["Activity"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_pattern_method_name_only(self) -> None:
+        """Pattern matches by method name without parent_base_class constraint."""
+        pattern = Pattern(
+            concept="init_method",
+            method_name=r"^__init__$",
+        )
+
+        symbol = Symbol(
+            id="python:user.py:10-15:User.__init__:method",
+            name="User.__init__",
+            kind="method",
+            language="python",
+            path="user.py",
+            span=Span(10, 15, 0, 0),
+            meta={},
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "init_method"
+        assert result["matched_method_name"] == "__init__"
+
+    def test_pattern_parent_base_class_only(self) -> None:
+        """Pattern matches by parent_base_class without method_name constraint."""
+        pattern = Pattern(
+            concept="android_method",
+            parent_base_class=r"^(Activity|AppCompatActivity)$",
+        )
+
+        symbol = Symbol(
+            id="java:MainActivity.java:10-15:MainActivity.onResume:method",
+            name="MainActivity.onResume",
+            kind="method",
+            language="java",
+            path="MainActivity.java",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "parent_base_classes": ["AppCompatActivity"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "android_method"
+        assert result["matched_parent_base_class"] == "AppCompatActivity"
+
 
 class TestFrameworkPatternDef:
     """Tests for the FrameworkPatternDef dataclass."""

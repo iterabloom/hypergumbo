@@ -1914,3 +1914,149 @@ public class Roles {
         assert roles is not None
         assert "admin" in roles
         assert "user" in roles
+
+
+class TestMethodParentBaseClasses:
+    """Tests for extracting parent class base_classes in method metadata.
+
+    ADR-0003 v1.1.x requires methods to include their parent class's base_classes
+    to enable YAML pattern matching for lifecycle hooks (e.g., Android Activity.onCreate).
+    """
+
+    def test_method_inherits_parent_base_classes(self, tmp_path: Path) -> None:
+        """Method has parent_base_classes when parent extends another class."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "MainActivity.java").write_text("""
+public class MainActivity extends Activity {
+    @Override
+    public void onCreate() {
+        // App entry point
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        assert methods[0].name == "MainActivity.onCreate"
+        meta = methods[0].meta or {}
+        parent_bases = meta.get("parent_base_classes", [])
+        assert "Activity" in parent_bases
+
+    def test_method_inherits_multiple_parent_base_classes(self, tmp_path: Path) -> None:
+        """Method has all parent_base_classes when parent implements multiple interfaces."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "MyService.java").write_text("""
+public class MyService extends Service implements Runnable, Comparable<MyService> {
+    @Override
+    public void onStartCommand() {
+        // Service entry
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        on_start = [m for m in methods if "onStartCommand" in m.name]
+        assert len(on_start) == 1
+        meta = on_start[0].meta or {}
+        parent_bases = meta.get("parent_base_classes", [])
+        # Should include Service and both interfaces
+        assert "Service" in parent_bases
+        assert "Runnable" in parent_bases
+
+    def test_method_no_parent_base_classes_when_no_inheritance(
+        self, tmp_path: Path
+    ) -> None:
+        """Method has no parent_base_classes when parent has no extends/implements."""
+        from hypergumbo.analyze.java import analyze_java
+
+        (tmp_path / "PlainClass.java").write_text("""
+public class PlainClass {
+    public void doSomething() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        parent_bases = meta.get("parent_base_classes", [])
+        assert parent_bases == []
+
+    def test_android_activity_pattern_matching(self, tmp_path: Path) -> None:
+        """Android Activity.onCreate matches lifecycle_hook pattern."""
+        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import load_framework_patterns
+
+        (tmp_path / "MyActivity.java").write_text("""
+public class MyActivity extends AppCompatActivity {
+    @Override
+    protected void onCreate() {
+        super.onCreate();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Load Android patterns
+        android_patterns = load_framework_patterns("android")
+        assert android_patterns is not None
+
+        # Find the onCreate method
+        methods = [s for s in result.symbols if s.kind == "method"]
+        on_create = [m for m in methods if "onCreate" in m.name]
+        assert len(on_create) == 1
+
+        # Check that a pattern matches
+        matched = False
+        for pattern in android_patterns.patterns:
+            match_result = pattern.matches(on_create[0])
+            if match_result is not None and match_result.get("concept") == "lifecycle_hook":
+                matched = True
+                assert match_result.get("matched_parent_base_class") == "AppCompatActivity"
+                assert match_result.get("matched_method_name") == "onCreate"
+                break
+
+        assert matched, "Android lifecycle_hook pattern should match Activity.onCreate"
+
+    def test_android_application_pattern_matching(self, tmp_path: Path) -> None:
+        """Android Application.onCreate matches lifecycle_hook pattern."""
+        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import load_framework_patterns
+
+        (tmp_path / "MyApp.java").write_text("""
+public class MyApp extends Application {
+    @Override
+    public void onCreate() {
+        super.onCreate();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Load Android patterns
+        android_patterns = load_framework_patterns("android")
+
+        # Find the onCreate method
+        methods = [s for s in result.symbols if s.kind == "method"]
+        on_create = [m for m in methods if "onCreate" in m.name]
+        assert len(on_create) == 1
+
+        # Check that a pattern matches
+        matched = False
+        for pattern in android_patterns.patterns:
+            match_result = pattern.matches(on_create[0])
+            if match_result is not None and match_result.get("concept") == "lifecycle_hook":
+                matched = True
+                assert match_result.get("matched_parent_base_class") == "Application"
+                break
+
+        assert matched, "Android lifecycle_hook pattern should match Application.onCreate"

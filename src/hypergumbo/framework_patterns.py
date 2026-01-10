@@ -115,6 +115,10 @@ class Pattern:
     Definition-based patterns (v1.0.x):
     - decorator, base_class, annotation, parameter_type, symbol_kind
 
+    Definition-based patterns (v1.1.x):
+    - parent_base_class: Match methods whose parent class extends a specific base
+    - method_name: Match methods by name (the last part of qualified name)
+
     Usage-based patterns (v1.1.x):
     - usage: UsagePatternSpec to match against UsageContext records
     - extract: Dict of extraction expressions for extracting values from metadata
@@ -123,6 +127,8 @@ class Pattern:
         concept: The concept type this pattern identifies (route, model, task, etc.)
         decorator: Regex pattern to match against decorator names
         base_class: Regex pattern to match against base class names
+        parent_base_class: Regex pattern to match parent class's base classes (for methods)
+        method_name: Regex pattern to match method name (last part of qualified name)
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types
         symbol_kind: Regex pattern to match against symbol kind field
@@ -135,6 +141,8 @@ class Pattern:
     concept: str
     decorator: str | None = None
     base_class: str | None = None
+    parent_base_class: str | None = None
+    method_name: str | None = None
     annotation: str | None = None
     parameter_type: str | None = None
     symbol_kind: str | None = None
@@ -147,6 +155,12 @@ class Pattern:
         """Compile regex patterns for efficiency."""
         self._decorator_re = re.compile(self.decorator) if self.decorator else None
         self._base_class_re = re.compile(self.base_class) if self.base_class else None
+        self._parent_base_class_re = (
+            re.compile(self.parent_base_class) if self.parent_base_class else None
+        )
+        self._method_name_re = (
+            re.compile(self.method_name) if self.method_name else None
+        )
         self._annotation_re = re.compile(self.annotation) if self.annotation else None
         self._param_type_re = (
             re.compile(self.parameter_type) if self.parameter_type else None
@@ -228,6 +242,48 @@ class Pattern:
         if self._symbol_kind_re:
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
+                return result
+
+        # Try parent_base_class + method_name combined match (for lifecycle hooks)
+        # Both conditions must match when both are specified
+        if self._parent_base_class_re or self._method_name_re:
+            parent_base_classes = (
+                symbol.meta.get("parent_base_classes", []) if symbol.meta else []
+            )
+
+            # Check parent_base_class if specified
+            parent_match = False
+            matched_parent_base = None
+            if self._parent_base_class_re:
+                for base in parent_base_classes:
+                    if self._parent_base_class_re.match(base):
+                        parent_match = True
+                        matched_parent_base = base
+                        break
+            else:
+                # No parent_base_class constraint, so it passes
+                parent_match = True
+
+            # Check method_name if specified
+            method_match = False
+            matched_method = None
+            if self._method_name_re:
+                # Extract method name from qualified name (e.g., "MainActivity.onCreate" -> "onCreate")
+                name_parts = symbol.name.rsplit(".", 1)
+                method_name = name_parts[-1] if name_parts else symbol.name
+                if self._method_name_re.match(method_name):
+                    method_match = True
+                    matched_method = method_name
+            else:
+                # No method_name constraint, so it passes
+                method_match = True
+
+            # Both must pass for a match
+            if parent_match and method_match:
+                if matched_parent_base:
+                    result["matched_parent_base_class"] = matched_parent_base
+                if matched_method:
+                    result["matched_method_name"] = matched_method
                 return result
 
         return None
@@ -519,6 +575,8 @@ class FrameworkPatternDef:
                 concept=p.get("concept", "unknown"),
                 decorator=p.get("decorator"),
                 base_class=p.get("base_class"),
+                parent_base_class=p.get("parent_base_class"),
+                method_name=p.get("method_name"),
                 annotation=p.get("annotation"),
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),

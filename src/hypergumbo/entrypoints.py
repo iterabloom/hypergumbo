@@ -144,6 +144,9 @@ class EntrypointKind(Enum):
     SLIM_ROUTE = "slim_route"
     MICRONAUT_CONTROLLER = "micronaut_controller"
     GRAPHQL_SERVER = "graphql_server"
+    # Mobile app entry kinds
+    ANDROID_ACTIVITY = "android_activity"  # Android Activity.onCreate()
+    ANDROID_APPLICATION = "android_application"  # Android Application.onCreate()
     # Semantic concept-based entry kinds (ADR-0003 v0.9.x)
     CONTROLLER = "controller"  # Generic controller from concept metadata
     BACKGROUND_TASK = "background_task"  # Async/background task
@@ -425,6 +428,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
     - "graphql_schema" -> GRAPHQL_SERVER (GraphQL schema definition)
+    - "lifecycle_hook" -> ANDROID_ACTIVITY/ANDROID_APPLICATION/CONTROLLER (Android lifecycle)
 
     Args:
         symbols: All symbols with potential concept metadata.
@@ -598,6 +602,57 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.GRAPHQL_SERVER)
 
+            # Lifecycle hook concept -> ANDROID_ACTIVITY or ANDROID_APPLICATION
+            # (ADR-0003 v1.1.x - pattern-based Android detection)
+            elif concept_type == "lifecycle_hook":
+                # Determine the specific Android entrypoint kind from matched_parent_base_class
+                matched_base = concept.get("matched_parent_base_class", "")
+                if matched_base in (
+                    "Activity", "NativeActivity", "AppCompatActivity",
+                    "FragmentActivity", "ComponentActivity", "ListActivity",
+                    "PreferenceActivity",
+                ):
+                    if EntrypointKind.ANDROID_ACTIVITY in added_kinds:
+                        continue
+                    # Extract class name from qualified method name
+                    parts = sym.name.rsplit(".", 1)
+                    class_name = parts[0] if len(parts) == 2 else sym.name
+                    entrypoints.append(Entrypoint(
+                        symbol_id=sym.id,
+                        kind=EntrypointKind.ANDROID_ACTIVITY,
+                        confidence=0.95,
+                        label=f"Android Activity ({class_name})",
+                    ))
+                    added_kinds.add(EntrypointKind.ANDROID_ACTIVITY)
+                elif matched_base in ("Application", "MultiDexApplication"):
+                    if EntrypointKind.ANDROID_APPLICATION in added_kinds:
+                        continue  # pragma: no cover - defensive deduplication
+                    parts = sym.name.rsplit(".", 1)
+                    class_name = parts[0] if len(parts) == 2 else sym.name
+                    entrypoints.append(Entrypoint(
+                        symbol_id=sym.id,
+                        kind=EntrypointKind.ANDROID_APPLICATION,
+                        confidence=0.95,
+                        label=f"Android Application ({class_name})",
+                    ))
+                    added_kinds.add(EntrypointKind.ANDROID_APPLICATION)
+                # For Fragment, Service, BroadcastReceiver, ContentProvider - use CONTROLLER
+                elif matched_base in (
+                    "Fragment", "Service", "IntentService", "JobService",
+                    "BroadcastReceiver", "ContentProvider",
+                ):
+                    if EntrypointKind.CONTROLLER in added_kinds:
+                        continue  # pragma: no cover - defensive deduplication
+                    parts = sym.name.rsplit(".", 1)
+                    class_name = parts[0] if len(parts) == 2 else sym.name
+                    entrypoints.append(Entrypoint(
+                        symbol_id=sym.id,
+                        kind=EntrypointKind.CONTROLLER,
+                        confidence=0.95,
+                        label=f"Android {matched_base} ({class_name})",
+                    ))
+                    added_kinds.add(EntrypointKind.CONTROLLER)
+
     return entrypoints
 
 
@@ -650,6 +705,11 @@ def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
             ))
 
     return entrypoints
+
+
+# Android detection is now handled by YAML patterns (ADR-0003 v1.1.x)
+# See src/hypergumbo/frameworks/android.yaml for lifecycle_hook patterns
+# that match Activity/Application/Fragment/Service lifecycle methods.
 
 
 def _detect_cli_entrypoints(symbols: List[Symbol]) -> List[Entrypoint]:
@@ -2063,6 +2123,7 @@ def detect_entrypoints(
     entrypoints.extend(_detect_from_concepts(nodes))
 
     # Detect different types of entrypoints (fallback for non-semantic detection)
+    # Note: Android detection is now handled by YAML patterns via _detect_from_concepts()
     entrypoints.extend(_detect_http_routes(nodes))
     entrypoints.extend(_detect_cli_entrypoints(nodes))
     entrypoints.extend(_detect_electron_entrypoints(nodes))

@@ -329,6 +329,33 @@ def _get_class_ancestors(
     return list(reversed(ancestors))
 
 
+def _get_parent_class_base_classes(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Get base classes of the immediate parent class/interface containing this node.
+
+    Walks up the tree to find the first enclosing class/interface declaration,
+    then extracts its base classes (extends/implements).
+
+    This is used to enrich method metadata with parent class inheritance info,
+    enabling framework patterns to match methods by their parent class's base classes
+    (e.g., matching onCreate() in classes that extend Activity).
+
+    Args:
+        node: The node to start from (typically a method_declaration).
+        source: The source code bytes.
+
+    Returns:
+        List of base class names, or empty list if no parent class or no base classes.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "interface_declaration"):
+            return _extract_base_classes(current, source)
+        current = current.parent
+    return []  # pragma: no cover - defensive: methods always inside a class in valid Java
+
+
 def _java_value_to_python(
     node: "tree_sitter.Node", source: bytes
 ) -> str | int | float | bool | list | None:
@@ -623,6 +650,14 @@ def _extract_symbols(
                     if meta is None:
                         meta = {}
                     meta["is_native"] = True
+
+                # Extract parent class base_classes for lifecycle hook detection (ADR-0003 v1.1.x)
+                # This enables YAML patterns to match methods like onCreate() in Activity subclasses
+                parent_base_classes = _get_parent_class_base_classes(node, source)
+                if parent_base_classes:
+                    if meta is None:
+                        meta = {}
+                    meta["parent_base_classes"] = parent_base_classes
 
                 # Extract signature
                 signature = _extract_java_signature(node, source, is_constructor=False)
