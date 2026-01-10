@@ -58,7 +58,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import (
     AnalysisResult,
     find_child_by_field,
@@ -318,9 +318,8 @@ def _extract_namespace_imports(
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
-# than decorators, so it must be detected at the analyzer level. This cannot be
-# migrated to YAML patterns which only match decorator/base_class metadata.
-# See ADR-0003 usage-context-patterns.md for future UsageContext-based approach.
+# than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
+# enables YAML patterns for call-based frameworks.
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 # Known router/app receiver names for route detection (ADR-0003)
@@ -329,8 +328,8 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
 
 # Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Only decorator-based frameworks (NestJS) should emit deprecation warnings.
-# Call-based frameworks (Express, Koa, etc.) cannot be migrated to YAML patterns.
+# Both decorator-based (NestJS) and call-based (Express) frameworks can now
+# use YAML patterns via UsageContext (v1.1.x).
 _deprecated_route_warnings_emitted: set[str] = set()
 
 
@@ -340,8 +339,9 @@ def _emit_route_deprecation_warning(framework: str) -> None:
     This is deprecated in ADR-0003 v1.0.x for decorator-based frameworks.
     Warning emitted once per framework per session.
 
-    Note: Only call this for decorator-based frameworks (NestJS).
-    Call-based frameworks (Express, Koa) cannot be migrated to YAML patterns.
+    Note: Call-based frameworks (Express, Koa) can now also use YAML patterns
+    via UsageContext (v1.1.x), but deprecation warnings are only for
+    decorator-based patterns that users can already migrate.
     """
     if framework in _deprecated_route_warnings_emitted:
         return
@@ -618,6 +618,89 @@ def _find_route_handler_in_call(
                 return last_arg, handler_name, True
 
     return None, None, False  # pragma: no cover
+
+
+def _extract_express_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Express-style route calls.
+
+    Creates UsageContext records that capture how handler functions are used
+    in app.get(), router.post(), etc. calls. These are matched against YAML
+    patterns in the enrichment phase.
+
+    Args:
+        tree: The parsed tree-sitter tree
+        source: Source file bytes
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+        line_offset: Line offset for Svelte/Vue script blocks
+
+    Returns:
+        List of UsageContext records for Express route patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        http_method, route_path = _detect_route_call(node, source)
+        if not http_method:
+            continue
+
+        # Find the handler in this route call
+        handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
+        if not handler_node:  # pragma: no cover
+            continue
+
+        # Try to resolve handler to a symbol reference
+        handler_ref = None
+        if handler_name and handler_name in symbol_by_name:
+            handler_ref = symbol_by_name[handler_name].id
+
+        # Get the receiver name (app, router, express, etc.)
+        receiver_name = None
+        for child in node.children:
+            if child.type == "member_expression":
+                receiver_name = _get_receiver_name(child, source)
+                break
+
+        # Build the full call name (e.g., "app.get", "router.post")
+        call_name = f"{receiver_name}.{http_method.lower()}" if receiver_name else http_method.lower()
+
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        # Normalize route path
+        normalized_path = route_path if route_path and route_path.startswith("/") else f"/{route_path}" if route_path else "/"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="args[last]",  # Handler is typically last argument
+            path=str(file_path),
+            span=span,
+            symbol_ref=handler_ref,
+            metadata={
+                "route_path": normalized_path,
+                "http_method": http_method,
+                "handler_name": handler_name,
+                "receiver": receiver_name,
+                "is_external_handler": is_external,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
 
 
 def _detect_nestjs_decorator(
@@ -929,8 +1012,7 @@ def _extract_symbols(
             continue
 
         # Express-style route handler detection: app.get('/path', handler)
-        # Note: This is call-based, not decorator-based, so it cannot be migrated
-        # to YAML patterns. See ADR-0003 usage-context-patterns.md.
+        # This also emits UsageContext records (v1.1.x) for YAML pattern matching.
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
@@ -1902,6 +1984,14 @@ def analyze_javascript(
         )
         all_edges.extend(edges)
 
+    # Pass 3: Extract usage contexts for call-based frameworks (v1.1.x)
+    all_usage_contexts: list[UsageContext] = []
+    for pf in parsed_files:
+        usage_contexts = _extract_express_usage_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(usage_contexts)
+
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -1909,5 +1999,6 @@ def analyze_javascript(
     return JsAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )
