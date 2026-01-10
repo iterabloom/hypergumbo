@@ -63,6 +63,11 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # Go web framework HTTP method names
 # Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
 # Fiber uses lowercase: Get, Post, Put, Delete, Patch, Head, Options
+#
+# Note: Go web framework route detection uses method calls (r.GET, e.POST) rather
+# than decorators, so it must be detected at the analyzer level. This cannot be
+# migrated to YAML patterns which only match decorator/base_class metadata.
+# See ADR-0003 usage-context-patterns.md for future UsageContext-based approach.
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",

@@ -3,8 +3,12 @@
 # Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Go uses struct embedding and interface implementation for patterns.
-# Routes are typically defined via method calls, not decorators.
+# IMPORTANT: Go routes are defined via method calls (r.GET, e.POST), not decorators.
+# The "decorator" patterns below are PLACEHOLDERS that will NOT match Go routes
+# until the UsageContext model (ADR-0003 usage-context-patterns.md) is implemented.
+# Route detection currently happens in the Go analyzer via call pattern matching.
+#
+# The patterns that DO work are base_class patterns for GORM, gRPC, etc.
 
 id: go-web
 language: go
