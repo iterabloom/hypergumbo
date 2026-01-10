@@ -1557,7 +1557,7 @@ Supply chain configuration can be customized in `capsule_plan.json`:
 
 ## 8.7) Entrypoint Detection Improvements (Design)
 
-> **Note:** This section describes the current state and interim mitigations. The long-term architectural direction is defined in [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md), which supersedes the "Future" subsections below.
+> **Note:** This section describes the current state and interim mitigations. The long-term architectural direction is defined in [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md), which supersedes the "Future" subsections below. For handling call-based frameworks (Django, Express, Go web frameworks) that cannot use decorator-based YAML patterns, see the [ADR-0003 Usage Context Patterns extension](adr/0003-usage-context-patterns.md).
 
 Entrypoint detection uses path-based heuristics to identify HTTP handlers, CLI mains, and other entry sources for slicing. These heuristics are fast but prone to false positives when naming conventions collide across frameworks.
 
@@ -1659,8 +1659,12 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 ASP.NET Core, Rust web (Actix, Axum, Rocket, Diesel, SeaORM), Hapi, Koa patterns
 
 **v1.0.x (in progress):**
-- 🟩 Deprecation warnings added to all analyzer-level route detection
-- 🟧 Remaining: purify analyzers by removing framework logic entirely (post-deprecation)
+- 🟩 Deprecation warnings added to analyzer-level route detection (decorator-based frameworks)
+- 🟩 Java analyzer purified: Spring Boot and JAX-RS route detection removed, now YAML-driven
+- 🟩 Python analyzer: Removed misleading Django deprecation warning (see note below)
+- 🟧 Remaining: JS/TS, Go, Ruby, Rust analyzers still have framework logic to extract
+
+**Note on call-based frameworks:** Django URL patterns (`path()`, `re_path()`) use function calls, not decorators. These cannot be migrated to the current YAML pattern system which matches symbol metadata. The [ADR-0003 Usage Context Patterns extension](adr/0003-usage-context-patterns.md) proposes a unified model to handle call-based, data-driven, and file-based framework patterns via YAML. Until implemented, call-based route detection remains in analyzers as a necessary special case.
 
 ## 9) Testing & quality bar
 
