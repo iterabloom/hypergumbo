@@ -176,14 +176,26 @@ class Pattern:
         - "args[0]" - first positional argument
         - "kwargs.key" - keyword argument by name
         - "value" - direct attribute
+        - Multiple paths separated by "|" (tries each until one succeeds)
 
         Args:
             metadata: Decorator/annotation metadata dict
-            path: Path expression (e.g., "args[0]", "kwargs.methods")
+            path: Path expression (e.g., "args[0]", "kwargs.value", "args[0]|kwargs.value")
 
         Returns:
             Extracted value as string, or None if not found.
         """
+        # Support multiple paths separated by "|" (try each in order)
+        if "|" in path:
+            for single_path in path.split("|"):
+                result = self._extract_single_value(metadata, single_path.strip())
+                if result:
+                    return result
+            return None
+        return self._extract_single_value(metadata, path)
+
+    def _extract_single_value(self, metadata: dict[str, Any], path: str) -> str | None:
+        """Extract a value from metadata using a single path expression."""
         if path.startswith("args["):
             # Extract array index
             try:
@@ -233,9 +245,15 @@ class Pattern:
                 kwargs = metadata.get("kwargs", {})
                 methods = kwargs.get(key)
                 if isinstance(methods, list) and methods:
-                    return str(methods[0]).upper()
+                    method_str = str(methods[0])
                 elif methods:
-                    return str(methods).upper()
+                    method_str = str(methods)
+                else:
+                    return None
+                # Handle enum-style values like "RequestMethod.GET" -> "GET"
+                if "." in method_str:
+                    method_str = method_str.split(".")[-1]
+                return method_str.upper()
 
         return None
 

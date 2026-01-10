@@ -8,16 +8,21 @@ language: java
 
 patterns:
   # HTTP route annotations - @GetMapping, @PostMapping, etc.
+  # Supports both positional and named arguments:
+  #   - @GetMapping("/path") -> args[0]
+  #   - @GetMapping(value = "/path") -> kwargs.value
   # Note: Java annotations are stored in decorators field by the Java analyzer
   - concept: route
     decorator: "^(Get|Post|Put|Delete|Patch)Mapping$"
-    extract_path: "args[0]"
+    extract_path: "args[0]|kwargs.value"
     extract_method: "decorator_suffix"
 
   # Generic request mapping - @RequestMapping
+  # Handles @RequestMapping(value = "/path", method = RequestMethod.GET)
   - concept: route
     decorator: "^RequestMapping$"
-    extract_path: "args[0]"
+    extract_path: "kwargs.value"
+    extract_method: "kwargs.method"
 
   # REST controller - @RestController
   - concept: controller

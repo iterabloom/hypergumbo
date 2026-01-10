@@ -1998,6 +1998,170 @@ patterns:
         # Unknown extraction mode should not add method
         assert "method" not in results[0]
 
+    def test_multi_path_extraction_all_fail(self, tmp_path: Path) -> None:
+        """Test multi-path extraction with | where all paths fail returns no path."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    decorator: "^GetMapping$"
+    extract_path: "args[0]|kwargs.value"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        # Symbol with no args and no kwargs.value
+        symbol = Symbol(
+            id="test:Controller.java:1:get:method",
+            name="get",
+            kind="method",
+            language="java",
+            path="Controller.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GetMapping", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        # No path since all extraction attempts failed
+        assert "path" not in results[0]
+
+    def test_enum_style_method_extraction(self, tmp_path: Path) -> None:
+        """Test extraction of enum-style method values like RequestMethod.GET."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    decorator: "^RequestMapping$"
+    extract_method: "kwargs.method"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:Controller.java:1:get:method",
+            name="get",
+            kind="method",
+            language="java",
+            path="Controller.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestMapping", "args": [], "kwargs": {"method": "RequestMethod.GET"}},
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        # Should extract GET from RequestMethod.GET
+        assert results[0]["method"] == "GET"
+
+    def test_kwargs_method_extraction_missing_key(self, tmp_path: Path) -> None:
+        """Test kwargs.method extraction when key is missing returns no method."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    decorator: "^RequestMapping$"
+    extract_method: "kwargs.method"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:Controller.java:1:get:method",
+            name="get",
+            kind="method",
+            language="java",
+            path="Controller.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestMapping", "args": [], "kwargs": {"value": "/path"}},  # No method key
+                ],
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        # No method since key was missing
+        assert "method" not in results[0]
+
+    def test_kwargs_method_extraction_string_metadata(self, tmp_path: Path) -> None:
+        """Test kwargs.method extraction when decorator is a plain string."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: custom_fw
+language: java
+patterns:
+  - concept: route
+    decorator: "^SomeDecorator$"
+    extract_method: "kwargs.method"
+"""
+        yaml_file = tmp_path / "custom_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        # Decorator stored as plain string, not a dict
+        symbol = Symbol(
+            id="test:Controller.java:1:get:method",
+            name="get",
+            kind="method",
+            language="java",
+            path="Controller.java",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": ["SomeDecorator"],  # Plain string instead of dict
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            pattern_def = load_framework_patterns("custom_fw")
+            results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        # No method since metadata is a string, not a dict
+        assert "method" not in results[0]
+
 
 class TestDjangoPatterns:
     """Tests for Django framework pattern matching."""

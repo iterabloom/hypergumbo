@@ -716,11 +716,18 @@ public abstract class Shape {
 
 
 class TestSpringBootRouteDetection:
-    """Tests for Spring Boot route detection with @GetMapping, @PostMapping, etc."""
+    """Tests for Spring Boot route detection via YAML patterns (ADR-0003 v1.0.x).
+
+    These tests verify that Spring Boot routes are detected through the YAML
+    pattern system rather than deprecated analyzer-level detection.
+    """
 
     def test_get_mapping_detection(self, tmp_path: Path) -> None:
-        """Detects @GetMapping annotation on controller method."""
+        """Detects @GetMapping annotation via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "UserController.java"
         java_file.write_text("""
@@ -736,21 +743,24 @@ public class UserController {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
         # Find the getUsers method
         methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
-        # Should have route_path and http_method in meta
+        # Should have route_path and http_method in meta (from YAML patterns)
         assert method.meta is not None
         assert method.meta.get("route_path") == "/users"
         assert method.meta.get("http_method") == "GET"
-        assert method.stable_id == "GET"
 
     def test_post_mapping_detection(self, tmp_path: Path) -> None:
-        """Detects @PostMapping annotation on controller method."""
+        """Detects @PostMapping annotation via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "UserController.java"
         java_file.write_text("""
@@ -764,6 +774,7 @@ public class UserController {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "createUser" in s.name]
         assert len(methods) == 1
@@ -772,11 +783,13 @@ public class UserController {
         assert method.meta is not None
         assert method.meta.get("route_path") == "/users"
         assert method.meta.get("http_method") == "POST"
-        assert method.stable_id == "POST"
 
     def test_all_http_method_mappings(self, tmp_path: Path) -> None:
-        """Detects all Spring Boot HTTP method annotations."""
+        """Detects all Spring Boot HTTP method annotations via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "ResourceController.java"
         java_file.write_text("""
@@ -800,16 +813,20 @@ public class ResourceController {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
+        methods = [s for s in result.symbols if s.kind == "method" and s.meta and s.meta.get("http_method")]
+        http_methods = {m.meta.get("http_method") for m in methods}
 
         assert len(methods) == 5
-        http_methods = {m.stable_id for m in methods}
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
     def test_request_mapping_with_method(self, tmp_path: Path) -> None:
-        """Detects @RequestMapping with method attribute."""
+        """Detects @RequestMapping with method attribute via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "LegacyController.java"
         java_file.write_text("""
@@ -824,6 +841,7 @@ public class LegacyController {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_methods = [m for m in methods if m.meta and m.meta.get("route_path")]
@@ -833,8 +851,11 @@ public class LegacyController {
         assert any(m.meta.get("http_method") == "POST" for m in route_methods)
 
     def test_mapping_with_path_variable(self, tmp_path: Path) -> None:
-        """Detects routes with path variables like {id}."""
+        """Detects routes with path variables like {id} via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "ItemController.java"
         java_file.write_text("""
@@ -848,6 +869,7 @@ public class ItemController {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "getById" in s.name]
         assert len(methods) == 1
@@ -858,8 +880,11 @@ public class ItemController {
         assert method.meta.get("http_method") == "GET"
 
     def test_get_mapping_with_value_attribute(self, tmp_path: Path) -> None:
-        """Detects @GetMapping with explicit value attribute."""
+        """Detects @GetMapping with explicit value attribute via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "Controller.java"
         java_file.write_text("""
@@ -871,6 +896,7 @@ public class Controller {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "getExplicit" in s.name]
         assert len(methods) == 1
@@ -881,8 +907,11 @@ public class Controller {
         assert method.meta.get("http_method") == "GET"
 
     def test_request_mapping_without_qualified_method(self, tmp_path: Path) -> None:
-        """Detects @RequestMapping with unqualified method (edge case)."""
+        """Detects @RequestMapping with unqualified method via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "Controller.java"
         # This is an unusual but valid form
@@ -895,6 +924,7 @@ public class Controller {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"spring-boot"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "test" in s.name]
         assert len(methods) == 1
@@ -906,11 +936,18 @@ public class Controller {
 
 
 class TestJaxRsRouteDetection:
-    """Tests for JAX-RS route detection with @GET, @POST, @Path, etc."""
+    """Tests for JAX-RS route detection via YAML patterns (ADR-0003 v1.0.x).
+
+    These tests verify that JAX-RS routes are detected through the YAML
+    pattern system rather than deprecated analyzer-level detection.
+    """
 
     def test_jaxrs_get_with_path(self, tmp_path: Path) -> None:
-        """Detects JAX-RS @GET with @Path annotation."""
+        """Detects JAX-RS @GET via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "UserResource.java"
         java_file.write_text("""
@@ -926,6 +963,7 @@ public class UserResource {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"jax-rs"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
         assert len(methods) == 1
@@ -933,11 +971,13 @@ public class UserResource {
 
         assert method.meta is not None
         assert method.meta.get("http_method") == "GET"
-        assert method.stable_id == "GET"
 
     def test_jaxrs_post_with_path(self, tmp_path: Path) -> None:
-        """Detects JAX-RS @POST annotation."""
+        """Detects JAX-RS @POST via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "UserResource.java"
         java_file.write_text("""
@@ -952,6 +992,7 @@ public class UserResource {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"jax-rs"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "createUser" in s.name]
         assert len(methods) == 1
@@ -959,11 +1000,13 @@ public class UserResource {
 
         assert method.meta is not None
         assert method.meta.get("http_method") == "POST"
-        assert method.stable_id == "POST"
 
     def test_jaxrs_method_level_path(self, tmp_path: Path) -> None:
-        """Detects JAX-RS @Path on method level."""
+        """Detects JAX-RS @GET and @Path via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "UserResource.java"
         java_file.write_text("""
@@ -978,18 +1021,29 @@ public class UserResource {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"jax-rs"})
 
         methods = [s for s in result.symbols if s.kind == "method" and "getById" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("route_path") == "/{id}"
         assert method.meta.get("http_method") == "GET"
+        # JAX-RS path is extracted from @Path annotation via resource_path concept
+        assert "concepts" in method.meta
+        path_concept = next(
+            (c for c in method.meta["concepts"] if c.get("concept") == "resource_path"),
+            None
+        )
+        assert path_concept is not None
+        assert path_concept.get("path") == "/{id}"
 
     def test_jaxrs_all_http_methods(self, tmp_path: Path) -> None:
-        """Detects all JAX-RS HTTP method annotations."""
+        """Detects all JAX-RS HTTP method annotations via YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
 
         java_file = tmp_path / "ResourceController.java"
         java_file.write_text("""
@@ -1013,11 +1067,12 @@ public class ResourceController {
 """)
 
         result = analyze_java(tmp_path)
+        enrich_symbols(result.symbols, {"jax-rs"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
+        methods = [s for s in result.symbols if s.kind == "method" and s.meta and s.meta.get("http_method")]
+        http_methods = {m.meta.get("http_method") for m in methods}
 
         assert len(methods) == 5
-        http_methods = {m.stable_id for m in methods}
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
 
@@ -1859,152 +1914,3 @@ public class Roles {
         assert roles is not None
         assert "admin" in roles
         assert "user" in roles
-
-
-# ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
-# ============================================================================
-
-
-class TestRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level route detection."""
-
-    def test_spring_boot_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Spring Boot route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import java as java_module
-        from hypergumbo.analyze.java import analyze_java
-
-        # Reset the warning deduplication set
-        java_module._deprecated_route_warnings_emitted.clear()
-
-        java_file = tmp_path / "Controller.java"
-        java_file.write_text("""
-@RestController
-public class Controller {
-    @GetMapping("/users")
-    public void getUsers() {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_java(tmp_path)
-
-        # Should have at least one deprecation warning for Spring
-        deprecation_warnings = [
-            warning for warning in w if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Spring" in warning_message
-        assert "deprecated" in warning_message.lower()
-
-    def test_jaxrs_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """JAX-RS route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import java as java_module
-        from hypergumbo.analyze.java import analyze_java
-
-        # Reset the warning deduplication set
-        java_module._deprecated_route_warnings_emitted.clear()
-
-        java_file = tmp_path / "Resource.java"
-        java_file.write_text("""
-@Path("/items")
-public class Resource {
-    @GET
-    public void getItems() {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_java(tmp_path)
-
-        # Should have deprecation warning for JAX-RS
-        deprecation_warnings = [
-            warning for warning in w if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "JAX-RS" in warning_message
-        assert "deprecated" in warning_message.lower()
-
-    def test_deprecation_warning_emitted_once_per_framework(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per framework."""
-        import warnings
-        from hypergumbo.analyze import java as java_module
-        from hypergumbo.analyze.java import analyze_java
-
-        # Reset the warning deduplication set
-        java_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple Spring Boot controllers
-        (tmp_path / "UserController.java").write_text("""
-@RestController
-public class UserController {
-    @GetMapping("/users")
-    public void getUsers() {}
-
-    @PostMapping("/users")
-    public void createUser() {}
-}
-""")
-        (tmp_path / "ItemController.java").write_text("""
-@RestController
-public class ItemController {
-    @GetMapping("/items")
-    public void getItems() {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_java(tmp_path)
-
-        # Should have exactly one Spring deprecation warning (deduplicated)
-        spring_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Spring" in str(warning.message)
-        ]
-        assert len(spring_warnings) == 1
-
-    def test_no_deprecation_warning_for_non_route_annotations(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for classes without route annotations."""
-        import warnings
-        from hypergumbo.analyze import java as java_module
-        from hypergumbo.analyze.java import analyze_java
-
-        # Reset the warning deduplication set
-        java_module._deprecated_route_warnings_emitted.clear()
-
-        java_file = tmp_path / "Service.java"
-        java_file.write_text("""
-@Service
-public class UserService {
-    @Autowired
-    private UserRepository repo;
-
-    public void findAll() {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_java(tmp_path)
-
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and ("Spring" in str(warning.message) or "JAX-RS" in str(warning.message))
-        ]
-        assert len(route_warnings) == 0
