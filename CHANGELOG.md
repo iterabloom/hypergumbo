@@ -80,10 +80,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Android framework detection:** Added "android" to `JAVA_FRAMEWORKS` detection patterns
   in profile module. Detects Android projects via `com.android.application` or
   `com.android.library` in build.gradle, enabling Android entrypoint pattern matching.
-- **Catalog command improvements:** Updated `hypergumbo catalog` output to:
-  - Skip language detection for large directories (>200 entries) to avoid slow scans of $HOME
+- **Catalog command improvements:** Updated `hypergumbo catalog` for quick heuristic hints:
+  - Skip language detection for large directories (>200 entries) to avoid slow scans
+  - Skip files >100 KB when counting LOC (catalog is for quick hints, not accurate analysis)
   - Show available framework YAML patterns (v1.1.x) with `--frameworks` hint
   - Add deprecation notice for packs (recommending `--frameworks` instead)
+  - These limits apply ONLY to catalog; other commands do full analysis
 
 ## [0.9.1] - 2026-01-09
 

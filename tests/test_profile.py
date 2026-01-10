@@ -1121,3 +1121,49 @@ def test_detects_both_foundry_and_hardhat(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
     assert "foundry" in data["profile"]["frameworks"]
     assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_count_loc_with_max_file_size(tmp_path: Path) -> None:
+    """Should skip files larger than max_file_size when specified."""
+    from hypergumbo.profile import _count_loc
+
+    # Create a small file - should be counted regardless
+    small_file = tmp_path / "small.py"
+    small_content = "x = 1\n" * 100  # 600 bytes
+    small_file.write_text(small_content)
+    assert _count_loc(small_file) == 100
+    assert _count_loc(small_file, max_file_size=1000) == 100
+
+    # Create a larger file
+    large_file = tmp_path / "large.py"
+    large_content = "x = 1\n" * 500  # 3000 bytes
+    large_file.write_text(large_content)
+
+    # Without max_file_size, counts all lines
+    assert _count_loc(large_file) == 500
+    # With max_file_size below file size, returns 0
+    assert _count_loc(large_file, max_file_size=1000) == 0
+    # With max_file_size above file size, counts all lines
+    assert _count_loc(large_file, max_file_size=10000) == 500
+
+
+def test_detect_languages_with_max_file_size(tmp_path: Path) -> None:
+    """_detect_languages should respect max_file_size for LOC counting."""
+    from hypergumbo.profile import _detect_languages
+
+    # Create a small Python file
+    (tmp_path / "small.py").write_text("print('hi')\n")
+
+    # Create a larger Python file (over 1 KB for testing)
+    large_content = "x = 1\n" * 500  # ~3000 bytes
+    (tmp_path / "large.py").write_text(large_content)
+
+    # Without max_file_size, counts all LOC
+    langs = _detect_languages(tmp_path)
+    assert langs["python"].files == 2
+    assert langs["python"].loc == 501  # 1 + 500
+
+    # With max_file_size, skips large file's LOC
+    langs_limited = _detect_languages(tmp_path, max_file_size=1000)
+    assert langs_limited["python"].files == 2  # Still counts the file
+    assert langs_limited["python"].loc == 1  # Only small file's LOC

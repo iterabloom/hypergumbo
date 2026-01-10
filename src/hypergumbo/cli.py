@@ -814,7 +814,9 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         print()
     else:
         # Detect repo profile using existing language detection
-        profile = detect_profile(cwd)
+        # Use max_file_size to skip large files - catalog is just for quick hints,
+        # not accurate analysis
+        profile = detect_profile(cwd, max_file_size=100 * 1024)
         detected_languages = set(profile.languages.keys())
 
     # Show suggested passes based on detected languages
