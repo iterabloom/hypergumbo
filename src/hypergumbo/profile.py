@@ -339,6 +339,13 @@ SCALA_FRAMEWORKS = {
     "finatra": ["finatra", "com.twitter"],
 }
 
+# Solidity framework detection (config file based, not dependency based)
+# Maps framework name -> config file names to check for
+SOLIDITY_FRAMEWORKS = {
+    "foundry": ["foundry.toml"],
+    "hardhat": ["hardhat.config.js", "hardhat.config.ts"],
+}
+
 # Map languages to their framework dictionaries
 LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "python": PYTHON_FRAMEWORKS,
@@ -351,6 +358,7 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "kotlin": JAVA_FRAMEWORKS,  # Kotlin uses same frameworks as Java
     "swift": SWIFT_FRAMEWORKS,
     "scala": SCALA_FRAMEWORKS,
+    "solidity": SOLIDITY_FRAMEWORKS,
 }
 
 
@@ -740,6 +748,24 @@ def _detect_dart_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
+    """Detect Solidity frameworks from config files.
+
+    Unlike other language frameworks which are detected from dependency files,
+    Solidity frameworks (Foundry, Hardhat) are detected by the presence of
+    their configuration files.
+    """
+    detected = []
+
+    for framework, config_files in SOLIDITY_FRAMEWORKS.items():
+        for config_file in config_files:
+            if (repo_root / config_file).exists():
+                detected.append(framework)
+                break  # Found this framework, check next
+
+    return detected
+
+
 def _detect_frameworks(
     repo_root: Path,
     allowed_frameworks: set[str] | None = None,
@@ -767,6 +793,7 @@ def _detect_frameworks(
     all_detected.extend(_detect_swift_frameworks(repo_root))
     all_detected.extend(_detect_scala_frameworks(repo_root))
     all_detected.extend(_detect_dart_frameworks(repo_root))
+    all_detected.extend(_detect_solidity_frameworks(repo_root))
 
     # Filter by allowed frameworks if specified
     if allowed_frameworks is not None:

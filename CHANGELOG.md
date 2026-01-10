@@ -10,6 +10,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **Foundry/Hardhat framework detection:** Profile module now detects Solidity smart contract
+  toolchains from config files: Foundry (`foundry.toml`) and Hardhat (`hardhat.config.js`,
+  `hardhat.config.ts`). Previously only Hardhat was detected via package.json dependencies.
 - **UsageContext IR type (ADR-0003 v1.1.x):** New IR dataclass for capturing how symbols are used
   in call-based frameworks like Django, Express, and Go Gin. Enables YAML-driven route detection
   for frameworks that register handlers via function calls rather than decorators.

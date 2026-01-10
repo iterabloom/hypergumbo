@@ -1041,3 +1041,83 @@ def test_extra_excludes_filters_files(tmp_path: Path) -> None:
     # With extra excludes - should exclude generated.py
     profile = detect_profile(tmp_path, extra_excludes=["generated.py"])
     assert profile.languages.get("python", {}).files == 1
+
+
+# Solidity framework detection tests
+
+
+def test_detects_solidity_language(tmp_path: Path) -> None:
+    """Should detect Solidity files."""
+    (tmp_path / "Token.sol").write_text("pragma solidity ^0.8.0;\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "solidity" in data["profile"]["languages"]
+
+
+def test_detects_foundry_framework(tmp_path: Path) -> None:
+    """Should detect Foundry framework from foundry.toml."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "foundry.toml").write_text("""[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "foundry" in data["profile"]["frameworks"]
+
+
+def test_detects_hardhat_framework_from_config_js(tmp_path: Path) -> None:
+    """Should detect Hardhat framework from hardhat.config.js."""
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "hardhat.config.js").write_text("""module.exports = {
+  solidity: "0.8.19",
+};
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_detects_hardhat_framework_from_config_ts(tmp_path: Path) -> None:
+    """Should detect Hardhat framework from hardhat.config.ts."""
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "hardhat.config.ts").write_text("""import { HardhatUserConfig } from "hardhat/config";
+const config: HardhatUserConfig = {
+  solidity: "0.8.19",
+};
+export default config;
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_detects_both_foundry_and_hardhat(tmp_path: Path) -> None:
+    """Should detect both Foundry and Hardhat when both configs exist."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "foundry.toml").write_text('[profile.default]\nsrc = "src"\n')
+    (tmp_path / "hardhat.config.js").write_text('module.exports = {};\n')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "foundry" in data["profile"]["frameworks"]
+    assert "hardhat" in data["profile"]["frameworks"]
