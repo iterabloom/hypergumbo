@@ -602,20 +602,50 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
 
 def _detect_http_routes(symbols: List[Symbol]) -> List[Entrypoint]:
-    """Detect HTTP route entrypoints from decorators."""
+    """Detect HTTP route entrypoints from decorators and route metadata.
+
+    Detects routes via two mechanisms:
+    1. Decorator-based: stable_id contains HTTP method decorators (FastAPI, Flask)
+    2. Metadata-based: meta.http_method set by JS/TS analyzer (Express, Koa, etc.)
+
+    Both mechanisms use case-insensitive matching.
+    """
     entrypoints = []
 
     for sym in symbols:
-        decorators = _get_decorators(sym)
+        # Method 1: Decorator-based detection (case-insensitive)
+        decorators = {d.lower() for d in _get_decorators(sym)}
         matching = decorators & HTTP_ROUTE_DECORATORS
 
         if matching:
             # High confidence for decorator-based detection
-            label = f"HTTP {next(iter(matching)).upper()}"
+            http_method = next(iter(matching)).upper()
+            route_path = sym.meta.get("route_path", "") if sym.meta else ""
+            if route_path:
+                label = f"HTTP {http_method} {route_path}"
+            else:
+                label = f"HTTP {http_method}"
             entrypoints.append(Entrypoint(
                 symbol_id=sym.id,
                 kind=EntrypointKind.HTTP_ROUTE,
                 confidence=0.95,
+                label=label,
+            ))
+            continue
+
+        # Method 2: Metadata-based detection (Express, Koa, etc.)
+        # The JS/TS analyzer sets meta.http_method for route handlers
+        if sym.meta and sym.meta.get("http_method"):
+            http_method = sym.meta["http_method"]
+            route_path = sym.meta.get("route_path", "")
+            if route_path:
+                label = f"HTTP {http_method} {route_path}"
+            else:
+                label = f"HTTP {http_method}"
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.HTTP_ROUTE,
+                confidence=0.90,  # Slightly lower than decorator-based
                 label=label,
             ))
 

@@ -583,6 +583,105 @@ class TestExpressEntrypoints:
         assert len(express_eps) == 0
 
 
+class TestHttpRouteMetadataDetection:
+    """Tests for HTTP route detection via metadata (ADR-0003 v1.1.x).
+
+    The JS/TS analyzer sets meta.http_method for inline route handlers
+    (e.g., app.get('/path', (req, res) => {})) which enables entrypoint
+    detection even without decorator-based stable_id.
+    """
+
+    def test_detect_route_via_metadata(self) -> None:
+        """Detect Express route via http_method in meta."""
+        sym = make_symbol(
+            "_GET__handler",
+            path="src/index.js",
+            language="javascript",
+            meta={"http_method": "GET", "route_path": "/users"},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(http_eps) == 1
+        assert http_eps[0].symbol_id == sym.id
+        assert http_eps[0].confidence >= 0.90
+
+    def test_route_label_includes_path(self) -> None:
+        """Route entrypoint label includes HTTP method and path."""
+        sym = make_symbol(
+            "_POST_users_handler",
+            path="src/app.js",
+            language="javascript",
+            meta={"http_method": "POST", "route_path": "/users"},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(http_eps) == 1
+        assert "POST" in http_eps[0].label
+        assert "/users" in http_eps[0].label
+
+    def test_route_without_path_still_detected(self) -> None:
+        """Route with http_method but no route_path is still detected."""
+        sym = make_symbol(
+            "_handler",
+            path="src/server.js",
+            language="javascript",
+            meta={"http_method": "DELETE"},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(http_eps) == 1
+        assert "DELETE" in http_eps[0].label
+
+    def test_decorator_takes_precedence_over_metadata(self) -> None:
+        """When both decorator and metadata exist, use decorator (higher confidence)."""
+        sym = make_symbol(
+            "getUsers",
+            path="src/app.py",
+            language="python",
+            decorators=["get"],
+            meta={"http_method": "GET", "route_path": "/users"},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(http_eps) == 1
+        # Decorator-based should have 0.95 confidence
+        assert http_eps[0].confidence == 0.95
+
+    def test_case_insensitive_decorator_matching(self) -> None:
+        """HTTP method decorators are matched case-insensitively.
+
+        The JS analyzer stores uppercase HTTP methods (GET, POST) in stable_id
+        but HTTP_ROUTE_DECORATORS contains lowercase (get, post).
+        """
+        sym = make_symbol(
+            "_GET_handler",
+            path="src/api.js",
+            language="javascript",
+            decorators=["GET"],  # Uppercase
+            meta={"http_method": "GET", "route_path": "/api"},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(http_eps) == 1
+        # Should be detected via case-insensitive decorator matching
+        assert http_eps[0].confidence == 0.95
+
+
 class TestNestJSEntrypoints:
     """Tests for NestJS controller detection.
 

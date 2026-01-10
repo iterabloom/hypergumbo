@@ -36,12 +36,10 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from . import __version__
 from .analyze.all_analyzers import run_all_analyzers
-from .analyze.py import analyze_python  # For cmd_slice fallback
-from .analyze.html import analyze_html  # For cmd_slice fallback
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
@@ -61,7 +59,6 @@ import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .export import export_capsule
 from .ir import Symbol, Edge, Span
-from .limits import Limits
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .llm_assist import generate_plan_with_fallback
@@ -299,6 +296,7 @@ def _node_from_dict(d: Dict[str, Any]) -> Symbol:
         origin_run_id=d.get("origin_run_id", ""),
         stable_id=d.get("stable_id"),
         shape_id=d.get("shape_id"),
+        meta=d.get("meta"),  # Preserve metadata for entrypoint detection
     )
 
 
@@ -345,32 +343,23 @@ def cmd_slice(args: argparse.Namespace) -> int:
         if default_results.exists():
             behavior_map = json.loads(default_results.read_text())
         else:
-            # Run analysis first
+            # Run full analysis (all language analyzers)
             behavior_map = new_behavior_map()
             profile = detect_profile(repo_root)
             behavior_map["profile"] = profile.to_dict()
 
-            analysis_runs = []
-            all_nodes: List[Dict[str, Any]] = []
-            all_edges: List[Dict[str, Any]] = []
-
-            py_result = analyze_python(repo_root)
-            if py_result.run is not None:
-                analysis_runs.append(py_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in py_result.symbols)
-            all_edges.extend(e.to_dict() for e in py_result.edges)
-
-            html_result = analyze_html(repo_root)
-            if html_result.run is not None:
-                analysis_runs.append(html_result.run.to_dict())
-            all_nodes.extend(s.to_dict() for s in html_result.symbols)
-            all_edges.extend(e.to_dict() for e in html_result.edges)
+            # Use consolidated analyzer registry instead of Python/HTML only
+            analysis_runs, all_symbols, all_edges_obj, limits, _ = run_all_analyzers(
+                repo_root
+            )
 
             behavior_map["analysis_runs"] = analysis_runs
-            behavior_map["nodes"] = all_nodes
-            behavior_map["edges"] = all_edges
-            behavior_map["metrics"] = compute_metrics(all_nodes, all_edges)
-            behavior_map["limits"] = Limits().to_dict()
+            behavior_map["nodes"] = [s.to_dict() for s in all_symbols]
+            behavior_map["edges"] = [e.to_dict() for e in all_edges_obj]
+            behavior_map["metrics"] = compute_metrics(
+                behavior_map["nodes"], behavior_map["edges"]
+            )
+            behavior_map["limits"] = limits.to_dict()
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]

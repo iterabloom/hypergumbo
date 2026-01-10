@@ -61,6 +61,18 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   file paths (e.g., `pages/posts/[id].js` → `/posts/:id`). Uses YAML patterns in
   `nextjs.yaml`.
 
+### Fixed
+- **Express route entrypoint detection:** Fixed case-sensitive HTTP method comparison that
+  prevented Express inline handlers (e.g., `app.get('/', (req, res) => {})`) from being
+  detected as entrypoints. The JS/TS analyzer stores uppercase HTTP methods (`GET`, `POST`)
+  in `stable_id`, but the entrypoint detector used lowercase comparison. Also added
+  metadata-based detection for routes with `meta.http_method`.
+- **Slice command full analysis:** Fixed `hypergumbo slice --entry auto` to run all language
+  analyzers instead of only Python and HTML. Previously, JavaScript/TypeScript routes were
+  not detected when running slice without a pre-existing `hypergumbo.results.json` file.
+- **Symbol metadata preservation:** Fixed `_node_from_dict` to preserve the `meta` field when
+  reconstructing symbols from JSON. This enables entrypoint detection based on route metadata.
+
 ## [0.9.1] - 2026-01-09
 
 ### Fixed
