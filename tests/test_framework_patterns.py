@@ -820,6 +820,111 @@ patterns:
         assert enriched[0].meta is not None
         assert "concepts" in enriched[0].meta
 
+    def test_populates_legacy_route_fields(self, tmp_path: Path) -> None:
+        """Route concepts with path/method populate legacy http_method/route_path.
+
+        ADR-0003 v1.0.x transition: when a route concept includes path and method,
+        enrich_symbols also populates the legacy meta fields for backward
+        compatibility with tests and linkers that check these fields directly.
+        """
+        clear_pattern_cache()
+
+        # Pattern with capture group for method extraction (like real YAMLs)
+        yaml_content = """
+id: test_fw
+language: python
+patterns:
+  - concept: route
+    decorator: "^app\\\\.(get|post|put|delete)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+"""
+        yaml_file = tmp_path / "test_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:file.py:1:func:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}}
+                ]
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            enriched = enrich_symbols([symbol], {"test_fw"})
+
+        assert len(enriched) == 1
+        # Should have concepts
+        assert "concepts" in enriched[0].meta
+        assert enriched[0].meta["concepts"][0]["concept"] == "route"
+        assert enriched[0].meta["concepts"][0]["path"] == "/users"
+        assert enriched[0].meta["concepts"][0]["method"] == "GET"
+
+        # Should ALSO have legacy fields for backward compatibility
+        assert enriched[0].meta["route_path"] == "/users"
+        assert enriched[0].meta["http_method"] == "GET"
+
+    def test_legacy_fields_not_overwritten(self, tmp_path: Path) -> None:
+        """Legacy fields are not overwritten if already present.
+
+        If http_method/route_path are already in meta (e.g., from deprecated
+        analyzer code still running), the enrichment should not overwrite them.
+        """
+        clear_pattern_cache()
+
+        # Pattern with capture group for method extraction (like real YAMLs)
+        yaml_content = """
+id: test_fw
+language: python
+patterns:
+  - concept: route
+    decorator: "^app\\\\.(get|post|put|delete)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+"""
+        yaml_file = tmp_path / "test_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:file.py:1:func:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}}
+                ],
+                # Existing legacy fields from deprecated analyzer code
+                "route_path": "/old-path",
+                "http_method": "POST",
+            },
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            enriched = enrich_symbols([symbol], {"test_fw"})
+
+        # Legacy fields should NOT be overwritten
+        assert enriched[0].meta["route_path"] == "/old-path"
+        assert enriched[0].meta["http_method"] == "POST"
+
+        # But concepts should still be added with correct values
+        assert enriched[0].meta["concepts"][0]["path"] == "/users"
+        assert enriched[0].meta["concepts"][0]["method"] == "GET"
+
 
 class TestGetFrameworksDir:
     """Tests for get_frameworks_dir function."""
@@ -4925,3 +5030,173 @@ class TestAspNetPatterns:
         controller = next(s for s in enriched if s.name == "UsersController")
         assert "concepts" in controller.meta
         assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
+
+
+class TestJavaAnalyzerIntegration:
+    """Integration tests: Java analyzer + YAML patterns end-to-end.
+
+    These tests prove that YAML patterns can replace deprecated analyzer-level
+    route detection (ADR-0003 v1.0.x). They run the actual Java analyzer, then
+    enrich_symbols(), and verify both concepts and legacy fields are populated.
+    """
+
+    @pytest.fixture(autouse=True)
+    def clear_cache(self) -> None:
+        """Clear pattern cache before each test."""
+        clear_pattern_cache()
+
+    def test_spring_route_via_yaml_patterns(self, tmp_path: Path) -> None:
+        """Java analyzer extracts decorators, YAML patterns add route concepts.
+
+        This test demonstrates that:
+        1. Java analyzer extracts @GetMapping to meta.decorators
+        2. spring-boot.yaml patterns match these decorators
+        3. enrich_symbols populates both concepts AND legacy fields
+        4. The deprecated analyzer code is NOT needed for this to work
+        """
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "UserController.java"
+        java_file.write_text("""
+@RestController
+public class UserController {
+    @GetMapping("/users")
+    public List<User> getUsers() {
+        return userService.findAll();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Find the getUsers method
+        methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
+        assert len(methods) == 1
+        method = methods[0]
+
+        # Verify analyzer extracted decorators
+        assert method.meta is not None
+        assert "decorators" in method.meta
+        decorators = method.meta["decorators"]
+        assert any(d.get("name") == "GetMapping" for d in decorators)
+
+        # Enrich with YAML patterns - this is what replaces deprecated code
+        enriched = enrich_symbols([method], {"spring-boot"})
+        assert len(enriched) == 1
+        enriched_method = enriched[0]
+
+        # Verify concepts were added by YAML patterns
+        assert "concepts" in enriched_method.meta
+        route_concept = next(
+            c for c in enriched_method.meta["concepts"] if c["concept"] == "route"
+        )
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/users"
+        assert route_concept["framework"] == "spring-boot"
+
+        # Verify legacy fields were populated (backward compat)
+        # Note: http_method/route_path may also be set by deprecated analyzer code,
+        # but this test proves YAML patterns can populate them independently
+        assert enriched_method.meta.get("route_path") == "/users"
+        assert enriched_method.meta.get("http_method") == "GET"
+
+    def test_spring_all_methods_via_yaml(self, tmp_path: Path) -> None:
+        """All HTTP method mappings work through YAML patterns."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "ResourceController.java"
+        java_file.write_text("""
+@RestController
+public class ResourceController {
+    @GetMapping("/items")
+    public void getAll() {}
+
+    @PostMapping("/items")
+    public void create() {}
+
+    @PutMapping("/items/{id}")
+    public void update() {}
+
+    @DeleteMapping("/items/{id}")
+    public void remove() {}
+
+    @PatchMapping("/items/{id}")
+    public void patch() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+        methods = [
+            s for s in result.symbols
+            if s.kind == "method" and s.meta and "decorators" in s.meta
+        ]
+
+        # Enrich all methods
+        enriched = enrich_symbols(methods, {"spring-boot"})
+
+        # Verify all HTTP methods are detected
+        http_methods_found = set()
+        for method in enriched:
+            if "concepts" in method.meta:
+                for concept in method.meta["concepts"]:
+                    if concept.get("concept") == "route" and "method" in concept:
+                        http_methods_found.add(concept["method"])
+
+        assert http_methods_found == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+    def test_spring_controller_via_yaml(self, tmp_path: Path) -> None:
+        """Spring @RestController is enriched with controller concept."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "ApiController.java"
+        java_file.write_text("""
+@RestController
+public class ApiController {
+    public void someMethod() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+
+        enriched = enrich_symbols(classes, {"spring-boot"})
+        controller = enriched[0]
+
+        assert "concepts" in controller.meta
+        assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
+
+    def test_yaml_patterns_without_deprecated_code(self, tmp_path: Path) -> None:
+        """YAML patterns work even if symbol has no legacy fields.
+
+        This test creates a symbol with only decorators (no http_method/route_path)
+        to prove YAML patterns can fully replace deprecated analyzer code.
+        """
+        # Create a symbol as if the deprecated code was NOT run
+        symbol = Symbol(
+            id="test:UserController.java:10:getUsers:method",
+            name="getUsers",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GetMapping", "args": ["/users"], "kwargs": {}},
+                ],
+                # Note: NO http_method or route_path - simulates removed deprecated code
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"spring-boot"})
+        method = enriched[0]
+
+        # Verify YAML patterns populated everything
+        assert "concepts" in method.meta
+        route = next(c for c in method.meta["concepts"] if c["concept"] == "route")
+        assert route["method"] == "GET"
+        assert route["path"] == "/users"
+
+        # Legacy fields were populated by enrich_symbols
+        assert method.meta.get("http_method") == "GET"
+        assert method.meta.get("route_path") == "/users"

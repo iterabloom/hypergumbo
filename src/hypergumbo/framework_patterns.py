@@ -409,6 +409,18 @@ def enrich_symbols(
                 symbol.meta = {}
             symbol.meta["concepts"] = matches
 
+            # ADR-0003 v1.0.x transition: populate legacy route fields for backward
+            # compatibility. This allows tests and linkers that check http_method/
+            # route_path directly to continue working while deprecated analyzer-level
+            # route detection is being removed.
+            for match in matches:
+                if match.get("concept") == "route":
+                    if "path" in match and "route_path" not in symbol.meta:
+                        symbol.meta["route_path"] = match["path"]
+                    if "method" in match and "http_method" not in symbol.meta:
+                        symbol.meta["http_method"] = match["method"]
+                    break  # Only use first route concept for legacy fields
+
     return symbols
 
 
