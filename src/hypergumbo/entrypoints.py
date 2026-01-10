@@ -144,6 +144,12 @@ class EntrypointKind(Enum):
     SLIM_ROUTE = "slim_route"
     MICRONAUT_CONTROLLER = "micronaut_controller"
     GRAPHQL_SERVER = "graphql_server"
+    # Semantic concept-based entry kinds (ADR-0003 v0.9.x)
+    CONTROLLER = "controller"  # Generic controller from concept metadata
+    BACKGROUND_TASK = "background_task"  # Async/background task
+    WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
+    EVENT_HANDLER = "event_handler"  # Event/message handler
+    SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
 
 
 @dataclass
@@ -400,15 +406,25 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     ADR-0003 v0.9.x introduces semantic entry detection: the FRAMEWORK_PATTERNS
     phase enriches symbols with concept metadata (meta.concepts) based on
     decorator/pattern matching. This function checks for entrypoint-worthy
-    concepts like "route", "task", "cli_command".
+    concepts like "route", "task", "controller", "websocket_handler".
 
     Benefits:
     - Higher confidence (0.95) since based on actual decorator/pattern matching
     - Eliminates false positives (e.g., React Router files won't have route concepts)
     - Framework-aware detection (concepts include framework info)
 
-    Currently detected concepts:
-    - "route" -> HTTP_ROUTE with high confidence
+    Detected concepts:
+    - "route" -> HTTP_ROUTE (HTTP endpoint handler)
+    - "controller" -> CONTROLLER (request handler class/method)
+    - "task" -> BACKGROUND_TASK (async/background job)
+    - "scheduled_task" -> SCHEDULED_TASK (cron/periodic job)
+    - "websocket_handler" -> WEBSOCKET_HANDLER (WebSocket event handler)
+    - "websocket_gateway" -> WEBSOCKET_HANDLER (NestJS WebSocket gateway)
+    - "event_handler" -> EVENT_HANDLER (event/message handler)
+    - "command" -> CLI_COMMAND (CLI command handler)
+    - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
+    - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
+    - "graphql_schema" -> GRAPHQL_SERVER (GraphQL schema definition)
 
     Args:
         symbols: All symbols with potential concept metadata.
@@ -425,13 +441,20 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
         if not concepts:
             continue
 
+        # Track which entry kinds we've added to avoid duplicates per symbol
+        added_kinds: set[EntrypointKind] = set()
+
         for concept in concepts:
             if not isinstance(concept, dict):
                 continue
 
             concept_type = concept.get("concept")
+            framework = concept.get("framework", "")
+
+            # Route concept -> HTTP_ROUTE
             if concept_type == "route":
-                # Route concept -> HTTP_ROUTE with high confidence
+                if EntrypointKind.HTTP_ROUTE in added_kinds:
+                    continue
                 method = concept.get("method", "")
                 path = concept.get("path", "")
                 if method and path:
@@ -448,9 +471,132 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     confidence=0.95,
                     label=label,
                 ))
-                break  # Only one entrypoint per symbol per concept type
+                added_kinds.add(EntrypointKind.HTTP_ROUTE)
 
-            # Future: Add support for task, cli_command, websocket, etc.
+            # Controller concept -> CONTROLLER
+            elif concept_type == "controller":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} controller"
+                else:
+                    label = "Controller"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
+            # Task concept -> BACKGROUND_TASK
+            elif concept_type == "task":
+                if EntrypointKind.BACKGROUND_TASK in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} task"
+                else:
+                    label = "Background task"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.BACKGROUND_TASK,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.BACKGROUND_TASK)
+
+            # Scheduled task concept -> SCHEDULED_TASK
+            elif concept_type == "scheduled_task":
+                if EntrypointKind.SCHEDULED_TASK in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} scheduled task"
+                else:
+                    label = "Scheduled task"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.SCHEDULED_TASK,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.SCHEDULED_TASK)
+
+            # WebSocket handler concepts -> WEBSOCKET_HANDLER
+            elif concept_type in ("websocket_handler", "websocket_gateway"):
+                if EntrypointKind.WEBSOCKET_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} WebSocket handler"
+                else:
+                    label = "WebSocket handler"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.WEBSOCKET_HANDLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
+
+            # Event handler concept -> EVENT_HANDLER
+            elif concept_type == "event_handler":
+                if EntrypointKind.EVENT_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} event handler"
+                else:
+                    label = "Event handler"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.EVENT_HANDLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
+            # Command concept -> CLI_COMMAND
+            elif concept_type == "command":
+                if EntrypointKind.CLI_COMMAND in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} command"
+                else:
+                    label = "CLI command"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CLI_COMMAND,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CLI_COMMAND)
+
+            # LiveView concept -> CONTROLLER (real-time UI is an entry point)
+            elif concept_type == "liveview":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue
+                label = "Phoenix LiveView"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
+            # GraphQL concepts -> GRAPHQL_SERVER
+            elif concept_type in ("graphql_resolver", "graphql_schema"):
+                if EntrypointKind.GRAPHQL_SERVER in added_kinds:
+                    continue
+                if concept_type == "graphql_resolver":
+                    label = "GraphQL resolver"
+                else:
+                    label = "GraphQL schema"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.GRAPHQL_SERVER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.GRAPHQL_SERVER)
 
     return entrypoints
 

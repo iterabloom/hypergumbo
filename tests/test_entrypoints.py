@@ -3500,6 +3500,542 @@ class TestSemanticEntryDetection:
         assert len(route_eps) == 1
         # Should have a generic label
 
+    def test_detect_controller_concept(self) -> None:
+        """Symbol with controller concept is detected as controller entrypoint."""
+        sym = make_symbol(
+            "UsersController",
+            kind="class",
+            path="src/controllers/users.ts",
+            meta={
+                "concepts": [
+                    {"concept": "controller", "framework": "nestjs"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].symbol_id == sym.id
+        assert ctrl_eps[0].confidence >= 0.95
+        assert "Nestjs" in ctrl_eps[0].label or "controller" in ctrl_eps[0].label.lower()
+
+    def test_detect_task_concept(self) -> None:
+        """Symbol with task concept is detected as background task entrypoint."""
+        sym = make_symbol(
+            "process_order",
+            path="src/jobs/orders.py",
+            meta={
+                "concepts": [
+                    {"concept": "task", "framework": "celery"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.BACKGROUND_TASK]
+        assert len(task_eps) == 1
+        assert task_eps[0].symbol_id == sym.id
+        assert task_eps[0].confidence >= 0.95
+
+    def test_detect_scheduled_task_concept(self) -> None:
+        """Symbol with scheduled_task concept is detected as scheduled task entrypoint."""
+        sym = make_symbol(
+            "cleanup_expired",
+            path="src/jobs/cleanup.java",
+            language="java",
+            meta={
+                "concepts": [
+                    {"concept": "scheduled_task", "framework": "spring-boot"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.SCHEDULED_TASK]
+        assert len(task_eps) == 1
+        assert task_eps[0].symbol_id == sym.id
+        assert task_eps[0].confidence >= 0.95
+
+    def test_detect_websocket_handler_concept(self) -> None:
+        """Symbol with websocket_handler concept is detected as websocket entrypoint."""
+        sym = make_symbol(
+            "handle_message",
+            path="src/websocket/chat.ts",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_handler", "framework": "nestjs"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].symbol_id == sym.id
+        assert ws_eps[0].confidence >= 0.95
+        assert "WebSocket" in ws_eps[0].label
+
+    def test_detect_websocket_gateway_concept(self) -> None:
+        """Symbol with websocket_gateway concept is detected as websocket entrypoint."""
+        sym = make_symbol(
+            "ChatGateway",
+            kind="class",
+            path="src/chat/chat.gateway.ts",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_gateway", "framework": "nestjs"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].confidence >= 0.95
+
+    def test_detect_event_handler_concept(self) -> None:
+        """Symbol with event_handler concept is detected as event handler entrypoint."""
+        sym = make_symbol(
+            "onUserCreated",
+            path="src/events/user.py",
+            meta={
+                "concepts": [
+                    {"concept": "event_handler", "framework": "django"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        event_eps = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(event_eps) == 1
+        assert event_eps[0].symbol_id == sym.id
+        assert event_eps[0].confidence >= 0.95
+
+    def test_detect_command_concept(self) -> None:
+        """Symbol with command concept is detected as CLI command entrypoint."""
+        sym = make_symbol(
+            "import_data",
+            path="src/management/commands/import_data.py",
+            meta={
+                "concepts": [
+                    {"concept": "command", "framework": "django"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].symbol_id == sym.id
+        assert cmd_eps[0].confidence >= 0.95
+
+    def test_detect_liveview_concept(self) -> None:
+        """Symbol with liveview concept is detected as controller entrypoint."""
+        sym = make_symbol(
+            "DashboardLive",
+            kind="module",
+            path="lib/myapp_web/live/dashboard_live.ex",
+            language="elixir",
+            meta={
+                "concepts": [
+                    {"concept": "liveview", "framework": "phoenix"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].symbol_id == sym.id
+        assert ctrl_eps[0].confidence >= 0.95
+        assert "LiveView" in ctrl_eps[0].label
+
+    def test_detect_graphql_resolver_concept(self) -> None:
+        """Symbol with graphql_resolver concept is detected as GraphQL entrypoint."""
+        sym = make_symbol(
+            "Query",
+            kind="class",
+            path="src/graphql/resolvers.ts",
+            meta={
+                "concepts": [
+                    {"concept": "graphql_resolver", "framework": "apollo"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        gql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(gql_eps) == 1
+        assert gql_eps[0].symbol_id == sym.id
+        assert gql_eps[0].confidence >= 0.95
+        assert "resolver" in gql_eps[0].label.lower()
+
+    def test_detect_graphql_schema_concept(self) -> None:
+        """Symbol with graphql_schema concept is detected as GraphQL entrypoint."""
+        sym = make_symbol(
+            "typeDefs",
+            path="src/graphql/schema.ts",
+            meta={
+                "concepts": [
+                    {"concept": "graphql_schema"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        gql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(gql_eps) == 1
+        assert gql_eps[0].confidence >= 0.95
+        assert "schema" in gql_eps[0].label.lower()
+
+    def test_multiple_different_concepts_first_wins(self) -> None:
+        """Symbol with multiple different concepts keeps only the first entrypoint.
+
+        The detect_entrypoints() deduplication keeps one entry per symbol_id.
+        This prevents duplicate entries when both semantic and path-based
+        detection would match the same symbol. The first-detected entry wins.
+        """
+        # A symbol that is both a route AND a controller (unusual but possible)
+        sym = make_symbol(
+            "UserController",
+            kind="class",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                    {"concept": "controller", "framework": "fastapi"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Only one entrypoint per symbol due to deduplication
+        sym_eps = [e for e in entrypoints if e.symbol_id == sym.id]
+        assert len(sym_eps) == 1
+        # First concept (route) wins
+        assert sym_eps[0].kind == EntrypointKind.HTTP_ROUTE
+
+    def test_duplicate_concept_types_deduplicated(self) -> None:
+        """Multiple concepts of the same type on one symbol produce one entrypoint."""
+        # Symbol with two route concepts (e.g., multiple HTTP methods)
+        sym = make_symbol(
+            "user_endpoint",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                    {"concept": "route", "path": "/users", "method": "POST"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only produce one entrypoint (first one wins)
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+    def test_concept_without_framework_uses_generic_label(self) -> None:
+        """Concept without framework info uses generic label."""
+        sym = make_symbol(
+            "process_job",
+            path="src/jobs/worker.py",
+            meta={
+                "concepts": [
+                    {"concept": "task"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.BACKGROUND_TASK]
+        assert len(task_eps) == 1
+        assert "task" in task_eps[0].label.lower()
+
+    def test_controller_without_framework_uses_generic_label(self) -> None:
+        """Controller concept without framework uses generic label."""
+        sym = make_symbol(
+            "UserController",
+            kind="class",
+            path="src/controllers/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "controller"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].label == "Controller"
+
+    def test_scheduled_task_without_framework_uses_generic_label(self) -> None:
+        """Scheduled task concept without framework uses generic label."""
+        sym = make_symbol(
+            "cleanup_job",
+            path="src/tasks/cleanup.py",
+            meta={
+                "concepts": [
+                    {"concept": "scheduled_task"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.SCHEDULED_TASK]
+        assert len(task_eps) == 1
+        assert task_eps[0].label == "Scheduled task"
+
+    def test_websocket_handler_without_framework_uses_generic_label(self) -> None:
+        """WebSocket handler concept without framework uses generic label."""
+        sym = make_symbol(
+            "handle_message",
+            path="src/ws/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_handler"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].label == "WebSocket handler"
+
+    def test_event_handler_without_framework_uses_generic_label(self) -> None:
+        """Event handler concept without framework uses generic label."""
+        sym = make_symbol(
+            "on_user_created",
+            path="src/events/handlers.py",
+            meta={
+                "concepts": [
+                    {"concept": "event_handler"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        event_eps = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(event_eps) == 1
+        assert event_eps[0].label == "Event handler"
+
+    def test_command_without_framework_uses_generic_label(self) -> None:
+        """Command concept without framework uses generic label."""
+        sym = make_symbol(
+            "migrate",
+            path="src/commands/migrate.py",
+            meta={
+                "concepts": [
+                    {"concept": "command"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].label == "CLI command"
+
+    def test_duplicate_controller_concepts_deduplicated(self) -> None:
+        """Multiple controller concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "BaseController",
+            kind="class",
+            path="src/controllers/base.py",
+            meta={
+                "concepts": [
+                    {"concept": "controller", "framework": "django"},
+                    {"concept": "controller", "framework": "fastapi"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+
+    def test_duplicate_task_concepts_deduplicated(self) -> None:
+        """Multiple task concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "process_data",
+            path="src/jobs/processor.py",
+            meta={
+                "concepts": [
+                    {"concept": "task", "framework": "celery"},
+                    {"concept": "task", "framework": "rq"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.BACKGROUND_TASK]
+        assert len(task_eps) == 1
+
+    def test_duplicate_scheduled_task_concepts_deduplicated(self) -> None:
+        """Multiple scheduled_task concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "daily_cleanup",
+            path="src/jobs/scheduled.py",
+            meta={
+                "concepts": [
+                    {"concept": "scheduled_task"},
+                    {"concept": "scheduled_task"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.SCHEDULED_TASK]
+        assert len(task_eps) == 1
+
+    def test_duplicate_websocket_concepts_deduplicated(self) -> None:
+        """Multiple websocket concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "ChatHandler",
+            kind="class",
+            path="src/ws/chat.py",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_handler"},
+                    {"concept": "websocket_gateway"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+
+    def test_duplicate_event_handler_concepts_deduplicated(self) -> None:
+        """Multiple event_handler concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "handle_events",
+            path="src/events/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "event_handler", "framework": "django"},
+                    {"concept": "event_handler", "framework": "celery"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        event_eps = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(event_eps) == 1
+
+    def test_duplicate_command_concepts_deduplicated(self) -> None:
+        """Multiple command concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "run_command",
+            path="src/cli/commands.py",
+            meta={
+                "concepts": [
+                    {"concept": "command"},
+                    {"concept": "command"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+
+    def test_duplicate_graphql_concepts_deduplicated(self) -> None:
+        """Multiple graphql concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "Query",
+            kind="class",
+            path="src/graphql/query.py",
+            meta={
+                "concepts": [
+                    {"concept": "graphql_resolver"},
+                    {"concept": "graphql_schema"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        gql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(gql_eps) == 1
+
+    def test_liveview_and_controller_share_kind_deduplicated(self) -> None:
+        """LiveView and controller map to same kind, so are deduplicated.
+
+        Both 'liveview' and 'controller' concepts map to EntrypointKind.CONTROLLER.
+        When both are present, only one CONTROLLER entrypoint is created.
+        """
+        sym = make_symbol(
+            "DashboardLive",
+            kind="module",
+            path="lib/app_web/live/dashboard_live.ex",
+            language="elixir",
+            meta={
+                "concepts": [
+                    {"concept": "controller", "framework": "phoenix"},
+                    {"concept": "liveview", "framework": "phoenix"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        # Both concepts map to CONTROLLER, but only one entry is created
+        assert len(ctrl_eps) == 1
+
 
 class TestDeprecationWarnings:
     """Tests for deprecation warnings on path-based heuristics.
