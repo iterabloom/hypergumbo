@@ -36,8 +36,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import iter_tree
+
+# Phoenix HTTP method macros for route detection
+PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -67,6 +70,7 @@ class ElixirAnalysisResult:
 
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
@@ -221,6 +225,111 @@ def _extract_elixir_signature(
             return "()"
 
     return "()"  # pragma: no cover - defensive
+
+
+def _extract_phoenix_usage_contexts(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Phoenix router DSL calls.
+
+    Detects patterns like:
+    - get "/", PageController, :index
+    - post "/users", UserController, :create
+    - resources "/posts", PostController
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    for n in iter_tree(node):
+        if n.type != "call":
+            continue
+
+        # Get the function name (get, post, resources, etc.)
+        target_node = _find_child_by_type(n, "identifier")
+        if not target_node:
+            continue
+
+        method_name = _node_text(target_node, source).lower()
+
+        # Check if it's a Phoenix route macro
+        if method_name not in PHOENIX_HTTP_METHODS and method_name != "resources":
+            continue
+
+        # Find arguments
+        args_node = _find_child_by_type(n, "arguments")
+        if not args_node:  # pragma: no cover
+            continue
+
+        route_path = None
+        controller = None
+        action = None
+
+        # Parse arguments: path, Controller, :action
+        arg_index = 0
+        for child in args_node.children:
+            if child.type in ("(", ")", ","):
+                continue
+
+            if arg_index == 0:
+                # First arg is the path (string)
+                if child.type == "string":
+                    # Extract string content
+                    for sc in child.children:
+                        if sc.type == "quoted_content":
+                            route_path = _node_text(sc, source)
+                            break
+                    if not route_path:  # pragma: no cover
+                        route_path = _node_text(child, source).strip('"\'')
+            elif arg_index == 1:
+                # Second arg is the controller (alias/identifier)
+                if child.type == "alias":
+                    controller = _node_text(child, source)
+                elif child.type == "identifier":  # pragma: no cover
+                    controller = _node_text(child, source)
+            elif arg_index == 2:
+                # Third arg is the action (atom)
+                if child.type == "atom":
+                    action = _node_text(child, source).lstrip(":")
+
+            arg_index += 1
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Build metadata
+        metadata: dict[str, str | None] = {
+            "route_path": route_path if route_path.startswith("/") else f"/{route_path}",
+            "http_method": method_name.upper() if method_name in PHOENIX_HTTP_METHODS else "RESOURCES",
+        }
+        if controller:
+            metadata["controller"] = controller
+        if action:
+            metadata["action"] = action
+
+        # Create UsageContext
+        span = Span(
+            start_line=n.start_point[0] + 1,
+            end_line=n.end_point[0] + 1,
+            start_col=n.start_point[1],
+            end_col=n.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=method_name,  # e.g., "get", "post", "resources"
+            position="args[0]",
+            path=str(file_path),
+            span=span,
+            symbol_ref=None,  # Router DSL doesn't directly reference symbols
+            metadata=metadata,
+        )
+        contexts.append(ctx)
+
+    return contexts
 
 
 @dataclass
@@ -488,9 +597,10 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges
+    # Pass 2: Extract edges and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
 
     for ex_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -500,6 +610,17 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
         )
         all_edges.extend(edges)
 
+        # Extract Phoenix router usage contexts
+        try:
+            source = ex_file.read_bytes()
+            tree = parser.parse(source)
+            usage_contexts = _extract_phoenix_usage_contexts(
+                tree.root_node, source, ex_file, analysis.symbol_by_name
+            )
+            all_usage_contexts.extend(usage_contexts)
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -507,5 +628,6 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
     return ElixirAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

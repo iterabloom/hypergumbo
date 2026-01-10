@@ -1,0 +1,58 @@
+# Sinatra framework patterns (ADR-0003 v1.1.x)
+#
+# Matches Sinatra DSL routing patterns.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Sinatra uses block-based routing: get '/path' do ... end
+# Usage-based patterns match against UsageContext records with has_block: true
+
+id: sinatra
+language: ruby
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for block-based routing
+
+  # Sinatra HTTP method routes with blocks
+  # get '/path' do ... end
+  # post '/users' do ... end
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|head|options)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Keep route symbol_kind for backwards compatibility
+  - concept: route
+    symbol_kind: "^route$"
+
+  # Sinatra helpers block
+  - concept: helper
+    decorator: "^helpers$"
+
+  # Sinatra before/after filters
+  - concept: middleware
+    decorator: "^(before|after)$"
+
+  # Sinatra configure block
+  - concept: config
+    decorator: "^configure$"
+
+  # Sinatra error handlers
+  - concept: error_handler
+    decorator: "^(error|not_found)$"
+
+  # Sinatra set configuration
+  - concept: config
+    decorator: "^set$"
+
+  # Sinatra enable/disable settings
+  - concept: config
+    decorator: "^(enable|disable)$"
+
+linkers:
+  - http

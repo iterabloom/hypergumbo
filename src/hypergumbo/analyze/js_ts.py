@@ -703,6 +703,373 @@ def _extract_express_usage_contexts(
     return contexts
 
 
+def _extract_object_properties(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str | None]:
+    """Extract key-value pairs from a JavaScript object literal.
+
+    Handles:
+    - Regular properties: { method: 'GET', path: '/users' }
+    - Shorthand properties: { method, path }
+    - Function values: { handler: function() {} }
+
+    Returns a dict of property names to their string values (or None for complex values).
+    """
+    properties: dict[str, str | None] = {}
+
+    if node.type != "object":  # pragma: no cover
+        return properties
+
+    for child in node.children:
+        if child.type == "pair":
+            # Regular property: key: value
+            # Key is before the colon, value is after
+            key_node = None
+            value_node = None
+            seen_colon = False
+            for pair_child in child.children:
+                if pair_child.type == ":":
+                    seen_colon = True
+                elif not seen_colon:
+                    # Before colon: this is the key
+                    if pair_child.type in ("property_identifier", "string"):
+                        key_node = pair_child
+                else:
+                    # After colon: this is the value
+                    if pair_child.type not in (",", ):
+                        value_node = pair_child
+
+            if key_node:
+                key = _node_text(key_node, source)
+                if key.startswith(("'", '"')):  # pragma: no cover
+                    key = key[1:-1]
+
+                # Extract value based on type
+                if value_node:
+                    if value_node.type == "string":
+                        val = _node_text(value_node, source)
+                        properties[key] = val[1:-1] if len(val) >= 2 else val
+                    elif value_node.type == "identifier":
+                        properties[key] = _node_text(value_node, source)
+                    elif value_node.type in ("function_expression", "arrow_function"):
+                        # For inline functions, record a special marker
+                        properties[key] = "<inline_function>"
+                    else:  # pragma: no cover
+                        properties[key] = None  # Complex value
+
+        elif child.type == "shorthand_property_identifier":
+            # Shorthand: { method } -> method: method
+            name = _node_text(child, source)
+            properties[name] = name
+
+    return properties
+
+
+def _extract_hapi_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Hapi server.route() calls.
+
+    Hapi uses config objects for routing:
+    - server.route({ method: 'GET', path: '/users', handler: getUsersHandler })
+    - server.route([{ method: 'GET', path: '/' }, { method: 'POST', path: '/' }])
+
+    Args:
+        tree: The parsed tree-sitter tree
+        source: Source file bytes
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+        line_offset: Line offset for embedded script blocks
+
+    Returns:
+        List of UsageContext records for Hapi route patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        # Check if this is a server.route() or server.routes() call
+        func_node = None
+        for child in node.children:
+            if child.type == "member_expression":
+                func_node = child
+                break
+
+        if not func_node:
+            continue
+
+        # Check for .route or .routes method
+        method_name = None
+        receiver_name = None
+        for child in func_node.children:
+            if child.type == "property_identifier":
+                method_name = _node_text(child, source)
+            elif child.type == "identifier":
+                receiver_name = _node_text(child, source)
+            elif child.type == "member_expression":  # pragma: no cover
+                receiver_name = _node_text(child, source)
+
+        if method_name not in ("route", "routes"):
+            continue
+
+        # Find arguments
+        args_node = None
+        for child in node.children:
+            if child.type == "arguments":
+                args_node = child
+                break
+
+        if not args_node:  # pragma: no cover
+            continue
+
+        # Extract route configs from arguments
+        route_configs: list[dict[str, str | None]] = []
+
+        for arg in args_node.children:
+            if arg.type == "object":
+                # Single route config: { method, path, handler }
+                props = _extract_object_properties(arg, source)
+                if props.get("path") or props.get("method"):
+                    route_configs.append(props)
+            elif arg.type == "array":
+                # Array of route configs: [{ ... }, { ... }]
+                for elem in arg.children:
+                    if elem.type == "object":
+                        props = _extract_object_properties(elem, source)
+                        if props.get("path") or props.get("method"):
+                            route_configs.append(props)
+
+        # Create UsageContext for each route config
+        for config in route_configs:
+            route_path = config.get("path")
+            http_method = config.get("method")
+            handler_name = config.get("handler")
+
+            # Skip if no useful info
+            if not route_path and not http_method:  # pragma: no cover
+                continue
+
+            # Try to resolve handler to a symbol reference
+            handler_ref = None
+            if handler_name and handler_name != "<inline_function>" and handler_name in symbol_by_name:
+                handler_ref = symbol_by_name[handler_name].id
+
+            call_name = f"{receiver_name}.{method_name}" if receiver_name else method_name
+
+            span = Span(
+                start_line=node.start_point[0] + 1 + line_offset,
+                end_line=node.end_point[0] + 1 + line_offset,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            )
+
+            # Normalize route path
+            normalized_path = route_path if route_path and route_path.startswith("/") else f"/{route_path}" if route_path else "/"
+
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=call_name,
+                position="args[0]",  # Config object is first argument
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "route_path": normalized_path,
+                    "http_method": http_method.upper() if http_method else "GET",
+                    "handler_name": handler_name if handler_name != "<inline_function>" else None,
+                    "receiver": receiver_name,
+                    "config_based": True,  # Mark as config-object pattern
+                },
+            )
+            contexts.append(ctx)
+
+    return contexts
+
+
+def _infer_nextjs_route(file_path: Path) -> str | None:
+    """Infer Next.js route from file path.
+
+    Converts file paths to routes:
+    - pages/index.js → /
+    - pages/about.js → /about
+    - pages/api/users.js → /api/users
+    - pages/posts/[id].js → /posts/:id
+    - pages/posts/[...slug].js → /posts/*
+    - app/page.tsx → /
+    - app/about/page.tsx → /about
+    - app/api/users/route.ts → /api/users
+
+    Returns None if file is not a Next.js page/route.
+    """
+    parts = file_path.parts
+
+    # Find pages/ or app/ directory
+    page_index = None
+    route_type = None
+    for i, part in enumerate(parts):
+        if part == "pages":
+            page_index = i
+            route_type = "pages"
+            break
+        elif part == "app":
+            page_index = i
+            route_type = "app"
+            break
+
+    if page_index is None:
+        return None
+
+    # Get the path parts after pages/ or app/
+    route_parts = list(parts[page_index + 1:])
+    if not route_parts:  # pragma: no cover
+        return None
+
+    # Get filename without extension
+    filename = route_parts[-1]
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+
+    # Handle App Router conventions
+    if route_type == "app":
+        # Only page.tsx, route.ts, etc. are valid routes
+        if stem not in ("page", "route", "loading", "error", "layout"):  # pragma: no cover
+            return None
+        # Remove the special filename from route
+        route_parts = route_parts[:-1]
+    else:
+        # Pages Router: replace filename stem
+        route_parts[-1] = stem
+
+    # Build the route path
+    route_segments = []
+    for part in route_parts:
+        if part == "index":
+            continue  # index.js → /
+        elif part.startswith("[...") and part.endswith("]"):
+            # Catch-all route: [...slug] → *
+            route_segments.append("*")
+        elif part.startswith("[") and part.endswith("]"):
+            # Dynamic route: [id] → :id
+            param = part[1:-1]
+            route_segments.append(f":{param}")
+        else:
+            route_segments.append(part)
+
+    route = "/" + "/".join(route_segments) if route_segments else "/"
+    return route
+
+
+def _extract_nextjs_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Next.js file-based routing.
+
+    Detects:
+    - Files in pages/ or app/ directories
+    - Default exports (page components)
+    - Named exports (getServerSideProps, getStaticProps, etc.)
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    # Check if this file is a Next.js page
+    route_path = _infer_nextjs_route(file_path)
+    if not route_path:
+        return contexts
+
+    # Determine if this is an API route
+    is_api_route = "/api/" in route_path or route_path.startswith("/api")
+
+    # Check if this is an App Router route.ts file
+    filename = file_path.name
+    is_route_file = filename.startswith("route.")  # route.ts, route.js
+
+    # App Router HTTP method handlers (exported from route.ts files)
+    HTTP_HANDLERS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
+    # Look for exports
+    for node in iter_tree(tree.root_node):
+        if node.type != "export_statement":
+            continue
+
+        # Check for export default
+        is_default = False
+        export_name = None
+
+        for child in node.children:
+            if child.type == "default":
+                is_default = True
+            elif child.type == "function_declaration":
+                name = _find_name_in_children(child, source)
+                if name:
+                    export_name = name
+            elif child.type == "identifier":  # pragma: no cover
+                export_name = _node_text(child, source)
+            elif child.type == "export_clause":  # pragma: no cover
+                # Named exports: export { getServerSideProps }
+                for ec_child in child.children:
+                    if ec_child.type == "export_specifier":
+                        for spec_child in ec_child.children:
+                            if spec_child.type == "identifier":
+                                export_name = _node_text(spec_child, source)
+                                break
+
+        # Meaningful exports for Next.js
+        meaningful_exports = {"getServerSideProps", "getStaticProps", "getStaticPaths",
+                              "generateStaticParams", "generateMetadata"}
+
+        # For route.ts files, also include HTTP method handlers
+        if is_route_file:
+            meaningful_exports.update(HTTP_HANDLERS)
+
+        # Create UsageContext for meaningful exports
+        if is_default or export_name in meaningful_exports:
+            span = Span(
+                start_line=node.start_point[0] + 1 + line_offset,
+                end_line=node.end_point[0] + 1 + line_offset,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            )
+
+            # Resolve symbol reference
+            handler_ref = None
+            if export_name and export_name in symbol_by_name:
+                handler_ref = symbol_by_name[export_name].id
+
+            context_name = "export.default" if is_default else f"export.{export_name}"
+            concept_type = "api_route" if is_api_route else "page"
+
+            ctx = UsageContext.create(
+                kind="export",
+                context_name=context_name,
+                position="file",  # File-based pattern
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "route_path": route_path,
+                    "http_method": "GET" if not is_api_route else "ANY",
+                    "export_name": export_name,
+                    "is_default": is_default,
+                    "is_api_route": is_api_route,
+                    "concept": concept_type,
+                },
+            )
+            contexts.append(ctx)
+
+    return contexts
+
+
 def _detect_nestjs_decorator(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[str | None, str | None]:
@@ -1987,10 +2354,23 @@ def analyze_javascript(
     # Pass 3: Extract usage contexts for call-based frameworks (v1.1.x)
     all_usage_contexts: list[UsageContext] = []
     for pf in parsed_files:
+        # Express-style route calls (app.get, router.post, etc.)
         usage_contexts = _extract_express_usage_contexts(
             pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
         )
         all_usage_contexts.extend(usage_contexts)
+
+        # Hapi config-object route calls (server.route({ method, path, handler }))
+        hapi_contexts = _extract_hapi_usage_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(hapi_contexts)
+
+        # Next.js file-based route exports (pages/ and app/ directories)
+        nextjs_contexts = _extract_nextjs_usage_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(nextjs_contexts)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

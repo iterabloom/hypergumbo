@@ -316,13 +316,16 @@ def _extract_rails_usage_contexts(
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
 ) -> list[UsageContext]:
-    """Extract UsageContext records for Rails route DSL calls.
+    """Extract UsageContext records for Rails/Sinatra route DSL calls.
 
     Detects patterns like:
-    - get '/users', to: 'users#index'
-    - post '/login', to: 'sessions#create'
-    - resources :users
-    - resource :profile
+    - Rails: get '/users', to: 'users#index'
+    - Rails: post '/login', to: 'sessions#create'
+    - Rails: resources :users, resource :profile
+    - Sinatra: get '/path' do ... end
+    - Sinatra: post '/users' do ... end
+
+    The has_block metadata field distinguishes Sinatra (with block) from Rails (with to: option).
 
     Returns a list of UsageContext records for YAML pattern matching.
     """
@@ -384,10 +387,18 @@ def _extract_rails_usage_contexts(
                                     if content:
                                         controller_action = _node_text(content, source)
 
+        # Check for block (Sinatra style: get '/path' do ... end)
+        has_block = False
+        for child in n.children:
+            if child.type in ("do_block", "block"):
+                has_block = True
+                break
+
         # Build metadata
-        metadata: dict[str, str] = {
+        metadata: dict[str, str | bool] = {
             "route_path": route_path,
             "http_method": method_name.upper() if method_name in HTTP_METHODS else "RESOURCES",
+            "has_block": has_block,  # True for Sinatra-style, False for Rails-style
         }
         if controller_action:
             metadata["controller_action"] = controller_action

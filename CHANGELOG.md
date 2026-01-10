@@ -44,6 +44,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Axum route registrations (`.route("/path", get(handler))`). Route detection now uses
   YAML patterns in `rust-web.yaml` via usage-based matching. Actix-web continues to use
   definition-based patterns (annotation matching).
+- **Hapi UsageContext (ADR-0003 v1.1.x):** JS/TS analyzer emits `UsageContext` for Hapi
+  config-object route registrations (`server.route({ method, path, handler })`). Parses
+  object literals to extract route metadata. Uses YAML patterns in `hapi.yaml`.
+- **Sinatra UsageContext (ADR-0003 v1.1.x):** Ruby analyzer emits `UsageContext` for
+  Sinatra block-based routes (`get '/path' do ... end`). Detects block presence to
+  distinguish from Rails-style routes. Uses YAML patterns in `sinatra.yaml`.
+- **Phoenix UsageContext (ADR-0003 v1.1.x):** Elixir analyzer emits `UsageContext` for
+  Phoenix router DSL calls (`get "/", PageController, :index`). Route detection now uses
+  YAML patterns in `phoenix.yaml` via usage-based matching.
+- **Next.js UsageContext (ADR-0003 v1.1.x):** JS/TS analyzer emits `UsageContext` for
+  Next.js file-based routing (exports in pages/ and app/ directories). Infers routes from
+  file paths (e.g., `pages/posts/[id].js` → `/posts/:id`). Uses YAML patterns in
+  `nextjs.yaml`.
 
 ## [0.9.1] - 2026-01-09
 

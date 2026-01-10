@@ -741,3 +741,64 @@ end
             and "Rails" in str(warning.message)
         ]
         assert len(route_warnings) == 0
+
+
+class TestSinatraUsageContext:
+    """Tests for Sinatra block-based route detection."""
+
+    def test_sinatra_get_with_block(self, tmp_path: Path) -> None:
+        """Detects Sinatra get route with do block."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+require 'sinatra'
+
+get '/users' do
+  'Hello Users'
+end
+""")
+        result = analyze_ruby(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "get"), None)
+        assert ctx is not None
+        assert ctx.kind == "call"
+        assert ctx.metadata["route_path"] == "/users"
+        assert ctx.metadata["http_method"] == "GET"
+        assert ctx.metadata["has_block"] is True
+
+    def test_sinatra_post_with_block(self, tmp_path: Path) -> None:
+        """Detects Sinatra post route with block."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+post '/users' do
+  'Created'
+end
+""")
+        result = analyze_ruby(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "post"), None)
+        assert ctx is not None
+        assert ctx.metadata["http_method"] == "POST"
+        assert ctx.metadata["has_block"] is True
+
+    def test_sinatra_multiple_routes(self, tmp_path: Path) -> None:
+        """Detects multiple Sinatra routes."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+get '/' do
+  'Home'
+end
+
+post '/submit' do
+  'Submitted'
+end
+
+delete '/users/:id' do
+  'Deleted'
+end
+""")
+        result = analyze_ruby(tmp_path)
+        methods = {c.metadata["http_method"] for c in result.usage_contexts}
+        assert "GET" in methods
+        assert "POST" in methods
+        assert "DELETE" in methods

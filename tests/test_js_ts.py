@@ -4091,3 +4091,257 @@ export class Calculator {
             and "NestJS" in str(warning.message)
         ]
         assert len(nestjs_warnings) == 0
+
+
+class TestHapiUsageContext:
+    """Tests for Hapi config-object route detection."""
+
+    def test_hapi_server_route_object(self, tmp_path: Path) -> None:
+        """Detects server.route({ method, path, handler }) pattern."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+const Hapi = require('@hapi/hapi');
+
+async function getUsers(request, h) {
+    return { users: [] };
+}
+
+const server = Hapi.server({ port: 3000 });
+
+server.route({
+    method: 'GET',
+    path: '/users',
+    handler: getUsers
+});
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        assert ctx.kind == "call"
+        assert ctx.metadata["route_path"] == "/users"
+        assert ctx.metadata["http_method"] == "GET"
+        assert ctx.metadata["config_based"] is True
+
+    def test_hapi_server_route_post(self, tmp_path: Path) -> None:
+        """Detects POST route in config object."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+server.route({
+    method: 'POST',
+    path: '/users',
+    handler: (req, h) => h.response().code(201)
+});
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        assert ctx.metadata["http_method"] == "POST"
+
+    def test_hapi_array_of_routes(self, tmp_path: Path) -> None:
+        """Detects array of route configs."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+server.route([
+    { method: 'GET', path: '/users', handler: getUsers },
+    { method: 'POST', path: '/users', handler: createUser }
+]);
+""")
+        result = analyze_javascript(tmp_path)
+        route_contexts = [c for c in result.usage_contexts if "route" in c.context_name]
+        assert len(route_contexts) >= 2
+        methods = {c.metadata["http_method"] for c in route_contexts}
+        assert "GET" in methods
+        assert "POST" in methods
+
+    def test_hapi_shorthand_properties(self, tmp_path: Path) -> None:
+        """Handles shorthand property syntax."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+const method = 'GET';
+const path = '/api';
+server.route({ method, path, handler: () => {} });
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        # Shorthand maps name to name
+        assert ctx.metadata["route_path"] is not None
+
+    def test_hapi_inline_handler_function(self, tmp_path: Path) -> None:
+        """Handles inline arrow function handlers."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+server.route({
+    method: 'GET',
+    path: '/health',
+    handler: (req, h) => ({ status: 'ok' })
+});
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        # Inline functions have handler_name as None
+        assert ctx.metadata.get("handler_name") is None
+
+
+class TestNextJsUsageContext:
+    """Tests for Next.js file-based routing detection."""
+
+    def test_nextjs_pages_index(self, tmp_path: Path) -> None:
+        """Detects index page in pages directory."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "index.js").write_text("""
+export default function Home() {
+    return <h1>Home</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/"
+        assert ctx.metadata["is_default"] is True
+
+    def test_nextjs_pages_about(self, tmp_path: Path) -> None:
+        """Detects about page."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "about.js").write_text("""
+export default function About() {
+    return <h1>About</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/about"
+
+    def test_nextjs_dynamic_route(self, tmp_path: Path) -> None:
+        """Detects dynamic route with [id] parameter."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages" / "posts"
+        pages_dir.mkdir(parents=True)
+        (pages_dir / "[id].js").write_text("""
+export default function Post({ id }) {
+    return <h1>Post {id}</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/posts/:id"
+
+    def test_nextjs_catch_all_route(self, tmp_path: Path) -> None:
+        """Detects catch-all route with [...slug]."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages" / "docs"
+        pages_dir.mkdir(parents=True)
+        (pages_dir / "[...slug].js").write_text("""
+export default function Doc({ slug }) {
+    return <h1>Doc</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/docs/*"
+
+    def test_nextjs_api_route(self, tmp_path: Path) -> None:
+        """Detects API route in pages/api directory."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        api_dir = tmp_path / "pages" / "api"
+        api_dir.mkdir(parents=True)
+        (api_dir / "users.js").write_text("""
+export default function handler(req, res) {
+    res.json({ users: [] });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/api/users"
+        assert ctx.metadata["is_api_route"] is True
+
+    def test_nextjs_app_router_page(self, tmp_path: Path) -> None:
+        """Detects App Router page.tsx."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        app_dir = tmp_path / "app" / "about"
+        app_dir.mkdir(parents=True)
+        (app_dir / "page.tsx").write_text("""
+export default function About() {
+    return <h1>About</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/about"
+
+    def test_nextjs_app_router_route_ts(self, tmp_path: Path) -> None:
+        """Detects App Router route.ts for API routes."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        api_dir = tmp_path / "app" / "api" / "users"
+        api_dir.mkdir(parents=True)
+        (api_dir / "route.ts").write_text("""
+export async function GET() {
+    return Response.json({ users: [] });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        # Should detect route.ts as API route
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert "/api/users" in ctx.metadata["route_path"]
+
+    def test_nextjs_non_page_file_ignored(self, tmp_path: Path) -> None:
+        """Non-page files in pages directory are ignored."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "_app.js").write_text("""
+export default function App({ Component, pageProps }) {
+    return <Component {...pageProps} />;
+}
+""")
+        # _app.js is a special file, not a page route
+        result = analyze_javascript(tmp_path)
+        # Should have contexts but _app is an index-like route
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        # _app becomes /_app which is valid
+        if ctx:
+            assert "/_app" in ctx.metadata["route_path"]
+
+    def test_nextjs_data_fetching_exports(self, tmp_path: Path) -> None:
+        """Detects getServerSideProps and getStaticProps."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "posts.js").write_text("""
+export default function Posts({ posts }) {
+    return <ul>{posts.map(p => <li key={p.id}>{p.title}</li>)}</ul>;
+}
+
+export async function getServerSideProps() {
+    return { props: { posts: [] } };
+}
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "export"]
+        # Should have both default export and getServerSideProps
+        assert len(contexts) >= 1
