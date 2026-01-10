@@ -5,17 +5,17 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 83810f78db4d
-  hypergumbo: 0.9.0
+  commit: aabc3b5ffd37
+  hypergumbo: 0.9.1
   python: 3.12.3
 -->
 
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **107** Python modules (68 analyzers, 14 linkers)
-- **1688** symbols (functions, classes, methods)
-- **6143** edges (calls, imports, instantiates)
+- **108** Python modules (68 analyzers, 15 linkers)
+- **1720** symbols (functions, classes, methods)
+- **6274** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (98%), Yaml (2%) · 126 files · ~48,452 LOC
+Python (97%), Yaml (3%) · 130 files · ~50,479 LOC
 
 ## Structure
 
@@ -31,7 +31,7 @@ Python (98%), Yaml (2%) · 126 files · ~48,452 LOC
 
 ## Domain Vocabulary
 
-*Key terms: symbols, symbol, line, source, sitter, files, edges, find, cover, pragma, edge, extract*
+*Key terms: symbol, symbols, line, source, sitter, files, edges, find, cover, pragma, extract, edge*
 
 ## Source Files
 
@@ -65,7 +65,7 @@ Python (98%), Yaml (2%) · 126 files · ~48,452 LOC
 - `hypergumbo/analyze/sql.py`
 - `hypergumbo/analyze/capnp.py`
 - `hypergumbo/analyze/groovy.py`
-- ... and 81 more files
+- ... and 82 more files
 
 ## Entry Points
 
@@ -84,37 +84,34 @@ Python (98%), Yaml (2%) · 126 files · ~48,452 LOC
 - `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) ★ — Extract text content for a tree-sitter node.
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
 
+### `hypergumbo/entrypoints.py`
+- `Entrypoint` (class) — A detected entrypoint in the codebase.
+- `_emit_path_deprecation_warning(framework: str) -> None` (function) — Emit a deprecation warning for path-based entrypoint detection.
+- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
 
 ### `hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
 
-### `hypergumbo/entrypoints.py`
-- `Entrypoint` (class) — A detected entrypoint in the codebase.
-- `_emit_path_deprecation_warning(framework: str) -> None` (function) — Emit a deprecation warning for path-based entrypoint detection.
-- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+### `hypergumbo/analyze/rust.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
 
 ### `hypergumbo/analyze/julia.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-
-### `hypergumbo/analyze/rust.py`
-- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
-
-### `hypergumbo/analyze/js_ts.py`
-- `_make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind…` (function) — Generate location-based ID.
 
 ### `hypergumbo/linkers/registry.py`
 - `LinkerResult` (class) — Result from running a linker.
 
-### `hypergumbo/analyze/py.py`
-- `_format_annotation(node: ast.expr) -> str` (function) — Format a type annotation node to a readable string.
+### `hypergumbo/analyze/js_ts.py`
+- `_make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind…` (function) — Generate location-based ID.
 
-(... and 1554 more symbols across 89 other files)
+(... and 1586 more symbols across 90 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 6 appearances of `_node_text`
+- `_node_text` - we omitted 7 appearances of `_node_text`
 - `_find_child_by_type` - we omitted 5 appearances
 
 ## All Files
@@ -171,7 +168,10 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `hypergumbo/analyze/php.py`
 - `hypergumbo/analyze/powershell.py`
 - `hypergumbo/analyze/proto.py`
-- ... and 74 more files
+- `hypergumbo/analyze/py.py`
+- `hypergumbo/analyze/r_lang.py`
+- `hypergumbo/analyze/registry.py`
+- ... and 75 more files
 ```
 
 ## Data Flow
@@ -186,7 +186,7 @@ Source Files
      │                    │
      ▼                    ▼
 ┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1688 Symbols + 6143 Edges
+│  analyzers  │────▶│     IR      │  1720 Symbols + 6274 Edges
 └─────────────┘     └─────────────┘
      │                    │
      ▼                    ▼
@@ -208,15 +208,15 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 334 | ir.py |
-| `Span` | class | 322 | ir.py |
-| `iter_tree` | function | 160 | base.py |
-| `find_files` | function | 147 | discovery.py |
-| `node_text` | function | 131 | base.py |
-| `Edge` | class | 127 | ir.py |
-| `AnalysisRun` | class | 92 | ir.py |
+| `Symbol` | class | 336 | ir.py |
+| `Span` | class | 333 | ir.py |
+| `iter_tree` | function | 166 | base.py |
+| `find_files` | function | 149 | discovery.py |
+| `node_text` | function | 136 | base.py |
+| `Edge` | class | 130 | ir.py |
+| `AnalysisRun` | class | 93 | ir.py |
 | `Pass` | class | 66 | catalog.py |
-| `_find_child_by_type` | function | 30 | julia.py |
+| `Entrypoint` | class | 38 | entrypoints.py |
 
 ## Module Reference
 
@@ -325,6 +325,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`linkers.ipc`**: IPC linker for detecting inter-process communication patterns.
 - **`linkers.jni`**: JNI linker for connecting Java native methods to C/C++ implementati...
 - **`linkers.message_queue`**: Message queue linker for detecting pub/sub communication patterns.
+- **`linkers.openapi`**: OpenAPI/Swagger linker for detecting API schema to handler connecti...
 - **`linkers.phoenix_ipc`**: Phoenix Channels IPC linker for detecting Elixir IPC patterns.
 - **`linkers.registry`**: Linker registry for dynamic dispatch.
 - **`linkers.swift_objc`**: Swift/Objective-C bridging linker.

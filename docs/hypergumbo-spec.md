@@ -44,15 +44,11 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 ## 3) User experience (CLI)
 
 ### Install
-* `pipx install hypergumbo` (primary)
+* `pipx install hypergumbo` (primary, includes all 65+ language analyzers)
 * `pip install hypergumbo` (secondary)
-* `pip install hypergumbo[javascript]` (optional JS/TS/Svelte support via tree-sitter)
-* `pip install hypergumbo[php]` (optional PHP support via tree-sitter)
-* `pip install hypergumbo[c]` (optional C support via tree-sitter)
-* `pip install hypergumbo[java]` (optional Java support via tree-sitter)
-* `pip install hypergumbo[llm-assist]` (optional OpenAI/OpenRouter support for plan generation)
+* `pip install hypergumbo[llm-assist]` (optional OpenAI support for plan generation)
 * `pip install hypergumbo[llm-local]` (optional local LLM support via llm package)
-* `pip install hypergumbo-pack-go` / `hypergumbo-pack-rust` (future language packs)
+* `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
 ### Commands
 🟩 **`hypergumbo [path] [-t tokens]`** (default mode)
@@ -90,9 +86,11 @@ Displays available passes, packs, and rule templates. Use `--show-all` to includ
 Example output:
 ```
 Available Passes:
-  - python-ast-v1 (core): Python AST parser
-  - html-pattern-v1 (core): HTML script tag parser  
-  - javascript-ts-v1 (extra: hypergumbo[javascript]): JS/TS via tree-sitter
+  - python-ast-v1: Python AST parser
+  - javascript-ts-v1: JS/TS via tree-sitter
+  - java-ts-v1: Java via tree-sitter
+  - go-ts-v1: Go via tree-sitter
+  ... (65+ language passes available)
 
 Available Packs:
   - python-fastapi: FastAPI route detection + call graph
@@ -137,33 +135,48 @@ Exports the analyzer capsule in a privacy-safe format suitable for sharing or pu
 ### Key principle
 Initialization may use language detection; **analysis execution requires no network or API keys** (by default). The capsule should be deterministic and reproducible given the same repo state.
 
-## 4) Supported stacks (MVP)
-* 🟩 **Python** (best-effort call edges via `ast`)
-* 🟩 **JS/TS** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[javascript]`)
-* 🟩 **Svelte** (extracts `<script>` blocks and analyzes as JS/TS with line number adjustment; **optional dependency**: `pip install hypergumbo[javascript]`)
-* 🟩 **PHP** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[php]`)
-* 🟩 **C** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[c]`)
-* 🟩 **Java** (best-effort parsing via tree-sitter; **optional dependency**: `pip install hypergumbo[java]`)
-* 🟩 **HTML** (script tag/linking edges only; always available, limited to pattern matching)
+## 4) Supported stacks
+
+Hypergumbo supports 65+ languages via tree-sitter grammars. All are included in the base package.
+
+**Primary languages (full symbol/edge extraction):**
+* 🟩 **Python** (AST-based, full call edges)
+* 🟩 **JavaScript/TypeScript** (tree-sitter, includes Svelte/Vue script block extraction)
+* 🟩 **Java** (tree-sitter, Spring Boot framework patterns)
+* 🟩 **Go** (tree-sitter, Gin/Echo/Chi/Fiber patterns)
+* 🟩 **Rust** (tree-sitter, Actix/Axum/Rocket patterns)
+* 🟩 **Ruby** (tree-sitter, Rails/Sinatra patterns)
+* 🟩 **Elixir** (tree-sitter, Phoenix patterns)
+* 🟩 **PHP** (tree-sitter, Laravel patterns)
+* 🟩 **C/C++** (tree-sitter)
+* 🟩 **C#** (tree-sitter, ASP.NET Core patterns)
+* 🟩 **Kotlin/Scala/Swift** (tree-sitter)
+
+**Additional languages (symbol extraction):**
+* 🟩 Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and 30+ more
+
+**Configuration/data formats:**
+* 🟩 JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
+
+**Markup:**
+* 🟩 HTML (script tag extraction), CSS, LaTeX, Markdown
+
 > The analyzer is "best-effort, explicitly limited," but produces consistent structures.
 
 ### Dependency strategy
-* **Core package**: Python + HTML (AST + regex only, zero compilation)
-* **JavaScript extra**: `pip install hypergumbo[javascript]` adds tree-sitter runtime + JS/TS/Svelte grammar (pre-built wheels for Linux x64, macOS arm64/x64, Windows x64)
-* **PHP extra**: `pip install hypergumbo[php]` adds tree-sitter PHP grammar
-* **C extra**: `pip install hypergumbo[c]` adds tree-sitter C grammar
-* **Java extra**: `pip install hypergumbo[java]` adds tree-sitter Java grammar
-* Core includes Python/HTML analyzers.
-* Optional: tree-sitter runtime for JS/TS/Svelte, PHP, C, and Java.
-* Optional: installable **language packs** for future languages (e.g., `pip install hypergumbo-pack-go`, `hypergumbo-pack-rust`). Language packs are data-only packages containing queries + metadata with minimal code.
-* **Spec B consideration**: Some tree-sitter grammars exist on GitHub but lack PyPI packages (e.g., Lean, LaTeX, COBOL). Contributing these to PyPI or building a "parser backend" abstraction layer could enable support for formal proof languages, academic documentation, and legacy enterprise systems.
-* Fallback: if extras/packs aren't installed, those languages are skipped with explicit limits.
-* **Fallback**: If extras unavailable, analysis uses only core languages (Python/HTML); other files logged in `limits.skipped_languages[]`
-### De-risking strategy
-* **Week 0a (Days 1-5)**: Validate tree-sitter packaging on target platforms, prototype Capsule Plan validation
-* **Week 0b (Days 6-10)**: Test LLM plan generation if including in MVP, integration checks
-* **Gate Week 1**: Only proceed if tree-sitter wheels build successfully on 3/4 platforms or fallback degradation path is acceptable
-* **Contingency**: If tree-sitter proves problematic, ship Python-only MVP and defer JS/TS to v0.1.1
+* **All-in-one package**: `pip install hypergumbo` includes Python AST + 40+ tree-sitter grammars as standard dependencies
+* **Tree-sitter grammars included**: JavaScript, TypeScript, PHP, C, C++, Java, Go, Rust, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Elixir, Dart, LaTeX, R, COBOL, and many more
+* **Language pack**: `tree-sitter-language-pack` provides additional grammars (Elixir, COBOL, Dart, LaTeX, R)
+* **Build-from-source grammars**: Lean, Wolfram built from source in CI for languages lacking PyPI packages
+* **Fallback**: If a specific grammar fails to load, that language is skipped with explicit `limits.skipped_languages[]` logging
+* **Optional extras**:
+  - `[llm-assist]`: OpenAI for LLM-assisted plan generation
+  - `[llm-local]`: Local LLM support via llm package
+  - `[embeddings]`: sentence-transformers for embedding-based config extraction
+### Build strategy
+* Tree-sitter grammars with PyPI wheels are installed directly as dependencies
+* Grammars without PyPI packages (Lean, Wolfram) are built from source in CI (`scripts/build-source-grammars`)
+* 100% test coverage required; analyzers gracefully skip when grammars unavailable
 
 ## 5) Architecture (local-only)
 ### Core packages
@@ -336,25 +349,39 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-**MVP ships 9 language passes:**
-* 🟩 `python-ast-v1` — Python AST parser
-* 🟩 `javascript-ts-v1` — Tree-sitter JS/TS/Svelte/Vue (optional)
-* 🟩 `php-ts-v1` — Tree-sitter PHP (optional)
-* 🟩 `c-ts-v1` — Tree-sitter C (optional)
-* 🟩 `java-ts-v1` — Tree-sitter Java (optional)
-* 🟩 `elixir-ts-v1` — Tree-sitter Elixir (optional)
-* 🟩 `rust-ts-v1` — Tree-sitter Rust (optional)
-* 🟩 `html-pattern-v1` — HTML script tag parser
+**Current implementation includes 65+ language analyzers (all tree-sitter based except Python):**
+* 🟩 **Core languages**: Python (AST), JavaScript/TypeScript/Svelte/Vue, Java, Go, Rust, Ruby, Elixir, PHP, C/C++, C#, Kotlin, Scala, Swift
+* 🟩 **Additional languages**: Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and 40+ more
+* 🟩 **Config/data formats**: JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
+* 🟩 **Markup**: HTML, CSS, LaTeX, Markdown
 
-**MVP ships 2 cross-language linkers:**
+**Current implementation includes 13 cross-language linkers:**
 * 🟩 `jni-linker-v1` — Java↔C native method matching
-* 🟩 `ipc-linker-v1` — Message channel matching:
-  - Electron IPC (`ipcRenderer.send/invoke`, `ipcMain.on/handle`)
-  - Socket.io (`socket.emit`, `socket.on`, `io.emit`)
-  - Phoenix Channels (`broadcast!`, `push`, `handle_in`)
-  - Web Workers (`postMessage`, `onmessage`)
+* 🟩 `swift-objc-linker-v1` — Swift↔Objective-C bridging
+* 🟩 `ipc-linker-v1` — Electron IPC (`ipcRenderer`, `ipcMain`)
+* 🟩 `phoenix-ipc-linker-v1` — Phoenix Channels (`broadcast!`, `push`, `handle_in`)
+* 🟩 `websocket-linker-v1` — WebSocket/Socket.io patterns
+* 🟩 `http-linker-v1` — HTTP route patterns ↔ client calls
+* 🟩 `grpc-linker-v1` — gRPC/Protobuf service ↔ client/server
+* 🟩 `graphql-linker-v1` — GraphQL client calls ↔ schema operations
+* 🟩 `graphql-resolver-linker-v1` — GraphQL resolvers ↔ schema types
+* 🟩 `database-query-linker-v1` — SQL queries ↔ table schemas
+* 🟩 `message-queue-linker-v1` — Message queue patterns (RabbitMQ, Kafka, etc.)
+* 🟩 `event-sourcing-linker-v1` — Event sourcing patterns
+* 🟩 `dependency-linker-v1` — Cross-file dependency resolution
 
-**Design principle:** Future language expansion happens via **packs** (installable packages like `hypergumbo-pack-go`).
+**Current implementation includes 18 framework pattern files:**
+* 🟩 Django, Flask, FastAPI (Python web)
+* 🟩 Express, NestJS, Hapi, Next.js (Node.js web)
+* 🟩 Rails, Sinatra (Ruby web)
+* 🟩 Phoenix (Elixir web)
+* 🟩 Spring Boot (Java web)
+* 🟩 ASP.NET Core (C# web)
+* 🟩 Go-web (Gin, Echo, Chi, Fiber)
+* 🟩 Rust-web (Actix, Axum, Rocket)
+* 🟩 Celery, Laravel, Koa
+
+**Design principle:** Language expansion via tree-sitter grammars. Most grammars available on PyPI; some built from source in CI.
 
 ### Analyzer capsule
 
@@ -493,7 +520,6 @@ Validated JSON selecting from pre-approved building blocks (passes/packs/rules/f
     {
       "id": "javascript-ts-v1",
       "enabled": true,
-      "requires": ["hypergumbo[javascript]"],
       "config": {
         "jsx": true,
         "tsx": true
@@ -718,8 +744,8 @@ This prevents confidence score refinements from forcing schema migrations.
 ```json
 "skipped_passes": [
   {
-    "pass": "javascript-ts-v1",
-    "reason": "requires hypergumbo[javascript] extra not installed"
+    "pass": "lean-ts-v1",
+    "reason": "tree-sitter-lean grammar not available"
   }
 ]
 ```
@@ -1796,12 +1822,12 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ### Missing dependencies
 
-* 🟩 **Behavior**: If pass requires unavailable extra (e.g., tree-sitter), skip pass
+* 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
 * 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]`:
   ```json
   {
-    "pass": "javascript-ts-v1",
-    "reason": "requires hypergumbo[javascript]"
+    "pass": "lean-ts-v1",
+    "reason": "tree-sitter-lean grammar not available"
   }
   ```
 
@@ -1842,8 +1868,11 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 **Workaround:** Use fully-qualified imports when precise resolution is critical.
 
-## 10) Milestones (MVP + buffer)
-**Total timeline: 9 weeks** (2-week de-risking + 5 weeks core + 2 weeks buffer)
+## 10) Milestones (historical planning reference)
+
+> **Note**: This section documents the original development plan. The implementation is now complete with 65+ language analyzers, 13 cross-language linkers, and 18 framework pattern files. See sections 4-5 for current implementation status.
+
+**Original timeline: 9 weeks** (2-week de-risking + 5 weeks core + 2 weeks buffer)
 
 | Phase | Duration | Cumulative |
 |-------|----------|------------|
@@ -1906,13 +1935,12 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 * Evidence-type-based confidence (deterministic algorithm)
 * Provenance tracking (AnalysisRun with toolchain capture, execution_id, run_signature)
 * **Tests:** Python parsing, evidence confidence determinism, provenance, toolchain capture, execution_id/run_signature hashing
-### Week 3: JS/TS analyzer (optional extra)
-* Tree-sitter integration (as `hypergumbo[javascript]` extra)
+### Week 3: JS/TS analyzer
+* Tree-sitter integration (now bundled as standard dependency)
 * JS/TS AST → IR emission (implements Pass interface)
 * Best-effort call/import edges with evidence types
 * Fallback behavior if tree-sitter unavailable
 * **Tests:** JS parsing, graceful degradation
-* **Risk mitigation:** Pre-build wheels validated in Week 0
 ### Week 4: Slicing + entrypoints + security defaults
 * Slice module (BFS/DFS on IR relationships)
 * Entrypoint detection heuristics (FastAPI, Flask, Express, Electron)
@@ -1952,7 +1980,7 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Tree-sitter install hell (platform-specific builds) | **Medium** | Medium | **Week 0 de-risking validates approach**; ship as optional extra: `pip install hypergumbo[javascript]`; pre-build wheels for common platforms; document source build fallback; contingency: Python-only MVP |
+| Tree-sitter install hell (platform-specific builds) | ~~Medium~~ **Resolved** | Medium | Tree-sitter grammars now bundled as standard dependencies; pre-built wheels available for all major platforms; 65+ languages supported |
 | "Best-effort" feels broken to users | Medium | High | Over-communicate in docs; show diffs with/without types; publish benchmark results showing quality scores; machine-readable evidence types enable transparency |
 | Users skip `init` step | Medium | Medium | `hypergumbo run` auto-generates default capsule if missing; warns when using auto-generated capsule |
 | Capsule becomes stale after updates | Medium | Medium | Include `generated_at` + version check; `hypergumbo run` warns if capsule older than 30 days or version mismatch |
@@ -2811,19 +2839,16 @@ Different analyzers require different execution environments. The capsule manife
   * Example: FastAPI `@app.get("/users/{id}")` ↔ Axios `GET /users/123`
 * 🟩 **IPC (Electron)**: main ↔ renderer message channels (done in Spec A)
   * Example: `ipcMain.on("login")` ↔ `ipcRenderer.send("login")`
-* 🟪 **SQL**: query ↔ table/column mapping (best-effort, annotation-assisted)
+* 🟩 **SQL**: query ↔ table/column mapping (regex-based detection, implemented in Spec A)
   * Example: `SELECT * FROM users WHERE id = ?` ↔ `users` table schema
-* 🟪 **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
-* 🟪 **GraphQL/OpenAPI**: schema ↔ resolvers ↔ clients
+  * Linker: `database_query.py` detects queries in Python/JS/Java and links to schema tables
+* 🟩 **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs (implemented in Spec A)
+  * Linker: `grpc.py` links clients to servicers by service name across Python/Go/Java/TS
+* 🟩 **GraphQL**: schema ↔ resolvers ↔ clients (implemented in Spec A)
+  * Linkers: `graphql.py` (client calls to operations) + `graphql_resolver.py` (resolvers to schema)
+* 🟩 **OpenAPI**: schema ↔ route handlers (linker: `openapi.py`)
 
-**Implementation strategy:** Start with **annotation-assisted** linking (developer hints) before attempting full inference.
-
-```python
-# Annotation example (Python → SQL)
-@hypergumbo.sql_query(table="users", columns=["id", "email"])
-def get_user_by_email(email: str):
-    return db.execute("SELECT id, email FROM users WHERE email = ?", email)
-```
+**Implementation strategy:** Regex-based detection for cross-language patterns. Linkers scan source files for patterns and match by name/path.
 
 **Design principle:** Treat linkers as **passes** (same interface as language parsers) for architectural consistency with Spec A.
 
