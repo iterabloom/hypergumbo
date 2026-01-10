@@ -355,7 +355,7 @@ class AnalysisPass(Protocol):
 * 🟩 **Config/data formats**: JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
 * 🟩 **Markup**: HTML, CSS, LaTeX, Markdown
 
-**Current implementation includes 13 cross-language linkers:**
+**Current implementation includes 14 cross-language linkers:**
 * 🟩 `jni-linker-v1` — Java↔C native method matching
 * 🟩 `swift-objc-linker-v1` — Swift↔Objective-C bridging
 * 🟩 `ipc-linker-v1` — Electron IPC (`ipcRenderer`, `ipcMain`)
@@ -365,6 +365,7 @@ class AnalysisPass(Protocol):
 * 🟩 `grpc-linker-v1` — gRPC/Protobuf service ↔ client/server
 * 🟩 `graphql-linker-v1` — GraphQL client calls ↔ schema operations
 * 🟩 `graphql-resolver-linker-v1` — GraphQL resolvers ↔ schema types
+* 🟩 `openapi-linker-v1` — OpenAPI/Swagger specs ↔ route handlers
 * 🟩 `database-query-linker-v1` — SQL queries ↔ table schemas
 * 🟩 `message-queue-linker-v1` — Message queue patterns (RabbitMQ, Kafka, etc.)
 * 🟩 `event-sourcing-linker-v1` — Event sourcing patterns
@@ -1870,7 +1871,7 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 ## 10) Milestones (historical planning reference)
 
-> **Note**: This section documents the original development plan. The implementation is now complete with 65+ language analyzers, 13 cross-language linkers, and 18 framework pattern files. See sections 4-5 for current implementation status.
+> **Note**: This section documents the original development plan. The implementation is now complete with 67 language analyzers, 14 cross-language linkers, and 18 framework pattern files. See sections 4-5 for current implementation status.
 
 **Original timeline: 9 weeks** (2-week de-risking + 5 weeks core + 2 weeks buffer)
 

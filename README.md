@@ -80,7 +80,7 @@ passes. This feature exists as a technical scaffold showing how to integrate Ope
 OpenAI, or local models via the [llm](https://pypi.org/project/llm/) package. It may be
 removed in a future release.
 
-### Supported Languages (54 Analyzers)
+### Supported Languages (67 Analyzers)
 
 | Category | Languages |
 |----------|-----------|
@@ -99,7 +99,7 @@ Run `hypergumbo build-grammars` to enable these analyzers.
 
 All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [CHANGELOG.md](CHANGELOG.md) for details.
 
-### Cross-Language Linkers (13 Linkers)
+### Cross-Language Linkers (14 Linkers)
 
 Linkers run automatically during `hypergumbo run` to connect symbols across language boundaries:
 
@@ -114,6 +114,7 @@ Linkers run automatically during `hypergumbo run` to connect symbols across lang
 | HTTP | `fetch()`, `axios`, `requests` → route handlers (URL pattern matching) |
 | GraphQL | `gql` queries/mutations → schema definitions |
 | GraphQL Resolver | Resolver implementations → schema type definitions |
+| OpenAPI | OpenAPI/Swagger specs → route handlers (path/operationId matching) |
 | Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
 | Database Query | SQL in app code → table definitions in schema files |
 | Event Sourcing | EventEmitter, Django signals, Spring events |

@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: aabc3b5ffd37
+  commit: f96300b2bff3
   hypergumbo: 0.9.1
   python: 3.12.3
 -->
@@ -174,26 +174,44 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - ... and 75 more files
 ```
 
-## Data Flow
+## Data Flow (ADR-0003)
 
 ```
 Source Files
      │
      ▼
-┌─────────────┐     ┌─────────────┐
-│  discovery  │────▶│   profile   │  Detect languages, frameworks
-└─────────────┘     └─────────────┘
-     │                    │
-     ▼                    ▼
-┌─────────────┐     ┌─────────────┐
-│  analyzers  │────▶│     IR      │  1720 Symbols + 6274 Edges
-└─────────────┘     └─────────────┘
-     │                    │
-     ▼                    ▼
-┌─────────────┐     ┌─────────────┐
-│   linkers   │────▶│   merged    │  Cross-language edges
-└─────────────┘     └─────────────┘
-                          │
+┌─────────────────────────────────────────────────────────────────┐
+│                          PROFILE                                │
+│  Detect languages (by file extension)                           │
+│  Detect frameworks (by manifest markers, scoped to languages)   │
+└─────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         ANALYZERS                               │
+│  Pure language processors - NO framework knowledge              │
+│  Output: 1720 Symbols + 6274 Edges + UsageContexts            │
+│  Rich metadata: decorators, base_classes, parameters            │
+└─────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     FRAMEWORK_PATTERNS                          │
+│  Data-driven symbol enrichment (YAML pattern files)             │
+│  Definition-based: decorators, annotations, base classes        │
+│  Usage-based (v1.1.x): UsageContext for call/data/export        │
+│  Output: Enriched symbols with concept metadata                 │
+└─────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                          LINKERS                                │
+│  Cross-language edge creation                                   │
+│  Use enriched metadata (route paths, gRPC services)             │
+│  14 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+└─────────────────────────────────────────────────────────────────┘
+     │
+     ▼
           ┌───────────────┼───────────────┐
           ▼               ▼               ▼
     ┌──────────┐   ┌──────────┐   ┌──────────┐
@@ -427,7 +445,9 @@ Source Files
 4. Add extraction methods for path/method if needed
 5. Add tests in `tests/test_framework_patterns.py`
 
-Example pattern:
+Example patterns:
+
+**Definition-based (decorators/annotations):**
 ```yaml
 id: myframework
 language: python
@@ -437,6 +457,22 @@ patterns:
     decorator: "^myapp\\.(get|post|put|delete)$"
     extract_path: "args[0]"
     extract_method: "decorator_suffix"
+```
+
+**Usage-based (v1.1.x - call/data/export contexts):**
+```yaml
+id: express
+language: javascript
+
+patterns:
+  - concept: route
+    usage:
+      kind: call
+      name: "^(app|router)\\.(get|post|put|delete)$"
+      position: "args[-1]"
+    extract:
+      path: "metadata.args[0]"
+      method: "context_name | split:. | last | uppercase"
 ```
 
 ### Migration Status (v1.0.x)
