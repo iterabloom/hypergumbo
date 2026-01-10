@@ -1666,9 +1666,12 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Go analyzer: Clarified call-based route detection (Gin, Echo, Fiber) cannot migrate
 - 🟧 Ruby/Rust: Deferred to v1.1.x (require UsageContext for DSL/call-based patterns)
 
-**v1.1.x (planned - UsageContext):**
-- 🟧 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
-- 🟧 Extend YAML pattern syntax with `referenced_in_call`, `data_value`, `file_export` fields
+**v1.1.x (in progress - UsageContext):**
+- 🟩 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
+- 🟩 Add `usage_contexts` field to `AnalysisResult`
+- 🟩 Extend Pattern class with `UsagePatternSpec` and `matches_usage()` method
+- 🟩 Implement extraction DSL (`literal:`, `metadata.`, transforms)
+- 🟩 Add two-phase enrichment to `enrich_symbols()` (definition-based + usage-based)
 - 🟧 Migrate call-based frameworks: Django (`path()`), Express (`app.get()`), Go (`r.GET()`)
 - 🟧 Migrate DSL/block-based frameworks: Ruby Rails/Sinatra, Elixir Phoenix
 - 🟧 Migrate Rust call-based: Axum (`Router::route()`)

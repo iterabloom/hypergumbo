@@ -52,13 +52,72 @@ import yaml
 if TYPE_CHECKING:
     from .ir import Symbol
 
+# Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
+from .ir import UsageContext
+
+
+@dataclass
+class UsagePatternSpec:
+    """Specification for matching usage contexts.
+
+    Usage patterns match against UsageContext records emitted by analyzers
+    for call-based frameworks like Django, Express, Go Gin.
+
+    Attributes:
+        kind: Regex pattern to match context kind (call, data_value, export, macro)
+        name: Regex pattern to match context_name (function called, var defined, etc.)
+        position: Regex pattern to match position (args[1], :get, default, etc.)
+    """
+
+    kind: str | None = None
+    name: str | None = None
+    position: str | None = None
+
+    # Compiled regex patterns
+    _kind_re: re.Pattern | None = field(default=None, repr=False, compare=False)
+    _name_re: re.Pattern | None = field(default=None, repr=False, compare=False)
+    _position_re: re.Pattern | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """Compile regex patterns for efficiency."""
+        self._kind_re = re.compile(self.kind) if self.kind else None
+        self._name_re = re.compile(self.name) if self.name else None
+        self._position_re = re.compile(self.position) if self.position else None
+
+    def matches(self, ctx: "UsageContext") -> bool:
+        """Check if this spec matches the given usage context.
+
+        All specified patterns must match for a match to succeed.
+        Unspecified patterns (None) match anything.
+
+        Args:
+            ctx: The UsageContext to check
+
+        Returns:
+            True if all specified patterns match, False otherwise.
+        """
+        if self._kind_re and not self._kind_re.match(ctx.kind):
+            return False
+        if self._name_re and not self._name_re.match(ctx.context_name):
+            return False
+        if self._position_re and not self._position_re.match(ctx.position):
+            return False
+        return True
+
 
 @dataclass
 class Pattern:
-    """A single pattern to match against symbol metadata.
+    """A single pattern to match against symbol metadata or usage contexts.
 
     Patterns are OR'd within a concept - if any pattern matches, the concept
     is assigned to the symbol.
+
+    Definition-based patterns (v1.0.x):
+    - decorator, base_class, annotation, parameter_type, symbol_kind
+
+    Usage-based patterns (v1.1.x):
+    - usage: UsagePatternSpec to match against UsageContext records
+    - extract: Dict of extraction expressions for extracting values from metadata
 
     Attributes:
         concept: The concept type this pattern identifies (route, model, task, etc.)
@@ -69,6 +128,8 @@ class Pattern:
         symbol_kind: Regex pattern to match against symbol kind field
         extract_path: JSONPath-like expression to extract route path from metadata
         extract_method: How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)
+        usage: UsagePatternSpec for matching against UsageContext (v1.1.x)
+        extract: Dict of extraction expressions for usage-based patterns (v1.1.x)
     """
 
     concept: str
@@ -79,6 +140,8 @@ class Pattern:
     symbol_kind: str | None = None
     extract_path: str | None = None
     extract_method: str | None = None
+    usage: UsagePatternSpec | None = None
+    extract: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         """Compile regex patterns for efficiency."""
@@ -284,6 +347,135 @@ class Pattern:
 
         return None
 
+    def matches_usage(self, ctx: "UsageContext") -> dict[str, Any] | None:
+        """Check if this pattern matches the given usage context (v1.1.x).
+
+        Usage patterns enable YAML-driven route detection for call-based frameworks
+        like Django URL patterns, Express routes, and Go Gin handlers.
+
+        Args:
+            ctx: The UsageContext to check against this pattern
+
+        Returns:
+            Dict with extracted data if matched, None otherwise.
+            The dict always includes 'concept' and may include 'path', 'method', etc.
+        """
+        if not self.usage:
+            return None
+
+        if not self.usage.matches(ctx):
+            return None
+
+        result: dict[str, Any] = {"concept": self.concept}
+
+        # Extract values using the extract DSL
+        if self.extract:
+            for key, expr in self.extract.items():
+                value = extract_usage_value(ctx, expr)
+                if value is not None:
+                    result[key] = value
+
+        return result
+
+
+def extract_usage_value(ctx: "UsageContext", expr: str) -> str | None:
+    """Extract a value from a UsageContext using an extraction expression.
+
+    Supported expressions:
+    - "literal:VALUE" - constant value (e.g., "literal:GET")
+    - "metadata.PATH" - dot-notation path into metadata dict (e.g., "metadata.args[0]")
+    - "context_name" - the context_name field
+    - Transformations: "expr | uppercase", "expr | lowercase", "expr | split:DELIM | last"
+
+    Args:
+        ctx: The UsageContext to extract from
+        expr: Extraction expression
+
+    Returns:
+        Extracted value as string, or None if not found/applicable.
+    """
+    # Handle pipe transformations
+    if " | " in expr:
+        parts = expr.split(" | ")
+        value = extract_usage_value(ctx, parts[0].strip())
+        if value is None:
+            return None
+        for transform in parts[1:]:
+            transform = transform.strip()
+            if transform == "uppercase":
+                value = value.upper()
+            elif transform == "lowercase":
+                value = value.lower()
+            elif transform.startswith("split:"):
+                delim = transform[6:]
+                parts_split = value.split(delim)
+                value = delim.join(parts_split)  # Keep value for next transform
+            elif transform == "last":
+                # Assumes previous was split, take last element
+                if " | " in expr:
+                    # Re-parse to find delimiter from previous split
+                    for prev in reversed(parts[:parts.index(transform)]):
+                        if prev.strip().startswith("split:"):
+                            delim = prev.strip()[6:]
+                            parts_split = value.split(delim)
+                            value = parts_split[-1] if parts_split else value
+                            break
+        return value
+
+    # Handle literal values
+    if expr.startswith("literal:"):
+        return expr[8:]
+
+    # Handle context_name field
+    if expr == "context_name":
+        return ctx.context_name
+
+    # Handle metadata paths
+    if expr.startswith("metadata."):
+        path = expr[9:]
+        return _extract_from_metadata(ctx.metadata, path)
+
+    # Handle position field
+    if expr == "position":
+        return ctx.position
+
+    return None
+
+
+def _extract_from_metadata(metadata: dict[str, Any], path: str) -> str | None:
+    """Extract a value from metadata dict using a path expression.
+
+    Supports:
+    - "args[0]" - array index access
+    - "kwargs.key" - nested dict access
+    - "key" - direct key access
+
+    Args:
+        metadata: The metadata dict
+        path: Path expression
+
+    Returns:
+        Extracted value as string, or None if not found.
+    """
+    if path.startswith("args["):
+        try:
+            idx = int(path[5:].split("]")[0])
+            args = metadata.get("args", [])
+            if idx < len(args):
+                return str(args[idx])
+        except (ValueError, IndexError):
+            pass
+    elif path.startswith("kwargs."):
+        key = path[7:]
+        kwargs = metadata.get("kwargs", {})
+        if key in kwargs:
+            return str(kwargs[key])
+    else:
+        if path in metadata:
+            return str(metadata[path])
+
+    return None
+
 
 @dataclass
 class FrameworkPatternDef:
@@ -313,6 +505,16 @@ class FrameworkPatternDef:
         """
         patterns = []
         for p in data.get("patterns", []):
+            # Parse usage pattern spec if present (v1.1.x)
+            usage_spec = None
+            if "usage" in p:
+                usage_data = p["usage"]
+                usage_spec = UsagePatternSpec(
+                    kind=usage_data.get("kind"),
+                    name=usage_data.get("name"),
+                    position=usage_data.get("position"),
+                )
+
             patterns.append(Pattern(
                 concept=p.get("concept", "unknown"),
                 decorator=p.get("decorator"),
@@ -322,6 +524,8 @@ class FrameworkPatternDef:
                 symbol_kind=p.get("symbol_kind"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
+                usage=usage_spec,
+                extract=p.get("extract"),
             ))
 
         return cls(
@@ -394,15 +598,45 @@ def match_patterns(
     return results
 
 
+def match_usage_patterns(
+    ctx: UsageContext,
+    pattern_defs: list[FrameworkPatternDef],
+) -> list[dict[str, Any]]:
+    """Match a usage context against framework patterns (v1.1.x).
+
+    Args:
+        ctx: UsageContext to match
+        pattern_defs: List of framework pattern definitions to try
+
+    Returns:
+        List of match results (concept dicts). Empty if no matches.
+    """
+    results = []
+    for pattern_def in pattern_defs:
+        for pattern in pattern_def.patterns:
+            match = pattern.matches_usage(ctx)
+            if match:
+                match["framework"] = pattern_def.id
+                results.append(match)
+
+    return results
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
+    usage_contexts: list[UsageContext] | None = None,
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
+
+    Two-phase enrichment (v1.1.x):
+    1. Definition-based: Match against decorators, base classes, annotations
+    2. Usage-based: Match against UsageContext records for call-based frameworks
 
     Args:
         symbols: Symbols to enrich
         detected_frameworks: Set of detected framework IDs
+        usage_contexts: List of UsageContext records for usage-based matching (v1.1.x)
 
     Returns:
         Same symbols, possibly with updated metadata.
@@ -418,7 +652,10 @@ def enrich_symbols(
     if not pattern_defs:
         return symbols
 
-    # Match each symbol against patterns
+    # Build symbol lookup by ID for usage-based matching
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
+
+    # Phase 1: Definition-based matching (decorators, base classes, annotations)
     for symbol in symbols:
         matches = match_patterns(symbol, pattern_defs)
         if matches:
@@ -438,6 +675,37 @@ def enrich_symbols(
                     if "method" in match and "http_method" not in symbol.meta:
                         symbol.meta["http_method"] = match["method"]
                     break  # Only use first route concept for legacy fields
+
+    # Phase 2: Usage-based matching (v1.1.x)
+    if usage_contexts:
+        for ctx in usage_contexts:
+            # Skip if no symbol reference (inline handlers not yet supported)
+            if not ctx.symbol_ref:
+                continue
+
+            # Find the referenced symbol
+            symbol = symbol_by_id.get(ctx.symbol_ref)
+            if not symbol:
+                continue
+
+            # Match against usage patterns
+            matches = match_usage_patterns(ctx, pattern_defs)
+            if matches:
+                if symbol.meta is None:
+                    symbol.meta = {}
+
+                # Append to existing concepts or create new list
+                existing = symbol.meta.get("concepts", [])
+                symbol.meta["concepts"] = existing + matches
+
+                # Populate legacy route fields if not already set
+                for match in matches:
+                    if match.get("concept") == "route":
+                        if "path" in match and "route_path" not in symbol.meta:
+                            symbol.meta["route_path"] = match["path"]
+                        if "method" in match and "http_method" not in symbol.meta:
+                            symbol.meta["http_method"] = match["method"]
+                        break
 
     return symbols
 

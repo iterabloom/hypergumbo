@@ -9,6 +9,23 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+- **UsageContext IR type (ADR-0003 v1.1.x):** New IR dataclass for capturing how symbols are used
+  in call-based frameworks like Django, Express, and Go Gin. Enables YAML-driven route detection
+  for frameworks that register handlers via function calls rather than decorators.
+  - `UsageContext` captures: kind (call/data_value/export/macro), context_name, symbol_ref,
+    position, metadata, path, and span
+  - Added `usage_contexts` field to `AnalysisResult` for analyzers to emit usage records
+- **Usage-based pattern matching (ADR-0003 v1.1.x):** Extended framework pattern system:
+  - `UsagePatternSpec` dataclass for matching against UsageContext records
+  - `Pattern.matches_usage()` method for usage-based matching
+  - `match_usage_patterns()` function parallel to `match_patterns()`
+  - Extraction DSL: `literal:VALUE`, `metadata.path`, `context_name`, transforms (`uppercase`,
+    `lowercase`, `split:DELIM | last`)
+- **Two-phase enrichment (ADR-0003 v1.1.x):** `enrich_symbols()` now supports both:
+  1. Definition-based: decorators, base classes, annotations (existing v1.0.x)
+  2. Usage-based: UsageContext matching for call-based frameworks (new v1.1.x)
+
 ## [0.9.1] - 2026-01-09
 
 ### Fixed

@@ -25,7 +25,7 @@ import platform
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 @dataclass
@@ -347,4 +347,90 @@ class Edge:
             "origin_run_signature": self.origin_run_signature,
             "quality": self.quality,
             "meta": meta,
+        }
+
+
+def _compute_usage_context_id(
+    path: str, start_line: int, context_name: str, position: str
+) -> str:
+    """Compute unique ID for a UsageContext."""
+    data = f"{path}:{start_line}:{context_name}:{position}"
+    return f"usage:sha256:{hashlib.sha256(data.encode()).hexdigest()[:16]}"
+
+
+@dataclass
+class UsageContext:
+    """A context that gives semantic meaning to a symbol through its usage.
+
+    Captures how a symbol is used (passed to a function, stored in a data structure,
+    exported from a file) rather than how it's defined (decorators, base classes).
+
+    This enables YAML pattern matching for call-based frameworks (Django, Express, Go)
+    where route handlers are registered via function calls rather than decorators.
+
+    Attributes:
+        id: Unique identifier for this usage context
+        kind: Type of usage context (call, data_value, export, macro)
+        context_name: Name of the function called, var defined, file exported from, etc.
+        symbol_ref: ID of the symbol being used (None if inline/anonymous handler)
+        position: Where in the context the symbol appears (e.g., "args[1]", ":get", "default")
+        metadata: Context-specific data (args, kwargs, receiver, etc.)
+        path: File where this usage occurs
+        span: Source location of the usage
+
+    Example (Django URL pattern):
+        UsageContext(
+            kind="call",
+            context_name="path",
+            symbol_ref="python:views.py:10-15:list_users:function",
+            position="args[1]",
+            metadata={"args": ["/users/", "views.list_users"]},
+            ...
+        )
+    """
+
+    id: str
+    kind: Literal["call", "data_value", "export", "macro"]
+    context_name: str
+    symbol_ref: Optional[str]  # None for inline handlers (lambdas, blocks)
+    position: str
+    metadata: Dict[str, Any]
+    path: str
+    span: Span
+
+    @classmethod
+    def create(
+        cls,
+        kind: Literal["call", "data_value", "export", "macro"],
+        context_name: str,
+        position: str,
+        path: str,
+        span: Span,
+        symbol_ref: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "UsageContext":
+        """Create a UsageContext with auto-generated ID."""
+        ctx_id = _compute_usage_context_id(path, span.start_line, context_name, position)
+        return cls(
+            id=ctx_id,
+            kind=kind,
+            context_name=context_name,
+            symbol_ref=symbol_ref,
+            position=position,
+            metadata=metadata if metadata is not None else {},
+            path=path,
+            span=span,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "context_name": self.context_name,
+            "symbol_ref": self.symbol_ref,
+            "position": self.position,
+            "metadata": self.metadata,
+            "path": self.path,
+            "span": self.span.to_dict(),
         }

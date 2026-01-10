@@ -12,13 +12,16 @@ import pytest
 from hypergumbo.framework_patterns import (
     FrameworkPatternDef,
     Pattern,
+    UsagePatternSpec,
     clear_pattern_cache,
     enrich_symbols,
+    extract_usage_value,
     get_frameworks_dir,
     load_framework_patterns,
     match_patterns,
+    match_usage_patterns,
 )
-from hypergumbo.ir import Span, Symbol
+from hypergumbo.ir import Span, Symbol, UsageContext
 
 
 class TestPattern:
@@ -5364,3 +5367,613 @@ public class ApiController {
         # Legacy fields were populated by enrich_symbols
         assert method.meta.get("http_method") == "GET"
         assert method.meta.get("route_path") == "/users"
+
+
+# ==================== USAGE CONTEXT TESTS (v1.1.x) ====================
+
+
+class TestUsagePatternSpec:
+    """Tests for UsagePatternSpec (v1.1.x)."""
+
+    def test_matches_all_fields(self) -> None:
+        """UsagePatternSpec matches when all specified patterns match."""
+        spec = UsagePatternSpec(
+            kind="^call$",
+            name="^path$",
+            position="^args\\[1\\]$",
+        )
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+        )
+
+        assert spec.matches(ctx) is True
+
+    def test_matches_partial_spec(self) -> None:
+        """UsagePatternSpec matches with only some patterns specified."""
+        spec = UsagePatternSpec(
+            kind="^call$",
+            name=None,  # Match any name
+            position=None,  # Match any position
+        )
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="anything",
+            position="anywhere",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert spec.matches(ctx) is True
+
+    def test_no_match_wrong_kind(self) -> None:
+        """UsagePatternSpec fails when kind doesn't match."""
+        spec = UsagePatternSpec(kind="^call$")
+        ctx = UsageContext.create(
+            kind="export",
+            context_name="module",
+            position="default",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert spec.matches(ctx) is False
+
+    def test_no_match_wrong_name(self) -> None:
+        """UsagePatternSpec fails when name doesn't match."""
+        spec = UsagePatternSpec(name="^path$")
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="re_path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert spec.matches(ctx) is False
+
+    def test_regex_name_pattern(self) -> None:
+        """UsagePatternSpec uses regex for name matching."""
+        spec = UsagePatternSpec(name="^(path|re_path|url)$")
+        for name in ["path", "re_path", "url"]:
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=name,
+                position="args[1]",
+                path="file.py",
+                span=Span(1, 1, 0, 10),
+            )
+            assert spec.matches(ctx) is True
+
+    def test_no_match_wrong_position(self) -> None:
+        """UsagePatternSpec fails when position doesn't match."""
+        spec = UsagePatternSpec(position="^args\\[1\\]$")
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[0]",  # Doesn't match args[1]
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert spec.matches(ctx) is False
+
+
+class TestExtractUsageValue:
+    """Tests for extract_usage_value function (v1.1.x)."""
+
+    def test_literal_value(self) -> None:
+        """Extract literal value."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert extract_usage_value(ctx, "literal:GET") == "GET"
+        assert extract_usage_value(ctx, "literal:/api/users") == "/api/users"
+
+    def test_context_name_field(self) -> None:
+        """Extract context_name field."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert extract_usage_value(ctx, "context_name") == "path"
+
+    def test_position_field(self) -> None:
+        """Extract position field."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert extract_usage_value(ctx, "position") == "args[1]"
+
+    def test_metadata_args(self) -> None:
+        """Extract value from metadata.args."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={"args": ["/users/", "views.list_users"]},
+        )
+
+        assert extract_usage_value(ctx, "metadata.args[0]") == "/users/"
+        assert extract_usage_value(ctx, "metadata.args[1]") == "views.list_users"
+
+    def test_metadata_kwargs(self) -> None:
+        """Extract value from metadata.kwargs."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={"kwargs": {"name": "user-list"}},
+        )
+
+        assert extract_usage_value(ctx, "metadata.kwargs.name") == "user-list"
+
+    def test_uppercase_transform(self) -> None:
+        """Transform value to uppercase."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="method",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert extract_usage_value(ctx, "context_name | uppercase") == "GET"
+
+    def test_lowercase_transform(self) -> None:
+        """Transform value to lowercase."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="GET",
+            position="method",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        assert extract_usage_value(ctx, "context_name | lowercase") == "get"
+
+    def test_returns_none_for_missing(self) -> None:
+        """Return None for missing paths."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={},
+        )
+
+        assert extract_usage_value(ctx, "metadata.args[99]") is None
+        assert extract_usage_value(ctx, "metadata.kwargs.missing") is None
+        assert extract_usage_value(ctx, "nonexistent") is None
+
+    def test_transform_returns_none_for_missing_base(self) -> None:
+        """Transform returns None when base value is missing."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={},
+        )
+
+        # metadata.missing doesn't exist, so transform should return None
+        assert extract_usage_value(ctx, "metadata.missing | uppercase") is None
+
+    def test_split_and_last_transform(self) -> None:
+        """Transform value using split and last."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="views.list_users",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+        )
+
+        # Split by . and take last element
+        result = extract_usage_value(ctx, "context_name | split:. | last")
+        assert result == "list_users"
+
+    def test_direct_metadata_key(self) -> None:
+        """Extract value from direct metadata key."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={"custom_key": "custom_value"},
+        )
+
+        assert extract_usage_value(ctx, "metadata.custom_key") == "custom_value"
+
+    def test_invalid_args_index(self) -> None:
+        """Handle invalid args index gracefully."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={"args": ["only_one"]},
+        )
+
+        # Out of bounds
+        assert extract_usage_value(ctx, "metadata.args[5]") is None
+        # Invalid format (testing exception handling)
+        assert extract_usage_value(ctx, "metadata.args[not_a_number]") is None
+
+
+class TestPatternMatchesUsage:
+    """Tests for Pattern.matches_usage method (v1.1.x)."""
+
+    def test_matches_usage_context(self) -> None:
+        """Pattern.matches_usage matches against UsageContext."""
+        pattern = Pattern(
+            concept="route",
+            usage=UsagePatternSpec(
+                kind="^call$",
+                name="^(path|re_path)$",
+                position="^args\\[1\\]$",
+            ),
+            extract={"path": "metadata.args[0]", "method": "literal:GET"},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="python:views.py:10-15:list_users:function",
+            metadata={"args": ["/users/", "views.list_users"]},
+        )
+
+        result = pattern.matches_usage(ctx)
+        assert result is not None
+        assert result["concept"] == "route"
+        assert result["path"] == "/users/"
+        assert result["method"] == "GET"
+
+    def test_no_match_without_usage_spec(self) -> None:
+        """Pattern without usage spec doesn't match usage contexts."""
+        pattern = Pattern(
+            concept="route",
+            decorator="^app\\.get$",  # Definition-based, not usage-based
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+        )
+
+        assert pattern.matches_usage(ctx) is None
+
+    def test_no_match_when_spec_fails(self) -> None:
+        """Pattern.matches_usage returns None when spec doesn't match."""
+        pattern = Pattern(
+            concept="route",
+            usage=UsagePatternSpec(kind="^call$", name="^path$"),
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="url",  # Doesn't match "^path$"
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+        )
+
+        assert pattern.matches_usage(ctx) is None
+
+
+class TestFrameworkPatternDefFromDictWithUsage:
+    """Tests for FrameworkPatternDef.from_dict with usage patterns (v1.1.x)."""
+
+    def test_parses_usage_pattern_from_dict(self) -> None:
+        """FrameworkPatternDef.from_dict parses usage field."""
+        data = {
+            "id": "django",
+            "language": "python",
+            "patterns": [
+                {
+                    "concept": "route",
+                    "usage": {
+                        "kind": "^call$",
+                        "name": "^path$",
+                        "position": "^args\\[1\\]$",
+                    },
+                    "extract": {
+                        "path": "metadata.args[0]",
+                        "method": "literal:GET",
+                    },
+                },
+            ],
+        }
+
+        pattern_def = FrameworkPatternDef.from_dict(data)
+        assert pattern_def.id == "django"
+        assert len(pattern_def.patterns) == 1
+
+        pattern = pattern_def.patterns[0]
+        assert pattern.concept == "route"
+        assert pattern.usage is not None
+        assert pattern.usage.kind == "^call$"
+        assert pattern.usage.name == "^path$"
+        assert pattern.usage.position == "^args\\[1\\]$"
+        assert pattern.extract == {"path": "metadata.args[0]", "method": "literal:GET"}
+
+
+class TestMatchUsagePatterns:
+    """Tests for match_usage_patterns function (v1.1.x)."""
+
+    def test_matches_usage_against_framework_patterns(self) -> None:
+        """match_usage_patterns finds matches in framework pattern defs."""
+        pattern_def = FrameworkPatternDef(
+            id="django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(
+                        kind="^call$",
+                        name="^path$",
+                    ),
+                    extract={"path": "metadata.args[0]", "method": "literal:GET"},
+                ),
+            ],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            metadata={"args": ["/users/"]},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["framework"] == "django"
+        assert results[0]["path"] == "/users/"
+
+
+class TestEnrichSymbolsWithUsageContexts:
+    """Tests for enrich_symbols with usage_contexts parameter (v1.1.x)."""
+
+    def test_enrich_with_usage_contexts(self) -> None:
+        """enrich_symbols enriches symbols via usage context matching."""
+        # Create a symbol that will be referenced by usage context
+        symbol = Symbol(
+            id="python:views.py:10-15:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 15, 0, 50),
+            meta={},
+        )
+
+        # Create usage context referencing the symbol
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="python:views.py:10-15:list_users:function",
+            metadata={"args": ["/users/", "views.list_users"]},
+        )
+
+        # Create a framework pattern with usage-based matching
+        pattern_def = FrameworkPatternDef(
+            id="test-django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(
+                        kind="^call$",
+                        name="^path$",
+                    ),
+                    extract={"path": "metadata.args[0]", "method": "literal:GET"},
+                ),
+            ],
+        )
+
+        # Patch to load our test pattern
+        with patch(
+            "hypergumbo.framework_patterns.load_framework_patterns",
+            return_value=pattern_def,
+        ):
+            enriched = enrich_symbols(
+                [symbol],
+                {"test-django"},
+                usage_contexts=[ctx],
+            )
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "route"
+        assert concepts[0]["path"] == "/users/"
+        assert concepts[0]["method"] == "GET"
+
+        # Legacy fields should be populated
+        assert enriched[0].meta.get("route_path") == "/users/"
+        assert enriched[0].meta.get("http_method") == "GET"
+
+    def test_skips_inline_handlers(self) -> None:
+        """enrich_symbols skips usage contexts with no symbol_ref (inline handlers)."""
+        symbol = Symbol(
+            id="python:views.py:10-15:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 15, 0, 50),
+            meta={},
+        )
+
+        # Inline handler - no symbol_ref
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,  # Inline lambda handler
+            metadata={"args": ["/inline/", "<lambda>"]},
+        )
+
+        pattern_def = FrameworkPatternDef(
+            id="test-django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(kind="^call$", name="^path$"),
+                    extract={"path": "metadata.args[0]"},
+                ),
+            ],
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.load_framework_patterns",
+            return_value=pattern_def,
+        ):
+            enriched = enrich_symbols(
+                [symbol],
+                {"test-django"},
+                usage_contexts=[ctx],
+            )
+
+        # Symbol should not be enriched (no match via inline context)
+        assert enriched[0].meta.get("concepts") is None
+
+    def test_skips_unknown_symbol_refs(self) -> None:
+        """enrich_symbols skips usage contexts referencing unknown symbols."""
+        symbol = Symbol(
+            id="python:views.py:10-15:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 15, 0, 50),
+            meta={},
+        )
+
+        # Reference to a symbol that doesn't exist in our list
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="python:other.py:1-5:unknown:function",  # Not in symbols list
+            metadata={"args": ["/unknown/"]},
+        )
+
+        pattern_def = FrameworkPatternDef(
+            id="test-django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(kind="^call$", name="^path$"),
+                    extract={"path": "metadata.args[0]"},
+                ),
+            ],
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.load_framework_patterns",
+            return_value=pattern_def,
+        ):
+            enriched = enrich_symbols(
+                [symbol],
+                {"test-django"},
+                usage_contexts=[ctx],
+            )
+
+        # Symbol should not be enriched (ctx references different symbol)
+        assert enriched[0].meta.get("concepts") is None
+
+    def test_enriches_symbol_with_none_meta(self) -> None:
+        """enrich_symbols handles symbols with meta=None."""
+        # Symbol with meta=None (not empty dict)
+        symbol = Symbol(
+            id="python:views.py:10-15:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 15, 0, 50),
+            meta=None,  # Explicitly None
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="python:views.py:10-15:list_users:function",
+            metadata={"args": ["/users/"]},
+        )
+
+        pattern_def = FrameworkPatternDef(
+            id="test-django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(kind="^call$", name="^path$"),
+                    extract={"path": "metadata.args[0]", "method": "literal:GET"},
+                ),
+            ],
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.load_framework_patterns",
+            return_value=pattern_def,
+        ):
+            enriched = enrich_symbols(
+                [symbol],
+                {"test-django"},
+                usage_contexts=[ctx],
+            )
+
+        # Should create meta dict and populate it
+        assert enriched[0].meta is not None
+        assert "concepts" in enriched[0].meta
+        assert enriched[0].meta["route_path"] == "/users/"
+        assert enriched[0].meta["http_method"] == "GET"
