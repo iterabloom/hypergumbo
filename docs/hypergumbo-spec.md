@@ -1658,15 +1658,23 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 CLI `main()` detection retained as non-deprecated fallback
 - 🟩 ASP.NET Core, Rust web (Actix, Axum, Rocket, Diesel, SeaORM), Hapi, Koa patterns
 
-**v1.0.x (in progress):**
+**v1.0.x (complete):**
 - 🟩 Deprecation warnings added to analyzer-level route detection (decorator-based frameworks)
 - 🟩 Java analyzer purified: Spring Boot and JAX-RS route detection removed, now YAML-driven
-- 🟩 Python analyzer: Removed misleading Django deprecation warning (see note below)
-- 🟩 JS/TS analyzer: NestJS (decorator-based) deprecation warning added; Express (call-based) warning removed
-- 🟩 Go analyzer: Clarified call-based route detection (Gin, Echo, Fiber) cannot migrate to YAML
-- 🟧 Remaining: Ruby, Rust analyzers still have framework logic to extract
+- 🟩 Python analyzer: Removed misleading Django deprecation warning (call-based, see note)
+- 🟩 JS/TS analyzer: NestJS (decorator-based) deprecated; Express (call-based) clarified
+- 🟩 Go analyzer: Clarified call-based route detection (Gin, Echo, Fiber) cannot migrate
+- 🟩 Ruby/Rust: Deferred to v1.1.x (require UsageContext for DSL/call-based patterns)
 
-**Note on call-based frameworks:** Django URL patterns (`path()`, `re_path()`), Express routing (`app.get()`, `router.post()`), and Go web frameworks (`r.GET()`, `e.POST()`) use function/method calls, not decorators. These cannot be migrated to the current YAML pattern system which matches symbol metadata. The [ADR-0003 Usage Context Patterns extension](adr/0003-usage-context-patterns.md) proposes a unified model to handle call-based, data-driven, and file-based framework patterns via YAML. Until implemented, call-based route detection remains in analyzers as a necessary special case.
+**v1.1.x (planned - UsageContext):**
+- 🟧 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
+- 🟧 Extend YAML pattern syntax with `referenced_in_call`, `data_value`, `file_export` fields
+- 🟧 Migrate call-based frameworks: Django (`path()`), Express (`app.get()`), Go (`r.GET()`)
+- 🟧 Migrate DSL/block-based frameworks: Ruby Rails/Sinatra, Elixir Phoenix
+- 🟧 Migrate Rust call-based: Axum (`Router::route()`)
+- 🟧 Support file-based routing: Next.js, Nuxt (optional, lower priority)
+
+**Note on pattern types:** The current YAML pattern system (v1.0.x) matches **decorator/annotation metadata** on symbols. This works for Java annotations (`@GetMapping`), Python decorators (`@app.get`), NestJS decorators (`@Get()`), and Rust attribute macros (`#[get()]`). However, many frameworks use **call-based** patterns (Django `path()`, Express `app.get()`, Go `r.GET()`) or **DSL/block-based** patterns (Ruby Sinatra, Rails routes). These require the UsageContext extension (v1.1.x) which captures how symbols are *used*, not just how they're *defined*.
 
 ## 9) Testing & quality bar
 
