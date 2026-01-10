@@ -28,7 +28,7 @@ Detected Patterns
 - Method calls: self.method(), obj.method()
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
-- Django URL patterns: path(), re_path(), url() calls in urls.py (deprecated)
+- Django URL patterns: path(), re_path(), url() calls in urls.py
 
 ID Schemes
 ----------
@@ -57,7 +57,6 @@ Why This Design
 """
 import ast
 import hashlib
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -91,30 +90,11 @@ def _make_module_id(module_name: str) -> str:
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
 
-# Django URL pattern functions (deprecated - use django.yaml patterns)
+# Django URL pattern functions
+# Note: Django URL patterns use function calls (path, re_path, url) rather than
+# decorators, so they must be detected at the analyzer level. This cannot be
+# migrated to YAML patterns which only match decorator/base_class metadata.
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -997,10 +977,10 @@ def _extract_file_analysis(
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
 
-    # Detect Django URL patterns (path, re_path, url calls) - deprecated
+    # Detect Django URL patterns (path, re_path, url calls)
+    # Note: This is NOT deprecated - Django URL patterns use function calls,
+    # not decorators, so they cannot be detected via YAML patterns.
     django_patterns = _extract_django_url_patterns(tree)
-    if django_patterns:
-        _emit_route_deprecation_warning("Django")
     for start_line, end_line, route_path, view_name in django_patterns:
         span = Span(
             start_line=start_line,
