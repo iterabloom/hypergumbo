@@ -25,6 +25,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Two-phase enrichment (ADR-0003 v1.1.x):** `enrich_symbols()` now supports both:
   1. Definition-based: decorators, base classes, annotations (existing v1.0.x)
   2. Usage-based: UsageContext matching for call-based frameworks (new v1.1.x)
+- **Django UsageContext (ADR-0003 v1.1.x):** Python analyzer emits `UsageContext` for
+  `path()`, `re_path()`, and `url()` calls. Django route detection now uses YAML patterns
+  in `django.yaml` via usage-based matching.
+- **Express UsageContext (ADR-0003 v1.1.x):** JS/TS analyzer emits `UsageContext` for
+  Express-style route calls (`app.get()`, `router.post()`, etc.). Route detection for
+  Express, Fastify, and Koa now uses YAML patterns in `express.yaml`.
+- **Flask UsageContext (ADR-0003 v1.1.x):** Python analyzer emits `UsageContext` for
+  Flask's `add_url_rule()` calls. Enables YAML-driven route detection for Flask apps
+  using programmatic URL registration instead of decorators.
 
 ## [0.9.1] - 2026-01-09
 

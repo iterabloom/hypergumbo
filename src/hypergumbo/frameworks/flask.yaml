@@ -1,12 +1,29 @@
-# Flask framework patterns (ADR-0003 v0.8.x)
+# Flask framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Flask route decorators, blueprint patterns, and common extensions.
 # Symbols matching these patterns get enriched with concept metadata.
+#
+# Definition-based patterns (v1.0.x): Match decorator-based routing
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
 id: flask
 language: python
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
+
+  # Flask add_url_rule - app.add_url_rule('/path', view_func=handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|blueprint|bp)\\.add_url_rule$"
+      position: "^view_func$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.methods"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Flask 2.0+ shortcut routes - @app.get("/path"), @app.post("/path"), etc.
   - concept: route
     decorator: "^(app|blueprint|bp)\\.(get|post|put|delete|patch|options|head)$"

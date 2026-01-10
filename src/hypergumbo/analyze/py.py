@@ -90,11 +90,13 @@ def _make_module_id(module_name: str) -> str:
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
 
-# Django URL pattern functions
-# Note: Django URL patterns use function calls (path, re_path, url) rather than
-# decorators, so they must be detected at the analyzer level. This cannot be
-# migrated to YAML patterns which only match decorator/base_class metadata.
+# Django URL pattern functions (call-based routing)
+# These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
+
+# Flask URL pattern functions (call-based routing)
+# Flask's add_url_rule() is the call-based alternative to @app.route()
+FLASK_URL_FUNCTIONS = {"add_url_rule"}
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -525,6 +527,150 @@ def _extract_django_usage_contexts(
                 "args": args_values,
                 "route_path": normalized_path,
                 "view_name": view_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
+def _extract_flask_usage_contexts(
+    tree: ast.Module,
+    file_path: str,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Flask add_url_rule() calls.
+
+    Creates UsageContext records that capture how view functions are used
+    in add_url_rule() calls. These are matched against YAML patterns in
+    the enrichment phase.
+
+    Supported patterns:
+    - app.add_url_rule('/users', 'user_list', user_list)
+    - app.add_url_rule('/users', view_func=user_list)
+    - blueprint.add_url_rule('/items', view_func=get_items, methods=['GET'])
+
+    Args:
+        tree: The parsed AST module
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+
+    Returns:
+        List of UsageContext records for Flask URL patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        # Check if it's a Flask add_url_rule call (app.add_url_rule, bp.add_url_rule)
+        func_name = None
+        receiver_name = None
+        if isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+            if isinstance(node.func.value, ast.Name):
+                receiver_name = node.func.value.id
+
+        if func_name not in FLASK_URL_FUNCTIONS:
+            continue
+
+        # Extract the URL pattern from the first argument
+        if not node.args:  # pragma: no cover
+            continue
+
+        first_arg = node.args[0]
+        route_path = None
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            route_path = first_arg.value
+        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+            continue  # Skip dynamic patterns (f-strings)
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Extract view function - can be:
+        # 1. Third positional arg: add_url_rule('/path', 'name', view_func)
+        # 2. view_func keyword arg: add_url_rule('/path', view_func=handler)
+        view_ref = None
+        view_name = None
+
+        # Check for view_func in keyword arguments
+        for kw in node.keywords:
+            if kw.arg == "view_func":
+                if isinstance(kw.value, ast.Name):
+                    view_name = kw.value.id
+                    if view_name in symbol_by_name:
+                        view_ref = symbol_by_name[view_name].id
+                elif isinstance(kw.value, ast.Attribute):
+                    view_name = kw.value.attr
+                break
+
+        # If not found in kwargs, check third positional arg
+        if view_name is None and len(node.args) >= 3:
+            third_arg = node.args[2]
+            if isinstance(third_arg, ast.Name):
+                view_name = third_arg.id
+                if view_name in symbol_by_name:
+                    view_ref = symbol_by_name[view_name].id
+            elif isinstance(third_arg, ast.Attribute):
+                view_name = third_arg.attr
+
+        # Extract methods if specified
+        methods = None
+        for kw in node.keywords:
+            if kw.arg == "methods":
+                if isinstance(kw.value, ast.List):
+                    methods = []
+                    for elt in kw.value.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            methods.append(elt.value.upper())
+
+        # Build metadata
+        args_values = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args_values.append(arg.value)
+            elif isinstance(arg, ast.Name):
+                args_values.append(arg.id)
+            elif isinstance(arg, ast.Attribute):
+                parts = []
+                current: ast.expr = arg
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if isinstance(current, ast.Name):
+                    parts.append(current.id)
+                args_values.append(".".join(reversed(parts)))
+            else:  # pragma: no cover
+                args_values.append("<expr>")
+
+        # Normalize route path
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        span = Span(
+            start_line=node.lineno,
+            end_line=getattr(node, "end_lineno", node.lineno),
+            start_col=getattr(node, "col_offset", 0),
+            end_col=getattr(node, "end_col_offset", 0),
+        )
+
+        # Build full call name (e.g., "app.add_url_rule")
+        call_name = f"{receiver_name}.{func_name}" if receiver_name else func_name
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="view_func",
+            path=file_path,
+            span=span,
+            symbol_ref=view_ref,
+            metadata={
+                "args": args_values,
+                "route_path": normalized_path,
+                "view_name": view_name,
+                "methods": methods or ["GET"],
+                "receiver": receiver_name,
             },
         )
         contexts.append(ctx)
@@ -1122,9 +1268,11 @@ def _extract_file_analysis(
         )
         symbols.append(symbol)
 
-    # Extract usage contexts for Django URL patterns (v1.1.x)
-    # This enables YAML-driven pattern matching for call-based frameworks
-    usage_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
+    # Extract usage contexts for call-based frameworks (v1.1.x)
+    # This enables YAML-driven pattern matching for Django, Flask, etc.
+    usage_contexts: list[UsageContext] = []
+    usage_contexts.extend(_extract_django_usage_contexts(tree, str(py_file), symbol_by_name))
+    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
 
     # Compute module name for import resolution
     if repo_root is not None:

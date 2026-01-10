@@ -705,6 +705,156 @@ def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
 
 
 # ============================================================================
+# Flask add_url_rule UsageContext Tests (v1.1.x)
+# ============================================================================
+
+
+def test_flask_add_url_rule_usage_context(tmp_path: Path) -> None:
+    """Flask add_url_rule() should emit UsageContext records."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def user_list():\n"
+        "    return []\n"
+        "\n"
+        "app.add_url_rule('/users', 'user_list', user_list)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # Should have usage contexts for the add_url_rule call
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.kind == "call"
+    assert ctx.context_name == "app.add_url_rule"
+    assert ctx.metadata["route_path"] == "/users"
+    assert ctx.metadata["view_name"] == "user_list"
+    assert ctx.metadata["methods"] == ["GET"]  # Default
+
+
+def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
+    """Flask add_url_rule with view_func keyword argument."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def get_item():\n"
+        "    return {}\n"
+        "\n"
+        "app.add_url_rule('/items/<int:id>', view_func=get_item)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["route_path"] == "/items/<int:id>"
+    assert ctx.metadata["view_name"] == "get_item"
+
+
+def test_flask_add_url_rule_with_methods(tmp_path: Path) -> None:
+    """Flask add_url_rule with explicit methods."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def create_user():\n"
+        "    return {}\n"
+        "\n"
+        "app.add_url_rule('/users', view_func=create_user, methods=['POST', 'PUT'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["methods"] == ["POST", "PUT"]
+
+
+def test_flask_blueprint_add_url_rule(tmp_path: Path) -> None:
+    """Flask Blueprint add_url_rule should also be detected."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from flask import Blueprint\n"
+        "\n"
+        "bp = Blueprint('api', __name__)\n"
+        "\n"
+        "def list_items():\n"
+        "    return []\n"
+        "\n"
+        "bp.add_url_rule('/items', view_func=list_items)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.context_name == "bp.add_url_rule"
+    assert ctx.metadata["route_path"] == "/items"
+
+
+def test_flask_add_url_rule_with_attribute_view_func(tmp_path: Path) -> None:
+    """Flask add_url_rule with attribute-based view_func (views.handler)."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "import views\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "app.add_url_rule('/api/users', view_func=views.user_handler)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["view_name"] == "user_handler"
+    assert ctx.symbol_ref is None  # Can't resolve cross-module
+
+
+def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None:
+    """Flask add_url_rule with attribute as third positional argument."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "import views\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "# Third arg as attribute: views.list_users\n"
+        "app.add_url_rule('/users', 'list_users', views.list_users)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["view_name"] == "list_users"
+    # args should include the attribute as "views.list_users"
+    assert "views.list_users" in ctx.metadata["args"]
+
+
+# ============================================================================
 # Django/DRF Decorator Metadata Tests
 # ============================================================================
 
