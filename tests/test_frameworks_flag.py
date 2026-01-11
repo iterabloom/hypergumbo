@@ -126,8 +126,14 @@ class TestFrameworksFlagIntegration:
         # FastAPI should be detected (auto-detect mode)
         assert "fastapi" in data["profile"]["frameworks"]
 
-    def test_frameworks_explicit_reports_undetected(self, tmp_path: Path) -> None:
-        """Explicit frameworks that don't match should be noted."""
+    def test_frameworks_explicit_trusts_user(self, tmp_path: Path) -> None:
+        """Explicit frameworks are used directly without dependency scanning.
+
+        When user explicitly requests frameworks, we trust them and use those
+        patterns regardless of what's in dependency files. This enables pattern
+        matching even when frameworks aren't in manifest files (e.g., when
+        pyproject.toml is in a subdirectory).
+        """
         (tmp_path / "app.py").write_text("print('hello')\n")
 
         out_path = tmp_path / "out.json"
@@ -135,9 +141,9 @@ class TestFrameworksFlagIntegration:
 
         data = json.loads(out_path.read_text())
 
-        # FastAPI NOT detected (no dependencies)
-        assert "fastapi" not in data["profile"]["frameworks"]
-        # Profile should indicate what was explicitly requested
+        # FastAPI IS in frameworks because user explicitly requested it
+        assert "fastapi" in data["profile"]["frameworks"]
+        # Profile should indicate explicit mode and what was requested
         assert data["profile"].get("framework_mode") == "explicit"
         assert "fastapi" in data["profile"].get("requested_frameworks", [])
 

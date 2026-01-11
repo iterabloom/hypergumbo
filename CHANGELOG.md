@@ -16,6 +16,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   decorators were present in code. Now `--frameworks all` uses ALL known framework patterns for
   detected languages, enabling entrypoint detection even when frameworks aren't in manifest files.
   This bug was caught by the 12.10 bakeoff experiment after removing legacy `_detect_*` functions.
+- **`--frameworks <explicit-list>` now bypasses dependency scanning:** Similar to the above fix,
+  explicit framework lists like `--frameworks fastapi,celery` now use the specified frameworks
+  directly without requiring them to be present in dependency manifests. This enables pattern
+  matching when pyproject.toml/package.json is in a subdirectory rather than the repo root.
 
 ### Added
 - **Foundry/Hardhat framework detection:** Profile module now detects Solidity smart contract

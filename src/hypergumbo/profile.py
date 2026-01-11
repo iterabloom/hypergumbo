@@ -825,41 +825,29 @@ def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
-def _detect_frameworks(
-    repo_root: Path,
-    allowed_frameworks: set[str] | None = None,
-) -> list[str]:
-    """Detect frameworks in the repository.
+def _detect_frameworks(repo_root: Path) -> list[str]:
+    """Detect frameworks in the repository by scanning dependency files.
+
+    This is used for AUTO mode only. EXPLICIT and ALL modes bypass this
+    function and use frameworks directly without dependency scanning.
 
     Args:
         repo_root: Path to the repository root.
-        allowed_frameworks: If provided, only check for these frameworks.
-            If None, check all known frameworks.
 
     Returns:
         List of detected framework names.
     """
-    frameworks = []
-
-    # Collect all detections
-    all_detected = []
-    all_detected.extend(_detect_python_frameworks(repo_root))
-    all_detected.extend(_detect_js_frameworks(repo_root))
-    all_detected.extend(_detect_rust_frameworks(repo_root))
-    all_detected.extend(_detect_go_frameworks(repo_root))
-    all_detected.extend(_detect_php_frameworks(repo_root))
-    all_detected.extend(_detect_java_frameworks(repo_root))
-    all_detected.extend(_detect_swift_frameworks(repo_root))
-    all_detected.extend(_detect_scala_frameworks(repo_root))
-    all_detected.extend(_detect_dart_frameworks(repo_root))
-    all_detected.extend(_detect_solidity_frameworks(repo_root))
-
-    # Filter by allowed frameworks if specified
-    if allowed_frameworks is not None:
-        frameworks = [f for f in all_detected if f in allowed_frameworks]
-    else:
-        frameworks = all_detected
-
+    frameworks: list[str] = []
+    frameworks.extend(_detect_python_frameworks(repo_root))
+    frameworks.extend(_detect_js_frameworks(repo_root))
+    frameworks.extend(_detect_rust_frameworks(repo_root))
+    frameworks.extend(_detect_go_frameworks(repo_root))
+    frameworks.extend(_detect_php_frameworks(repo_root))
+    frameworks.extend(_detect_java_frameworks(repo_root))
+    frameworks.extend(_detect_swift_frameworks(repo_root))
+    frameworks.extend(_detect_scala_frameworks(repo_root))
+    frameworks.extend(_detect_dart_frameworks(repo_root))
+    frameworks.extend(_detect_solidity_frameworks(repo_root))
     return frameworks
 
 
@@ -899,11 +887,13 @@ def detect_profile(
         # Use ALL known frameworks for detected languages (don't scan dependency files)
         # This enables pattern matching even when frameworks aren't in dependency manifests
         detected_frameworks = list(framework_spec.frameworks)
+    elif framework_spec.mode == FrameworkMode.EXPLICIT:
+        # User explicitly requested these frameworks - trust them, don't scan dependency files
+        # This enables pattern matching even when frameworks aren't in manifest files
+        detected_frameworks = list(framework_spec.requested)
     else:
-        # AUTO or EXPLICIT: Detect frameworks from dependency files
-        # For EXPLICIT mode, filter by requested frameworks
-        allowed = framework_spec.frameworks if framework_spec.frameworks else None
-        detected_frameworks = _detect_frameworks(repo_root, allowed_frameworks=allowed)
+        # AUTO: Detect frameworks from dependency files
+        detected_frameworks = _detect_frameworks(repo_root)
 
     return RepoProfile(
         languages=languages,
