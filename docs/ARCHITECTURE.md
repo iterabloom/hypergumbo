@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f96300b2bff3
+  commit: 1b5d127673cd
   hypergumbo: 0.9.1
   python: 3.12.3
 -->
@@ -14,8 +14,8 @@ GENERATION METADATA (for drift detection):
 
 hypergumbo analyzed its own source code and found:
 - **108** Python modules (68 analyzers, 15 linkers)
-- **1720** symbols (functions, classes, methods)
-- **6274** edges (calls, imports, instantiates)
+- **1670** symbols (functions, classes, methods)
+- **6146** edges (calls, imports, instantiates)
 
 ## Sketch (hypergumbo on hypergumbo)
 
@@ -23,7 +23,7 @@ hypergumbo analyzed its own source code and found:
 # src
 
 ## Overview
-Python (97%), Yaml (3%) · 130 files · ~50,479 LOC
+Python (95%), Yaml (5%) · 149 files · ~50,611 LOC
 
 ## Structure
 
@@ -67,10 +67,6 @@ Python (97%), Yaml (3%) · 130 files · ~50,479 LOC
 - `hypergumbo/analyze/groovy.py`
 - ... and 82 more files
 
-## Entry Points
-
-- `main` (CLI main) — `hypergumbo/cli.py`
-
 ## Key Symbols
 
 *★ = centrality ≥ 50% of max*
@@ -83,11 +79,7 @@ Python (97%), Yaml (3%) · 130 files · ~50,479 LOC
 ### `hypergumbo/analyze/base.py`
 - `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) ★ — Extract text content for a tree-sitter node.
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
-
-### `hypergumbo/entrypoints.py`
-- `Entrypoint` (class) — A detected entrypoint in the codebase.
-- `_emit_path_deprecation_warning(framework: str) -> None` (function) — Emit a deprecation warning for path-based entrypoint detection.
-- `_get_filename(path: str) -> str` (function) — Extract filename from path.
+- `find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find a child node by field name.
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
@@ -108,10 +100,13 @@ Python (97%), Yaml (3%) · 130 files · ~50,479 LOC
 ### `hypergumbo/analyze/js_ts.py`
 - `_make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind…` (function) — Generate location-based ID.
 
-(... and 1586 more symbols across 90 other files)
+### `hypergumbo/analyze/py.py`
+- `_format_annotation(node: ast.expr) -> str` (function) — Format a type annotation node to a readable string.
+
+(... and 1537 more symbols across 90 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 7 appearances of `_node_text`
+- `_node_text` - we omitted 8 appearances of `_node_text`
 - `_find_child_by_type` - we omitted 5 appearances
 
 ## All Files
@@ -171,7 +166,9 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `hypergumbo/analyze/py.py`
 - `hypergumbo/analyze/r_lang.py`
 - `hypergumbo/analyze/registry.py`
-- ... and 75 more files
+- `hypergumbo/analyze/ruby.py`
+- `hypergumbo/analyze/rust.py`
+- ... and 92 more files
 ```
 
 ## Data Flow (ADR-0003)
@@ -190,7 +187,7 @@ Source Files
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ANALYZERS                               │
 │  Pure language processors - NO framework knowledge              │
-│  Output: 1720 Symbols + 6274 Edges + UsageContexts            │
+│  Output: 1670 Symbols + 6146 Edges + UsageContexts            │
 │  Rich metadata: decorators, base_classes, parameters            │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -234,7 +231,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 | `Edge` | class | 130 | ir.py |
 | `AnalysisRun` | class | 93 | ir.py |
 | `Pass` | class | 66 | catalog.py |
-| `Entrypoint` | class | 38 | entrypoints.py |
+| `_find_child_by_type` | function | 30 | julia.py |
 
 ## Module Reference
 
@@ -244,7 +241,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`catalog`**: Catalog of available analysis passes and packs.
 - **`compact`**: Compact output mode with coverage-based truncation and residual sum...
 - **`discovery`**: File discovery with exclude patterns.
-- **`entrypoints`**: Entrypoint detection heuristics for code analysis.
+- **`entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003 v0.8.x).
 - **`ir`**: Internal Representation (IR) for code analysis.
 - **`limits`**: Limits tracking for behavior map output.

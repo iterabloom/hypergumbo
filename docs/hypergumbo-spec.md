@@ -189,7 +189,7 @@ Hypergumbo supports 65+ languages via tree-sitter grammars. All are included in 
 * `hypergumbo/plan.py` — `capsule_plan.json` schema + validator + generator
 * `hypergumbo/llm_assist.py` — optional LLM-assisted plan generator (OpenRouter, OpenAI, local llm)
 * `hypergumbo/sketch.py` — token-budgeted Markdown summary generation
-* `hypergumbo/entrypoints.py` — entry point detection heuristics (routes, CLI, Electron)
+* `hypergumbo/entrypoints.py` — YAML-driven entrypoint detection via semantic concepts (ADR-0003)
 * `hypergumbo/slice.py` — graph slicing for context extraction
 * `hypergumbo/metrics.py` — analysis statistics computation
 * `hypergumbo/limits.py` — error tracking and analysis gaps
@@ -1671,8 +1671,8 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 | **v0.6.x** | Path heuristics + exclusions | Current state | 🟩 |
 | **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata | 🟩 |
 | **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata | 🟩 |
-| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated (retained only for `main()` fallback) | 🟩 |
-| **v1.0.x** | Complete extraction | All frameworks as YAML; all analyzers pure | 🟩 |
+| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated | 🟩 |
+| **v1.0.x** | Complete extraction | All frameworks as YAML; legacy `_detect_*` functions removed | 🟩 |
 
 **v0.8.x (complete):**
 - 🟩 `framework_patterns.py` module with YAML-driven pattern matching
@@ -1685,7 +1685,6 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 **v0.9.x (complete):**
 - 🟩 Semantic entry detection via `_detect_from_concepts()` in entrypoints.py
 - 🟩 Path heuristics deprecated with warnings
-- 🟩 CLI `main()` detection retained as non-deprecated fallback
 - 🟩 ASP.NET Core, Rust web (Actix, Axum, Rocket, Diesel, SeaORM), Hapi, Koa patterns
 
 **v1.0.x (complete):**
@@ -1696,6 +1695,14 @@ See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-mig
 - 🟩 Go analyzer: Call-based route detection (Gin, Echo, Fiber) now uses UsageContext
 - 🟩 Ruby analyzer: Rails route DSL detection now uses UsageContext
 - 🟩 Rust analyzer: Axum call-based route detection now uses UsageContext
+- 🟩 **Legacy removal complete:** All 26 `_detect_*` functions removed from entrypoints.py (~1,700 lines).
+  Entrypoint detection is now 100% YAML-driven via `_detect_from_concepts()` which reads `meta.concepts`
+  enriched by the FRAMEWORK_PATTERNS phase. Legacy functions removed include: _detect_cli_main,
+  _detect_electron_entrypoints, _detect_django, _detect_flask, _detect_fastapi, _detect_express,
+  _detect_nestjs, _detect_spring, _detect_rails, _detect_phoenix, _detect_go_handlers, _detect_laravel,
+  _detect_rust_handlers, _detect_aspnet, _detect_sinatra, _detect_ktor, _detect_vapor, _detect_plug,
+  _detect_hapi, _detect_fastify, _detect_koa, _detect_grape, _detect_tornado, _detect_aiohttp,
+  _detect_slim, _detect_micronaut, _detect_graphql_server, and _is_test_file (moved to slice.py).
 
 **v1.1.x (in progress - UsageContext):**
 - 🟩 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
