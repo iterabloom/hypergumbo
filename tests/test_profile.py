@@ -1167,3 +1167,145 @@ def test_detect_languages_with_max_file_size(tmp_path: Path) -> None:
     langs_limited = _detect_languages(tmp_path, max_file_size=1000)
     assert langs_limited["python"].files == 2  # Still counts the file
     assert langs_limited["python"].loc == 1  # Only small file's LOC
+
+
+# Recursive manifest scanning tests
+
+
+def test_detects_python_framework_in_subdirectory(tmp_path: Path) -> None:
+    """Should detect FastAPI from pyproject.toml in a subdirectory."""
+    # Simulate monorepo structure: backend/pyproject.toml
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    (backend / "app.py").write_text("from fastapi import FastAPI\n")
+    (backend / "pyproject.toml").write_text("""[project]
+dependencies = ["fastapi"]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "fastapi" in data["profile"]["frameworks"]
+
+
+def test_detects_js_framework_in_subdirectory(tmp_path: Path) -> None:
+    """Should detect React from package.json in a subdirectory."""
+    # Simulate monorepo structure: frontend/package.json
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "app.js").write_text("import React from 'react';\n")
+    (frontend / "package.json").write_text(json.dumps({
+        "dependencies": {"react": "^18.0.0"}
+    }))
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "react" in data["profile"]["frameworks"]
+
+
+def test_detects_frameworks_from_multiple_subdirectories(tmp_path: Path) -> None:
+    """Should detect frameworks from both backend and frontend subdirectories."""
+    # Backend with FastAPI
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    (backend / "app.py").write_text("from fastapi import FastAPI\n")
+    (backend / "pyproject.toml").write_text("""[project]
+dependencies = ["fastapi"]
+""")
+
+    # Frontend with React
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "app.js").write_text("import React from 'react';\n")
+    (frontend / "package.json").write_text(json.dumps({
+        "dependencies": {"react": "^18.0.0"}
+    }))
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "fastapi" in data["profile"]["frameworks"]
+    assert "react" in data["profile"]["frameworks"]
+
+
+def test_recursive_scan_skips_node_modules(tmp_path: Path) -> None:
+    """Should not scan package.json inside node_modules."""
+    # Create main app
+    (tmp_path / "app.js").write_text("console.log('app');\n")
+
+    # Create package.json in node_modules (should be skipped)
+    node_modules = tmp_path / "node_modules" / "some-package"
+    node_modules.mkdir(parents=True)
+    (node_modules / "package.json").write_text(json.dumps({
+        "dependencies": {"react": "^18.0.0"}
+    }))
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    # React should NOT be detected since it's only in node_modules
+    assert "react" not in data["profile"]["frameworks"]
+
+
+def test_recursive_scan_skips_venv(tmp_path: Path) -> None:
+    """Should not scan pyproject.toml inside venv directories."""
+    # Create main app
+    (tmp_path / "app.py").write_text("print('app')\n")
+
+    # Create pyproject.toml in venv (should be skipped)
+    venv = tmp_path / "venv" / "lib" / "python3.10"
+    venv.mkdir(parents=True)
+    (venv / "pyproject.toml").write_text("""[project]
+dependencies = ["django"]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    # Django should NOT be detected since it's only in venv
+    assert "django" not in data["profile"]["frameworks"]
+
+
+def test_find_manifest_files_helper(tmp_path: Path) -> None:
+    """Test the _find_manifest_files helper directly."""
+    from hypergumbo.profile import _find_manifest_files
+
+    # Create files at various depths
+    (tmp_path / "pyproject.toml").write_text("root")
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "pyproject.toml").write_text("backend")
+    (tmp_path / "services" / "api").mkdir(parents=True)
+    (tmp_path / "services" / "api" / "pyproject.toml").write_text("services/api")
+
+    found = _find_manifest_files(tmp_path, "pyproject.toml")
+    paths = [str(p.relative_to(tmp_path)) for p in found]
+
+    assert "pyproject.toml" in paths
+    assert "backend/pyproject.toml" in paths
+    assert "services/api/pyproject.toml" in paths
+
+
+def test_detects_flutter_in_subdirectory(tmp_path: Path) -> None:
+    """Should detect Flutter from pubspec.yaml in a subdirectory."""
+    # Simulate monorepo with Flutter app in subdirectory
+    mobile = tmp_path / "mobile"
+    mobile.mkdir()
+    (mobile / "lib").mkdir()
+    (mobile / "lib" / "main.dart").write_text("void main() {}\n")
+    (mobile / "pubspec.yaml").write_text("""name: myapp
+dependencies:
+  flutter:
+    sdk: flutter
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "flutter" in data["profile"]["frameworks"]

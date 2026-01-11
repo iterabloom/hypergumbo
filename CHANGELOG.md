@@ -22,6 +22,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   matching when pyproject.toml/package.json is in a subdirectory rather than the repo root.
 
 ### Added
+- **Recursive manifest scanning (closes detection gap):** Framework detection now scans up to 3
+  directory levels deep to find dependency manifests in subdirectories. This enables AUTO mode
+  to detect frameworks in monorepos and non-standard layouts (e.g., `backend/pyproject.toml`,
+  `frontend/package.json`). Previously AUTO mode only scanned root-level manifests, causing
+  a 100% detection gap in the 12.11 bakeoff experiment. Common non-project directories
+  (node_modules, vendor, venv, .venv) are automatically skipped.
 - **Foundry/Hardhat framework detection:** Profile module now detects Solidity smart contract
   toolchains from config files: Foundry (`foundry.toml`) and Hardhat (`hardhat.config.js`,
   `hardhat.config.ts`). Previously only Hardhat was detected via package.json dependencies.
