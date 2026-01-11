@@ -1,0 +1,104 @@
+# GraphQL server patterns (ADR-0003)
+#
+# Patterns for GraphQL servers: Apollo Server, GraphQL Yoga, Mercurius,
+# Type-GraphQL, NestJS GraphQL, etc. for JavaScript/TypeScript.
+#
+# For Python GraphQL (Strawberry, Ariadne, Graphene), see graphql-python.yaml
+# For Ruby GraphQL (graphql-ruby), see graphql-ruby.yaml
+
+id: graphql
+language: javascript
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Apollo Server / Type-GraphQL Query resolver
+  - concept: resolver
+    decorator: "^Query$"
+
+  # Apollo Server / Type-GraphQL Mutation resolver
+  - concept: resolver
+    decorator: "^Mutation$"
+
+  # Apollo Server / Type-GraphQL Subscription resolver
+  - concept: resolver
+    decorator: "^Subscription$"
+
+  # GraphQL field resolver
+  - concept: resolver
+    decorator: "^(FieldResolver|ResolveField)$"
+
+  # NestJS GraphQL Resolver decorator
+  - concept: resolver
+    decorator: "^Resolver$"
+
+  # Type-GraphQL / NestJS ObjectType
+  - concept: schema
+    decorator: "^ObjectType$"
+
+  # Type-GraphQL / NestJS InputType
+  - concept: schema
+    decorator: "^InputType$"
+
+  # Type-GraphQL InterfaceType
+  - concept: schema
+    decorator: "^InterfaceType$"
+
+  # Type-GraphQL Union types
+  - concept: schema
+    decorator: "^(Union|createUnionType)$"
+
+  # Type-GraphQL enum registration
+  - concept: schema
+    decorator: "^(registerEnumType|EnumType)$"
+
+  # GraphQL custom scalars
+  - concept: schema
+    decorator: "^(Scalar|GraphQLScalarType)$"
+
+  # GraphQL directive
+  - concept: middleware
+    decorator: "^(Directive|SchemaDirective|MapperDirective)$"
+
+  # Apollo Server plugin
+  - concept: middleware
+    decorator: "^(ApolloServerPlugin|plugin)$"
+
+  # Type-GraphQL / NestJS Context injection
+  - concept: middleware
+    decorator: "^(Context|Ctx)$"
+
+  # Type-GraphQL / NestJS authorization
+  - concept: auth
+    decorator: "^(Authorized|UseGuards)$"
+
+  # Mercurius (Fastify GraphQL) route
+  - concept: route
+    decorator: "^(fastify|app)\\.graphql$"
+
+  # Apollo subscriptions
+  - concept: websocket_handler
+    decorator: "^Subscription$"
+
+  # Apollo Federation directives
+  - concept: federation
+    decorator: "^(Key|External|Requires|Provides|Extends)$"
+
+  # DataLoader for batching
+  - concept: loader
+    base_class: "^DataLoader$"
+
+  # GraphQL Args decorator
+  - concept: schema
+    decorator: "^(Args|Arg)$"
+
+  # GraphQL Field decorator
+  - concept: schema
+    decorator: "^Field$"
+
+  # GraphQL Info decorator
+  - concept: schema
+    decorator: "^Info$"
+
+linkers:
+  - graphql_resolver
+  - websocket

@@ -1,0 +1,108 @@
+# Micronaut framework patterns (ADR-0003)
+#
+# Micronaut is a Java/Kotlin microservices framework. Controllers use
+# @Controller with @Get/@Post/@Put/@Delete method annotations.
+
+id: micronaut
+language: java
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Micronaut Controller annotation
+  - concept: controller
+    annotation: "^Controller$"
+
+  # Micronaut HTTP method annotations
+  - concept: route
+    annotation: "^(Get|Post|Put|Delete|Patch|Head|Options)$"
+    extract_path: "annotation_value"
+    extract_method: "annotation_name"
+
+  # Micronaut @Produces
+  - concept: route
+    annotation: "^Produces$"
+
+  # Micronaut @Consumes
+  - concept: route
+    annotation: "^Consumes$"
+
+  # Micronaut path variable
+  - concept: route
+    annotation: "^PathVariable$"
+
+  # Micronaut query parameter
+  - concept: route
+    annotation: "^QueryValue$"
+
+  # Micronaut request body
+  - concept: route
+    annotation: "^Body$"
+
+  # Micronaut HTTP client
+  - concept: http_client
+    annotation: "^Client$"
+
+  # Micronaut Singleton (dependency injection)
+  - concept: service
+    annotation: "^Singleton$"
+
+  # Micronaut Prototype
+  - concept: service
+    annotation: "^Prototype$"
+
+  # Micronaut Bean
+  - concept: service
+    annotation: "^Bean$"
+
+  # Micronaut Factory
+  - concept: factory
+    annotation: "^Factory$"
+
+  # Micronaut Replaces
+  - concept: service
+    annotation: "^Replaces$"
+
+  # Micronaut event listeners
+  - concept: event_handler
+    annotation: "^EventListener$"
+
+  # Micronaut async events
+  - concept: event_handler
+    annotation: "^Async$"
+
+  # Micronaut scheduled tasks
+  - concept: scheduled
+    annotation: "^Scheduled$"
+
+  # Micronaut ServerFilter (middleware)
+  - concept: middleware
+    annotation: "^Filter$"
+
+  # Micronaut ExceptionHandler
+  - concept: error_handler
+    annotation: "^(Error|ExceptionHandler)$"
+
+  # Micronaut WebSocket
+  - concept: websocket_handler
+    annotation: "^(ServerWebSocket|ClientWebSocket)$"
+
+  # Micronaut messaging (Kafka, RabbitMQ)
+  - concept: message_handler
+    annotation: "^(KafkaListener|RabbitListener)$"
+
+  # Micronaut gRPC
+  - concept: grpc_service
+    annotation: "^GrpcService$"
+
+  # Micronaut Data Repository
+  - concept: repository
+    annotation: "^Repository$"
+
+  # Micronaut Configuration
+  - concept: config
+    annotation: "^(ConfigurationProperties|EachProperty)$"
+
+linkers:
+  - http
+  - grpc
+  - message_queue

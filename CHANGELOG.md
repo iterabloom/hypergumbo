@@ -60,6 +60,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Next.js file-based routing (exports in pages/ and app/ directories). Infers routes from
   file paths (e.g., `pages/posts/[id].js` → `/posts/:id`). Uses YAML patterns in
   `nextjs.yaml`.
+- **New framework YAML patterns (Phase 1 legacy migration):** Added 12 new framework pattern
+  files to replace legacy `_detect_*` functions in entrypoints.py:
+  - `ktor.yaml`: Kotlin Ktor framework (routing DSL, WebSocket, middleware)
+  - `vapor.yaml`: Swift Vapor framework (RouteCollection, Middleware, Fluent ORM)
+  - `plug.yaml`: Elixir Plug library (Plug.Router, Plug.Builder, Ecto)
+  - `fastify.yaml`: Node.js Fastify (routes, hooks, plugins, WebSocket)
+  - `grape.yaml`: Ruby Grape API framework (route DSL, entities, helpers)
+  - `tornado.yaml`: Python Tornado (RequestHandler, WebSocketHandler, async)
+  - `aiohttp.yaml`: Python aiohttp (RouteTableDef, Views, middleware)
+  - `slim.yaml`: PHP Slim framework (PSR-7, middleware, actions)
+  - `micronaut.yaml`: Java/Kotlin Micronaut (@Controller, @Get, messaging, gRPC)
+  - `graphql.yaml`: GraphQL servers across JS/Python/Ruby (resolvers, schemas, types)
+  - `electron.yaml`: Electron apps (IPC handlers, contextBridge, BrowserWindow)
+  - `cli.yaml`: CLI frameworks across Python/JS/Rust/Go/Ruby (Click, Commander, clap, Cobra)
+- **Ruby and Elixir framework detection:** Added `RUBY_FRAMEWORKS` and `ELIXIR_FRAMEWORKS`
+  mappings to profile.py for detecting Rails, Sinatra, Grape, Phoenix, Plug, and Ecto.
+- **GraphQL framework detection:** Added GraphQL library detection for Python (strawberry,
+  ariadne, graphene) and JavaScript (graphql, apollo-server, graphql-yoga, mercurius).
 
 ### Fixed
 - **Express route entrypoint detection:** Fixed case-sensitive HTTP method comparison that

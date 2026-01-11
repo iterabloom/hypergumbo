@@ -1,0 +1,92 @@
+# Electron framework patterns (ADR-0003)
+#
+# Electron apps have main process, renderer process, and preload scripts.
+# IPC communication uses ipcMain/ipcRenderer and contextBridge.
+
+id: electron
+language: javascript
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Electron main process IPC handlers
+  - concept: ipc_handler
+    decorator: "^ipcMain\\.(on|handle|handleOnce)$"
+
+  # Electron renderer process IPC
+  - concept: ipc_sender
+    decorator: "^ipcRenderer\\.(send|invoke|sendSync)$"
+
+  # Electron contextBridge exposure
+  - concept: api_bridge
+    decorator: "^contextBridge\\.exposeInMainWorld$"
+
+  # Electron BrowserWindow creation
+  - concept: window
+    decorator: "^new BrowserWindow$"
+
+  # Electron app lifecycle events
+  - concept: lifecycle
+    decorator: "^app\\.(on|once|whenReady)$"
+
+  # Electron app ready
+  - concept: entrypoint
+    decorator: "^app\\.whenReady$"
+
+  # Electron Menu
+  - concept: menu
+    decorator: "^Menu\\.(buildFromTemplate|setApplicationMenu)$"
+
+  # Electron Tray
+  - concept: tray
+    decorator: "^new Tray$"
+
+  # Electron Dialog
+  - concept: dialog
+    decorator: "^dialog\\.(showOpenDialog|showSaveDialog|showMessageBox)$"
+
+  # Electron Notification
+  - concept: notification
+    decorator: "^new Notification$"
+
+  # Electron shell
+  - concept: shell
+    decorator: "^shell\\.(openExternal|openPath|showItemInFolder)$"
+
+  # Electron auto-updater
+  - concept: updater
+    decorator: "^autoUpdater\\.(checkForUpdates|on)$"
+
+  # Electron session/cookies
+  - concept: session
+    decorator: "^session\\.(defaultSession|fromPartition)$"
+
+  # Electron webContents events
+  - concept: ipc_handler
+    decorator: "^webContents\\.(on|send)$"
+
+  # Electron protocol handlers
+  - concept: protocol
+    decorator: "^protocol\\.(registerFileProtocol|registerHttpProtocol|registerSchemeAsPrivileged)$"
+
+  # Electron remote (deprecated but still used)
+  - concept: remote
+    decorator: "^remote\\.(require|getCurrentWindow|getGlobal)$"
+
+  # Electron crashReporter
+  - concept: telemetry
+    decorator: "^crashReporter\\.start$"
+
+  # Electron powerMonitor
+  - concept: system
+    decorator: "^powerMonitor\\.(on|getSystemIdleState)$"
+
+  # Electron globalShortcut
+  - concept: shortcut
+    decorator: "^globalShortcut\\.(register|unregister)$"
+
+  # Electron nativeTheme
+  - concept: theme
+    decorator: "^nativeTheme\\.(on|shouldUseDarkColors)$"
+
+linkers:
+  - ipc

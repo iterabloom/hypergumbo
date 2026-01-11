@@ -172,6 +172,11 @@ PYTHON_FRAMEWORKS = {
     # LLM APIs
     "openai": ["openai"],
     "anthropic": ["anthropic"],
+    # GraphQL
+    "graphql": ["graphql-core"],
+    "graphql-python": ["strawberry-graphql", "ariadne", "graphene"],
+    # CLI
+    "cli": ["click", "typer", "fire", "argparse"],
 }
 
 JS_FRAMEWORKS = {
@@ -204,6 +209,9 @@ JS_FRAMEWORKS = {
     "sails": ["sails"],
     "hono": ["hono"],
     "elysia": ["elysia"],
+    # GraphQL
+    "graphql": ["graphql", "@apollo/server", "graphql-yoga", "mercurius"],
+    "apollo": ["@apollo/client", "@apollo/server", "apollo-server"],
     # Mobile
     "react-native": ["react-native"],
     "expo": ["expo"],
@@ -219,6 +227,8 @@ JS_FRAMEWORKS = {
     "ethers": ["ethers"],
     "wagmi": ["wagmi"],
     "viem": ["viem"],
+    # CLI
+    "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal"],
 }
 
 # Rust crate detection patterns (from Cargo.toml)
@@ -239,6 +249,7 @@ RUST_FRAMEWORKS = {
     "serde": ["serde"],
     # CLI
     "clap": ["clap"],
+    "cli-rust": ["clap", "structopt", "argh"],
     # Desktop
     "tauri": ["tauri"],
     # Blockchain - Ethereum/EVM
@@ -293,6 +304,8 @@ GO_FRAMEWORKS = {
     "revel": ["github.com/revel/revel"],
     "beego": ["github.com/beego/beego"],
     "iris": ["github.com/kataras/iris"],
+    # CLI
+    "cli-go": ["github.com/spf13/cobra", "github.com/urfave/cli", "github.com/alecthomas/kong"],
 }
 
 # PHP composer.json detection patterns
@@ -340,6 +353,37 @@ SCALA_FRAMEWORKS = {
     "finatra": ["finatra", "com.twitter"],
 }
 
+# Ruby gem detection patterns (from Gemfile)
+RUBY_FRAMEWORKS = {
+    # Web frameworks
+    "rails": ["rails"],
+    "sinatra": ["sinatra"],
+    "grape": ["grape"],
+    "hanami": ["hanami"],
+    "roda": ["roda"],
+    "padrino": ["padrino"],
+    # GraphQL
+    "graphql-ruby": ["graphql", "graphql-ruby"],
+    # CLI
+    "cli-ruby": ["thor", "gli", "dry-cli"],
+    # Testing
+    "rspec": ["rspec"],
+    "minitest": ["minitest"],
+}
+
+# Elixir mix.exs detection patterns
+ELIXIR_FRAMEWORKS = {
+    # Web frameworks
+    "phoenix": ["phoenix"],
+    "plug": ["plug"],
+    # Database
+    "ecto": ["ecto"],
+    # GraphQL
+    "absinthe": ["absinthe"],
+    # Testing
+    "ex_unit": ["ex_unit"],
+}
+
 # Solidity framework detection (config file based, not dependency based)
 # Maps framework name -> config file names to check for
 SOLIDITY_FRAMEWORKS = {
@@ -360,6 +404,8 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "swift": SWIFT_FRAMEWORKS,
     "scala": SCALA_FRAMEWORKS,
     "solidity": SOLIDITY_FRAMEWORKS,
+    "ruby": RUBY_FRAMEWORKS,
+    "elixir": ELIXIR_FRAMEWORKS,
 }
 
 

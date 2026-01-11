@@ -371,16 +371,19 @@ class AnalysisPass(Protocol):
 * 🟩 `event-sourcing-linker-v1` — Event sourcing patterns
 * 🟩 `dependency-linker-v1` — Cross-file dependency resolution
 
-**Current implementation includes 18 framework pattern files:**
-* 🟩 Django, Flask, FastAPI (Python web)
-* 🟩 Express, NestJS, Hapi, Next.js (Node.js web)
-* 🟩 Rails, Sinatra (Ruby web)
-* 🟩 Phoenix (Elixir web)
-* 🟩 Spring Boot (Java web)
+**Current implementation includes 37 framework pattern files:**
+* 🟩 Django, Flask, FastAPI, aiohttp, Tornado (Python web)
+* 🟩 Express, NestJS, Hapi, Next.js, Fastify, Koa (Node.js web)
+* 🟩 Rails, Sinatra, Grape (Ruby web)
+* 🟩 Phoenix, Plug (Elixir web)
+* 🟩 Spring Boot, JAX-RS, Micronaut (Java web)
 * 🟩 ASP.NET Core (C# web)
 * 🟩 Go-web (Gin, Echo, Chi, Fiber)
 * 🟩 Rust-web (Actix, Axum, Rocket)
-* 🟩 Celery, Laravel, Koa
+* 🟩 Ktor (Kotlin), Vapor (Swift), Slim (PHP)
+* 🟩 CLI frameworks: Click/Typer/Fire (Python), Commander/yargs (JS), clap (Rust), Cobra (Go), Thor/GLI (Ruby)
+* 🟩 GraphQL: graphql-js, Strawberry/Ariadne/Graphene (Python), graphql-ruby
+* 🟩 Electron (desktop), Celery (tasks), Android, Laravel
 
 **Design principle:** Language expansion via tree-sitter grammars. Most grammars available on PyPI; some built from source in CI.
 
@@ -1871,7 +1874,7 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 ## 10) Milestones (historical planning reference)
 
-> **Note**: This section documents the original development plan. The implementation is now complete with 67 language analyzers, 14 cross-language linkers, and 18 framework pattern files. See sections 4-5 for current implementation status.
+> **Note**: This section documents the original development plan. The implementation is now complete with 67 language analyzers, 14 cross-language linkers, and 37 framework pattern files. See sections 4-5 for current implementation status.
 
 **Original timeline: 9 weeks** (2-week de-risking + 5 weeks core + 2 weeks buffer)
 

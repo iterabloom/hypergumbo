@@ -1,0 +1,77 @@
+# Slim framework patterns (ADR-0003)
+#
+# Slim is a PHP micro framework. Routes are defined using
+# $app->get(), $app->post(), etc. or with controllers.
+
+id: slim
+language: php
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Slim route methods - $app->get('/path', handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|\\$app)->\\.(get|post|put|delete|patch|options|any)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Slim App route methods
+  - concept: route
+    decorator: "^(app|\\$app)->(get|post|put|delete|patch|options|any|map)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Slim route groups
+  - concept: route
+    decorator: "^(app|\\$app)->group$"
+
+  # Slim middleware
+  - concept: middleware
+    decorator: "^(app|\\$app)->add$"
+
+  # Slim addMiddleware
+  - concept: middleware
+    decorator: "^(app|\\$app)->addMiddleware$"
+
+  # Slim RequestHandler interface
+  - concept: controller
+    base_class: "^RequestHandlerInterface$"
+
+  # Slim Action base class (common pattern)
+  - concept: controller
+    base_class: "^Action$"
+
+  # Slim Middleware interface
+  - concept: middleware
+    base_class: "^MiddlewareInterface$"
+
+  # Slim ErrorMiddleware
+  - concept: error_handler
+    base_class: "^ErrorMiddleware$"
+
+  # Slim error handling
+  - concept: error_handler
+    decorator: "^(app|\\$app)->addErrorMiddleware$"
+
+  # Slim routing middleware
+  - concept: middleware
+    decorator: "^(app|\\$app)->addRoutingMiddleware$"
+
+  # Slim body parsing
+  - concept: middleware
+    decorator: "^(app|\\$app)->addBodyParsingMiddleware$"
+
+  # PSR-7 Request (used by Slim)
+  - concept: request
+    base_class: "^(ServerRequestInterface|RequestInterface)$"
+
+  # PSR-7 Response
+  - concept: response
+    base_class: "^ResponseInterface$"
+
+linkers:
+  - http

@@ -1,0 +1,72 @@
+# aiohttp framework patterns (ADR-0003)
+#
+# aiohttp is a Python async HTTP client/server framework.
+# Server routes use app.router.add_get() or @routes.get() decorators.
+
+id: aiohttp
+language: python
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # aiohttp router - app.router.add_get("/path", handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app\\.router|router)\\.(add_get|add_post|add_put|add_delete|add_patch|add_route)$"
+      position: "^args\\[1\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # aiohttp RouteTableDef decorators - @routes.get("/path")
+  - concept: route
+    decorator: "^routes\\.(get|post|put|delete|patch|head|options|view)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # aiohttp router.add_* methods
+  - concept: route
+    decorator: "^(app\\.router|router)\\.(add_get|add_post|add_put|add_delete|add_patch|add_route|add_view|add_static)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # aiohttp View class-based views
+  - concept: controller
+    base_class: "^View$"
+
+  # aiohttp web.Application
+  - concept: application
+    base_class: "^Application$"
+
+  # aiohttp middleware
+  - concept: middleware
+    decorator: "^middleware$"
+
+  # aiohttp WebSocket handler
+  - concept: websocket_handler
+    base_class: "^WebSocketResponse$"
+
+  # aiohttp cleanup context
+  - concept: middleware
+    decorator: "^cleanup_ctx$"
+
+  # aiohttp on_startup/on_shutdown/on_cleanup
+  - concept: lifecycle
+    decorator: "^(on_startup|on_shutdown|on_cleanup)$"
+
+  # aiohttp Client Session (HTTP client)
+  - concept: http_client
+    base_class: "^ClientSession$"
+
+  # aiohttp testing
+  - concept: test
+    base_class: "^AioHTTPTestCase$"
+
+  # aiohttp_session
+  - concept: middleware
+    decorator: "^setup$"
+
+linkers:
+  - http
+  - websocket

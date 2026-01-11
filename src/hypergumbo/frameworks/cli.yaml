@@ -1,0 +1,92 @@
+# CLI entrypoint patterns - Python (ADR-0003)
+#
+# Patterns for detecting command-line interface entrypoints in Python:
+# Click, Typer, Fire, argparse, and Django management commands.
+#
+# For other languages, see:
+# - cli-js.yaml (Commander, yargs, oclif)
+# - cli-rust.yaml (clap, structopt)
+# - cli-go.yaml (Cobra, urfave/cli)
+# - cli-ruby.yaml (Thor, GLI)
+
+id: cli
+language: python
+
+patterns:
+  # ==================== CLICK PATTERNS ====================
+  # Click command decorator
+  - concept: command
+    decorator: "^click\\.command$"
+
+  # Click group (subcommands)
+  - concept: command
+    decorator: "^click\\.group$"
+
+  # Click pass_context
+  - concept: command
+    decorator: "^click\\.pass_context$"
+
+  # Click option
+  - concept: option
+    decorator: "^click\\.option$"
+
+  # Click argument
+  - concept: argument
+    decorator: "^click\\.argument$"
+
+  # ==================== TYPER PATTERNS ====================
+  # Typer app.command
+  - concept: command
+    decorator: "^app\\.command$"
+
+  # Typer callback
+  - concept: command
+    decorator: "^app\\.callback$"
+
+  # Typer main app
+  - concept: command
+    decorator: "^typer\\.Typer$"
+
+  # ==================== FIRE PATTERNS ====================
+  # Google Fire
+  - concept: entrypoint
+    decorator: "^fire\\.Fire$"
+
+  # ==================== ARGPARSE PATTERNS ====================
+  # argparse ArgumentParser
+  - concept: entrypoint
+    decorator: "^argparse\\.ArgumentParser$"
+
+  # ==================== DJANGO CLI PATTERNS ====================
+  # Django management command
+  - concept: command
+    base_class: "^BaseCommand$"
+
+  # Django CommandError
+  - concept: error
+    base_class: "^CommandError$"
+
+  # ==================== FLASK CLI PATTERNS ====================
+  # Flask CLI command
+  - concept: command
+    decorator: "^app\\.cli\\.command$"
+
+  # Flask CLI group
+  - concept: command
+    decorator: "^app\\.cli\\.group$"
+
+  # ==================== CELERY CLI PATTERNS ====================
+  # Celery command
+  - concept: command
+    decorator: "^celery\\.command$"
+
+  # ==================== RICH CLI PATTERNS ====================
+  # Rich Console (common in CLIs)
+  - concept: output
+    decorator: "^Console$"
+
+  # Rich Progress
+  - concept: output
+    decorator: "^Progress$"
+
+linkers: []

@@ -1,0 +1,70 @@
+# CLI entrypoint patterns - Go (ADR-0003)
+#
+# Patterns for detecting command-line interface entrypoints:
+# Cobra, urfave/cli, kong.
+
+id: cli-go
+language: go
+
+patterns:
+  # ==================== COBRA PATTERNS ====================
+  # Cobra Command struct
+  - concept: command
+    decorator: "^cobra\\.Command$"
+
+  # Cobra AddCommand
+  - concept: command
+    decorator: "^AddCommand$"
+
+  # Cobra Run function
+  - concept: command
+    decorator: "^Run$"
+
+  # Cobra RunE function
+  - concept: command
+    decorator: "^RunE$"
+
+  # Cobra PersistentPreRun
+  - concept: middleware
+    decorator: "^PersistentPreRun$"
+
+  # Cobra PersistentPostRun
+  - concept: middleware
+    decorator: "^PersistentPostRun$"
+
+  # ==================== URFAVE/CLI PATTERNS ====================
+  # urfave/cli App
+  - concept: command
+    decorator: "^cli\\.App$"
+
+  # urfave/cli Command
+  - concept: command
+    decorator: "^cli\\.Command$"
+
+  # urfave/cli Flag
+  - concept: option
+    decorator: "^cli\\.(StringFlag|IntFlag|BoolFlag|Float64Flag)$"
+
+  # urfave/cli Action
+  - concept: command
+    decorator: "^Action$"
+
+  # ==================== KONG PATTERNS ====================
+  # kong Parse
+  - concept: entrypoint
+    decorator: "^kong\\.Parse$"
+
+  # kong Context
+  - concept: command
+    decorator: "^kong\\.Context$"
+
+  # ==================== FLAG PATTERNS ====================
+  # flag package (standard library)
+  - concept: option
+    decorator: "^flag\\.(String|Int|Bool|Float64|Parse)$"
+
+  # pflag package
+  - concept: option
+    decorator: "^pflag\\.(String|Int|Bool|Float64)$"
+
+linkers: []
