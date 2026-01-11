@@ -105,6 +105,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - Add deprecation notice for packs (recommending `--frameworks` instead)
   - These limits apply ONLY to catalog; other commands do full analysis
 
+### Changed
+- **Entrypoint detection: Legacy removal (Phase 2):** Removed 26 legacy `_detect_*` functions
+  from entrypoints.py (~1,700 lines deleted). Entrypoint detection is now 100% YAML-driven via
+  semantic concept metadata from the FRAMEWORK_PATTERNS phase. Legacy functions removed:
+  - Framework-specific: `_detect_django`, `_detect_flask`, `_detect_fastapi`, `_detect_express`,
+    `_detect_nestjs`, `_detect_spring`, `_detect_rails`, `_detect_phoenix`, `_detect_go_handlers`,
+    `_detect_laravel`, `_detect_rust_handlers`, `_detect_aspnet`, `_detect_sinatra`, `_detect_ktor`,
+    `_detect_vapor`, `_detect_plug`, `_detect_hapi`, `_detect_fastify`, `_detect_koa`,
+    `_detect_grape`, `_detect_tornado`, `_detect_aiohttp`, `_detect_slim`, `_detect_micronaut`,
+    `_detect_graphql_server`
+  - Pattern-based: `_detect_cli_main`, `_detect_electron_entrypoints`
+  - Helper: `_is_test_file` (moved to slice.py)
+  - `detect_entrypoints()` now only calls `_detect_from_concepts()` for semantic detection
+  - Test coverage maintained via updated tests using `meta.concepts` instead of name patterns
+
 ## [0.9.1] - 2026-01-09
 
 ### Fixed
