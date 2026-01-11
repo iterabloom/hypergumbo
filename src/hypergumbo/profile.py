@@ -881,6 +881,44 @@ def _detect_dart_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_ruby_frameworks(repo_root: Path) -> list[str]:
+    """Detect Ruby frameworks from Gemfile.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+
+    # Concatenate all Gemfile files
+    content = _read_all_manifest_files(repo_root, "Gemfile")
+
+    for framework, patterns in RUBY_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
+    """Detect Elixir frameworks from mix.exs.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+
+    # Concatenate all mix.exs files
+    content = _read_all_manifest_files(repo_root, "mix.exs")
+
+    for framework, patterns in ELIXIR_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -924,6 +962,8 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_scala_frameworks(repo_root))
     frameworks.extend(_detect_dart_frameworks(repo_root))
     frameworks.extend(_detect_solidity_frameworks(repo_root))
+    frameworks.extend(_detect_ruby_frameworks(repo_root))
+    frameworks.extend(_detect_elixir_frameworks(repo_root))
     return frameworks
 
 

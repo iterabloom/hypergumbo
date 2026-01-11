@@ -28,6 +28,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   `frontend/package.json`). Previously AUTO mode only scanned root-level manifests, causing
   a 100% detection gap in the 12.11 bakeoff experiment. Common non-project directories
   (node_modules, vendor, venv, .venv) are automatically skipped.
+- **Ruby and Elixir framework detection:** AUTO mode now detects Ruby frameworks from Gemfile
+  (Rails, Sinatra, Grape, Hanami, Roda, Padrino, graphql-ruby, thor/gli/dry-cli, rspec, minitest)
+  and Elixir frameworks from mix.exs (Phoenix, Plug, Ecto, Absinthe, ex_unit). Previously these
+  framework dictionaries existed but detection functions were missing.
 - **Foundry/Hardhat framework detection:** Profile module now detects Solidity smart contract
   toolchains from config files: Foundry (`foundry.toml`) and Hardhat (`hardhat.config.js`,
   `hardhat.config.ts`). Previously only Hardhat was detected via package.json dependencies.

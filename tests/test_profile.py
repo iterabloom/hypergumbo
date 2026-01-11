@@ -817,6 +817,90 @@ libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.0"
     assert "http4s" in data["profile"]["frameworks"]
 
 
+# Ruby framework detection tests
+
+
+def test_detects_ruby_rails_framework(tmp_path: Path) -> None:
+    """Should detect Rails from Gemfile."""
+    (tmp_path / "app.rb").write_text("require 'rails'\n")
+    (tmp_path / "Gemfile").write_text("""source 'https://rubygems.org'
+
+gem 'rails', '~> 7.0'
+gem 'pg'
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "rails" in data["profile"]["frameworks"]
+
+
+def test_detects_ruby_sinatra_framework(tmp_path: Path) -> None:
+    """Should detect Sinatra from Gemfile."""
+    (tmp_path / "app.rb").write_text("require 'sinatra'\n")
+    (tmp_path / "Gemfile").write_text("""source 'https://rubygems.org'
+
+gem 'sinatra'
+gem 'puma'
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "sinatra" in data["profile"]["frameworks"]
+
+
+# Elixir framework detection tests
+
+
+def test_detects_elixir_phoenix_framework(tmp_path: Path) -> None:
+    """Should detect Phoenix from mix.exs."""
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "app.ex").write_text("defmodule App do\nend\n")
+    (tmp_path / "mix.exs").write_text("""defmodule App.MixProject do
+  use Mix.Project
+
+  defp deps do
+    [
+      {:phoenix, "~> 1.7"},
+      {:phoenix_live_view, "~> 0.19"}
+    ]
+  end
+end
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "phoenix" in data["profile"]["frameworks"]
+
+
+def test_detects_elixir_ecto_framework(tmp_path: Path) -> None:
+    """Should detect Ecto from mix.exs."""
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "app.ex").write_text("defmodule App do\nend\n")
+    (tmp_path / "mix.exs").write_text("""defmodule App.MixProject do
+  use Mix.Project
+
+  defp deps do
+    [
+      {:ecto, "~> 3.10"},
+      {:ecto_sql, "~> 3.10"}
+    ]
+  end
+end
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+    assert "ecto" in data["profile"]["frameworks"]
+
+
 # Dart/Flutter framework detection tests
 
 
