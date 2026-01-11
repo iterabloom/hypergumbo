@@ -9,6 +9,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+- **`--frameworks all` now bypasses dependency scanning:** Previously, `--frameworks all` still
+  scanned dependency files (requirements.txt, package.json, etc.) to detect frameworks, which
+  meant frameworks not listed in dependencies wouldn't get pattern matching even when their
+  decorators were present in code. Now `--frameworks all` uses ALL known framework patterns for
+  detected languages, enabling entrypoint detection even when frameworks aren't in manifest files.
+  This bug was caught by the 12.10 bakeoff experiment after removing legacy `_detect_*` functions.
+
 ### Added
 - **Foundry/Hardhat framework detection:** Profile module now detects Solidity smart contract
   toolchains from config files: Foundry (`foundry.toml`) and Hardhat (`hardhat.config.js`,

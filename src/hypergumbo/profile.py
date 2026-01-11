@@ -895,8 +895,13 @@ def detect_profile(
     if framework_spec.mode == FrameworkMode.NONE:
         # Skip framework detection
         detected_frameworks: list[str] = []
+    elif framework_spec.mode == FrameworkMode.ALL:
+        # Use ALL known frameworks for detected languages (don't scan dependency files)
+        # This enables pattern matching even when frameworks aren't in dependency manifests
+        detected_frameworks = list(framework_spec.frameworks)
     else:
-        # Detect frameworks (filtered by allowed set if specified)
+        # AUTO or EXPLICIT: Detect frameworks from dependency files
+        # For EXPLICIT mode, filter by requested frameworks
         allowed = framework_spec.frameworks if framework_spec.frameworks else None
         detected_frameworks = _detect_frameworks(repo_root, allowed_frameworks=allowed)
 
