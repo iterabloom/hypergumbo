@@ -75,6 +75,7 @@ def new_behavior_map() -> Dict[str, Any]:
         "profile": {},
         "nodes": [],
         "edges": [],
+        "usage_contexts": [],
         "features": [],
         "metrics": {},
         "limits": {},

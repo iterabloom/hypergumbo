@@ -22,7 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
 
-from ..ir import Symbol, Edge
+from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
 
 # Analyzer imports removed - using lazy loading via get_func() for test patchability
@@ -147,6 +147,7 @@ def collect_analyzer_result(
     analysis_runs: list[dict],
     all_symbols: list[Symbol],
     all_edges: list[Edge],
+    all_usage_contexts: list[UsageContext],
     limits: Limits,
 ) -> None:
     """Collect results from an analyzer into the aggregated lists.
@@ -159,12 +160,14 @@ def collect_analyzer_result(
         analysis_runs: List to append run metadata to
         all_symbols: List to append symbols to
         all_edges: List to append edges to
+        all_usage_contexts: List to append usage contexts to
         limits: Limits object to track skipped passes
     """
     # Handle results without run (shouldn't happen but be defensive)
     if result.run is None:  # pragma: no cover
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
+        all_usage_contexts.extend(getattr(result, "usage_contexts", []))
         return
 
     # Check if analyzer was skipped (optional deps missing)
@@ -181,6 +184,7 @@ def collect_analyzer_result(
         analysis_runs.append(result.run.to_dict())
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
+        all_usage_contexts.extend(getattr(result, "usage_contexts", []))
 
 
 def run_all_analyzers(
@@ -190,6 +194,7 @@ def run_all_analyzers(
     list[dict],  # analysis_runs
     list[Symbol],  # all_symbols
     list[Edge],  # all_edges
+    list[UsageContext],  # all_usage_contexts
     Limits,  # limits
     dict[str, list[Symbol]],  # captured_symbols (for linkers)
 ]:
@@ -203,13 +208,15 @@ def run_all_analyzers(
         max_files: Optional max files per analyzer
 
     Returns:
-        Tuple of (analysis_runs, all_symbols, all_edges, limits, captured_symbols)
-        where captured_symbols is a dict mapping capture names to symbol lists
-        (e.g., {"c": [...], "java": [...]} for the JNI linker).
+        Tuple of (analysis_runs, all_symbols, all_edges, all_usage_contexts,
+        limits, captured_symbols) where captured_symbols is a dict mapping
+        capture names to symbol lists (e.g., {"c": [...], "java": [...]}
+        for the JNI linker).
     """
     analysis_runs: list[dict] = []
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
     limits = Limits()
     limits.max_files_per_analyzer = max_files
     captured_symbols: dict[str, list[Symbol]] = {}
@@ -225,10 +232,12 @@ def run_all_analyzers(
         result = func(repo_root, **kwargs)
 
         # Collect results
-        collect_analyzer_result(result, analysis_runs, all_symbols, all_edges, limits)
+        collect_analyzer_result(
+            result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+        )
 
         # Capture symbols for linkers if needed (e.g., JNI needs c_symbols and java_symbols)
         if spec.capture_symbols_as and not result.skipped:
             captured_symbols[spec.capture_symbols_as] = list(result.symbols)
 
-    return analysis_runs, all_symbols, all_edges, limits, captured_symbols
+    return analysis_runs, all_symbols, all_edges, all_usage_contexts, limits, captured_symbols

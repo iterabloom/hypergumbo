@@ -349,7 +349,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
             behavior_map["profile"] = profile.to_dict()
 
             # Use consolidated analyzer registry instead of Python/HTML only
-            analysis_runs, all_symbols, all_edges_obj, limits, _ = run_all_analyzers(
+            analysis_runs, all_symbols, all_edges_obj, _, limits, _ = run_all_analyzers(
                 repo_root
             )
 
@@ -1559,15 +1559,21 @@ def run_behavior_map(
 
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
-    analysis_runs, all_symbols, all_edges, limits, captured_symbols = run_all_analyzers(
-        repo_root, max_files=max_files
-    )
+    (
+        analysis_runs,
+        all_symbols,
+        all_edges,
+        all_usage_contexts,
+        limits,
+        captured_symbols,
+    ) = run_all_analyzers(repo_root, max_files=max_files)
 
-    # Enrich symbols with framework concept metadata (ADR-0003 v0.8.x)
+    # Enrich symbols with framework concept metadata (ADR-0003)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
-    # to symbols based on their decorators, base classes, and annotations.
+    # to symbols based on their decorators, base classes, annotations, AND
+    # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
     detected_frameworks = set(profile.frameworks)
-    enrich_symbols(all_symbols, detected_frameworks)
+    enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
 
     # Run cross-language linkers
     #
@@ -1651,6 +1657,7 @@ def run_behavior_map(
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes
     behavior_map["edges"] = all_edge_dicts
+    behavior_map["usage_contexts"] = [uc.to_dict() for uc in all_usage_contexts]
 
     # Compute metrics from analyzed nodes and edges
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
