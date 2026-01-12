@@ -19,6 +19,7 @@ from hypergumbo.sketch import (
     _format_vocabulary,
     _detect_test_summary,
     _format_test_summary,
+    _estimate_test_coverage,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -612,7 +613,7 @@ class TestRunAnalysis:
         (tmp_path / "main.py").write_text("def hello():\n    print('hi')\n")
 
         profile = detect_profile(tmp_path)
-        symbols, edges = _run_analysis(tmp_path, profile)
+        symbols, edges, coverage_stats = _run_analysis(tmp_path, profile)
 
         assert len(symbols) > 0
         names = {s.name for s in symbols}
@@ -623,7 +624,7 @@ class TestRunAnalysis:
         (tmp_path / "readme.md").write_text("# Hello")
 
         profile = detect_profile(tmp_path)
-        symbols, edges = _run_analysis(tmp_path, profile)
+        symbols, edges, coverage_stats = _run_analysis(tmp_path, profile)
 
         assert symbols == []
         assert edges == []
@@ -1429,13 +1430,13 @@ class TestExcludeTests:
         profile = detect_profile(tmp_path)
 
         # Without exclude_tests, should include test symbols
-        symbols_all, _ = _run_analysis(tmp_path, profile, exclude_tests=False)
+        symbols_all, _, _ = _run_analysis(tmp_path, profile, exclude_tests=False)
         all_names = [s.name for s in symbols_all]
         assert "main" in all_names
         assert "test_main" in all_names
 
         # With exclude_tests, should exclude test symbols
-        symbols_filtered, _ = _run_analysis(tmp_path, profile, exclude_tests=True)
+        symbols_filtered, _, _ = _run_analysis(tmp_path, profile, exclude_tests=True)
         filtered_names = [s.name for s in symbols_filtered]
         assert "main" in filtered_names
         assert "test_main" not in filtered_names
@@ -1457,7 +1458,7 @@ class TestExcludeTests:
         profile = detect_profile(tmp_path)
 
         # With exclude_tests, edges from test files should be filtered
-        _, edges = _run_analysis(tmp_path, profile, exclude_tests=True)
+        _, edges, _ = _run_analysis(tmp_path, profile, exclude_tests=True)
 
         # All remaining edges should only reference non-test symbols
         for edge in edges:
@@ -2791,6 +2792,108 @@ class TestFormatTestSummary:
         assert "pytest" not in result
         # Should suggest maven or gradle test
         assert "mvn test" in result or "gradle test" in result or "jacoco" in result
+
+    def test_coverage_stats_replaces_hint(self, tmp_path: Path) -> None:
+        """When coverage_stats provided, shows estimated coverage instead of hint."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        # Provide coverage stats: 5 out of 10 functions tested (50%)
+        coverage_stats = (5, 10, 50.0)
+        result = _format_test_summary(tmp_path, coverage_stats)
+        assert result.startswith("## Tests\n")
+        assert "~50% estimated coverage" in result
+        assert "5/10 functions called by tests" in result
+        # Should NOT show the "Coverage requires execution" hint
+        assert "Coverage requires execution" not in result
+
+    def test_coverage_stats_zero_percent(self, tmp_path: Path) -> None:
+        """Zero coverage is displayed correctly."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        coverage_stats = (0, 10, 0.0)
+        result = _format_test_summary(tmp_path, coverage_stats)
+        assert "~0% estimated coverage" in result
+        assert "0/10 functions called by tests" in result
+
+
+class TestEstimateTestCoverage:
+    """Tests for _estimate_test_coverage function."""
+
+    def test_no_targets_returns_none(self) -> None:
+        """Returns None when no non-test functions exist."""
+        # Only test functions
+        test_sym = Symbol(
+            id="test1", name="test_foo", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0)
+        )
+        result = _estimate_test_coverage([test_sym], [])
+        assert result is None
+
+    def test_counts_tested_functions(self) -> None:
+        """Counts functions called by tests as covered."""
+        # Production function
+        prod_sym = Symbol(
+            id="prod1", name="main", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0)
+        )
+        prod_sym2 = Symbol(
+            id="prod2", name="helper", kind="function", language="python",
+            path="src/app.py", span=Span(10, 15, 0, 0)
+        )
+        # Test function
+        test_sym = Symbol(
+            id="test1", name="test_main", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0)
+        )
+        # Edge: test calls prod1 (main)
+        edge = Edge(id="e1", src="test1", dst="prod1", edge_type="calls", line=3)
+
+        result = _estimate_test_coverage([prod_sym, prod_sym2, test_sym], [edge])
+
+        assert result is not None
+        tested, total, pct = result
+        assert tested == 1  # only main is called
+        assert total == 2   # main and helper
+        assert pct == 50.0  # 1/2 = 50%
+
+    def test_no_test_edges_zero_coverage(self) -> None:
+        """Zero coverage when tests don't call production code."""
+        prod_sym = Symbol(
+            id="prod1", name="main", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0)
+        )
+        test_sym = Symbol(
+            id="test1", name="test_main", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0)
+        )
+        # No edges
+        result = _estimate_test_coverage([prod_sym, test_sym], [])
+
+        assert result is not None
+        tested, total, pct = result
+        assert tested == 0
+        assert total == 1
+        assert pct == 0.0
+
+    def test_excludes_classes_from_targets(self) -> None:
+        """Only functions and methods count as coverage targets."""
+        func_sym = Symbol(
+            id="f1", name="main", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0)
+        )
+        class_sym = Symbol(
+            id="c1", name="MyClass", kind="class", language="python",
+            path="src/app.py", span=Span(10, 20, 0, 0)
+        )
+        test_sym = Symbol(
+            id="test1", name="test_main", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0)
+        )
+
+        result = _estimate_test_coverage([func_sym, class_sym, test_sym], [])
+
+        assert result is not None
+        _, total, _ = result
+        # Only the function counts, not the class
+        assert total == 1
 
 
 class TestGroupFilesByLanguage:

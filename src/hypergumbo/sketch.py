@@ -2305,11 +2305,61 @@ def _get_coverage_hint(frameworks: set[str]) -> str:
     return "your test runner's coverage tool"
 
 
-def _format_test_summary(repo_root: Path) -> str:
+def _estimate_test_coverage(
+    symbols: list[Symbol], edges: list
+) -> tuple[int, int, float] | None:
+    """Estimate test coverage from call graph.
+
+    Counts how many non-test functions/methods are called by test code.
+    This is a static approximation - actual coverage requires execution.
+
+    Args:
+        symbols: All symbols from analysis (including test symbols).
+        edges: All edges from analysis (including test->production calls).
+
+    Returns:
+        (tested_count, total_count, percentage) or None if no targets.
+    """
+    # Identify test symbols (functions/methods in test files)
+    test_symbol_ids: set[str] = set()
+    for s in symbols:
+        if _is_test_path(s.path) and s.kind in ("function", "method"):
+            test_symbol_ids.add(s.id)
+
+    # Identify non-test callable symbols (coverage targets)
+    target_symbol_ids: set[str] = set()
+    for s in symbols:
+        if not _is_test_path(s.path) and s.kind in ("function", "method"):
+            target_symbol_ids.add(s.id)
+
+    if not target_symbol_ids:
+        return None
+
+    # Find which targets are called (directly or transitively) by tests
+    # For now, just check direct calls - transitive would require BFS
+    tested_ids: set[str] = set()
+    for edge in edges:
+        src = getattr(edge, "src", None)
+        dst = getattr(edge, "dst", None)
+        if src in test_symbol_ids and dst in target_symbol_ids:
+            tested_ids.add(dst)
+
+    tested_count = len(tested_ids)
+    total_count = len(target_symbol_ids)
+    percentage = (tested_count / total_count * 100) if total_count > 0 else 0.0
+
+    return (tested_count, total_count, percentage)
+
+
+def _format_test_summary(
+    repo_root: Path,
+    coverage_stats: tuple[int, int, float] | None = None,
+) -> str:
     """Format test summary as a Markdown section.
 
     Args:
         repo_root: Path to the repository root.
+        coverage_stats: Optional (tested, total, pct) from static analysis.
 
     Returns:
         Markdown section string, or empty string if no tests.
@@ -2318,13 +2368,19 @@ def _format_test_summary(repo_root: Path) -> str:
     if not summary:
         return ""
 
-    coverage_hint = _get_coverage_hint(frameworks)
-    return f"## Tests\n\n{summary}\n\n*Coverage requires execution; see {coverage_hint}*"
+    if coverage_stats is not None:
+        tested, total, pct = coverage_stats
+        coverage_line = f"*~{pct:.0f}% estimated coverage ({tested}/{total} functions called by tests)*"
+    else:
+        coverage_hint = _get_coverage_hint(frameworks)
+        coverage_line = f"*Coverage requires execution; see {coverage_hint}*"
+
+    return f"## Tests\n\n{summary}\n\n{coverage_line}"
 
 
 def _run_analysis(
     repo_root: Path, profile: RepoProfile, exclude_tests: bool = False
-) -> tuple[list[Symbol], list]:
+) -> tuple[list[Symbol], list, tuple[int, int, float] | None]:
     """Run static analysis to get symbols and edges.
 
     Only runs analysis for detected languages to avoid unnecessary work.
@@ -2336,7 +2392,8 @@ def _run_analysis(
         exclude_tests: If True, filter out symbols from test files after analysis.
 
     Returns:
-        (symbols, edges) tuple.
+        (symbols, edges, coverage_stats) tuple. coverage_stats is (tested, total, pct)
+        or None if no non-test functions exist. Coverage is computed BEFORE filtering.
     """
     from .supply_chain import classify_file, detect_package_roots
 
@@ -2812,6 +2869,9 @@ def _run_analysis(
         except Exception:  # pragma: no cover
             pass  # COBOL analysis failed or tree-sitter not available
 
+    # Compute coverage estimate BEFORE filtering (need test->production edges)
+    coverage_stats = _estimate_test_coverage(all_symbols, all_edges)
+
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files
@@ -2835,7 +2895,7 @@ def _run_analysis(
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
 
-    return all_symbols, all_edges
+    return all_symbols, all_edges, coverage_stats
 
 
 def _format_entrypoints(
@@ -3475,8 +3535,20 @@ def generate_sketch(
     # For larger budgets, run static analysis
     symbols: list[Symbol] = []
     edges: list = []
+    coverage_stats: tuple[int, int, float] | None = None
     if remaining_tokens > 100:
-        symbols, edges = _run_analysis(repo_root, profile, exclude_tests=exclude_tests)
+        symbols, edges, coverage_stats = _run_analysis(
+            repo_root, profile, exclude_tests=exclude_tests
+        )
+
+    # Update test summary with coverage stats if we got analysis results
+    if coverage_stats is not None:
+        # Find and replace the test summary section with coverage info
+        updated_test_summary = _format_test_summary(repo_root, coverage_stats)
+        for i, section in enumerate(sections):
+            if section.startswith("## Tests"):
+                sections[i] = updated_test_summary
+                break
 
     # Section 5: Entry points (if we have analysis results and budget)
     # Track entrypoint files for B4: preserve in Key Symbols

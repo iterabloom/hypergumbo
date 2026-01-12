@@ -14,6 +14,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   "test-dense" functions (high tests/LOC ratio - may indicate redundant tests) and "cold spots"
   (untested functions). Uses call graph analysis without executing any code. Language agnostic.
 - **`--help --all` flag:** Shows comprehensive help including all subcommand documentation at once.
+- **Estimated coverage in sketch:** When static analysis runs, the Tests section now shows
+  estimated coverage (e.g., "~35% estimated coverage (460/1318 functions called by tests)")
+  instead of "Coverage requires execution". Based on direct call edges from test code.
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
