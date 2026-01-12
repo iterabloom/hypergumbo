@@ -1,0 +1,58 @@
+# Cross-Language Linkers
+
+Hypergumbo includes 14 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
+
+## Linker Table
+
+| Linker | Description |
+|--------|-------------|
+| JNI | Java `native` methods ↔ C JNI implementations |
+| IPC | Electron IPC, Web Workers, `postMessage` patterns |
+| WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
+| Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
+| Swift/ObjC | `@objc` annotations, `#selector()`, bridging headers |
+| gRPC | Protobuf services, stubs, and servicer implementations |
+| HTTP | `fetch()`, `axios`, `requests` → route handlers (URL pattern matching) |
+| GraphQL | `gql` queries/mutations → schema definitions |
+| GraphQL Resolver | Resolver implementations → schema type definitions |
+| OpenAPI | OpenAPI/Swagger specs → route handlers (path/operationId matching) |
+| Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
+| Database Query | SQL in app code → table definitions in schema files |
+| Event Sourcing | EventEmitter, Django signals, Spring events |
+| Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
+
+## How Linkers Work
+
+Linkers operate on the combined output of all language analyzers:
+
+1. **Receive**: All symbols and edges from all analyzers
+2. **Match**: Find patterns that indicate cross-language communication
+3. **Create edges**: Add new edges connecting symbols across language boundaries
+4. **Tag provenance**: Each edge records which linker created it
+
+For example, the HTTP linker:
+- Scans for `fetch("/api/users")` calls in JavaScript
+- Scans for `@app.get("/api/users")` route handlers in Python
+- Creates an edge: `js_fetch_call → python_route_handler`
+
+## Why Linkers Matter
+
+Modern applications rarely stay within one language. A typical web app might have:
+- TypeScript frontend calling Python API endpoints (HTTP linker)
+- Python backend publishing to Redis (Message Queue linker)
+- Java service with C performance-critical code (JNI linker)
+
+Without linkers, you'd see isolated subgraphs per language. Linkers reveal the actual data flow across the system.
+
+## Adding a New Linker
+
+See `src/hypergumbo/linkers/` for examples. Linkers register via decorator:
+
+```python
+from hypergumbo.linkers.registry import register_linker
+
+@register_linker("myprotocol")
+def link_myprotocol(symbols: list[Symbol], edges: list[Edge]) -> list[Edge]:
+    # Find cross-language patterns, return new edges
+    ...
+```
