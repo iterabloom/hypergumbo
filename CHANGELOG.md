@@ -9,6 +9,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+- **`hypergumbo test-coverage` command:** Static analysis test coverage estimation. Identifies
+  "hot spots" (functions called by many tests, potential redundancy) and "cold spots" (untested
+  functions). Uses call graph analysis without executing any code. Language agnostic.
+
 ## [1.0.0] - 2026-01-12
 
 First stable release. Major focus on memory optimization, framework detection improvements,

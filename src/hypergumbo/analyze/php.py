@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 PASS_ID = "php-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# Laravel HTTP route methods (deprecated - use laravel.yaml patterns)
+# Laravel HTTP route methods - used by _extract_laravel_usage_contexts
 LARAVEL_HTTP_METHODS = {
     "get": "GET",
     "post": "POST",
@@ -58,28 +58,6 @@ LARAVEL_HTTP_METHODS = {
     "head": "HEAD",
     "options": "OPTIONS",
 }
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
 
 
 def find_php_files(repo_root: Path) -> Iterator[Path]:
@@ -102,6 +80,7 @@ class PhpAnalysisResult:
 
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
@@ -222,55 +201,99 @@ def _extract_php_signature(
     return signature
 
 
-def _detect_laravel_route(
-    node: "tree_sitter.Node", source: bytes
-) -> tuple[str | None, str | None]:
-    """Detect Laravel Route::get(), Route::post(), etc. static calls.
+def _extract_laravel_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Laravel Route facade calls.
 
-    Returns (http_method, route_path) if this is a Laravel route, else (None, None).
+    Detects patterns like:
+    - Route::get('/users', ...)
+    - Route::post('/login', ...)
+    - Route::resource('photos', ...)
+    - Route::apiResource('posts', ...)
+
+    Returns a list of UsageContext records for YAML pattern matching.
     """
-    if node.type != "scoped_call_expression":
-        return None, None  # pragma: no cover
+    contexts: list[UsageContext] = []
 
-    scope_node = node.child_by_field_name("scope")
-    name_node = node.child_by_field_name("name")
+    for node in iter_tree(tree.root_node):
+        if node.type != "scoped_call_expression":
+            continue
 
-    if not scope_node or not name_node:
-        return None, None  # pragma: no cover
+        scope_node = node.child_by_field_name("scope")
+        name_node = node.child_by_field_name("name")
 
-    # Check if this is Route::method()
-    scope_text = _node_text(scope_node, source)
-    if scope_text != "Route":
-        return None, None
+        if not scope_node or not name_node:  # pragma: no cover - defensive
+            continue
 
-    method_name = _node_text(name_node, source)
-    if method_name not in LARAVEL_HTTP_METHODS:
-        return None, None  # pragma: no cover
+        # Check if this is Route::method()
+        scope_text = _node_text(scope_node, source)
+        if scope_text != "Route":
+            continue
 
-    http_method = LARAVEL_HTTP_METHODS[method_name]
-    route_path = None
+        method_name = _node_text(name_node, source).lower()
 
-    # Extract route path from first argument
-    args_node = node.child_by_field_name("arguments")
-    if args_node:
-        for child in args_node.children:
-            if child.type == "argument":
-                # First argument is the route path
-                for arg_child in child.children:
-                    if arg_child.type == "string":
-                        # Extract content from string node
-                        for str_child in arg_child.children:
-                            if str_child.type == "string_content":
-                                route_path = _node_text(str_child, source)
-                                break
-                        if route_path is None:  # pragma: no cover
-                            # Fallback: try to get the whole string and strip quotes
-                            raw = _node_text(arg_child, source)
-                            route_path = raw.strip("'\"")
-                        break
-                break
+        # HTTP method routes
+        if method_name in LARAVEL_HTTP_METHODS:
+            http_method = LARAVEL_HTTP_METHODS[method_name]
+        elif method_name in ("resource", "apiresource"):
+            http_method = "RESOURCE"
+        elif method_name == "match":
+            http_method = "MATCH"
+        elif method_name == "any":
+            http_method = "ANY"
+        else:  # pragma: no cover - unknown Route:: method
+            continue
 
-    return http_method, route_path
+        # Extract route path from first argument
+        route_path = None
+        args_node = node.child_by_field_name("arguments")
+        if args_node:
+            for child in args_node.children:
+                if child.type == "argument":
+                    for arg_child in child.children:
+                        if arg_child.type == "string":
+                            for str_child in arg_child.children:
+                                if str_child.type == "string_content":
+                                    route_path = _node_text(str_child, source)
+                                    break
+                            if route_path is None:  # pragma: no cover
+                                raw = _node_text(arg_child, source)
+                                route_path = raw.strip("'\"")
+                            break
+                    break
+
+        if not route_path:
+            continue
+
+        # Build metadata
+        metadata: dict[str, str] = {
+            "route_path": route_path,
+            "http_method": http_method,
+        }
+
+        # Create UsageContext
+        span = Span(
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=method_name,
+            position="args[0]",
+            path=str(file_path),
+            span=span,
+            symbol_ref=None,
+            metadata=metadata,
+        )
+        contexts.append(ctx)
+
+    return contexts
 
 
 def _get_php_parser() -> Optional["tree_sitter.Parser"]:
@@ -307,37 +330,8 @@ def _extract_symbols(
     symbols: list[Symbol] = []
 
     for node in iter_tree(tree.root_node):
-        # Laravel route detection: Route::get(), Route::post(), etc. (deprecated)
-        if node.type == "scoped_call_expression":
-            http_method, route_path = _detect_laravel_route(node, source)
-            if http_method:
-                _emit_route_deprecation_warning("Laravel")
-                span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                )
-                route_name = f"Route::{http_method.lower()}({route_path or '...'})"
-                meta: dict[str, str] = {"http_method": http_method}
-                if route_path:
-                    meta["route_path"] = route_path
-                symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, route_name, "route"),
-                    name=route_name,
-                    kind="route",
-                    language="php",
-                    path=str(file_path),
-                    span=span,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    stable_id=http_method,
-                    meta=meta,
-                )
-                symbols.append(symbol)
-
         # Function declarations
-        elif node.type == "function_definition":
+        if node.type == "function_definition":
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -668,6 +662,12 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
         )
         all_edges.extend(edges)
 
+    # Pass 3: Extract UsageContexts for framework pattern matching
+    all_usage_contexts: list[UsageContext] = []
+    for pf in parsed_files:
+        contexts = _extract_laravel_usage_contexts(pf.tree, pf.source, pf.path)
+        all_usage_contexts.extend(contexts)
+
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -675,5 +675,6 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
     return PhpAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

@@ -468,95 +468,6 @@ class TestRubyHelperFunctions:
         assert result is None
 
 
-# ============================================================================
-# Rails Route Detection Tests
-# ============================================================================
-
-
-class TestRailsRouteDetection:
-    """Tests for Rails route DSL detection."""
-
-    def test_rails_get_route(self, tmp_path: Path) -> None:
-        """Rails get route should be detected with stable_id='get'."""
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        routes_file = tmp_path / "routes.rb"
-        routes_file.write_text("""
-Rails.application.routes.draw do
-  get '/users', to: 'users#index'
-end
-""")
-
-        result = analyze_ruby(tmp_path)
-
-
-        # Find route symbols
-        routes = [s for s in result.symbols if s.stable_id == "get"]
-        assert len(routes) == 1
-        assert routes[0].meta is not None
-        assert routes[0].meta.get("route_path") == "/users"
-
-    def test_rails_post_route(self, tmp_path: Path) -> None:
-        """Rails post route should be detected."""
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        routes_file = tmp_path / "routes.rb"
-        routes_file.write_text("""
-Rails.application.routes.draw do
-  post '/users', to: 'users#create'
-end
-""")
-
-        result = analyze_ruby(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.stable_id == "post"]
-        assert len(routes) == 1
-
-    def test_rails_all_http_methods(self, tmp_path: Path) -> None:
-        """Rails should detect all HTTP method routes."""
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        routes_file = tmp_path / "routes.rb"
-        routes_file.write_text("""
-Rails.application.routes.draw do
-  get '/get', to: 'test#get'
-  post '/post', to: 'test#post'
-  put '/put', to: 'test#put'
-  patch '/patch', to: 'test#patch'
-  delete '/delete', to: 'test#delete'
-end
-""")
-
-        result = analyze_ruby(tmp_path)
-
-
-        stable_ids = {s.stable_id for s in result.symbols if s.stable_id}
-        assert "get" in stable_ids
-        assert "post" in stable_ids
-        assert "put" in stable_ids
-        assert "patch" in stable_ids
-        assert "delete" in stable_ids
-
-    def test_rails_resources_route(self, tmp_path: Path) -> None:
-        """Rails resources macro should be detected."""
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        routes_file = tmp_path / "routes.rb"
-        routes_file.write_text("""
-Rails.application.routes.draw do
-  resources :users
-end
-""")
-
-        result = analyze_ruby(tmp_path)
-
-
-        # resources creates a route entry
-        resources = [s for s in result.symbols if s.kind == "route" and "users" in s.name]
-        assert len(resources) >= 1
-
-
 class TestRubySignatureExtraction:
     """Tests for Ruby method signature extraction."""
 
@@ -632,117 +543,6 @@ end
         assert methods[0].signature == "()"
 
 
-# ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
-# ============================================================================
-
-
-class TestRailsRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level Rails route detection."""
-
-    def test_rails_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Rails route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import ruby as ruby_module
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        # Reset the warning deduplication set
-        ruby_module._deprecated_route_warnings_emitted.clear()
-
-        routes_file = tmp_path / "routes.rb"
-        routes_file.write_text("""
-Rails.application.routes.draw do
-  get '/users', to: 'users#index'
-  post '/users', to: 'users#create'
-end
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_ruby(tmp_path)
-
-        # Should have at least one deprecation warning for Rails
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Rails" in warning_message
-        assert "deprecated" in warning_message.lower()
-
-    def test_deprecation_warning_emitted_once_per_session(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per session."""
-        import warnings
-        from hypergumbo.analyze import ruby as ruby_module
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        # Reset the warning deduplication set
-        ruby_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple route files
-        (tmp_path / "routes.rb").write_text("""
-get '/users', to: 'users#index'
-post '/users', to: 'users#create'
-""")
-        (tmp_path / "admin_routes.rb").write_text("""
-get '/admin', to: 'admin#index'
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_ruby(tmp_path)
-
-        # Should have exactly one Rails deprecation warning (deduplicated)
-        rails_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Rails" in str(warning.message)
-        ]
-        assert len(rails_warnings) == 1
-
-    def test_no_deprecation_warning_without_route_calls(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for files without route calls."""
-        import warnings
-        from hypergumbo.analyze import ruby as ruby_module
-        from hypergumbo.analyze.ruby import analyze_ruby
-
-        # Reset the warning deduplication set
-        ruby_module._deprecated_route_warnings_emitted.clear()
-
-        rb_file = tmp_path / "model.rb"
-        rb_file.write_text("""
-class User
-  def initialize(name)
-    @name = name
-  end
-
-  def greet
-    "Hello, #{@name}!"
-  end
-end
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_ruby(tmp_path)
-
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Rails" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
-
-
 class TestSinatraUsageContext:
     """Tests for Sinatra block-based route detection."""
 
@@ -802,3 +602,68 @@ end
         assert "GET" in methods
         assert "POST" in methods
         assert "DELETE" in methods
+
+
+class TestRailsUsageContext:
+    """Tests for Rails route DSL UsageContext extraction."""
+
+    def test_rails_route_with_to_option(self, tmp_path: Path) -> None:
+        """Detects Rails get route with to: 'controller#action' option."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  get '/users', to: 'users#index'
+end
+""")
+        result = analyze_ruby(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "get"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/users"
+        assert ctx.metadata["http_method"] == "GET"
+        assert ctx.metadata["controller_action"] == "users#index"
+        assert ctx.metadata["has_block"] is False
+
+    def test_rails_resources_route(self, tmp_path: Path) -> None:
+        """Detects Rails resources :users macro."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resources :users
+end
+""")
+        result = analyze_ruby(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "resources"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "users"
+        assert ctx.metadata["http_method"] == "RESOURCES"
+
+    def test_rails_resource_singular(self, tmp_path: Path) -> None:
+        """Detects Rails resource :profile (singular) macro."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resource :profile
+end
+""")
+        result = analyze_ruby(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "resource"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "profile"
+        assert ctx.metadata["http_method"] == "RESOURCES"
+
+    def test_rails_post_route_with_controller_action(self, tmp_path: Path) -> None:
+        """Detects Rails post route with controller#action."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  post '/sessions', to: 'sessions#create'
+end
+""")
+        result = analyze_ruby(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "post"), None)
+        assert ctx is not None
+        assert ctx.metadata["controller_action"] == "sessions#create"

@@ -99,92 +99,6 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
-# ASP.NET Core HTTP method attributes (deprecated - use aspnet.yaml patterns)
-ASPNET_HTTP_ATTRIBUTES = {
-    "HttpGet": "GET",
-    "HttpPost": "POST",
-    "HttpPut": "PUT",
-    "HttpDelete": "DELETE",
-    "HttpPatch": "PATCH",
-    "HttpHead": "HEAD",
-    "HttpOptions": "OPTIONS",
-}
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
-
-
-def _detect_aspnet_route(
-    node: "tree_sitter.Node", source: bytes
-) -> tuple[str | None, str | None]:
-    """Detect ASP.NET Core route attributes on a method.
-
-    Returns (http_method, route_path) if ASP.NET Core route attributes are found.
-
-    Supported patterns:
-    - [HttpGet], [HttpPost], [HttpPut], [HttpDelete], [HttpPatch]
-    - [HttpGet("{id}")] with route template
-
-    Args:
-        node: The method_declaration node.
-        source: The source code bytes.
-
-    Returns:
-        A tuple of (http_method, route_path), or (None, None) if not a route.
-    """
-    http_method = None
-    route_path = None
-
-    # In C# tree-sitter, attributes come before the method in an attribute_list
-    # We need to look at siblings preceding the method or check parent's children
-    # Actually, in tree-sitter-c-sharp, method_declaration contains attribute_list as child
-    for child in node.children:
-        if child.type == "attribute_list":
-            # attribute_list contains one or more attributes
-            for attr in child.children:
-                if attr.type == "attribute":
-                    # Get the attribute name
-                    attr_name_node = _find_child_by_type(attr, "identifier")
-                    if attr_name_node:
-                        attr_name = _node_text(attr_name_node, source)
-                        if attr_name in ASPNET_HTTP_ATTRIBUTES:
-                            http_method = ASPNET_HTTP_ATTRIBUTES[attr_name]
-
-                            # Check for route template in attribute_argument_list
-                            arg_list = _find_child_by_type(attr, "attribute_argument_list")
-                            if arg_list:
-                                for arg in arg_list.children:
-                                    if arg.type == "attribute_argument":
-                                        # Look for string literal
-                                        for arg_child in arg.children:
-                                            if arg_child.type == "string_literal":
-                                                route_path = _node_text(arg_child, source).strip('"')
-                                                break
-
-    if http_method:
-        return http_method, route_path
-    return None, None
-
-
 def _extract_annotations(
     node: "tree_sitter.Node", source: bytes
 ) -> list[dict[str, object]]:
@@ -559,27 +473,13 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                # Check for ASP.NET Core route attributes (deprecated - use YAML)
-                http_method, route_path = _detect_aspnet_route(node, source)
-                if http_method:
-                    _emit_route_deprecation_warning("ASP.NET Core")
-
                 # Extract all annotations for FRAMEWORK_PATTERNS phase
                 annotations = _extract_annotations(node, source)
 
                 # Build meta dict
                 meta: dict[str, object] | None = None
-                stable_id: str | None = None
-
-                if http_method or route_path or annotations:
-                    meta = {}
-                    if route_path:
-                        meta["route_path"] = route_path
-                    if http_method:
-                        meta["http_method"] = http_method
-                        stable_id = http_method
-                    if annotations:
-                        meta["annotations"] = annotations
+                if annotations:
+                    meta = {"annotations": annotations}
 
                 # Extract signature
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
@@ -599,7 +499,6 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=stable_id,
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)

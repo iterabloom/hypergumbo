@@ -674,94 +674,6 @@ class MyClass {
         assert "tree-sitter-php" in result.skip_reason
 
 
-class TestLaravelRouteDetection:
-    """Tests for Laravel route detection with Route::get, Route::post, etc."""
-
-    def test_route_get(self, tmp_path: Path) -> None:
-        """Detects Route::get() call."""
-        from hypergumbo.analyze.php import analyze_php
-
-        php_file = tmp_path / "web.php"
-        php_file.write_text("""<?php
-use Illuminate\\Support\\Facades\\Route;
-
-Route::get('/users', [UserController::class, 'index']);
-?>""")
-
-        result = analyze_php(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) == 1
-        route = routes[0]
-
-        assert route.meta is not None
-        assert route.meta.get("route_path") == "/users"
-        assert route.meta.get("http_method") == "GET"
-        assert route.stable_id == "GET"
-
-    def test_route_post(self, tmp_path: Path) -> None:
-        """Detects Route::post() call."""
-        from hypergumbo.analyze.php import analyze_php
-
-        php_file = tmp_path / "api.php"
-        php_file.write_text("""<?php
-Route::post('/users', [UserController::class, 'store']);
-?>""")
-
-        result = analyze_php(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) == 1
-        route = routes[0]
-
-        assert route.meta is not None
-        assert route.meta.get("route_path") == "/users"
-        assert route.meta.get("http_method") == "POST"
-        assert route.stable_id == "POST"
-
-    def test_all_http_methods(self, tmp_path: Path) -> None:
-        """Detects all Laravel HTTP method routes."""
-        from hypergumbo.analyze.php import analyze_php
-
-        php_file = tmp_path / "routes.php"
-        php_file.write_text("""<?php
-Route::get('/items', [ItemController::class, 'index']);
-Route::post('/items', [ItemController::class, 'store']);
-Route::put('/items/{id}', [ItemController::class, 'update']);
-Route::delete('/items/{id}', [ItemController::class, 'destroy']);
-Route::patch('/items/{id}', [ItemController::class, 'patch']);
-?>""")
-
-        result = analyze_php(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) == 5
-
-        http_methods = {r.stable_id for r in routes}
-        assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
-
-    def test_route_with_closure(self, tmp_path: Path) -> None:
-        """Detects Route with inline closure handler."""
-        from hypergumbo.analyze.php import analyze_php
-
-        php_file = tmp_path / "web.php"
-        php_file.write_text("""<?php
-Route::get('/hello', function () {
-    return 'Hello World';
-});
-?>""")
-
-        result = analyze_php(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) == 1
-        assert routes[0].meta.get("route_path") == "/hello"
-
-
 class TestPHPSignatureExtraction:
     """Tests for PHP function signature extraction."""
 
@@ -815,109 +727,153 @@ class Utils {
 
 
 # ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# UsageContext Extraction Tests (ADR-0003 v1.1.x - YAML Pattern Support)
 # ============================================================================
 
 
-class TestLaravelRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level Laravel route detection."""
+class TestLaravelUsageContextExtraction:
+    """Tests for extracting Laravel route UsageContext records."""
 
-    def test_laravel_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Laravel route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import php as php_module
+    def test_extracts_get_route_usage_context(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Route::get() calls."""
         from hypergumbo.analyze.php import analyze_php
-
-        # Reset the warning deduplication set
-        php_module._deprecated_route_warnings_emitted.clear()
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
 Route::get('/users', [UserController::class, 'index']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        # Should have UsageContext records
+        assert len(result.usage_contexts) >= 1
+
+        # Find the GET route context
+        get_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "get"), None
+        )
+        assert get_ctx is not None
+        assert get_ctx.kind == "call"
+        assert get_ctx.position == "args[0]"
+        assert get_ctx.metadata is not None
+        assert get_ctx.metadata.get("route_path") == "/users"
+        assert get_ctx.metadata.get("http_method") == "GET"
+
+    def test_extracts_post_route_usage_context(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Route::post() calls."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
 Route::post('/users', [UserController::class, 'store']);
 ?>""")
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_php(tmp_path)
+        result = analyze_php(tmp_path)
 
-        # Should have at least one deprecation warning for Laravel
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Laravel" in warning_message
-        assert "deprecated" in warning_message.lower()
+        post_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "post"), None
+        )
+        assert post_ctx is not None
+        assert post_ctx.metadata.get("http_method") == "POST"
 
-    def test_deprecation_warning_emitted_once_per_session(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per session."""
-        import warnings
-        from hypergumbo.analyze import php as php_module
+    def test_extracts_resource_route_usage_context(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Route::resource() calls."""
         from hypergumbo.analyze.php import analyze_php
 
-        # Reset the warning deduplication set
-        php_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple route files
-        (tmp_path / "web.php").write_text("""<?php
-Route::get('/users', 'UserController@index');
-Route::post('/users', 'UserController@store');
-?>""")
-        (tmp_path / "api.php").write_text("""<?php
-Route::get('/api/items', 'ItemController@index');
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::resource('photos', PhotoController::class);
 ?>""")
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_php(tmp_path)
+        result = analyze_php(tmp_path)
 
-        # Should have exactly one Laravel deprecation warning (deduplicated)
-        laravel_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Laravel" in str(warning.message)
-        ]
-        assert len(laravel_warnings) == 1
+        resource_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "resource"), None
+        )
+        assert resource_ctx is not None
+        assert resource_ctx.metadata.get("http_method") == "RESOURCE"
+        assert resource_ctx.metadata.get("route_path") == "photos"
 
-    def test_no_deprecation_warning_without_route_calls(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for files without Laravel route calls."""
-        import warnings
-        from hypergumbo.analyze import php as php_module
+    def test_extracts_apiresource_route_usage_context(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Route::apiResource() calls."""
         from hypergumbo.analyze.php import analyze_php
 
-        # Reset the warning deduplication set
-        php_module._deprecated_route_warnings_emitted.clear()
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::apiResource('posts', PostController::class);
+?>""")
 
-        php_file = tmp_path / "User.php"
+        result = analyze_php(tmp_path)
+
+        api_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "apiresource"), None
+        )
+        assert api_ctx is not None
+        assert api_ctx.metadata.get("http_method") == "RESOURCE"
+
+    def test_extracts_any_route_usage_context(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Route::any() calls."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::any('/catchall', [CatchAllController::class, 'handle']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        any_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "any"), None
+        )
+        assert any_ctx is not None
+        assert any_ctx.metadata.get("http_method") == "ANY"
+
+    def test_match_route_with_array_first_arg_skipped(self, tmp_path: Path) -> None:
+        """Route::match() with array first arg is skipped (path not extractable)."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::match(['get', 'post'], '/form', [FormController::class, 'handle']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        # Route::match first arg is an array of methods, not a path
+        # The current implementation expects first string arg to be path
+        # so this gets skipped (no UsageContext created)
+        match_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "match"), None
+        )
+        # Currently skipped because first arg isn't a string
+        assert match_ctx is None
+
+    def test_skips_non_route_scoped_calls(self, tmp_path: Path) -> None:
+        """Doesn't extract UsageContext for non-Route scoped calls."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "app.php"
         php_file.write_text("""<?php
-class User {
-    public function __construct($name) {
-        $this->name = $name;
-    }
-
-    public function greet() {
-        return "Hello, {$this->name}!";
-    }
-}
+DB::get('/not-a-route', function() {});
+OtherClass::post('/also-not-route');
 ?>""")
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_php(tmp_path)
+        result = analyze_php(tmp_path)
 
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Laravel" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
+        # Should have no usage contexts (these aren't Route:: calls)
+        assert len(result.usage_contexts) == 0
+
+    def test_handles_missing_route_path(self, tmp_path: Path) -> None:
+        """Handles Route calls without string path argument."""
+        from hypergumbo.analyze.php import analyze_php
+
+        php_file = tmp_path / "web.php"
+        php_file.write_text("""<?php
+// Route with variable path (no string literal)
+Route::get($dynamicPath, function() {});
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        # Should NOT create UsageContext without a route path
+        assert len(result.usage_contexts) == 0

@@ -930,6 +930,210 @@ def cmd_build_grammars(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_test_coverage(args: argparse.Namespace) -> int:
+    """Estimate test coverage by analyzing which functions are called by tests.
+
+    Identifies:
+    - Hot spots: Functions called by many tests (potential redundancy)
+    - Cold spots: Functions not called by any tests (need coverage)
+    """
+    repo_root = Path(args.path).resolve()
+
+    # Determine input file
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
+    else:
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+    edges = behavior_map.get("edges", [])
+
+    # Build lookup tables
+    nodes_by_id = {n["id"]: n for n in nodes}
+
+    # Identify test symbols (functions/methods in test files)
+    test_symbols: set[str] = set()
+    for node in nodes:
+        path = node.get("path", "")
+        kind = node.get("kind", "")
+        if _is_test_path(path) and kind in ("function", "method"):
+            test_symbols.add(node["id"])
+
+    # Identify non-test callable symbols (coverage targets)
+    target_symbols: dict[str, dict] = {}
+    for node in nodes:
+        path = node.get("path", "")
+        kind = node.get("kind", "")
+        if not _is_test_path(path) and kind in ("function", "method"):
+            target_symbols[node["id"]] = node
+
+    if not target_symbols:
+        print("No functions found to analyze.", file=sys.stderr)
+        return 0
+
+    # Build test→callee mapping
+    # For each target, track which tests call it
+    tests_per_target: dict[str, set[str]] = {tid: set() for tid in target_symbols}
+
+    for edge in edges:
+        if edge.get("type") != "calls":
+            continue
+        src = edge.get("src", "")
+        dst = edge.get("dst", "")
+
+        # If a test calls a target function, record it
+        if src in test_symbols and dst in tests_per_target:
+            tests_per_target[dst].add(src)
+
+    # Compute metrics
+    hot_spots: list[tuple[int, dict, list[str]]] = []
+    cold_spots: list[tuple[dict, int, int | None]] = []
+
+    for target_id, test_ids in tests_per_target.items():
+        target = target_symbols[target_id]
+        test_count = len(test_ids)
+
+        if test_count == 0:
+            # Cold spot - include LOC and complexity for prioritization
+            loc = target.get("lines_of_code")
+            complexity = target.get("cyclomatic_complexity")
+            cold_spots.append((target, loc or 0, complexity))
+        else:
+            # Tested function - collect test names
+            test_names = []
+            for tid in test_ids:
+                test_node = nodes_by_id.get(tid, {})
+                test_names.append(test_node.get("name", tid))
+            hot_spots.append((test_count, target, test_names))
+
+    # Sort hot spots by test count (descending)
+    hot_spots.sort(key=lambda x: -x[0])
+
+    # Sort cold spots by LOC (descending) - larger untested functions first
+    cold_spots.sort(key=lambda x: -x[1])
+
+    # Apply filters
+    min_tests = args.min_tests
+    max_tests = args.max_tests
+    top_n = args.top
+
+    if min_tests is not None:
+        hot_spots = [(c, t, n) for c, t, n in hot_spots if c >= min_tests]
+    if max_tests is not None:
+        hot_spots = [(c, t, n) for c, t, n in hot_spots if c <= max_tests]
+        cold_spots = [(t, loc_val, c) for t, loc_val, c in cold_spots]  # Keep all
+
+    # Compute summary stats
+    total_functions = len(target_symbols)
+    tested_functions = len([h for h in tests_per_target.values() if len(h) > 0])
+    untested_functions = total_functions - tested_functions
+    coverage_percent = (tested_functions / total_functions * 100) if total_functions > 0 else 0.0
+    total_tests = len(test_symbols)
+
+    # Output
+    if args.format == "json":
+        # JSON output
+        output = {
+            "schema_version": "0.1.0",
+            "view": "test-coverage",
+            "summary": {
+                "total_functions": total_functions,
+                "tested_functions": tested_functions,
+                "untested_functions": untested_functions,
+                "coverage_percent": round(coverage_percent, 1),
+                "total_tests": total_tests,
+            },
+            "hot_spots": [],
+            "cold_spots": [],
+        }
+
+        for test_count, target, test_names in hot_spots[:top_n] if top_n else hot_spots:
+            span = target.get("span", {})
+            output["hot_spots"].append({
+                "id": target["id"],
+                "name": target.get("name", ""),
+                "path": target.get("path", ""),
+                "span": span,
+                "test_count": test_count,
+                "tests": sorted(test_names),
+            })
+
+        for target, loc, complexity in cold_spots[:top_n] if top_n else cold_spots:
+            span = target.get("span", {})
+            entry: dict[str, object] = {
+                "id": target["id"],
+                "name": target.get("name", ""),
+                "path": target.get("path", ""),
+                "span": span,
+                "test_count": 0,
+            }
+            if loc:
+                entry["lines_of_code"] = loc
+            if complexity:
+                entry["cyclomatic_complexity"] = complexity
+            output["cold_spots"].append(entry)
+
+        print(json.dumps(output, indent=2))
+    else:
+        # Human-readable output
+        print("Test Coverage Estimate")
+        print("=" * 22)
+        print(f"Total functions: {total_functions}")
+        print(f"Tested: {tested_functions} ({coverage_percent:.1f}%)")
+        print(f"Untested: {untested_functions}")
+        print(f"Total test functions: {total_tests}")
+
+        # Hot spots
+        display_hot = hot_spots[:top_n] if top_n else hot_spots[:20]
+        if display_hot:
+            print("\nHot Spots (most tested - potential redundancy)")
+            print("-" * 46)
+            for test_count, target, _ in display_hot:
+                name = target.get("name", "")
+                path = target.get("path", "")
+                span = target.get("span", {})
+                start = span.get("start_line", 0)
+                end = span.get("end_line", 0)
+                print(f"  {test_count:3} tests  {path}:{start}-{end}  {name}()")
+
+        # Cold spots
+        display_cold = cold_spots[:top_n] if top_n else cold_spots[:20]
+        if display_cold:
+            print("\nCold Spots (untested - need coverage)")
+            print("-" * 37)
+            for target, loc, complexity in display_cold:
+                name = target.get("name", "")
+                path = target.get("path", "")
+                span = target.get("span", {})
+                start = span.get("start_line", 0)
+                end = span.get("end_line", 0)
+                metrics = []
+                if loc:
+                    metrics.append(f"{loc} LOC")
+                if complexity:
+                    metrics.append(f"complexity: {complexity}")
+                metrics_str = f"  [{', '.join(metrics)}]" if metrics else ""
+                print(f"  {0:3} tests  {path}:{start}-{end}  {name}(){metrics_str}")
+
+        # Show if results were truncated
+        if top_n and (len(hot_spots) > top_n or len(cold_spots) > top_n):
+            print(f"\n(Showing top {top_n}. Use --top to see more.)")
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Main parser with comprehensive help
     main_description = """\
@@ -962,7 +1166,8 @@ Token budget guidelines (for sketch):
   8000    Detailed with many symbols
   16000   Comprehensive (large codebases)
 
-For more help on a command: hypergumbo <command> --help"""
+For more help on a command: hypergumbo <command> --help
+For help on ALL commands:   hypergumbo --help --all"""
 
     p = argparse.ArgumentParser(
         prog="hypergumbo",
@@ -1477,6 +1682,63 @@ The output begins with passes suggested for your current directory."""
     )
     p_build.set_defaults(func=cmd_build_grammars)
 
+    # hypergumbo test-coverage
+    test_coverage_epilog = """\
+Examples:
+  hypergumbo test-coverage .                  # Show coverage summary
+  hypergumbo test-coverage . --format json    # JSON output for tooling
+  hypergumbo test-coverage . --top 10         # Top 10 hot/cold spots
+  hypergumbo test-coverage . --max-tests 0    # Only show untested functions
+
+Analyzes the call graph to estimate which functions are tested.
+Does NOT execute code - uses static analysis only.
+Language agnostic - works with any language hypergumbo supports.
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_test_cov = sub.add_parser(
+        "test-coverage",
+        help="Estimate test coverage from call graph (static analysis)",
+        epilog=test_coverage_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_test_cov.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_test_cov.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_test_cov.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_test_cov.add_argument(
+        "--min-tests",
+        type=int,
+        default=None,
+        help="Only show functions called by at least N tests",
+    )
+    p_test_cov.add_argument(
+        "--max-tests",
+        type=int,
+        default=None,
+        help="Only show functions called by at most N tests (0 = untested only)",
+    )
+    p_test_cov.add_argument(
+        "--top",
+        type=int,
+        default=None,
+        help="Limit output to top N hot/cold spots",
+    )
+    p_test_cov.set_defaults(func=cmd_test_coverage)
+
     return p
 
 
@@ -1755,6 +2017,33 @@ def run_behavior_map(
     _log_memory("after write")
 
 
+def print_all_help(parser: argparse.ArgumentParser) -> None:
+    """Print help for main parser and all subcommands."""
+    # Print main help
+    parser.print_help()
+    print("\n" + "=" * 78)
+    print("DETAILED SUBCOMMAND HELP")
+    print("=" * 78)
+
+    # Get subparsers
+    # pylint: disable=protected-access
+    subparsers_action = None
+    for action in parser._subparsers._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            subparsers_action = action
+            break
+
+    if subparsers_action is None:
+        return  # pragma: no cover
+
+    # Print help for each subcommand
+    for name, subparser in sorted(subparsers_action.choices.items()):
+        print(f"\n{'─' * 78}")
+        print(f"  hypergumbo {name}")
+        print("─" * 78)
+        subparser.print_help()
+
+
 def main(argv=None) -> int:
     parser = build_parser()
 
@@ -1762,7 +2051,12 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars"}
+    # Handle --help --all: show all subcommand help panels
+    if ("--help" in argv or "-h" in argv) and "--all" in argv:
+        print_all_help(parser)
+        return 0
+
+    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars", "test-coverage"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

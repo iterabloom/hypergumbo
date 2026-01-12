@@ -581,501 +581,6 @@ class TestRustFileReadErrors:
         assert result == []
 
 
-class TestAxumRouteDetection:
-    """Tests for Axum route handler detection."""
-
-    def test_detects_simple_get_route(self, tmp_path: Path) -> None:
-        """Detects .route("/path", get(handler)) pattern."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "routes.rs"
-        rs_file.write_text("""
-use axum::{Router, routing::get};
-
-fn app() -> Router {
-    Router::new()
-        .route("/", get(root))
-        .route("/users", get(list_users))
-}
-
-async fn root() -> &'static str {
-    "Hello, World!"
-}
-
-async fn list_users() -> &'static str {
-    "[]"
-}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        route_names = [s.name for s in routes]
-
-        assert "root" in route_names
-        assert "list_users" in route_names
-
-    def test_detects_multiple_http_methods(self, tmp_path: Path) -> None:
-        """Detects post, put, delete routes."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "api.rs"
-        rs_file.write_text("""
-use axum::{Router, routing::{get, post, put, delete}};
-
-fn api_routes() -> Router {
-    Router::new()
-        .route("/items", post(create_item))
-        .route("/items/:id", put(update_item))
-        .route("/items/:id", delete(delete_item))
-}
-
-async fn create_item() {}
-async fn update_item() {}
-async fn delete_item() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        route_names = [s.name for s in routes]
-
-        assert "create_item" in route_names
-        assert "update_item" in route_names
-        assert "delete_item" in route_names
-
-        # Check HTTP methods in metadata
-        for route in routes:
-            assert route.meta is not None
-            assert "http_method" in route.meta
-            assert "route_path" in route.meta
-
-    def test_detects_method_chaining(self, tmp_path: Path) -> None:
-        """Detects .route("/path", get(h1).post(h2)) pattern."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "chained.rs"
-        rs_file.write_text("""
-use axum::{Router, routing::{get, post}};
-
-fn app() -> Router {
-    Router::new()
-        .route("/items", get(list_items).post(create_item))
-}
-
-async fn list_items() {}
-async fn create_item() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        route_names = [s.name for s in routes]
-
-        # Both handlers should be detected
-        assert "list_items" in route_names
-        assert "create_item" in route_names
-
-        # Verify different HTTP methods
-        http_methods = [s.meta["http_method"] for s in routes if s.meta]
-        assert "GET" in http_methods
-        assert "POST" in http_methods
-
-    def test_route_has_stable_id(self, tmp_path: Path) -> None:
-        """Route symbols have stable_id set to HTTP method."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "stable.rs"
-        rs_file.write_text("""
-use axum::{Router, routing::get};
-
-fn app() -> Router {
-    Router::new().route("/api", get(api_handler))
-}
-
-async fn api_handler() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) >= 1
-
-        route = routes[0]
-        assert route.stable_id == "get"
-
-    def test_route_path_extraction(self, tmp_path: Path) -> None:
-        """Route path is correctly extracted to metadata."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "paths.rs"
-        rs_file.write_text("""
-use axum::{Router, routing::get};
-
-fn app() -> Router {
-    Router::new()
-        .route("/api/v1/users/:id", get(get_user))
-}
-
-async fn get_user() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) >= 1
-
-        route = routes[0]
-        assert route.meta["route_path"] == "/api/v1/users/:id"
-
-    def test_extract_axum_routes_directly(self, tmp_path: Path) -> None:
-        """Tests _extract_axum_routes function directly."""
-        from hypergumbo.analyze.rust import (
-            _extract_axum_routes,
-            is_rust_tree_sitter_available,
-        )
-        from hypergumbo.ir import AnalysisRun
-
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
-
-        import tree_sitter_rust
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rs_file = tmp_path / "test.rs"
-        rs_file.write_text("""
-fn app() -> Router {
-    Router::new().route("/test", get(handler))
-}
-""")
-
-        source = rs_file.read_bytes()
-        tree = parser.parse(source)
-
-        routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
-
-        assert len(routes) == 1
-        assert routes[0].name == "handler"
-        assert routes[0].kind == "route"
-        assert routes[0].stable_id == "get"
-
-    def test_axum_route_read_error_handled(self, tmp_path: Path) -> None:
-        """Axum route extraction handles read errors in analyze_rust."""
-        from hypergumbo.analyze.rust import analyze_rust, is_rust_tree_sitter_available
-
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
-
-        rs_file = tmp_path / "routes.rs"
-        rs_file.write_text("""
-fn app() -> Router {
-    Router::new().route("/", get(handler))
-}
-async fn handler() {}
-""")
-
-        # The file is read twice - once for symbols, once for routes
-        # We want the second read (for routes) to fail
-        call_count = [0]
-        original_read_bytes = Path.read_bytes
-
-        def mock_read_bytes(self):
-            call_count[0] += 1
-            if call_count[0] <= 2:  # Allow symbol extraction
-                return original_read_bytes(self)
-            raise OSError("Read failed")
-
-        with patch.object(Path, "read_bytes", mock_read_bytes):
-            result = analyze_rust(tmp_path)
-
-        # Should not crash, just skip route extraction for that file
-        assert result.run is not None
-
-    def test_no_routes_in_non_axum_code(self, tmp_path: Path) -> None:
-        """No routes detected in code without Axum patterns."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "plain.rs"
-        rs_file.write_text("""
-fn main() {
-    let x = get_value();
-    println!("{}", x);
-}
-
-fn get_value() -> i32 {
-    42
-}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) == 0
-
-
-class TestActixWebRouteDetection:
-    """Tests for Actix-web route handler detection."""
-
-    def test_detects_get_attribute(self, tmp_path: Path) -> None:
-        """Detects #[get("/path")] attribute pattern."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "main.rs"
-        rs_file.write_text("""
-use actix_web::{get, App, HttpServer};
-
-#[get("/")]
-async fn index() -> &'static str {
-    "Hello, World!"
-}
-
-#[get("/users")]
-async fn list_users() -> &'static str {
-    "[]"
-}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        route_names = [s.name for s in routes]
-
-        assert "index" in route_names
-        assert "list_users" in route_names
-
-    def test_detects_post_attribute(self, tmp_path: Path) -> None:
-        """Detects #[post("/path")] attribute pattern."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "api.rs"
-        rs_file.write_text("""
-use actix_web::{post, web, HttpResponse};
-
-#[post("/users")]
-async fn create_user(body: web::Json<User>) -> HttpResponse {
-    HttpResponse::Created().finish()
-}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) >= 1
-        assert routes[0].name == "create_user"
-        assert routes[0].meta["http_method"] == "POST"
-        assert routes[0].meta["route_path"] == "/users"
-
-    def test_detects_multiple_http_methods(self, tmp_path: Path) -> None:
-        """Detects various HTTP method attributes."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "crud.rs"
-        rs_file.write_text("""
-use actix_web::{get, post, put, delete};
-
-#[get("/items")]
-async fn list_items() {}
-
-#[post("/items")]
-async fn create_item() {}
-
-#[put("/items/{id}")]
-async fn update_item() {}
-
-#[delete("/items/{id}")]
-async fn delete_item() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        route_names = [s.name for s in routes]
-
-        assert "list_items" in route_names
-        assert "create_item" in route_names
-        assert "update_item" in route_names
-        assert "delete_item" in route_names
-
-        # Check HTTP methods
-        http_methods = {s.meta["http_method"] for s in routes if s.meta}
-        assert "GET" in http_methods
-        assert "POST" in http_methods
-        assert "PUT" in http_methods
-        assert "DELETE" in http_methods
-
-    def test_detects_qualified_attribute(self, tmp_path: Path) -> None:
-        """Detects #[actix_web::get("/path")] qualified pattern."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "qualified.rs"
-        rs_file.write_text("""
-#[actix_web::get("/api/health")]
-async fn health_check() -> &'static str {
-    "OK"
-}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) >= 1
-        assert routes[0].name == "health_check"
-        assert routes[0].meta["route_path"] == "/api/health"
-
-    def test_actix_route_has_stable_id(self, tmp_path: Path) -> None:
-        """Actix-web route symbols have stable_id set to HTTP method."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "stable.rs"
-        rs_file.write_text("""
-use actix_web::post;
-
-#[post("/submit")]
-async fn submit_form() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) >= 1
-        assert routes[0].stable_id == "post"
-
-    def test_extract_actix_routes_directly(self, tmp_path: Path) -> None:
-        """Tests _extract_actix_routes function directly."""
-        from hypergumbo.analyze.rust import (
-            _extract_actix_routes,
-            is_rust_tree_sitter_available,
-        )
-        from hypergumbo.ir import AnalysisRun
-
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
-
-        import tree_sitter_rust
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rs_file = tmp_path / "test.rs"
-        rs_file.write_text("""
-#[get("/test")]
-async fn test_handler() {}
-""")
-
-        source = rs_file.read_bytes()
-        tree = parser.parse(source)
-
-        routes = _extract_actix_routes(tree.root_node, source, rs_file, run)
-
-        assert len(routes) == 1
-        assert routes[0].name == "test_handler"
-        assert routes[0].kind == "route"
-        assert routes[0].stable_id == "get"
-
-    def test_actix_with_path_params(self, tmp_path: Path) -> None:
-        """Actix-web routes with path parameters are detected."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "params.rs"
-        rs_file.write_text("""
-use actix_web::get;
-
-#[get("/users/{user_id}/posts/{post_id}")]
-async fn get_user_post() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        assert len(routes) >= 1
-        assert routes[0].meta["route_path"] == "/users/{user_id}/posts/{post_id}"
-
-    def test_mixed_axum_and_actix(self, tmp_path: Path) -> None:
-        """Both Axum and Actix-web routes are detected in same file."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "mixed.rs"
-        rs_file.write_text("""
-use actix_web::get;
-use axum::routing::post;
-
-// Actix-web style
-#[get("/actix")]
-async fn actix_handler() {}
-
-// Axum style
-fn app() -> Router {
-    Router::new().route("/axum", post(axum_handler))
-}
-
-async fn axum_handler() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-        route_names = [s.name for s in routes]
-
-        # Both should be detected
-        assert "actix_handler" in route_names
-        assert "axum_handler" in route_names
-
-    def test_rocket_style_multi_param_attribute(self, tmp_path: Path) -> None:
-        """Rocket-style attributes with extra params extract path correctly."""
-        from hypergumbo.analyze.rust import analyze_rust
-
-        rs_file = tmp_path / "rocket.rs"
-        rs_file.write_text("""
-use rocket::{get, post};
-
-#[post("/submit", data = "<form>")]
-async fn submit_form() {}
-
-#[get("/data", format = "json")]
-async fn get_json() {}
-
-#[get("/ranked", rank = 2)]
-async fn ranked_handler() {}
-""")
-
-        result = analyze_rust(tmp_path)
-
-
-        routes = [s for s in result.symbols if s.kind == "route"]
-
-        # Check that paths are extracted correctly (not including extra params)
-        paths = {s.meta["route_path"] for s in routes if s.meta}
-        assert "/submit" in paths
-        assert "/data" in paths
-        assert "/ranked" in paths
-
-        # Ensure no malformed paths like "/submit", data = "<form>"
-        for route in routes:
-            if route.meta:
-                assert "data =" not in route.meta["route_path"]
-                assert "format =" not in route.meta["route_path"]
-                assert "rank =" not in route.meta["route_path"]
-
-
 class TestReexportResolution:
     """Tests for pub use re-export resolution."""
 
@@ -1283,161 +788,247 @@ fn greet(name: &str) -> String {
 
 
 # ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
+# Annotation Extraction Tests (ADR-0003 v1.0.x - YAML Pattern Support)
 # ============================================================================
 
 
-class TestRustRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level Rust route detection."""
+class TestRustAnnotationExtraction:
+    """Tests for extracting Rust attributes as annotations."""
 
-    def test_axum_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Axum route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import rust as rust_module
+    def test_extracts_function_annotations(self, tmp_path: Path) -> None:
+        """Extracts attributes from functions."""
         from hypergumbo.analyze.rust import analyze_rust
-
-        # Reset the warning deduplication set
-        rust_module._deprecated_route_warnings_emitted.clear()
 
         rs_file = tmp_path / "main.rs"
-        rs_file.write_text("""
-use axum::{routing::get, Router};
-
-async fn hello() -> &'static str {
-    "Hello, World!"
+        rs_file.write_text('''
+#[test]
+fn test_something() {
+    assert!(true);
 }
+''')
 
-pub fn routes() -> Router {
-    Router::new()
-        .route("/", get(hello))
-}
-""")
+        result = analyze_rust(tmp_path)
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_rust(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
 
-        # Should have at least one deprecation warning for Axum
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Axum" in warning_message
-        assert "deprecated" in warning_message.lower()
+        func = funcs[0]
+        assert func.meta is not None
+        assert "annotations" in func.meta
+        annotations = func.meta["annotations"]
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "test"
+        assert annotations[0]["args"] == []
 
-    def test_actix_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Actix-web route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import rust as rust_module
+    def test_extracts_struct_annotations(self, tmp_path: Path) -> None:
+        """Extracts derive attributes from structs."""
         from hypergumbo.analyze.rust import analyze_rust
-
-        # Reset the warning deduplication set
-        rust_module._deprecated_route_warnings_emitted.clear()
 
         rs_file = tmp_path / "main.rs"
-        rs_file.write_text("""
-use actix_web::{get, web, HttpResponse};
-
-#[get("/users")]
-async fn get_users() -> HttpResponse {
-    HttpResponse::Ok().body("users")
+        rs_file.write_text('''
+#[derive(Debug, Clone)]
+struct User {
+    name: String,
 }
-""")
+''')
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_rust(tmp_path)
+        result = analyze_rust(tmp_path)
 
-        # Should have deprecation warning for Actix-web
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Actix" in warning_message
-        assert "deprecated" in warning_message.lower()
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 1
 
-    def test_deprecation_warning_emitted_once_per_framework(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per framework."""
-        import warnings
-        from hypergumbo.analyze import rust as rust_module
+        struct = structs[0]
+        assert struct.meta is not None
+        assert "annotations" in struct.meta
+        annotations = struct.meta["annotations"]
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "derive"
+        assert "Debug" in annotations[0]["args"]
+        assert "Clone" in annotations[0]["args"]
+
+    def test_extracts_actix_web_annotations(self, tmp_path: Path) -> None:
+        """Extracts Actix-web route attributes for YAML pattern matching."""
         from hypergumbo.analyze.rust import analyze_rust
 
-        # Reset the warning deduplication set
-        rust_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple files with Actix routes
-        (tmp_path / "users.rs").write_text("""
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
 #[get("/users")]
-async fn get_users() -> HttpResponse {
-    HttpResponse::Ok().body("users")
+async fn list_users() -> String {
+    "[]".to_string()
 }
 
 #[post("/users")]
-async fn create_user() -> HttpResponse {
-    HttpResponse::Ok().body("created")
+async fn create_user() -> String {
+    "created".to_string()
 }
-""")
-        (tmp_path / "items.rs").write_text("""
-#[get("/items")]
-async fn get_items() -> HttpResponse {
-    HttpResponse::Ok().body("items")
-}
-""")
+''')
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_rust(tmp_path)
+        result = analyze_rust(tmp_path)
 
-        # Should have exactly one Actix deprecation warning (deduplicated)
-        actix_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Actix" in str(warning.message)
-        ]
-        assert len(actix_warnings) == 1
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 2
 
-    def test_no_deprecation_warning_without_route_macros(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for files without route macros."""
-        import warnings
-        from hypergumbo.analyze import rust as rust_module
+        # Find list_users
+        list_users = next((f for f in funcs if f.name == "list_users"), None)
+        assert list_users is not None
+        assert list_users.meta is not None
+        annotations = list_users.meta.get("annotations", [])
+        get_ann = next((a for a in annotations if a["name"] == "get"), None)
+        assert get_ann is not None
+        assert get_ann["args"] == ["/users"]
+
+        # Find create_user
+        create_user = next((f for f in funcs if f.name == "create_user"), None)
+        assert create_user is not None
+        assert create_user.meta is not None
+        annotations = create_user.meta.get("annotations", [])
+        post_ann = next((a for a in annotations if a["name"] == "post"), None)
+        assert post_ann is not None
+        assert post_ann["args"] == ["/users"]
+
+    def test_extracts_qualified_annotations(self, tmp_path: Path) -> None:
+        """Extracts fully qualified attribute names like actix_web::get."""
         from hypergumbo.analyze.rust import analyze_rust
 
-        # Reset the warning deduplication set
-        rust_module._deprecated_route_warnings_emitted.clear()
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
+#[actix_web::get("/api/v1")]
+async fn api_handler() -> String {
+    "api".to_string()
+}
+''')
 
-        rs_file = tmp_path / "lib.rs"
-        rs_file.write_text("""
-pub struct User {
-    pub name: String,
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        func = funcs[0]
+        assert func.meta is not None
+        annotations = func.meta.get("annotations", [])
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "actix_web::get"
+        assert annotations[0]["args"] == ["/api/v1"]
+
+    def test_extracts_named_annotation_args(self, tmp_path: Path) -> None:
+        """Extracts named arguments from annotations like #[derive(Serialize)]."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
+#[serde(rename = "user_name")]
+fn get_name() -> String {
+    "test".to_string()
+}
+''')
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+
+        func = funcs[0]
+        assert func.meta is not None
+        annotations = func.meta.get("annotations", [])
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "serde"
+        # Named argument should be in kwargs
+        assert annotations[0]["kwargs"].get("rename") == "user_name"
+
+    def test_function_without_annotations(self, tmp_path: Path) -> None:
+        """Functions without annotations have no meta or empty annotations."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
+fn plain_function() {
+    println!("hello");
+}
+''')
+
+        result = analyze_rust(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        # No annotations means meta should be None
+        assert funcs[0].meta is None
+
+
+class TestAxumUsageContext:
+    """Tests for Axum route UsageContext extraction."""
+
+    def test_axum_simple_route(self, tmp_path: Path) -> None:
+        """Detects simple Axum .route() calls."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
+use axum::{routing::get, Router};
+
+async fn list_users() -> String {
+    "users".to_string()
 }
 
-impl User {
-    pub fn new(name: String) -> Self {
-        User { name }
-    }
+pub fn routes() -> Router {
+    Router::new().route("/users", get(list_users))
 }
-""")
+''')
+        result = analyze_rust(tmp_path)
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_rust(tmp_path)
+        # Should have usage contexts for the route
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.kind == "call"
+        assert "route" in ctx.context_name
+        assert ctx.metadata["route_path"] == "/users"
+        assert ctx.metadata["http_method"] == "GET"
+        assert ctx.metadata["handler_name"] == "list_users"
 
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and ("Axum" in str(warning.message) or "Actix" in str(warning.message))
-        ]
-        assert len(route_warnings) == 0
+    def test_axum_chained_handlers(self, tmp_path: Path) -> None:
+        """Detects chained HTTP methods like get(h1).post(h2)."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
+use axum::{routing::{get, post}, Router};
+
+async fn list_users() -> String { "list".to_string() }
+async fn create_user() -> String { "create".to_string() }
+
+pub fn routes() -> Router {
+    Router::new().route("/users", get(list_users).post(create_user))
+}
+''')
+        result = analyze_rust(tmp_path)
+
+        # Should have contexts for both GET and POST
+        assert len(result.usage_contexts) >= 2
+        methods = {ctx.metadata["http_method"] for ctx in result.usage_contexts}
+        assert "GET" in methods
+        assert "POST" in methods
+
+    def test_axum_handler_resolution(self, tmp_path: Path) -> None:
+        """Handler symbol references are resolved."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text('''
+async fn my_handler() -> String { "ok".to_string() }
+
+fn routes() {
+    Router::new().route("/path", get(my_handler))
+}
+''')
+        result = analyze_rust(tmp_path)
+
+        # Find the handler function
+        funcs = [s for s in result.symbols if s.name == "my_handler"]
+        assert len(funcs) == 1
+        handler_id = funcs[0].id
+
+        # Check if usage context references the handler
+        for ctx in result.usage_contexts:
+            if ctx.metadata.get("handler_name") == "my_handler":
+                assert ctx.symbol_ref == handler_id
+                break
+

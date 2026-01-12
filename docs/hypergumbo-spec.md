@@ -132,6 +132,40 @@ Exports the analyzer capsule in a privacy-safe format suitable for sharing or pu
 
 **Use case:** Share analyzer configuration without leaking repository structure. Shareable capsules contain no source code, no symbol names, no file paths from your repository.
 
+🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
+
+Estimates test coverage by analyzing which functions are called by tests. Uses static analysis only (no code execution). Language agnostic.
+
+**Features:**
+* **Hot spots:** Functions called by many tests (potential redundancy)
+* **Cold spots:** Functions not called by any tests (need coverage)
+
+**Filtering options:**
+* `--min-tests N`: Only show functions called by at least N tests
+* `--max-tests N`: Only show functions called by at most N tests (0 = untested only)
+* `--top N`: Limit output to top N hot/cold spots
+
+**Example output (text format):**
+```
+Test Coverage Estimate
+======================
+Total functions: 150
+Tested: 120 (80.0%)
+Untested: 30
+Total test functions: 45
+
+Hot Spots (most tested - potential redundancy)
+----------------------------------------------
+   15 tests  utils.py:10-20   helper()
+   12 tests  core.py:50-60    validate()
+
+Cold Spots (untested - need coverage)
+-------------------------------------
+    0 tests  core.py:100-150  process()  [50 LOC, complexity: 8]
+```
+
+**Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
+
 ### Key principle
 Initialization may use language detection; **analysis execution requires no network or API keys** (by default). The capsule should be deterministic and reproducible given the same repo state.
 
@@ -4350,3 +4384,40 @@ Add optional integration tests that make real API calls to LLM providers (OpenRo
 * Catch environment-specific issues (e.g., proxy configuration, API changes)
 
 **Rationale:** Unit tests with mocks provide full coverage but cannot catch issues like the httpx/IPv6 CIDR proxy bug discovered during manual testing. Integration tests would provide additional confidence for real-world deployments.
+
+## Appendix E: Planned Language/DSL Support (Spec B Backlog)
+
+Languages and DSLs identified as gaps from industry analysis of 200+ production repositories.
+
+### High Priority (Build-from-source)
+
+These have tree-sitter grammars available but no PyPI packages. Would require build-from-source integration similar to Lean/Wolfram.
+
+| Language | Use Case | Grammar Source | Notes |
+|----------|----------|----------------|-------|
+| **Meson** | Build system (GNOME, QEMU, many others) | [tree-sitter-grammars/tree-sitter-meson](https://github.com/tree-sitter-grammars/tree-sitter-meson) | Mature grammar, straightforward integration |
+| **Assembly (generic)** | Performance-critical code (ffmpeg, x264, linux kernel) | [RubixDev/tree-sitter-asm](https://github.com/RubixDev/tree-sitter-asm) | Generic grammar; many assembly variants exist |
+
+### Medium Priority (Specialized ecosystems)
+
+| Language/DSL | Use Case | Grammar Status |
+|--------------|----------|----------------|
+| **Rego** | OPA/Gatekeeper policy-as-code | No known grammar; may need custom development |
+| **Device Tree (DTS)** | Linux kernel hardware descriptions | No known grammar |
+| **Kconfig** | Linux kernel configuration | No known grammar |
+
+### Low Priority (Very specialized)
+
+| Language/DSL | Use Case | Notes |
+|--------------|----------|-------|
+| **GN/GNI** | Chromium/V8 build system | V8-specific |
+| **Torque (.tq)** | V8 internals | V8-specific |
+| **ModSecurity rules** | WAF rule language | Very niche |
+| **NGINX config** | Web server configuration | Template-heavy, limited semantic value |
+
+### Not Planned
+
+| Format | Reason |
+|--------|--------|
+| **Markdown/RST** | Documentation, not code. Empty results are correct behavior. |
+| **Plain text specs** | Same as above — specs are not executable code. |

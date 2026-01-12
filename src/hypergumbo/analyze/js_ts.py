@@ -327,34 +327,6 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 # This prevents false positives from test mocks like fetchMock.get().
 ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
 
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Both decorator-based (NestJS) and call-based (Express) frameworks can now
-# use YAML patterns via UsageContext (v1.1.x).
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x for decorator-based frameworks.
-    Warning emitted once per framework per session.
-
-    Note: Call-based frameworks (Express, Koa) can now also use YAML patterns
-    via UsageContext (v1.1.x), but deprecation warnings are only for
-    decorator-based patterns that users can already migrate.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
-
-
 # Use find_child_by_field from base.py (imported above)
 _find_child_by_field = find_child_by_field
 
@@ -1640,11 +1612,6 @@ def _extract_symbols(
 
                 http_method, route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
-
-                # NestJS decorator detection is deprecated (ADR-0003 v1.0.x)
-                # Use YAML patterns in nestjs.yaml instead
-                if http_method:
-                    _emit_route_deprecation_warning("NestJS")
 
                 # Build meta with decorators and route_path
                 meta: dict[str, object] | None = None

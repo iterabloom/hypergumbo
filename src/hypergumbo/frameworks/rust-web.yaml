@@ -24,56 +24,68 @@ patterns:
       method: "metadata.http_method"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Actix-web route attributes
+  # Actix-web route attributes (both short form #[get] and qualified #[actix_web::get])
   - concept: route
-    annotation: "^actix_web::get$"
+    annotation: "^(actix_web::)?get$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::post$"
+    annotation: "^(actix_web::)?post$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::put$"
+    annotation: "^(actix_web::)?put$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::delete$"
+    annotation: "^(actix_web::)?delete$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::patch$"
+    annotation: "^(actix_web::)?patch$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?head$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?options$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?trace$"
     extract_path: "args[0]"
 
   # Actix-web route macro (generic)
   - concept: route
-    annotation: "^actix_web::route$"
+    annotation: "^(actix_web::)?route$"
     extract_path: "args[0]"
 
-  # Rocket route attributes
+  # Rocket route attributes (both short form and qualified)
   - concept: route
-    annotation: "^rocket::get$"
-    extract_path: "args[0]"
-
-  - concept: route
-    annotation: "^rocket::post$"
+    annotation: "^(rocket::)?get$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^rocket::put$"
+    annotation: "^(rocket::)?post$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^rocket::delete$"
+    annotation: "^(rocket::)?put$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^rocket::patch$"
+    annotation: "^(rocket::)?delete$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(rocket::)?patch$"
     extract_path: "args[0]"
 
   # Rocket generic route
   - concept: route
-    annotation: "^rocket::route$"
+    annotation: "^(rocket::)?route$"
     extract_path: "args[0]"
 
   # Axum middleware

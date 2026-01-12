@@ -54,35 +54,8 @@ PASS_ID = "rust-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
 # Axum HTTP method functions that define route handlers
-# Used in patterns like .route("/path", get(handler))
-# Route symbols are created directly here but UsageContext records enable YAML pattern matching
+# Used by _extract_axum_usage_contexts for YAML pattern matching
 AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
-
-# Actix-web attribute macros that define route handlers (deprecated - use rust-web.yaml)
-# Used in patterns like #[get("/path")] async fn handler() {}
-ACTIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
 
 
 def find_rust_files(repo_root: Path) -> Iterator[Path]:
@@ -220,6 +193,160 @@ def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None
 
 
+def _extract_rust_annotations(
+    node: "tree_sitter.Node", source: bytes
+) -> list[dict[str, object]]:
+    """Extract Rust attributes from preceding siblings of a node.
+
+    Rust attributes like #[get("/path")] or #[derive(Debug)] appear as
+    `attribute_item` siblings immediately before the declaration they apply to.
+
+    Args:
+        node: The declaration node (function_item, struct_item, etc.)
+        source: Source bytes for extracting text.
+
+    Returns:
+        List of annotation dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    annotations: list[dict[str, object]] = []
+
+    if node.parent is None:  # pragma: no cover - defensive
+        return annotations
+
+    # Find this node's index in parent's children
+    parent = node.parent
+    node_index = -1
+    for i, child in enumerate(parent.children):
+        if child == node:
+            node_index = i
+            break
+
+    if node_index < 0:
+        return annotations  # pragma: no cover
+
+    # Walk backwards from this node collecting attribute_items
+    # Stop when we hit a non-attribute (another declaration, etc.)
+    for i in range(node_index - 1, -1, -1):
+        sibling = parent.children[i]
+        if sibling.type == "attribute_item":
+            # Parse the attribute: #[name(args)] or #[path::to::name(args)]
+            attr_text = _node_text(sibling, source)
+            ann = _parse_rust_attribute(attr_text)
+            if ann:
+                annotations.append(ann)
+        elif sibling.type == "line_comment":
+            # Skip comments, they don't break the attribute chain
+            continue  # pragma: no cover - rare edge case
+        else:
+            # Any other node type breaks the chain
+            break
+
+    # Reverse to maintain source order (we walked backwards)
+    annotations.reverse()
+    return annotations
+
+
+def _parse_rust_attribute(attr_text: str) -> Optional[dict[str, object]]:
+    """Parse a Rust attribute string into annotation dict.
+
+    Examples:
+        #[get("/path")]         -> {"name": "get", "args": ["/path"], "kwargs": {}}
+        #[actix_web::get("/")]  -> {"name": "actix_web::get", "args": ["/"], "kwargs": {}}
+        #[derive(Debug, Clone)] -> {"name": "derive", "args": ["Debug", "Clone"], "kwargs": {}}
+        #[route("/", method = "GET")] -> {"name": "route", "args": ["/"], "kwargs": {"method": "GET"}}
+
+    Args:
+        attr_text: Raw attribute text including #[ and ]
+
+    Returns:
+        Parsed annotation dict or None if parsing fails.
+    """
+    # Strip #[ and ] from outer wrapper
+    text = attr_text.strip()
+    if text.startswith("#[") and text.endswith("]"):
+        text = text[2:-1]
+    else:
+        return None  # pragma: no cover
+
+    # Find the name (before any parentheses)
+    paren_pos = text.find("(")
+    if paren_pos == -1:
+        # No arguments: #[test] or #[cfg(test)]
+        return {"name": text.strip(), "args": [], "kwargs": {}}
+
+    name = text[:paren_pos].strip()
+    args_str = text[paren_pos + 1:-1] if text.endswith(")") else ""
+
+    # Parse arguments - handle both positional and named
+    args: list[str] = []
+    kwargs: dict[str, str] = {}
+
+    if args_str:
+        # Simple parsing: split by comma, handle quotes
+        # This handles common cases like ("/path") or ("/", method = "GET")
+        current_arg = ""
+        in_string = False
+        string_char = ""
+
+        for char in args_str:
+            if char in ('"', "'") and not in_string:
+                in_string = True
+                string_char = char
+                current_arg += char
+            elif char == string_char and in_string:
+                in_string = False
+                current_arg += char
+            elif char == "," and not in_string:
+                arg = current_arg.strip()
+                if arg:
+                    _add_rust_arg(arg, args, kwargs)
+                current_arg = ""
+            else:
+                current_arg += char
+
+        # Handle last argument
+        arg = current_arg.strip()
+        if arg:
+            _add_rust_arg(arg, args, kwargs)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _add_rust_arg(arg: str, args: list[str], kwargs: dict[str, str]) -> None:
+    """Add a parsed argument to either args or kwargs list.
+
+    Args:
+        arg: The argument string (might be positional or named)
+        args: List to append positional args to
+        kwargs: Dict to add named args to
+    """
+    # Check if it's a named argument (contains = outside of string)
+    eq_pos = -1
+    in_string = False
+    for i, char in enumerate(arg):
+        if char in ('"', "'"):
+            in_string = not in_string
+        elif char == "=" and not in_string:
+            eq_pos = i
+            break
+
+    if eq_pos > 0:
+        # Named argument
+        key = arg[:eq_pos].strip()
+        value = arg[eq_pos + 1:].strip()
+        # Strip quotes from value
+        if (value.startswith('"') and value.endswith('"')) or \
+           (value.startswith("'") and value.endswith("'")):
+            value = value[1:-1]
+        kwargs[key] = value
+    else:
+        # Positional argument - strip quotes
+        if (arg.startswith('"') and arg.endswith('"')) or \
+           (arg.startswith("'") and arg.endswith("'")):
+            arg = arg[1:-1]
+        args.append(arg)
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -257,6 +384,12 @@ def _extract_symbols_from_file(
                 # Extract function signature
                 signature = _extract_rust_signature(node, source)
 
+                # Extract annotations for YAML pattern matching
+                annotations = _extract_rust_annotations(node, source)
+                meta: dict[str, object] | None = None
+                if annotations:
+                    meta = {"annotations": annotations}
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -272,6 +405,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -284,6 +418,10 @@ def _extract_symbols_from_file(
                 struct_name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract annotations for YAML pattern matching (e.g., derive macros)
+                annotations = _extract_rust_annotations(node, source)
+                meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, struct_name, "struct"),
@@ -299,6 +437,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[struct_name] = symbol
@@ -310,6 +449,10 @@ def _extract_symbols_from_file(
                 enum_name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract annotations for YAML pattern matching
+                annotations = _extract_rust_annotations(node, source)
+                meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, enum_name, "enum"),
@@ -325,6 +468,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[enum_name] = symbol
@@ -336,6 +480,10 @@ def _extract_symbols_from_file(
                 trait_name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract annotations for YAML pattern matching
+                annotations = _extract_rust_annotations(node, source)
+                meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, trait_name, "trait"),
@@ -351,158 +499,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[trait_name] = symbol
 
     return analysis
-
-
-def _extract_axum_routes(
-    node: "tree_sitter.Node",
-    source: bytes,
-    file_path: Path,
-    run: AnalysisRun,
-) -> list[Symbol]:
-    """Extract Axum route handler symbols from a tree-sitter node.
-
-    Detects patterns like:
-    - .route("/path", get(handler))
-    - .route("/users", post(create_user).get(list_users))
-
-    Creates symbols with stable_id = HTTP method for route discovery.
-    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
-    """
-    routes: list[Symbol] = []
-
-    def extract_handlers_from_call(
-        call_node: "tree_sitter.Node", route_path: str
-    ) -> None:
-        """Extract handler functions from method chain iteratively.
-
-        Handles patterns like: get(handler).post(other_handler)
-        Uses a while loop instead of recursion to traverse chained calls.
-        """
-        current_call = call_node
-        while current_call is not None and current_call.type == "call_expression":
-            func_node = _find_child_by_field(current_call, "function")
-            if not func_node:
-                break  # pragma: no cover
-
-            next_call = None
-
-            # Check if this is an HTTP method call like get(handler)
-            if func_node.type == "identifier":
-                method_name = _node_text(func_node, source)
-                if method_name in AXUM_HTTP_METHODS:
-                    # Extract handler name from arguments
-                    args_node = _find_child_by_type(current_call, "arguments")
-                    if args_node:
-                        for arg in args_node.children:
-                            if arg.type == "identifier":
-                                handler_name = _node_text(arg, source)
-                                start_line = current_call.start_point[0] + 1
-                                end_line = current_call.end_point[0] + 1
-
-                                route_sym = Symbol(
-                                    id=_make_symbol_id(
-                                        str(file_path), start_line, end_line,
-                                        f"{method_name.upper()} {route_path}", "route"
-                                    ),
-                                    stable_id=method_name,  # HTTP method for route discovery
-                                    name=handler_name,
-                                    kind="route",
-                                    language="rust",
-                                    path=str(file_path),
-                                    span=Span(
-                                        start_line=start_line,
-                                        end_line=end_line,
-                                        start_col=current_call.start_point[1],
-                                        end_col=current_call.end_point[1],
-                                    ),
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta={"route_path": route_path, "http_method": method_name.upper()},
-                                )
-                                routes.append(route_sym)
-                                break
-
-            # Check for chained methods like get(h1).post(h2)
-            elif func_node.type == "field_expression":
-                # The field is the method name (post)
-                field_node = _find_child_by_field(func_node, "field")
-                # The value is the previous call (get(h1))
-                value_node = _find_child_by_field(func_node, "value")
-
-                if field_node:
-                    method_name = _node_text(field_node, source)
-                    if method_name in AXUM_HTTP_METHODS:
-                        # Extract handler from this method's arguments
-                        args_node = _find_child_by_type(current_call, "arguments")
-                        if args_node:
-                            for arg in args_node.children:
-                                if arg.type == "identifier":
-                                    handler_name = _node_text(arg, source)
-                                    start_line = current_call.start_point[0] + 1
-                                    end_line = current_call.end_point[0] + 1
-
-                                    route_sym = Symbol(
-                                        id=_make_symbol_id(
-                                            str(file_path), start_line, end_line,
-                                            f"{method_name.upper()} {route_path}", "route"
-                                        ),
-                                        stable_id=method_name,
-                                        name=handler_name,
-                                        kind="route",
-                                        language="rust",
-                                        path=str(file_path),
-                                        span=Span(
-                                            start_line=start_line,
-                                            end_line=end_line,
-                                            start_col=current_call.start_point[1],
-                                            end_col=current_call.end_point[1],
-                                        ),
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        meta={"route_path": route_path, "http_method": method_name.upper()},
-                                    )
-                                    routes.append(route_sym)
-                                    break
-
-                # Continue to the chained call
-                if value_node and value_node.type == "call_expression":
-                    next_call = value_node
-
-            current_call = next_call
-
-    for n in iter_tree(node):
-        # Look for .route("/path", handler) pattern
-        if n.type == "call_expression":
-            func_node = _find_child_by_field(n, "function")
-
-            # Check if this is a method call .route(...)
-            if func_node and func_node.type == "field_expression":
-                field_node = _find_child_by_field(func_node, "field")
-                if field_node and _node_text(field_node, source) == "route":
-                    # Extract arguments
-                    args_node = _find_child_by_type(n, "arguments")
-                    if args_node:
-                        route_path = None
-                        handler_call = None
-
-                        for arg in args_node.children:
-                            # First string argument is the route path
-                            if arg.type == "string_literal" and route_path is None:
-                                route_path = _node_text(arg, source).strip('"')
-                            # Call expression is the handler(s)
-                            elif arg.type == "call_expression" and route_path:
-                                handler_call = arg
-                                break
-
-                        if route_path and handler_call:
-                            extract_handlers_from_call(handler_call, route_path)
-
-    return routes
 
 
 def _extract_axum_usage_contexts(
@@ -644,95 +646,6 @@ def _extract_handler_usage_contexts(
             contexts.append(ctx)
 
         current_call = next_call
-
-
-def _extract_actix_routes(
-    node: "tree_sitter.Node",
-    source: bytes,
-    file_path: Path,
-    run: AnalysisRun,
-) -> list[Symbol]:
-    """Extract Actix-web route handler symbols from attribute macros.
-
-    Detects patterns like:
-    - #[get("/path")]
-    - #[post("/users")]
-    - #[actix_web::get("/path")]
-
-    Creates symbols with stable_id = HTTP method for route discovery.
-    Uses iterative tree traversal to avoid RecursionError on deeply nested code.
-    """
-    routes: list[Symbol] = []
-
-    # Use a stack-based approach to process nodes and their children
-    # Each item is a node whose children we need to scan for attribute+function pairs
-    stack = [node]
-    while stack:
-        current = stack.pop()
-
-        # Iterate through children looking for attribute + function pairs
-        for i, child in enumerate(current.children):
-            if child.type == "attribute_item":
-                attr_text = _node_text(child, source)
-
-                # Check for HTTP method attributes
-                for method in ACTIX_HTTP_METHODS:
-                    # Match patterns like #[get("/path")] or #[actix_web::get("/path")]
-                    if f"[{method}(" in attr_text or f"::{method}(" in attr_text:
-                        # Extract the path from the first quoted string in the attribute
-                        # Handles: #[get("/path")] and #[post("/path", data = "<form>")]
-                        path_start = attr_text.find('"')
-                        if path_start != -1:
-                            # Find the closing quote of the first string (not the last quote)
-                            path_end = attr_text.find('"', path_start + 1)
-                        else:
-                            path_end = -1  # pragma: no cover
-                        if path_start != -1 and path_end > path_start:
-                            route_path = attr_text[path_start + 1:path_end]
-
-                            # Look for the next function_item sibling
-                            for j in range(i + 1, len(current.children)):
-                                sibling = current.children[j]
-                                if sibling.type == "function_item":
-                                    name_node = _find_child_by_field(sibling, "name")
-                                    if name_node:
-                                        handler_name = _node_text(name_node, source)
-                                        start_line = sibling.start_point[0] + 1
-                                        end_line = sibling.end_point[0] + 1
-
-                                        route_sym = Symbol(
-                                            id=_make_symbol_id(
-                                                str(file_path), start_line, end_line,
-                                                f"{method.upper()} {route_path}", "route"
-                                            ),
-                                            stable_id=method,
-                                            name=handler_name,
-                                            kind="route",
-                                            language="rust",
-                                            path=str(file_path),
-                                            span=Span(
-                                                start_line=start_line,
-                                                end_line=end_line,
-                                                start_col=sibling.start_point[1],
-                                                end_col=sibling.end_point[1],
-                                            ),
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            meta={"route_path": route_path, "http_method": method.upper()},
-                                        )
-                                        routes.append(route_sym)
-                                    break
-                                # Skip other attributes and comments
-                                elif sibling.type not in (  # pragma: no cover
-                                    "attribute_item", "line_comment"
-                                ):
-                                    break  # pragma: no cover
-                        break
-
-            # Add child to stack for processing (for impl blocks, mod blocks, etc.)
-            stack.append(child)
-
-    return routes
 
 
 def _get_enclosing_function(
@@ -931,27 +844,14 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
         )
         all_edges.extend(edges)
 
-        # Extract route handlers and usage contexts
+        # Extract UsageContext for Axum route YAML pattern matching
         try:
             source = rs_file.read_bytes()
             tree = parser.parse(source)
-            # Axum: .route("/path", get(handler)) - creates symbols and UsageContext
-            axum_routes = _extract_axum_routes(tree.root_node, source, rs_file, run)
-            if axum_routes:
-                _emit_route_deprecation_warning("Axum")
-            all_symbols.extend(axum_routes)
-
-            # Axum UsageContext for YAML pattern matching
             usage_contexts = _extract_axum_usage_contexts(
                 tree.root_node, source, rs_file, analysis.symbol_by_name
             )
             all_usage_contexts.extend(usage_contexts)
-
-            # Actix-web: #[get("/path")] async fn handler() {} - definition-based
-            actix_routes = _extract_actix_routes(tree.root_node, source, rs_file, run)
-            if actix_routes:
-                _emit_route_deprecation_warning("Actix-web")
-            all_symbols.extend(actix_routes)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
 

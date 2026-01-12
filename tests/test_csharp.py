@@ -518,124 +518,6 @@ public class Factory
         assert len(direct_calls) >= 1
 
 
-class TestAspNetCoreRouteDetection:
-    """Tests for ASP.NET Core route detection with [HttpGet], [HttpPost], etc."""
-
-    def test_http_get_attribute(self, tmp_path: Path) -> None:
-        """Detects [HttpGet] attribute on controller action."""
-        (tmp_path / "UsersController.cs").write_text(
-            """using Microsoft.AspNetCore.Mvc;
-
-[ApiController]
-[Route("api/[controller]")]
-public class UsersController : ControllerBase
-{
-    [HttpGet]
-    public IActionResult GetUsers()
-    {
-        return Ok();
-    }
-}
-"""
-        )
-
-        result = analyze_csharp(tmp_path)
-
-
-        methods = [s for s in result.symbols if s.kind == "method" and "GetUsers" in s.name]
-        assert len(methods) == 1
-        method = methods[0]
-
-        assert method.meta is not None
-        assert method.meta.get("http_method") == "GET"
-        assert method.stable_id == "GET"
-
-    def test_http_post_attribute(self, tmp_path: Path) -> None:
-        """Detects [HttpPost] attribute on controller action."""
-        (tmp_path / "UsersController.cs").write_text(
-            """[ApiController]
-public class UsersController : ControllerBase
-{
-    [HttpPost]
-    public IActionResult CreateUser()
-    {
-        return Ok();
-    }
-}
-"""
-        )
-
-        result = analyze_csharp(tmp_path)
-
-
-        methods = [s for s in result.symbols if s.kind == "method" and "CreateUser" in s.name]
-        assert len(methods) == 1
-        method = methods[0]
-
-        assert method.meta is not None
-        assert method.meta.get("http_method") == "POST"
-        assert method.stable_id == "POST"
-
-    def test_http_get_with_route_template(self, tmp_path: Path) -> None:
-        """Detects [HttpGet("{id}")] with route template."""
-        (tmp_path / "UsersController.cs").write_text(
-            """[ApiController]
-public class UsersController : ControllerBase
-{
-    [HttpGet("{id}")]
-    public IActionResult GetById(int id)
-    {
-        return Ok();
-    }
-}
-"""
-        )
-
-        result = analyze_csharp(tmp_path)
-
-
-        methods = [s for s in result.symbols if s.kind == "method" and "GetById" in s.name]
-        assert len(methods) == 1
-        method = methods[0]
-
-        assert method.meta is not None
-        assert method.meta.get("route_path") == "{id}"
-        assert method.meta.get("http_method") == "GET"
-
-    def test_all_http_methods(self, tmp_path: Path) -> None:
-        """Detects all ASP.NET Core HTTP method attributes."""
-        (tmp_path / "ItemsController.cs").write_text(
-            """[ApiController]
-public class ItemsController : ControllerBase
-{
-    [HttpGet]
-    public IActionResult GetAll() { return Ok(); }
-
-    [HttpPost]
-    public IActionResult Create() { return Ok(); }
-
-    [HttpPut("{id}")]
-    public IActionResult Update() { return Ok(); }
-
-    [HttpDelete("{id}")]
-    public IActionResult Delete() { return Ok(); }
-
-    [HttpPatch("{id}")]
-    public IActionResult Patch() { return Ok(); }
-}
-"""
-        )
-
-        result = analyze_csharp(tmp_path)
-
-
-        methods = [s for s in result.symbols if s.kind == "method" and s.stable_id in ("GET", "POST", "PUT", "DELETE", "PATCH")]
-
-        assert len(methods) == 5
-        http_methods = {m.stable_id for m in methods}
-        assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
-
-
 class TestCSharpSignatureExtraction:
     """Tests for C# function signature extraction."""
 
@@ -850,8 +732,8 @@ public class SecureController
         names = {a["name"] for a in annotations}
         assert names == {"Authorize", "HttpPost"}
 
-    def test_http_method_detection_with_annotations(self, tmp_path: Path) -> None:
-        """Both http_method and annotations are populated for route attributes."""
+    def test_http_method_annotation_extraction(self, tmp_path: Path) -> None:
+        """HTTP method attributes are extracted as annotations for YAML pattern matching."""
         (tmp_path / "Controller.cs").write_text("""
 using Microsoft.AspNetCore.Mvc;
 
@@ -868,12 +750,13 @@ public class ItemsController
         methods = [s for s in result.symbols if s.kind == "method"]
         method = methods[0]
 
-        # Should have both http_method (for backward compat) and annotations
+        # Annotations are extracted for YAML framework pattern matching
         assert method.meta is not None
-        assert method.meta.get("http_method") == "GET"
-        assert method.meta.get("route_path") == "{id}"
         assert "annotations" in method.meta
-        assert method.meta["annotations"][0]["name"] == "HttpGet"
+        annotations = method.meta["annotations"]
+        assert len(annotations) == 1
+        assert annotations[0]["name"] == "HttpGet"
+        assert annotations[0]["args"] == ["{id}"]
 
     def test_qualified_attribute_name(self, tmp_path: Path) -> None:
         """Extracts qualified attribute names (e.g., System.Serializable)."""
@@ -918,121 +801,3 @@ public class UserModel
         annotations = method.meta["annotations"]
         range_ann = next(a for a in annotations if a["name"] == "Range")
         assert range_ann["args"] == ["1", "100"]
-
-
-# ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
-# ============================================================================
-
-
-class TestAspNetRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level ASP.NET route detection."""
-
-    def test_aspnet_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """ASP.NET Core route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import csharp as csharp_module
-        from hypergumbo.analyze.csharp import analyze_csharp
-
-        # Reset the warning deduplication set
-        csharp_module._deprecated_route_warnings_emitted.clear()
-
-        cs_file = tmp_path / "Controller.cs"
-        cs_file.write_text("""
-public class UserController
-{
-    [HttpGet("/users")]
-    public void GetUsers() {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_csharp(tmp_path)
-
-        # Should have at least one deprecation warning for ASP.NET Core
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "ASP.NET" in warning_message
-        assert "deprecated" in warning_message.lower()
-
-    def test_deprecation_warning_emitted_once_per_session(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per session."""
-        import warnings
-        from hypergumbo.analyze import csharp as csharp_module
-        from hypergumbo.analyze.csharp import analyze_csharp
-
-        # Reset the warning deduplication set
-        csharp_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple controller files
-        (tmp_path / "UserController.cs").write_text("""
-public class UserController
-{
-    [HttpGet("/users")]
-    public void GetUsers() {}
-
-    [HttpPost("/users")]
-    public void CreateUser() {}
-}
-""")
-        (tmp_path / "ItemController.cs").write_text("""
-public class ItemController
-{
-    [HttpGet("/items")]
-    public void GetItems() {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_csharp(tmp_path)
-
-        # Should have exactly one ASP.NET deprecation warning (deduplicated)
-        aspnet_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "ASP.NET" in str(warning.message)
-        ]
-        assert len(aspnet_warnings) == 1
-
-    def test_no_deprecation_warning_without_route_attributes(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for classes without route attributes."""
-        import warnings
-        from hypergumbo.analyze import csharp as csharp_module
-        from hypergumbo.analyze.csharp import analyze_csharp
-
-        # Reset the warning deduplication set
-        csharp_module._deprecated_route_warnings_emitted.clear()
-
-        cs_file = tmp_path / "Service.cs"
-        cs_file.write_text("""
-public class UserService
-{
-    public void FindAll() {}
-    public void Save(User user) {}
-}
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_csharp(tmp_path)
-
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "ASP.NET" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
