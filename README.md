@@ -126,6 +126,7 @@ pytest --cov=src --cov-fail-under=100
 
 ## Links
 
+- [docs/USE-CASES.md](docs/USE-CASES.md) — Practical workflows and examples
 - [CHANGELOG.md](CHANGELOG.md) — Implementation history
 - [docs/LANGUAGES.md](docs/LANGUAGES.md) — All 67 supported languages
 - [docs/LINKERS.md](docs/LINKERS.md) — All 14 cross-language linkers

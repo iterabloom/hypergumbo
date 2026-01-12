@@ -135,9 +135,11 @@ hypergumbo routes
 - Python: FastAPI, Flask, Django, Django REST Framework, Tornado, Aiohttp
 - JavaScript: Express, Koa, Fastify, NestJS, Hapi
 - Ruby: Rails, Sinatra, Grape
-- Go: Gin, Echo, Fiber
+- Go: Gin, Echo, Fiber, Chi
 - Rust: Axum, Actix-web, Rocket
-- Java: Spring Boot
+- Java: Spring Boot, JAX-RS
+- PHP: Laravel
+- C#: ASP.NET Core
 - Elixir: Phoenix
 
 ---
@@ -283,6 +285,27 @@ Here's how it looks now:
 
 What are the major structural changes?
 ```
+
+---
+
+## 11. Estimating Test Coverage (Static Analysis)
+
+**Scenario:** You want to understand test coverage without running tests.
+
+```bash
+# Analyze test coverage statically
+hypergumbo test-coverage /path/to/project
+```
+
+**What you get:**
+- **Test-dense functions:** High tests-per-LOC ratio (may indicate redundant tests)
+- **Cold spots:** Functions with no detected test calls (potential coverage gaps)
+- **Test call graph:** Which tests call which functions
+
+**When this is useful:**
+- When running tests is slow or environment setup is complex
+- To quickly identify untested code during PR review
+- To spot over-tested code that may have redundant tests
 
 ---
 
