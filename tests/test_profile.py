@@ -143,6 +143,50 @@ def test_detects_react_framework(tmp_path: Path) -> None:
     assert "react" in data["profile"]["frameworks"]
 
 
+def test_detects_android_framework_from_build_gradle(tmp_path: Path) -> None:
+    """Should detect Android from build.gradle with android {} block."""
+    (tmp_path / "MainActivity.java").write_text(
+        "package com.example;\nimport android.app.Activity;\n"
+        "public class MainActivity extends Activity {}\n"
+    )
+    (tmp_path / "build.gradle").write_text(
+        'plugins {\n    id "custom.android.application"\n}\n\n'
+        "android {\n    namespace 'com.example'\n}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    assert "android" in data["profile"]["frameworks"]
+
+
+def test_detects_android_framework_from_manifest(tmp_path: Path) -> None:
+    """Should detect Android from AndroidManifest.xml presence."""
+    (tmp_path / "MainActivity.java").write_text(
+        "package com.example;\nimport android.app.Activity;\n"
+        "public class MainActivity extends Activity {}\n"
+    )
+    # Create subdirectory structure like real Android projects
+    src_dir = tmp_path / "app" / "src" / "main"
+    src_dir.mkdir(parents=True)
+    (src_dir / "AndroidManifest.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    package="com.example">\n'
+        "    <application/>\n"
+        "</manifest>\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+
+    data = json.loads(out_path.read_text())
+
+    assert "android" in data["profile"]["frameworks"]
+
+
 def test_detects_express_framework(tmp_path: Path) -> None:
     """Should detect Express.js from package.json."""
     (tmp_path / "server.js").write_text("const express = require('express');\n")

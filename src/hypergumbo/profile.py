@@ -342,8 +342,18 @@ JAVA_FRAMEWORKS = {
     "spark": ["spark-java", "com.sparkjava"],
     # Kotlin-specific
     "ktor": ["ktor", "io.ktor"],
-    # Android
-    "android": ["com.android.application", "com.android.library", "android.app.Activity"],
+    # Android - detect from build.gradle plugins, dependencies, and android {} blocks
+    "android": [
+        # Standard plugin IDs
+        "com.android.application",
+        "com.android.library",
+        # Build tools dependency (in buildscript { dependencies { ... } })
+        "com.android.tools.build:gradle",
+        # Android DSL block (all Android projects have this)
+        "android {",
+        # Legacy import patterns (less common but valid)
+        "android.app.activity",
+    ],
     "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
 }
 
@@ -769,7 +779,7 @@ def _detect_php_frameworks(repo_root: Path) -> list[str]:
 
 
 def _detect_java_frameworks(repo_root: Path) -> list[str]:
-    """Detect Java/Kotlin frameworks from pom.xml or build.gradle.
+    """Detect Java/Kotlin frameworks from pom.xml, build.gradle, or AndroidManifest.xml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
     """
@@ -796,6 +806,14 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
                         detected.append(framework)
                         detected_set.add(framework)
                         break
+
+    # Check for AndroidManifest.xml (definitive Android indicator)
+    # If any AndroidManifest.xml exists, this is an Android project
+    if "android" not in detected_set:
+        manifest_files = list(_find_manifest_files(repo_root, "AndroidManifest.xml"))
+        if manifest_files:
+            detected.append("android")
+            detected_set.add("android")
 
     return detected
 
