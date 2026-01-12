@@ -442,41 +442,20 @@ These fields prevent semantic drift: if an algorithm changes in the future, the 
 - Check `limits.partial_results_reason` for details
 - Agents should decide whether partial results are sufficient for their use case
 
-### Confidence model versioning
-The confidence calculation algorithm is **versioned independently** of the schema to allow refinement without breaking compatibility.
-**Contract**:
-- Schema version `0.1.0` is compatible with confidence models `hypergumbo-evidence-v1` through `hypergumbo-evidence-v1.9`
-- Confidence model v2 requires schema v0.2 or later
-- Changes to base scores or adjustment weights increment minor version (v1.0 → v1.1)
-- New evidence types can be added in minor versions; unknown types default to 0.30
-This prevents confidence score refinements from forcing schema migrations.
+### Confidence scoring
 
-### Confidence Scoring Contract
-**Contract boundary:** The `confidence_model` field (not schema version) governs calculation semantics.
-**Schema responsibilities:**
-- Defines structure: `confidence` field exists (float 0.0-1.0)
-- Defines supporting fields: `meta.evidence_type`, `meta.evidence_lang`
-- Types and presence guarantees
-**Confidence model responsibilities:**
-- Defines calculation: `(lang, evidence_type, context) → confidence score`
-- Maps evidence types to base scores
-- Defines adjustment rules
-**Versioning:**
-- **Schema bump** (0.1.0 → 0.2.0): Structure changes (new fields, removed fields, type changes)
-- **Confidence model minor bump** (v1.0 → v1.1): Score refinements, new evidence types, weight adjustments
-- **Confidence model major bump** (v1.x → v2.0): Incompatible calculation algorithm, requires schema v0.2+
-**Forward compatibility rules:**
-1. Consumers MUST ignore unknown `evidence_type` values (default to 0.30)
-2. Consumers MUST accept confidence model minor versions (e.g., code expecting v1.0 can read v1.5)
-3. Consumers SHOULD validate confidence model major version matches expected range
-4. Schema version and confidence model version are independent
-**Example:**
-- Schema v0.1.0 is compatible with confidence models `hypergumbo-evidence-v1.0` through `hypergumbo-evidence-v1.99`
-- Schema v0.2.0 is compatible with confidence models `hypergumbo-evidence-v1.0` through `hypergumbo-evidence-v2.99`
-- Confidence model v2.0 requires schema v0.2 or later
-**Multiple-evidence rule (v0.1.0):**
-- If `meta.evidence[]` is present, the edge’s top-level `confidence` SHOULD be computed from the primary evidence record (typically max confidence), and the chosen primary record should be mirrored into `meta.evidence_type/evidence_lang/evidence_spans`.
-- Consumers that understand `meta.evidence[]` MAY recompute confidence using their own aggregation strategy (e.g., max, weighted max by analyzer trust), but MUST remain compatible with the published `confidence_model` semantics for single-evidence fields.
+The `confidence` field on edges (0.0-1.0) indicates detection reliability:
+
+| Evidence Type | Base Score | Example |
+|---------------|------------|---------|
+| `ast_call_direct` | 0.90 | Direct function call in AST |
+| `ast_call_method` | 0.85 | Method call on object |
+| `import_static` | 0.95 | Static import statement |
+| `pattern_match` | 0.80 | Framework pattern (decorator, annotation) |
+| `cross_lang_link` | 0.75 | Cross-language boundary (JNI, IPC) |
+| `inferred` | 0.60 | Heuristic inference |
+
+The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
 
 ### analysis_runs[] — provenance tracking
 ```json
@@ -915,10 +894,7 @@ def calculate_evidence_confidence(
 ) -> float:
     """
     Calculate confidence from evidence.
-    
-    This is governed by confidence_model version, not schema version.
-    Changes to this calculation increment confidence_model minor version.
-    
+
     Args:
         lang: Language (from edge.meta.evidence_lang or src.language)
         evidence_type: From edge.meta.evidence_type
@@ -1560,22 +1536,16 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 > **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md).
 
-## 10) Key risks (MVP)
+## 10) Known limitations and risks
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| Tree-sitter install hell (platform-specific builds) | ~~Medium~~ **Resolved** | Medium | Tree-sitter grammars now bundled as standard dependencies; pre-built wheels available for all major platforms; 67 languages supported |
-| "Best-effort" feels broken to users | Medium | High | Over-communicate in docs; show diffs with/without types; publish benchmark results showing quality scores; machine-readable evidence types enable transparency |
-| Users skip `init` step | Medium | Medium | `hypergumbo run` auto-generates default capsule if missing; warns when using auto-generated capsule |
-| Capsule becomes stale after updates | Medium | Medium | Include `generated_at` + version check; `hypergumbo run` warns if capsule older than 30 days or version mismatch |
-| ID collisions in edge cases | Low | Medium | Append content hash to location-based ID if collision detected; log warning |
-| Confidence algorithm feels arbitrary | Medium | Medium | Document algorithm clearly as "heuristic baseline (to be validated)"; ship examples; allow `--confidence-threshold` override; machine-readable evidence types show reasoning |
-| Timeline slips due to packaging | Medium | Medium | **Week 0 buffer explicitly for this**; start tree-sitter packaging experiments before Week 1 |
-| Schema changes break early adopters | Low | High | Semantic versioning from day 1; maintain v0.1 compatibility per support policy; publish migration guides; forward compatibility contract in Appendix E |
-| Evidence types incomplete (edge cases not covered) | Medium | Low | Document "unknown" evidence type (confidence 0.30); collect telemetry on which types are hit; expand matrix in v0.2 |
-| LLM plan generation unreliable | Medium | Medium | Template-based plans work without LLM; LLM is enhancement, not requirement; validate in Week 0 before committing |
-| Capsule Plan composition too rigid | Low | Medium | Allow manual editing of plan.json; validation warns but doesn't reject unknown passes (permissive mode, local_only) |
-| stable_id doesn't survive refactors in untyped code | Medium | Low | Document limitation clearly; upgrade to interface-based stable_id when types added; shape_id provides alternative |
+| Limitation | Impact | Notes |
+|------------|--------|-------|
+| Best-effort analysis | Medium | AST-based analysis cannot resolve all calls (dynamic dispatch, reflection, eval). Confidence scores communicate uncertainty; machine-readable evidence types enable transparency. |
+| ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
+| Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
+| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in Appendix E; migration guides for breaking changes. |
+| stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
+| Re-export resolution incomplete | Low | Imports through re-exporting modules (e.g., `from package import x` where x is re-exported) may not fully resolve. See §9.6. |
 
 > **Historical note:** Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md). Spec B work will be pursued when there's clear demand for capabilities beyond what Spec A provides.
 
@@ -1709,7 +1679,6 @@ Spec A is designed to enable future enhancements without breaking changes:
 * **Capsule manifest**: `format` field supports `toolchain_bundle`, `container`, `daemon` modes
 * **Provenance**: Already tracks which pass created which nodes/edges via execution_id
 * **Versioned schema**: Room for v0.2, v0.3 with migration paths
-* **Versioned confidence**: Independent confidence model versioning prevents breaking changes
 
 ### What stays the same
 
@@ -1874,9 +1843,8 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 - `edges[].origin`, `edges[].origin_run_id`: Same semantics
 - `analysis_runs[].run_signature`: Deterministic fingerprint of pass configuration
 
-**4. Confidence model:**
-- `confidence_model` field governs calculation (not schema version)
-- Consumers MUST tolerate unknown `confidence_model` minor versions
+**4. Confidence scoring:**
+- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v1`)
 - Consumers MUST default unknown `evidence_type` to 0.30
 
 ### Extensible Contracts (can add in minor versions)
@@ -1916,8 +1884,8 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 **3. Changing ID formats:**
 - Example: Switching from `python:file.py:10-15:func:function` to `sha256:abc123`
 
-**4. Incompatible confidence model:**
-- Example: confidence_model v2.0 uses different evidence types, incompatible with v1.x
+**4. Changing confidence semantics:**
+- Example: Redefining what evidence types mean or changing the scoring algorithm
 
 ### Future Additions (examples of backward-compatible changes)
 
