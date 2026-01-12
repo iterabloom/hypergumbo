@@ -1358,144 +1358,50 @@ Supply chain configuration can be customized in `capsule_plan.json`:
 }
 ```
 
-## 8.7) Entrypoint Detection Improvements (Design)
+## 8.7) Entrypoint Detection
 
-> **Note:** This section describes the current state and interim mitigations. The long-term architectural direction is defined in [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md), which supersedes the "Future" subsections below. For handling call-based frameworks (Django, Express, Go web frameworks) that cannot use decorator-based YAML patterns, see the [ADR-0003 Usage Context Patterns extension](adr/0003-usage-context-patterns.md).
+Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
 
-Entrypoint detection uses path-based heuristics to identify HTTP handlers, CLI mains, and other entry sources for slicing. These heuristics are fast but prone to false positives when naming conventions collide across frameworks.
+### Architecture
 
-### Current State: Path-Based Heuristics (v0.6.x)
-
-Each detector matches file paths and names:
-- `_is_express_route_file`: matches `routes/` directory or `routes.js/ts`
-- `_is_tornado_handler_file`: matches `*_handler.py` or `handlers/` directory
-- `_is_micronaut_controller_file`: matches `*Client.java` or `client/` directory
-
-**Problems:**
-1. **Naming collision**: React Router uses `routes/*.tsx`, Express uses `routes/*.js` — same directory, different frameworks
-2. **Overly broad patterns**: `*Client.java` matches gRPC clients, Redis clients, SDK clients — not just Micronaut HTTP clients
-3. **No content verification**: Detection ignores actual file contents (imports, annotations)
-
-### Implemented Mitigations (v0.6.x)
-
-**Exclusion patterns** for known false positives:
-- Express: Exclude `.tsx/.jsx` files (React components)
-- Hapi/Koa: Same exclusion for React file-based routing
-- Micronaut: Exclude `*ServiceClient`, `*GrpcClient`, `*RpcClient` (gRPC stub wrappers)
-- Tornado: Exclude `*_error_handler.py`, `*_signal_handler.py`, etc. (non-web handlers)
-- GraphQL: Exclude `*dns-resolver*`, `*dependency-resolver*`, etc. (non-GraphQL resolvers)
-
-This is a whack-a-mole approach that reduces false positives but doesn't address the root cause: path heuristics cannot distinguish frameworks that share naming conventions.
-
-### Future: Semantic Entry Detection (ADR-0003)
-
-The long-term solution replaces path heuristics with **semantic entry detection** based on enriched symbol metadata. See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the full design.
-
-**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts that should be detected from symbol metadata, not file paths.
-
-**Architecture overview:**
 ```
 ANALYZERS (pure language, no framework knowledge)
   → Capture symbols + rich metadata (decorators, base classes, parameters)
+  → Capture UsageContext for call-based patterns (route registrations, etc.)
 
-FRAMEWORK_PATTERNS (configured by detected frameworks)
-  → Match patterns against symbol metadata
+FRAMEWORK_PATTERNS (37 YAML files, configured by detected frameworks)
+  → Match patterns against symbol metadata and usage contexts
   → Enrich symbols with concept metadata (route, task, model, etc.)
 
-ENTRY_KINDS (semantic detection)
+ENTRYPOINTS (semantic detection)
   → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
   → High confidence (0.95) from semantic match
-  → No path heuristics, no false positives
 ```
 
-**Example: React Router false positive eliminated:**
-```
-Current (path heuristics):
-  File: frontend/src/routes/login.tsx
-  Path matches: /routes/*.tsx
-  Result: Flagged as Express route ❌
+**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts detected from symbol metadata, not file paths.
 
-Future (semantic detection):
-  File: frontend/src/routes/login.tsx
-  FRAMEWORK_PATTERNS: No Express patterns matched (no app.get decorator)
-  Symbol concepts: {} (empty)
-  Result: Not flagged ✅
-```
+### Pattern Types
 
-**Benefits over ContentVerifier approach:**
-- No additional file I/O — metadata already captured by analyzers
-- Framework patterns are data (YAML), not code
-- Entry detection becomes trivial: just query `sym.concepts`
+The framework pattern system supports multiple detection strategies:
+
+| Pattern Type | Example Frameworks | Detection Method |
+|--------------|-------------------|------------------|
+| **Decorator-based** | FastAPI, Flask, NestJS, Spring Boot | Match `@app.get`, `@Controller` decorators |
+| **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
+| **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
+| **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
+
+See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
 
 ### Scoring for Auto-Slice Entry Selection
 
-**Scoring function** (applies to both current and future approaches):
+When multiple entrypoints exist, scoring selects the most useful ones:
+
 ```python
 score = confidence * (1 + log(1 + outgoing_edges))
 ```
+
 This prefers well-connected entries, producing richer slices.
-
-### Migration Path
-
-See [ADR-0003 §5.2](adr/0003-architectural-analysis-and-revision-plan.md#52-migration-path) for the authoritative migration plan.
-
-| Version | Focus | Entry Detection Impact | Status |
-|---------|-------|------------------------|--------|
-| **v0.6.x** | Path heuristics + exclusions | Current state | 🟩 |
-| **v0.7.x** | Foundation: metadata enrichment, `--frameworks` flag | Analyzers capture richer metadata | 🟩 |
-| **v0.8.x** | FRAMEWORK_PATTERNS phase (YAML-driven) | Symbols enriched with concept metadata | 🟩 |
-| **v0.9.x** | Semantic entry detection | `entrypoints.py` queries enriched metadata; path heuristics deprecated | 🟩 |
-| **v1.0.x** | Complete extraction | All frameworks as YAML; legacy `_detect_*` functions removed | 🟩 |
-
-**v0.8.x (complete):**
-- 🟩 `framework_patterns.py` module with YAML-driven pattern matching
-- 🟩 FastAPI patterns YAML (`fastapi.yaml`)
-- 🟩 `enrich_symbols()` called in CLI pipeline after analyzers
-- 🟩 Linkers respect activation conditions (conditional execution)
-- 🟩 Flask, NestJS, Spring Boot, Django, Express, Celery, Rails, Phoenix, Laravel, Go Web patterns
-- 🟩 HTTP linker supports concept metadata from FRAMEWORK_PATTERNS phase
-
-**v0.9.x (complete):**
-- 🟩 Semantic entry detection via `_detect_from_concepts()` in entrypoints.py
-- 🟩 Path heuristics deprecated with warnings
-- 🟩 ASP.NET Core, Rust web (Actix, Axum, Rocket, Diesel, SeaORM), Hapi, Koa patterns
-
-**v1.0.x (complete):**
-- 🟩 Deprecation warnings added to analyzer-level route detection (decorator-based frameworks)
-- 🟩 Java analyzer purified: Spring Boot and JAX-RS route detection removed, now YAML-driven
-- 🟩 Python analyzer: Removed misleading Django deprecation warning (call-based, see note)
-- 🟩 JS/TS analyzer: NestJS (decorator-based) deprecated; Express (call-based) clarified
-- 🟩 Go analyzer: Call-based route detection (Gin, Echo, Fiber) now uses UsageContext
-- 🟩 Ruby analyzer: Rails route DSL detection now uses UsageContext
-- 🟩 Rust analyzer: Axum call-based route detection now uses UsageContext
-- 🟩 **Legacy removal complete:** All 26 `_detect_*` functions removed from entrypoints.py (~1,700 lines).
-  Entrypoint detection is now 100% YAML-driven via `_detect_from_concepts()` which reads `meta.concepts`
-  enriched by the FRAMEWORK_PATTERNS phase. Legacy functions removed include: _detect_cli_main,
-  _detect_electron_entrypoints, _detect_django, _detect_flask, _detect_fastapi, _detect_express,
-  _detect_nestjs, _detect_spring, _detect_rails, _detect_phoenix, _detect_go_handlers, _detect_laravel,
-  _detect_rust_handlers, _detect_aspnet, _detect_sinatra, _detect_ktor, _detect_vapor, _detect_plug,
-  _detect_hapi, _detect_fastify, _detect_koa, _detect_grape, _detect_tornado, _detect_aiohttp,
-  _detect_slim, _detect_micronaut, _detect_graphql_server, and _is_test_file (moved to slice.py).
-
-**v1.1.x (in progress - UsageContext):**
-- 🟩 Implement `UsageContext` IR type per [ADR-0003 extension](adr/0003-usage-context-patterns.md)
-- 🟩 Add `usage_contexts` field to `AnalysisResult`
-- 🟩 Extend Pattern class with `UsagePatternSpec` and `matches_usage()` method
-- 🟩 Implement extraction DSL (`literal:`, `metadata.`, transforms)
-- 🟩 Add two-phase enrichment to `enrich_symbols()` (definition-based + usage-based)
-- 🟩 Migrate Django (`path()`, `re_path()`, `url()`) - emits UsageContext, YAML patterns added
-- 🟩 Migrate Flask (`add_url_rule()`) - emits UsageContext, YAML patterns added
-- 🟩 Migrate Express (`app.get()`, `router.post()`) - emits UsageContext, YAML patterns added
-- 🟩 Migrate Go Gin/Echo/Chi/Fiber (`r.GET()`, `app.Post()`) - emits UsageContext, YAML patterns added
-- 🟩 Migrate Ruby Rails (`get '/path'`, `resources :users`) - emits UsageContext, YAML patterns added
-- 🟩 Migrate Rust Axum (`.route("/path", get(handler))`) - emits UsageContext, YAML patterns added
-- 🟩 Migrate Hapi (`server.route({ handler })`) - parses object literals, YAML patterns added
-- 🟩 Migrate Ruby Sinatra (`get '/path' do ... end`) - detects blocks, YAML patterns added
-- 🟩 Migrate Elixir Phoenix (`get "/", Controller, :action`) - router DSL parsing, YAML patterns added
-- 🟩 Migrate Next.js file-based routing (`pages/`, `app/`) - infers routes from paths, YAML patterns added
-- 🟧 Support Nuxt file-based routing (optional, lower priority)
-
-**Note on pattern types:** The v1.0.x YAML pattern system matches **decorator/annotation metadata** on symbols. The v1.1.x UsageContext extension enables YAML patterns for **call-based** frameworks (Django, Express, Flask, Go Gin, Rails, Axum), **config-object** patterns (Hapi), **DSL-based** patterns (Sinatra, Phoenix), and **file-based** patterns (Next.js) by capturing how symbols are *used* in various contexts.
 
 ## 9) Testing & quality bar
 
