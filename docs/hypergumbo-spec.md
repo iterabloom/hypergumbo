@@ -215,42 +215,44 @@ Hypergumbo supports 67 languages via tree-sitter grammars. All are included in t
 * 100% test coverage required; analyzers gracefully skip when grammars unavailable
 
 ## 5) Architecture (local-only)
+
 ### Core packages
-* `hypergumbo/cli.py` — CLI entrypoint and command handlers
-* `hypergumbo/profile.py` — language/framework detection (cheap heuristics)
-* `hypergumbo/ir.py` — Internal representation: Symbol, Edge, Span, AnalysisRun classes
-* `hypergumbo/schema.py` — JSON schema versioning and behavior map factory
-* `hypergumbo/discovery.py` — file finding with exclude patterns
-* `hypergumbo/catalog.py` — Pass/Pack registry, availability checking
-* `hypergumbo/plan.py` — `capsule_plan.json` schema + validator + generator
-* `hypergumbo/llm_assist.py` — optional LLM-assisted plan generator (OpenRouter, OpenAI, local llm)
-* `hypergumbo/sketch.py` — token-budgeted Markdown summary generation
-* `hypergumbo/entrypoints.py` — YAML-driven entrypoint detection via semantic concepts (ADR-0003)
-* `hypergumbo/slice.py` — graph slicing for context extraction
-* `hypergumbo/metrics.py` — analysis statistics computation
-* `hypergumbo/limits.py` — error tracking and analysis gaps
-* `hypergumbo/export.py` — privacy-safe capsule export
-* `hypergumbo/supply_chain.py` — file classification by dependency position (tier 1-4)
-* `hypergumbo/analyze/py.py` — Python AST parser
-* `hypergumbo/analyze/js_ts.py` — JS/TS/Svelte parser via tree-sitter
-* `hypergumbo/analyze/php.py` — PHP parser via tree-sitter
-* `hypergumbo/analyze/c.py` — C parser via tree-sitter
-* `hypergumbo/analyze/java.py` — Java parser via tree-sitter
-* `hypergumbo/analyze/html.py` — HTML script tag parser
-* `hypergumbo/linkers/jni.py` — JNI boundary detection (Java↔C)
-* `hypergumbo/linkers/ipc.py` — IPC message channel detection
 
-### Runner interface (execution by capsule format)
-hypergumbo executes capsules through a runner abstraction selected by `capsule.json.format`.
+**CLI & orchestration:**
+* `cli.py` — CLI entrypoint and command handlers
+* `profile.py` — language/framework detection
+* `discovery.py` — file finding with exclude patterns
 
-Pseudo-interface:
-```python
-class CapsuleRunner(Protocol):
-    def run(self, capsule_manifest: dict, repo_root: Path, out_path: Path) -> None:
-        ...
-```
+**Internal representation:**
+* `ir.py` — Symbol, Edge, Span, AnalysisRun classes
+* `schema.py` — JSON schema versioning and behavior map factory
 
-### IR Layer (internal, not exported in v0.1)
+**Analysis pipeline:**
+* `sketch.py` — token-budgeted Markdown summary generation
+* `entrypoints.py` — YAML-driven entrypoint detection (ADR-0003)
+* `slice.py` — graph slicing for context extraction
+* `metrics.py` — analysis statistics computation
+* `limits.py` — error tracking and analysis gaps
+* `supply_chain.py` — file classification by dependency tier (1-4)
+
+**Language analyzers (examples):**
+* `analyze/py.py` — Python AST parser
+* `analyze/js_ts.py` — JS/TS/Svelte parser via tree-sitter
+* `analyze/java.py` — Java parser via tree-sitter
+
+**Cross-language linkers (examples):**
+* `linkers/jni.py` — JNI boundary detection (Java↔C)
+* `linkers/ipc.py` — IPC message channel detection
+
+**Vestigial modules** (kept for `init` command, not used by `run`):
+* `catalog.py` — Pass/pack availability checking
+* `plan.py` — capsule_plan.json generation
+* `llm_assist.py` — LLM-assisted plan generation (proof of concept)
+* `export.py` — capsule export
+
+See [Capsule System History](history/capsule-system-v1.md) for design context.
+
+### IR Layer
 Parsers emit to `AnalysisIR`:
 ```python
 @dataclass
@@ -386,235 +388,6 @@ class AnalysisPass(Protocol):
 ```
 
 See §4 "Supported stacks" for the full list of 67 language analyzers, 14 cross-language linkers, and 37 framework patterns. Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
-
-### Analyzer capsule
-
-`.hypergumbo/` structure:
-
-#### `capsule.json` — Manifest
-Declares execution requirements and security policy:
-```json
-{
-  "format": "python_script",
-  "version": "0.1.0",
-  "validation_mode": "strict",
-  "requires": {
-    "runtime": "python>=3.10",
-    "toolchains": [],
-    "hypergumbo_schema": "0.1.0"
-  },
-  "entrypoint": "analyzer.py",
-  "args": ["run", "--plan", "capsule_plan.json"],
-  "inputs": {
-    "repo_root": "${REPO_ROOT}",
-    "plan_path": "capsule_plan.json",
-    "config_path": ".hypergumbo/config.json"
-  },
-  "outputs": [
-    {"path": "hypergumbo.results.json", "view": "behavior_map"}
-  ],
-  "resources": {
-    "cpu_seconds": 300,
-    "memory_mb": 2048,
-    "disk_mb": 500
-  },
-  "deterministic": true,
-  "trust": "local_only",
-  "network": "deny",
-  "sandbox": "recommended",
-  "generator": {
-    "mode": "template",
-    "version": "hypergumbo-0.1.0",
-    "plan_hash": "sha256:abc123..."
-  }
-}
-```
-
-**New manifest fields**:
-- `entrypoint`, `args`: How to invoke the analyzer
-- `inputs`: Expected input paths/variables
-- `outputs`: What files are produced and their view types
-- `resources`: Execution limits (for sandboxing)
-- `validation_mode`: How to handle unknown passes/packs
-- `generator`: Provenance of how this capsule was created
-  - `mode`: `"template"` (default), `"llm_assisted"`, or `"manual"`
-  - `version`: hypergumbo version that created it
-  - `plan_hash`: Fingerprint of capsule_plan.json
-  - `model`: (optional) LLM model if mode=llm_assisted
-  - `prompt_hash`: (optional) Hash of prompt used
-
-**Format types** (MVP implements `python_script` only):
-- 🟩 `python_script` — Single file, minimal deps (MVP)
-- 🟪 `toolchain_bundle` — Bundled with language server (future)
-- 🟪 `container` — Docker/OCI image (future)
-- 🟪 `daemon` — Long-running process (future)
-
-**Runner dispatch contract (v0.1.0):**
-- The hypergumbo CLI MUST select the execution runner based on `capsule.json.format`.
-- v0.1.0 implements:
-  - `python_script`: executed via the subprocess runner (see Security/Enforcement notes)
-- Future formats (`toolchain_bundle`, `container`, `daemon`) will be additional runner implementations behind the same dispatch interface.
-
-**Security fields**:
-- `trust`: `"local_only"` (default), `"shared_unsigned"`, `"signed"` (future)
-- `network`: `"deny"` (default), `"allow"` (requires explicit opt-in)
-- `sandbox`: `"none"`, `"recommended"` (default), `"required"` (future)
-
-**validation_mode** (optional, default: `"strict"`):
-- `"strict"`: Unknown passes/packs in capsule_plan.json result in error. Only components in catalog.json can be used. **This is the default** and required for `trust != "local_only"`.
-- `"permissive"`: Unknown components are skipped with a warning. Only allowed when `trust: "local_only"`. Use case: Forward compatibility when testing capsules from newer hypergumbo versions.
-
-**Validation enforcement:**
-```python
-if validation_mode == "permissive" and trust != "local_only":
-    raise SecurityError(
-        "Permissive validation requires trust=local_only. "
-        "For shared/registry capsules, use validation_mode=strict."
-    )
-```
-
-**Enforcement in MVP (v0.1.0):**
-`python_script` format has **limited sandboxing**:
-* `network: "deny"` → **Soft enforcement only**
-  - No network calls in hypergumbo code itself
-  - Cannot prevent passes from using `urllib`, `requests`, etc.
-  - Mitigation: Code review for built-in passes, community review for shared capsules
-  - Future: OS-level network blocking (Linux: network namespaces, macOS: network extension, Windows: firewall rules)
-* `sandbox: "recommended"` → **Best-effort isolation**
-  - Environment variable isolation (separate `os.environ`)
-  - Working directory isolation (`chdir` to temp dir)
-  - Subprocess denial for untrusted passes (if `trust != "local_only"`)
-  - Resource limits (memory, CPU time) via `resource` module (Unix only)
-  - **Does NOT provide** filesystem isolation, capability restrictions, or syscall filtering
-* **Process isolation (v0.1.0):**
-  - `python_script` format capsules run in a separate subprocess by default.
-  - The parent CLI passes only explicit inputs (repo_root, plan_path, config_path) and collects outputs from declared paths.
-  - The CLI may apply OS-level resource limits to the subprocess (Unix best-effort via `resource`).
-  - This is a stepping stone to `container` execution; it is not a full sandbox.
-* `sandbox: "required"` → **Not supported in v0.1.0**
-  - Future: Container-based execution
-  - If capsule requires `sandbox: "required"`, runner exits with error
-
-**Important:** In v0.1.0, `python_script` capsules are executed in a **separate OS process** (a subprocess) launched by the CLI. This improves determinism, resource limiting, and future sandbox compatibility, but it is **still not a complete security boundary**:
-- The subprocess runs on the same machine, with the user's filesystem access.
-- Network blocking is still best-effort unless enforced by the OS/container.
-- Untrusted capsules from unknown sources remain unsafe unless executed under a real sandbox (future: container runner).
-
-**Rule:** Only run untrusted or shared capsules when `sandbox` can be enforced (future versions) or when the user explicitly accepts the risk and is in `trust: local_only`.
-
-**Security model progression:**
-- **v0.1 (MVP):** Local trust only, soft sandbox
-- **v0.2 (future):** Container execution for shared capsules
-- **Future:** Full sandbox with verified isolation
-
-#### `capsule_plan.json` — Composition Plan
-Validated JSON selecting from pre-approved building blocks (passes/packs/rules/features):
-```json
-{
-  "version": "0.1.0",
-  "passes": [
-    {
-      "id": "python-ast-v1",
-      "enabled": true,
-      "config": {
-        "parse_decorators": true,
-        "infer_types_from_defaults": false
-      }
-    },
-    {
-      "id": "javascript-ts-v1",
-      "enabled": true,
-      "config": {
-        "jsx": true,
-        "tsx": true
-      }
-    }
-  ],
-  "packs": [
-    {
-      "id": "python-fastapi",
-      "enabled": true,
-      "config": {
-        "route_patterns": ["@app.get", "@app.post", "@router.get"],
-        "async_handlers": true
-      }
-    }
-  ],
-  "rules": [
-    {
-      "type": "entrypoint_pattern",
-      "pattern": "if __name__ == '__main__':",
-      "label": "cli_entry"
-    },
-    {
-      "type": "exclude_pattern",
-      "glob": "**/*_test.py",
-      "reason": "test files"
-    }
-  ],
-  "features": [
-    {
-      "id": "auth-flow",
-      "query": {
-        "method": "bfs",
-        "entrypoint": "fastapi_route:/api/login",
-        "hops": 3,
-        "max_files": 20
-      }
-    }
-  ]
-}
-```
-
-**Plan sections**:
-- `passes[]`: Core analyzers to run (syntax, type checking, etc.)
-- `packs[]`: Framework-specific feature bundles
-- `rules[]`: Declarative patterns (entrypoints, excludes, aliases)
-- `features[]`: Pre-computed slice queries
-
-**Validation**: Plan is validated against `catalog.json` schema before execution.
-
-#### `analyzer.py` — Stable Runner
-Fixed script (same for all capsules) that is invoked by the selected runner (v0.1: subprocess runner) and:
-1. Loads and validates `capsule_plan.json`
-2. Orchestrates pass execution per plan
-3. Compiles IR → views
-4. Writes output files declared in `capsule.json.outputs`
-**This file is identical across all repos**; customization happens in the plan.
-
-#### `catalog.json` — Building Block Registry
-Shipped with hypergumbo, describes available components:
-```json
-{
-  "version": "0.1.0",
-  "passes": [
-    {
-      "id": "python-ast-v1",
-      "name": "Python AST Parser",
-      "version": "hypergumbo-0.1.0",
-      "capabilities": ["python"],
-      "requires": {"runtime": "python>=3.10"},
-      "evidence_types": ["ast_call_direct", "ast_call_method", "import_static"],
-      "config_schema": {
-        "parse_decorators": {"type": "boolean", "default": true}
-      }
-    }
-  ],
-  "packs": [
-    {
-      "id": "python-fastapi",
-      "name": "FastAPI Pattern Pack",
-      "version": "hypergumbo-0.1.0",
-      "requires": {"passes": ["python-ast-v1"]},
-      "config_schema": {
-        "route_patterns": {"type": "array", "items": {"type": "string"}}
-      }
-    }
-  ],
-  "confidence_model": "hypergumbo-evidence-v1"
-}
-```
-Users don't edit this file; it's updated via `pip install --upgrade hypergumbo`.
 
 ## 6) Output: "Repo Behavior Map" JSON (v0.1)
 
@@ -2306,7 +2079,7 @@ hypergumbo init --upgrade  # Gets new capabilities
 
 ## 0) One-sentence summary
 
-A multi-fidelity code understanding platform that produces typed IR, an agent context router for token-efficient editing, and an optional registry for sharing analyzers.
+A multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
 
 *All of Spec B is future work. Pursue when there's clear demand for capabilities beyond Spec A.*
 
@@ -2314,9 +2087,9 @@ A multi-fidelity code understanding platform that produces typed IR, an agent co
 
 * 🟪 **High-fidelity IR** — Typed call graphs via language servers (tsserver, pyright, gopls, rust-analyzer)
 * 🟪 **Agent context router** — "Give me the smallest set of code + invariants to safely edit X"
-* 🟪 **Optional analyzer registry** — Share capsules, rule packs, and benchmarks
-* 🟪 **Amortize LLM cost** — Nearest-neighbor reuse + retrieval-augmented generation
-* 🟪 **Local-first privacy** — Optional opt-in sharing of sanitized metadata only
+* 🟪 **Local-first privacy** — All analysis runs locally, no data leaves machine
+
+See [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
 ## 2) Non-goals
 
@@ -2445,68 +2218,7 @@ Token budget optimization: BFS until token limit hit, sorted by (edge confidence
 
 Honest about what's hard. If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
 
-### 3.3 Registry
-
-A place to share analyzers and discover what works for repos like yours.
-
-#### Artifacts stored
-
-* **Analyzer capsules** (code or container image)
-* **Rule packs** (linter rules, invariant checkers)
-* **Schema versions** supported (compatibility matrix)
-* **Behavioral fingerprint** from benchmark runs
-
-#### Repo profiles
-
-* **Language mix**: percentages, framework signals
-* **Architectural features**: endpoint count, database access patterns, IPC usage
-* **No source code** uploaded (privacy-preserving)
-
-#### Similarity search
-
-* **Nearest-neighbor** on profile vectors + analyzer fingerprints
-* **Use case**: "Your repo looks like 50 others; here's an analyzer that worked well for them"
-
-#### Trust and provenance
-
-**Phase 1: Centralized trust**
-* hypergumbo team runs registry + signing authority
-* Analyzers submitted for review + benchmark
-* Approved analyzers get signed by central key
-
-**Phase 2: Sigstore/transparency log**
-* Analyzers signed by author's key
-* Signatures recorded in append-only transparency log (Rekor)
-* Benchmarks + reviews published alongside
-
-**Future: Web-of-trust**
-* Users build their own trust networks
-* No central authority
-
-#### Lightweight alternative
-
-If full registry proves unnecessary:
-* GitHub repo: `hypergumbo-community/capsule-examples`
-* Organized by framework: `fastapi/`, `flask/`, `electron/`, `nextjs/`
-* Community PRs welcome
-* No server infrastructure
-
-## 4) "Factory" evolution
-
-Generation becomes retrieval-augmented:
-
-1. **Profile repo** → get nearest-neighbor analyzers/rulepacks from registry
-2. **Compose starter analyzer** from proven parts (not full LLM generation)
-3. **Use LLM only to**:
-   * Adapt deltas for repo-specific patterns
-   * Create missing cross-language linkers
-   * Generate summaries for domain-specific flows
-4. **Run benchmark suite** + local tests → self-repair loop until stable
-5. **Optionally publish** to registry (with sanitized metadata only)
-
-**Key idea:** Amortize LLM cost via reuse. Most repos get 90% working analyzer from registry; LLM only fills 10% gaps.
-
-## 5) Output contracts
+## 4) Output contracts
 
 ### Views
 
@@ -2540,40 +2252,13 @@ Named, traceable feature flows:
 
 Each flow includes entry/exit points, all nodes/edges in path, invariants, and tests covering the flow.
 
-## 6) Privacy & security
-
-### Local analysis by default
+## 5) Privacy & security
 
 * All analysis runs locally
-* No data leaves machine without explicit opt-in
+* No data leaves machine
+* No network calls during analysis
 
-### Opt-in registry sharing
-
-**Default: k-anonymity approach**
-* Client computes profile locally
-* Downloads cluster centroids from registry
-* Finds nearest centroid locally
-* Sends only cluster ID (not full profile)
-* Server never sees individual repo profile
-
-**Opt-in personalized recommendations**
-* Explicit consent required
-* Profile includes: language mix, framework signals, aggregate metrics
-* Profile excludes: source code, symbol names, file paths
-* Data retained 90 days max (GDPR compliance)
-
-**Self-hosted registry**
-* Organizations can run registry on-premise
-* All data stays internal
-* Full control over profiles, analyzers, benchmarks
-
-### Analyzer sandboxing
-
-* **Containers** (Docker/Podman) for untrusted capsules
-* **Restricted runner** (seccomp/AppArmor profiles) for Python scripts
-* **Signed artifacts** for registry distribution
-
-## 7) Scale & performance
+## 6) Scale & performance
 
 ### Incremental analysis: Not on roadmap
 
@@ -2602,26 +2287,6 @@ TypeScript incremental took ~3 years, rust-analyzer ~2 years.
 ### IR storage
 * **Format**: Protocol Buffers (fast, versioned, language-neutral)
 * **Fallback**: JSON (if protobuf adds friction)
-
-### Registry backend
-
-**Hosted (managed service)**:
-* Storage: S3 + CloudFront
-* Database: PostgreSQL + pgvector (similarity search)
-
-**Self-hosted simple (SQLite + files)**:
-* Storage: Local filesystem
-* Database: SQLite with FTS
-* Deployment: Docker Compose
-
-**Self-hosted production (MinIO + Postgres)**:
-* Storage: MinIO (S3-compatible)
-* Database: PostgreSQL + pgvector
-* Deployment: Docker Compose or Kubernetes
-
-### Signing/provenance
-* **Primary**: Sigstore (Cosign for signing, Rekor for transparency log)
-* **Fallback**: PGP/GPG (web-of-trust model)
 
 ### Language servers
 * **TypeScript**: `tsserver` (official)
