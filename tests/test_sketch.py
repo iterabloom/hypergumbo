@@ -340,20 +340,21 @@ class TestGenerateSketch:
         # Should not crash, should still include overview
         assert "## Overview" in sketch
 
-    def test_readme_stops_at_section_header(self, tmp_path: Path) -> None:
-        """README extraction stops at next section header."""
+    def test_readme_prefers_description_over_instructions(self, tmp_path: Path) -> None:
+        """README extraction prefers descriptive intro over installation instructions."""
         (tmp_path / "README.md").write_text(
             "# Project\n\n"
-            "First line of description.\n"
+            "A powerful tool for analyzing source code and generating behavior maps.\n"
             "## Installation\n"
-            "This should not be included.\n"
+            "pip install project\n"
         )
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
 
         sketch = generate_sketch(tmp_path, max_tokens=500)
 
-        assert "First line of description" in sketch
-        assert "should not be included" not in sketch
+        # Should include the descriptive intro, not installation instructions
+        assert "powerful tool" in sketch or "analyzing source code" in sketch
+        assert "pip install" not in sketch.split("## Configuration")[0] if "## Configuration" in sketch else True
 
     def test_readme_empty_description(self, tmp_path: Path) -> None:
         """README with only title and no description."""
@@ -485,6 +486,235 @@ class TestGenerateSketch:
         sketch = generate_sketch(tmp_path, max_tokens=500)
 
         assert "project description text" in sketch
+
+
+class TestFindReadmePath:
+    """Tests for _find_readme_path helper."""
+
+    def test_finds_readme_md(self, tmp_path: Path) -> None:
+        """Finds README.md in repo root."""
+        from hypergumbo.sketch import _find_readme_path
+        (tmp_path / "README.md").write_text("# Hello")
+        assert _find_readme_path(tmp_path) == tmp_path / "README.md"
+
+    def test_finds_lowercase_readme(self, tmp_path: Path) -> None:
+        """Finds lowercase readme.md."""
+        from hypergumbo.sketch import _find_readme_path
+        (tmp_path / "readme.md").write_text("# Hello")
+        assert _find_readme_path(tmp_path) == tmp_path / "readme.md"
+
+    def test_finds_readme_rst(self, tmp_path: Path) -> None:
+        """Finds README.rst when .md is absent."""
+        from hypergumbo.sketch import _find_readme_path
+        (tmp_path / "README.rst").write_text("Hello\n=====")
+        assert _find_readme_path(tmp_path) == tmp_path / "README.rst"
+
+    def test_returns_none_if_missing(self, tmp_path: Path) -> None:
+        """Returns None when no README exists."""
+        from hypergumbo.sketch import _find_readme_path
+        assert _find_readme_path(tmp_path) is None
+
+
+class TestTruncateDescription:
+    """Tests for _truncate_description helper."""
+
+    def test_no_truncation_needed(self) -> None:
+        """Short descriptions are returned as-is."""
+        from hypergumbo.sketch import _truncate_description
+        assert _truncate_description("Hello world", 100) == "Hello world"
+
+    def test_truncates_at_word_boundary(self) -> None:
+        """Truncates at last word boundary before limit."""
+        from hypergumbo.sketch import _truncate_description
+        result = _truncate_description("Hello world foo bar", 15)
+        assert result == "Hello world…"
+
+    def test_truncates_long_word(self) -> None:
+        """Truncates mid-word if no good boundary."""
+        from hypergumbo.sketch import _truncate_description
+        result = _truncate_description("aaaaaaaaaaaaaaaaaa", 10)
+        assert len(result) == 10
+        assert result.endswith("…")
+
+
+class TestExtractReadmeDescriptionHeuristic:
+    """Tests for _extract_readme_description_heuristic function."""
+
+    def test_extracts_paragraph_after_title(self, tmp_path: Path) -> None:
+        """Extracts first paragraph after markdown title."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\nA tool for doing things.\n")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "A tool for doing things."
+
+    def test_stops_at_section_header(self, tmp_path: Path) -> None:
+        """Stops extraction at section headers."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\nIntro.\n## Usage\nNot included.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Intro."
+        assert "Not included" not in (result or "")
+
+    def test_skips_badges_and_images(self, tmp_path: Path) -> None:
+        """Skips badge and image markdown."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\n![badge](url)\n[![CI](ci.png)](link)\nActual description.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Actual description."
+
+    def test_skips_html_tags(self, tmp_path: Path) -> None:
+        """Skips HTML-only lines."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\n<picture><img src='x'></picture>\nReal description.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Real description."
+
+    def test_extracts_title_subtitle(self, tmp_path: Path) -> None:
+        """Falls back to title subtitle if no paragraph."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project: A description in the title\n\n## Section")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "A description in the title"
+
+    def test_handles_rst_format(self, tmp_path: Path) -> None:
+        """Handles RST title format with underlines."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.rst"
+        readme.write_text("Project\n=======\n\nRST description here.\n")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "RST description here."
+
+    def test_returns_none_for_empty(self, tmp_path: Path) -> None:
+        """Returns None when no description found."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Title\n\n## Section\nNo intro paragraph.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result is None
+
+    def test_skips_link_only_lines(self, tmp_path: Path) -> None:
+        """Skips lines that are just markdown links."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\n[Docs](https://example.com)\nActual text.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Actual text."
+
+    def test_skips_badges_before_title(self, tmp_path: Path) -> None:
+        """Skips badge images that appear before the markdown title."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        # Badge at top, then title, then description
+        readme.write_text("![Badge](https://img.shields.io/badge)\n# Project\n\nDescription text.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Description text."
+
+    def test_skips_html_before_title(self, tmp_path: Path) -> None:
+        """Skips HTML tags that appear before the markdown title."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        # HTML logo at top, then title, then description
+        readme.write_text("<p align='center'><img src='logo.png'></p>\n# Project\n\nDescription.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Description."
+
+    def test_skips_html_comments_in_description(self, tmp_path: Path) -> None:
+        """Skips HTML comments that appear in the description area."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\n<!-- CI badge placeholder -->\nActual description here.")
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "Actual description here."
+
+    def test_returns_none_when_no_content(self, tmp_path: Path) -> None:
+        """Returns None when both embedding and heuristic fail."""
+        from unittest.mock import patch
+        from hypergumbo.sketch import _extract_readme_description
+
+        readme = tmp_path / "README.md"
+        # README with only title and section header - no description
+        readme.write_text("# Title\n\n## Installation\nSteps here.")
+
+        # Mock embedding to return None
+        with patch(
+            "hypergumbo.sketch_embeddings.extract_readme_description_embedding",
+            return_value=None
+        ):
+            result = _extract_readme_description(tmp_path)
+            assert result is None
+
+    def test_fallback_when_embedding_fails(self, tmp_path: Path) -> None:
+        """Falls back to heuristic when embedding returns None."""
+        from unittest.mock import patch
+        from hypergumbo.sketch import _extract_readme_description
+
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\nHeuristic description text.\n")
+
+        # Mock embedding to return None (simulating failure/unavailable)
+        with patch(
+            "hypergumbo.sketch_embeddings.extract_readme_description_embedding",
+            return_value=None
+        ):
+            result = _extract_readme_description(tmp_path)
+            assert result == "Heuristic description text."
+
+    def test_fallback_when_embedding_raises(self, tmp_path: Path) -> None:
+        """Falls back to heuristic when embedding raises exception."""
+        from unittest.mock import patch
+        from hypergumbo.sketch import _extract_readme_description
+
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project\n\nFallback description.\n")
+
+        # Mock embedding to raise an exception
+        with patch(
+            "hypergumbo.sketch_embeddings.extract_readme_description_embedding",
+            side_effect=ImportError("No module")
+        ):
+            result = _extract_readme_description(tmp_path)
+            assert result == "Fallback description."
+
+
+class TestReadmeLineFilterable:
+    """Tests for _is_readme_line_filterable helper."""
+
+    def test_skips_empty_lines(self) -> None:
+        """Empty lines are filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("") is True
+        assert _is_readme_line_filterable("   ") is True
+
+    def test_skips_badges(self) -> None:
+        """Badge markdown is filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("[![Build](https://img.shields.io/badge)](link)") is True
+        assert _is_readme_line_filterable("![Logo](logo.png)") is True
+
+    def test_skips_link_only_lines(self) -> None:
+        """Pure link lines are filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("[Link](https://example.com)") is True
+
+    def test_skips_html_comments(self) -> None:
+        """HTML comments are filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("<!-- Comment -->") is True
+
+    def test_keeps_text_content(self) -> None:
+        """Normal text is not filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("This is a project description.") is False
+
+    def test_keeps_html_with_text(self) -> None:
+        """HTML containing text is kept."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("<p>Project description here</p>") is False
 
 
 class TestCollectSourceFiles:

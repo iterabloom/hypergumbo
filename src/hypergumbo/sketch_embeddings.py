@@ -1124,3 +1124,222 @@ def extract_config_hybrid(
                 combined.append(line)
 
     return combined
+
+
+# Probe patterns for README description extraction
+# These are mission statements from well-known open source projects
+# Used to identify lines that describe what a project does
+README_DESCRIPTION_PROBES = [
+    "(Software Project Name), a (Parent Organization) project, is a systems and service monitoring system.",
+    "It collects metrics from configured targets at given intervals, evaluates rule expressions, displays the results, and can trigger alerts when specified conditions are observed.",
+    "(Software Project Name) allows you to query, visualize, alert on and understand your metrics no matter where they are stored. Create, explore, and share dashboards with your team and foster a data-driven culture:",
+    "Add authentication to applications and secure services with minimum effort. No need to deal with storing users or authenticating users.",
+    "(Software Project Name) provides user federation, strong authentication, user management, fine-grained authorization, and more.",
+    "(Software Project Name), also known as (ShortName), is an open source system for managing containerized applications across multiple hosts.",
+    "It provides basic mechanisms for the deployment, maintenance, and scaling of applications.",
+    "(Software Project Name) is an open-source, enterprise-grade search and observability suite that brings order to unstructured data at scale.",
+    "(Software Project Name) (or simply ShortName) is a platform to programmatically author, schedule, and monitor workflows.",
+    "When workflows are defined as code, they become more maintainable, versionable, testable, and collaborative.",
+    "Use (ShortName) to author workflows (Dags) that orchestrate tasks. The (ShortName) scheduler executes your tasks on an array of workers while following the specified dependencies. Rich command line utilities make performing complex surgeries on Dags a snap. The rich user interface makes it easy to visualize pipelines running in production, monitor progress, and troubleshoot issues when needed.",
+    "(Software Project Name) is a declarative, GitOps continuous delivery tool for (Related Software Project Name).",
+    "Application definitions, configurations, and environments should be declarative and version controlled.",
+    "Application deployment and lifecycle management should be automated, auditable, and easy to understand.",
+    "(Software Project Name): like (Related Software Project Name), but for logs.",
+    "(Software Project Name) is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by (Related Software Project Name).",
+    "It is designed to be very cost effective and easy to operate.",
+    "It does not index the contents of the logs, but rather a set of labels for each log stream.",
+    "(Software Project Name) is an open source trusted cloud native registry project that stores, signs, and scans content. (Software Project Name) extends the open source (Related Software Project Name) Distribution by adding the functionalities usually required by users such as security, identity and management. Having a registry closer to the build and run environment can improve the image transfer efficiency. (Software Project Name) supports replication of images between registries, and also offers advanced security features such as user management, access control and activity auditing.",
+]
+
+# Cache for probe embeddings (computed once)
+_README_PROBE_EMBEDDINGS: "np.ndarray | None" = None
+
+
+def _get_readme_probe_embeddings(model) -> "np.ndarray":
+    """Get cached probe embeddings for README description extraction.
+
+    Args:
+        model: Loaded SentenceTransformer model.
+
+    Returns:
+        Normalized probe embeddings array.
+    """
+    global _README_PROBE_EMBEDDINGS
+    import numpy as np
+
+    if _README_PROBE_EMBEDDINGS is None:
+        embeddings = model.encode(README_DESCRIPTION_PROBES, convert_to_numpy=True)
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        _README_PROBE_EMBEDDINGS = embeddings / (norms + 1e-8)
+
+    return _README_PROBE_EMBEDDINGS
+
+
+def _is_readme_line_filterable(line: str) -> bool:
+    """Check if a README line should be filtered out before embedding.
+
+    Filters badges, empty lines, and pure-image lines.
+    Does NOT filter HTML with text content (may contain descriptions).
+
+    Args:
+        line: The line to check.
+
+    Returns:
+        True if the line should be skipped.
+    """
+    import re
+
+    stripped = line.strip()
+
+    # Skip empty lines
+    if not stripped:
+        return True
+
+    # Skip badge-only lines: [![alt](url)](link) or ![alt](url)
+    if re.match(r"^!?\[!\[.*?\]\(.*?\)\]\(.*?\)$", stripped):
+        return True
+    if re.match(r"^!\[.*?\]\(.*?\)$", stripped):
+        return True
+
+    # Skip pure link lines (often badge URLs)
+    if re.match(r"^\[.*?\]\(https?://.*?\)$", stripped):
+        return True
+
+    # Skip HTML comments
+    if stripped.startswith("<!--") and stripped.endswith("-->"):
+        return True
+
+    # Skip lines that are just <img> or <a> tags with image content
+    if re.match(r"^<(img|a|picture|source)\s.*?/?>$", stripped, re.IGNORECASE):
+        return True
+
+    return False
+
+
+def extract_readme_description_embedding(
+    readme_path: Path,
+    max_lines: int = 80,
+    max_window: int = 10,
+    quality_drop_threshold: float = 0.10,
+    top_k_probes: int = 3,
+) -> str | None:
+    """Extract project description from README using embedding similarity.
+
+    Uses probe embeddings from mission statements of well-known projects to
+    identify lines that describe what the project does. Finds the best
+    consecutive window of lines (up to max_window) using a sliding window
+    approach that stops when quality drops significantly.
+
+    Args:
+        readme_path: Path to the README file.
+        max_lines: Maximum lines from README to consider (default 80).
+        max_window: Maximum window size k (default 10).
+        quality_drop_threshold: Stop when score drops by this fraction (default 0.10).
+        top_k_probes: Number of top probe similarities to average (default 3).
+
+    Returns:
+        Extracted description string, or None if extraction fails.
+    """
+    if not _has_sentence_transformers():
+        return None
+
+    import numpy as np
+
+    try:
+        content = readme_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    lines = content.split("\n")[:max_lines]
+
+    # Track code block state for filtering
+    in_code_block = False
+    filtered_lines: list[tuple[int, str]] = []  # (original_idx, line)
+
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Track fenced code blocks
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        # Skip lines inside code blocks
+        if in_code_block:
+            continue
+
+        # Skip filterable lines (badges, empty, pure images)
+        if _is_readme_line_filterable(line):
+            continue
+
+        filtered_lines.append((idx, stripped))
+
+    if not filtered_lines:
+        return None
+
+    # Load model and get probe embeddings
+    model = _load_embedding_model()
+    probe_embeddings = _get_readme_probe_embeddings(model)
+
+    # Embed all filtered lines
+    line_texts = [line for _, line in filtered_lines]
+    line_embeddings = model.encode(line_texts, convert_to_numpy=True)
+    line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
+    normalized_lines = line_embeddings / (line_norms + 1e-8)
+
+    # Compute pairwise cosine similarities: (num_lines, num_probes)
+    similarities = np.dot(normalized_lines, probe_embeddings.T)
+
+    # Score each line as mean of top-k similarities with probes
+    top_k = min(top_k_probes, len(README_DESCRIPTION_PROBES))
+    line_scores = np.mean(np.sort(similarities, axis=1)[:, -top_k:], axis=1)
+
+    # Sliding window to find best consecutive k lines
+    best_window: tuple[int, int] | None = None  # (start_idx, end_idx)
+    prev_best_score = -1.0
+
+    for k in range(1, max_window + 1):
+        if k > len(filtered_lines):
+            break
+
+        # Find best window of size k
+        window_scores = []
+        for start in range(len(filtered_lines) - k + 1):
+            window_score = float(np.mean(line_scores[start : start + k]))
+            window_scores.append((start, window_score))
+
+        if not window_scores:
+            break
+
+        # Get best window for this k
+        best_start, best_k_score = max(window_scores, key=lambda x: x[1])
+
+        # Check for quality drop (only after k=1)
+        if k > 1 and prev_best_score > 0:
+            drop = (prev_best_score - best_k_score) / prev_best_score
+            if drop >= quality_drop_threshold:
+                # Quality dropped too much, use previous k
+                break
+
+        # Update best
+        best_window = (best_start, best_start + k)
+        prev_best_score = best_k_score
+
+    if best_window is None:
+        return None
+
+    # Extract the winning lines
+    start_idx, end_idx = best_window
+    selected_lines = [line for _, line in filtered_lines[start_idx:end_idx]]
+
+    # Join and return
+    description = " ".join(selected_lines)
+
+    # Cleanup: strip HTML tags and excessive whitespace
+    import re
+    # Remove HTML tags but keep content
+    description = re.sub(r"<[^>]+>", "", description)
+    # Collapse whitespace
+    description = " ".join(description.split())
+
+    return description if description else None

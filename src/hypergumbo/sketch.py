@@ -1730,34 +1730,45 @@ def _get_repo_name(repo_root: Path) -> str:
     return repo_root.resolve().name
 
 
-def _extract_readme_description(
-    repo_root: Path, max_chars: int = 200
-) -> Optional[str]:
-    """Extract a description from the project README file.
+def _find_readme_path(repo_root: Path) -> Optional[Path]:
+    """Find the README file in a repository.
 
-    Looks for README.md, README.rst, README.txt, or README (in that order)
-    and extracts the first descriptive paragraph after the title.
+    Looks for README.md, readme.md, README.rst, README.txt, README.markdown,
+    or README (in that order).
 
     Args:
         repo_root: Path to the repository root.
-        max_chars: Maximum characters to extract (default 200).
 
     Returns:
-        Extracted description string, or None if no README found.
+        Path to the README file, or None if not found.
     """
-    import re
-
-    # Try different README file names in priority order
-    readme_names = ["README.md", "README.rst", "README.txt", "README"]
-    readme_path = None
+    readme_names = [
+        "README.md", "readme.md", "README.rst", "README.txt",
+        "README.markdown", "README",
+    ]
     for name in readme_names:
         candidate = repo_root / name
         if candidate.is_file():
-            readme_path = candidate
-            break
+            return candidate
+    return None
 
-    if readme_path is None:
-        return None
+
+def _extract_readme_description_heuristic(
+    readme_path: Path, max_chars: int = 200
+) -> Optional[str]:
+    """Extract description from README using heuristic parsing.
+
+    Finds the first descriptive paragraph after the title, skipping
+    badges, images, and HTML content.
+
+    Args:
+        readme_path: Path to the README file.
+        max_chars: Maximum characters to extract.
+
+    Returns:
+        Extracted description string, or None if extraction fails.
+    """
+    import re
 
     try:
         content = readme_path.read_text(encoding="utf-8", errors="replace")
@@ -1829,18 +1840,65 @@ def _extract_readme_description(
             return title_subtitle
         return None
 
-    description = " ".join(paragraph_lines)
+    return " ".join(paragraph_lines)
 
-    # Truncate if too long, trying to break at word boundary
-    if len(description) > max_chars:
-        # Find last space before max_chars
-        truncate_at = description.rfind(" ", 0, max_chars)
-        if truncate_at > max_chars // 2:
-            description = description[:truncate_at] + "…"
-        else:
-            description = description[: max_chars - 1] + "…"
 
-    return description
+def _truncate_description(description: str, max_chars: int) -> str:
+    """Truncate description at word boundary.
+
+    Args:
+        description: The description to truncate.
+        max_chars: Maximum characters.
+
+    Returns:
+        Truncated description with ellipsis if needed.
+    """
+    if len(description) <= max_chars:
+        return description
+
+    # Find last space before max_chars
+    truncate_at = description.rfind(" ", 0, max_chars)
+    if truncate_at > max_chars // 2:
+        return description[:truncate_at] + "…"
+    return description[: max_chars - 1] + "…"
+
+
+def _extract_readme_description(
+    repo_root: Path, max_chars: int = 200
+) -> Optional[str]:
+    """Extract a description from the project README file.
+
+    Uses embedding-based extraction when sentence-transformers is available,
+    falling back to heuristic parsing otherwise. The embedding approach uses
+    probe patterns from well-known project mission statements to semantically
+    identify descriptive content.
+
+    Args:
+        repo_root: Path to the repository root.
+        max_chars: Maximum characters to extract (default 200).
+
+    Returns:
+        Extracted description string, or None if no README found.
+    """
+    readme_path = _find_readme_path(repo_root)
+    if readme_path is None:
+        return None
+
+    # Try embedding-based extraction first (more accurate)
+    try:
+        from .sketch_embeddings import extract_readme_description_embedding
+        description = extract_readme_description_embedding(readme_path)
+        if description:
+            return _truncate_description(description, max_chars)
+    except Exception:  # pragma: no cover
+        pass  # Fall back to heuristic
+
+    # Fall back to heuristic extraction
+    description = _extract_readme_description_heuristic(readme_path, max_chars)
+    if description:
+        return _truncate_description(description, max_chars)
+
+    return None
 
 
 def _extract_python_docstrings(

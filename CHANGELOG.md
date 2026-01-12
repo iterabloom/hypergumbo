@@ -17,6 +17,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Estimated coverage in sketch:** When static analysis runs, the Tests section now shows
   estimated coverage (e.g., "~35% estimated coverage (460/1318 functions called by tests)")
   instead of "Coverage requires execution". Based on direct call edges from test code.
+- **Embedding-based README description extraction:** Sketch now uses semantic similarity to extract
+  project descriptions from READMEs. Compares each line against probe embeddings of known project
+  mission statements, using a sliding window approach to find the best consecutive description lines.
+  Falls back to heuristic parsing if embeddings unavailable.
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
