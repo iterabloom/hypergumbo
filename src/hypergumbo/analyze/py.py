@@ -111,6 +111,8 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
             return "..."
         if isinstance(node.value, complex):
             return str(node.value)  # "1+2j" format
+        if isinstance(node.value, bytes):
+            return repr(node.value)  # "b'...'" format
         return node.value
     elif isinstance(node, ast.Name):
         # Variable reference - return name as string

@@ -2671,6 +2671,28 @@ class TestDecoratorMetadata:
         # Complex number should be serialized as "(1+2j)" string (JSON-safe)
         assert decorators[0]["args"] == ["(1+2j)"]
 
+    def test_decorator_with_bytes_arg(self, tmp_path: Path) -> None:
+        """Decorator with bytes literal should serialize as string."""
+        py_file = tmp_path / "binary_ops.py"
+        py_file.write_text(
+            "def marker(val): pass\n"
+            "\n"
+            "@marker(b'hello')\n"
+            "def process_bytes():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "process_bytes")
+
+        decorators = func["meta"]["decorators"]
+        # Bytes should be serialized as "b'hello'" string (JSON-safe)
+        assert decorators[0]["args"] == ["b'hello'"]
+
 
 class TestBaseClassMetadata:
     """Tests for base class metadata extraction per ADR-0003."""
