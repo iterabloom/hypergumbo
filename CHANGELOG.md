@@ -11,152 +11,41 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [1.0.0] - 2026-01-12
 
+First stable release. Major focus on memory optimization, framework detection improvements,
+and completing the migration to YAML-driven semantic analysis.
+
 ### Fixed
-- **Memory optimization for large repos:** Reduced peak memory usage from ~11GB to ~2.1GB (80%
-  reduction) when analyzing large repositories like tensorflow (154k symbols, 505k edges). Changes:
-  streaming JSON output via `json.dump()`, aggressive cleanup of intermediate data structures
-  (Symbol/Edge objects, RankedSymbol wrappers, LinkerContext), and `gc.collect()` between tiers.
-  Optional memory telemetry available via `HG_MEMORY_DEBUG=1` environment variable.
-- **Android framework detection from manifests:** Improved Android detection to find projects using
-  custom Gradle plugin IDs (like `ndksamples.android.application`). Now detects Android via:
-  - `android {}` DSL block in build.gradle (present in all Android projects)
-  - `com.android.tools.build:gradle` dependency
-  - AndroidManifest.xml file presence (definitive indicator)
-  This closes the detection gap for android-ndk-samples (AUTO=20) and tensorflow (AUTO=14).
-- **Non-JSON-serializable Python literals:** Python code containing complex numbers (`1+2j`) or
-  bytes literals (`b'hello'`) no longer causes `TypeError` during JSON serialization. These values
-  are now serialized as strings (e.g., `"(1+2j)"`, `"b'hello'"`). Discovered when analyzing tensorflow.
-- **`--frameworks all` now bypasses dependency scanning:** Previously, `--frameworks all` still
-  scanned dependency files (requirements.txt, package.json, etc.) to detect frameworks, which
-  meant frameworks not listed in dependencies wouldn't get pattern matching even when their
-  decorators were present in code. Now `--frameworks all` uses ALL known framework patterns for
-  detected languages, enabling entrypoint detection even when frameworks aren't in manifest files.
-  This bug was caught by the 12.10 bakeoff experiment after removing legacy `_detect_*` functions.
-- **`--frameworks <explicit-list>` now bypasses dependency scanning:** Similar to the above fix,
-  explicit framework lists like `--frameworks fastapi,celery` now use the specified frameworks
-  directly without requiring them to be present in dependency manifests. This enables pattern
-  matching when pyproject.toml/package.json is in a subdirectory rather than the repo root.
+- **Memory optimization for large repos:** Reduced peak memory from ~11GB to ~2.1GB (80%
+  reduction) for repositories like tensorflow. Uses streaming JSON output and aggressive
+  cleanup of intermediate data structures.
+- **Android framework detection:** Now detects Android via `android {}` blocks in build.gradle,
+  AndroidManifest.xml presence, and gradle plugin dependencies. Works with custom plugin IDs.
+- **JSON serialization of Python literals:** Complex numbers (`1+2j`) and bytes literals
+  (`b'hello'`) no longer cause serialization errors.
+- **`--frameworks all` and explicit lists:** Now bypass dependency scanning, enabling pattern
+  matching even when manifests are in subdirectories.
+- **Express route detection:** Fixed case-sensitive HTTP method comparison for inline handlers.
+- **Slice command:** Now runs all language analyzers, not just Python/HTML.
+- **Symbol metadata preservation:** `meta` field preserved when reconstructing from JSON.
+- **Android lifecycle hooks:** YAML patterns for Activity, Fragment, Service lifecycle methods.
 
 ### Added
-- **Recursive manifest scanning (closes detection gap):** Framework detection now scans up to 3
-  directory levels deep to find dependency manifests in subdirectories. This enables AUTO mode
-  to detect frameworks in monorepos and non-standard layouts (e.g., `backend/pyproject.toml`,
-  `frontend/package.json`). Previously AUTO mode only scanned root-level manifests, causing
-  a 100% detection gap in the 12.11 bakeoff experiment. Common non-project directories
-  (node_modules, vendor, venv, .venv) are automatically skipped.
-- **Ruby and Elixir framework detection:** AUTO mode now detects Ruby frameworks from Gemfile
-  (Rails, Sinatra, Grape, Hanami, Roda, Padrino, graphql-ruby, thor/gli/dry-cli, rspec, minitest)
-  and Elixir frameworks from mix.exs (Phoenix, Plug, Ecto, Absinthe, ex_unit). Previously these
-  framework dictionaries existed but detection functions were missing.
-- **Foundry/Hardhat framework detection:** Profile module now detects Solidity smart contract
-  toolchains from config files: Foundry (`foundry.toml`) and Hardhat (`hardhat.config.js`,
-  `hardhat.config.ts`). Previously only Hardhat was detected via package.json dependencies.
-- **UsageContext IR type (ADR-0003 v1.1.x):** New IR dataclass for capturing how symbols are used
-  in call-based frameworks like Django, Express, and Go Gin. Enables YAML-driven route detection
-  for frameworks that register handlers via function calls rather than decorators.
-  - `UsageContext` captures: kind (call/data_value/export/macro), context_name, symbol_ref,
-    position, metadata, path, and span
-  - Added `usage_contexts` field to `AnalysisResult` for analyzers to emit usage records
-- **Usage-based pattern matching (ADR-0003 v1.1.x):** Extended framework pattern system:
-  - `UsagePatternSpec` dataclass for matching against UsageContext records
-  - `Pattern.matches_usage()` method for usage-based matching
-  - `match_usage_patterns()` function parallel to `match_patterns()`
-  - Extraction DSL: `literal:VALUE`, `metadata.path`, `context_name`, transforms (`uppercase`,
-    `lowercase`, `split:DELIM | last`)
-- **Two-phase enrichment (ADR-0003 v1.1.x):** `enrich_symbols()` now supports both:
-  1. Definition-based: decorators, base classes, annotations (existing v1.0.x)
-  2. Usage-based: UsageContext matching for call-based frameworks (new v1.1.x)
-- **Django UsageContext (ADR-0003 v1.1.x):** Python analyzer emits `UsageContext` for
-  `path()`, `re_path()`, and `url()` calls. Django route detection now uses YAML patterns
-  in `django.yaml` via usage-based matching.
-- **Express UsageContext (ADR-0003 v1.1.x):** JS/TS analyzer emits `UsageContext` for
-  Express-style route calls (`app.get()`, `router.post()`, etc.). Route detection for
-  Express, Fastify, and Koa now uses YAML patterns in `express.yaml`.
-- **Flask UsageContext (ADR-0003 v1.1.x):** Python analyzer emits `UsageContext` for
-  Flask's `add_url_rule()` calls. Enables YAML-driven route detection for Flask apps
-  using programmatic URL registration instead of decorators.
-- **Go Gin/Echo/Chi/Fiber UsageContext (ADR-0003 v1.1.x):** Go analyzer emits `UsageContext`
-  for route registration calls (`r.GET()`, `e.POST()`, `app.Get()`, etc.). Route detection
-  now uses YAML patterns in `go-web.yaml` via usage-based matching.
-- **Ruby Rails UsageContext (ADR-0003 v1.1.x):** Ruby analyzer emits `UsageContext` for
-  Rails route DSL calls (`get '/path'`, `post '/path'`, `resources :users`). Route detection
-  now uses YAML patterns in `rails.yaml` via usage-based matching.
-- **Rust Axum UsageContext (ADR-0003 v1.1.x):** Rust analyzer emits `UsageContext` for
-  Axum route registrations (`.route("/path", get(handler))`). Route detection now uses
-  YAML patterns in `rust-web.yaml` via usage-based matching. Actix-web continues to use
-  definition-based patterns (annotation matching).
-- **Hapi UsageContext (ADR-0003 v1.1.x):** JS/TS analyzer emits `UsageContext` for Hapi
-  config-object route registrations (`server.route({ method, path, handler })`). Parses
-  object literals to extract route metadata. Uses YAML patterns in `hapi.yaml`.
-- **Sinatra UsageContext (ADR-0003 v1.1.x):** Ruby analyzer emits `UsageContext` for
-  Sinatra block-based routes (`get '/path' do ... end`). Detects block presence to
-  distinguish from Rails-style routes. Uses YAML patterns in `sinatra.yaml`.
-- **Phoenix UsageContext (ADR-0003 v1.1.x):** Elixir analyzer emits `UsageContext` for
-  Phoenix router DSL calls (`get "/", PageController, :index`). Route detection now uses
-  YAML patterns in `phoenix.yaml` via usage-based matching.
-- **Next.js UsageContext (ADR-0003 v1.1.x):** JS/TS analyzer emits `UsageContext` for
-  Next.js file-based routing (exports in pages/ and app/ directories). Infers routes from
-  file paths (e.g., `pages/posts/[id].js` → `/posts/:id`). Uses YAML patterns in
-  `nextjs.yaml`.
-- **New framework YAML patterns (Phase 1 legacy migration):** Added 12 new framework pattern
-  files to replace legacy `_detect_*` functions in entrypoints.py:
-  - `ktor.yaml`: Kotlin Ktor framework (routing DSL, WebSocket, middleware)
-  - `vapor.yaml`: Swift Vapor framework (RouteCollection, Middleware, Fluent ORM)
-  - `plug.yaml`: Elixir Plug library (Plug.Router, Plug.Builder, Ecto)
-  - `fastify.yaml`: Node.js Fastify (routes, hooks, plugins, WebSocket)
-  - `grape.yaml`: Ruby Grape API framework (route DSL, entities, helpers)
-  - `tornado.yaml`: Python Tornado (RequestHandler, WebSocketHandler, async)
-  - `aiohttp.yaml`: Python aiohttp (RouteTableDef, Views, middleware)
-  - `slim.yaml`: PHP Slim framework (PSR-7, middleware, actions)
-  - `micronaut.yaml`: Java/Kotlin Micronaut (@Controller, @Get, messaging, gRPC)
-  - `graphql.yaml`: GraphQL servers across JS/Python/Ruby (resolvers, schemas, types)
-  - `electron.yaml`: Electron apps (IPC handlers, contextBridge, BrowserWindow)
-  - `cli.yaml`: CLI frameworks across Python/JS/Rust/Go/Ruby (Click, Commander, clap, Cobra)
-- **Ruby and Elixir framework detection:** Added `RUBY_FRAMEWORKS` and `ELIXIR_FRAMEWORKS`
-  mappings to profile.py for detecting Rails, Sinatra, Grape, Phoenix, Plug, and Ecto.
-- **GraphQL framework detection:** Added GraphQL library detection for Python (strawberry,
-  ariadne, graphene) and JavaScript (graphql, apollo-server, graphql-yoga, mercurius).
-
-### Fixed
-- **Express route entrypoint detection:** Fixed case-sensitive HTTP method comparison that
-  prevented Express inline handlers (e.g., `app.get('/', (req, res) => {})`) from being
-  detected as entrypoints. The JS/TS analyzer stores uppercase HTTP methods (`GET`, `POST`)
-  in `stable_id`, but the entrypoint detector used lowercase comparison. Also added
-  metadata-based detection for routes with `meta.http_method`.
-- **Slice command full analysis:** Fixed `hypergumbo slice --entry auto` to run all language
-  analyzers instead of only Python and HTML. Previously, JavaScript/TypeScript routes were
-  not detected when running slice without a pre-existing `hypergumbo.results.json` file.
-- **Symbol metadata preservation:** Fixed `_node_from_dict` to preserve the `meta` field when
-  reconstructing symbols from JSON. This enables entrypoint detection based on route metadata.
-- **Android lifecycle hook detection (ADR-0003 v1.1.x):** Added YAML-based pattern matching
-  for Android Activity, Application, Fragment, Service, BroadcastReceiver, and ContentProvider
-  lifecycle methods. Java analyzer now includes `parent_base_classes` in method metadata to
-  enable pattern matching like `parent_base_class: "^Activity$"` + `method_name: "^onCreate$"`.
-  New `android.yaml` framework pattern file supports all common Android entry points.
-- **Android framework detection:** Added "android" to `JAVA_FRAMEWORKS` detection patterns
-  in profile module. Detects Android projects via `com.android.application` or
-  `com.android.library` in build.gradle, enabling Android entrypoint pattern matching.
-- **Catalog command improvements:** Updated `hypergumbo catalog` for quick heuristic hints:
-  - Skip language detection for large directories (>200 entries) to avoid slow scans
-  - Skip files >100 KB when counting LOC (catalog is for quick hints, not accurate analysis)
-  - Show available framework YAML patterns (v1.1.x) with `--frameworks` hint
-  - Add deprecation notice for packs (recommending `--frameworks` instead)
-  - These limits apply ONLY to catalog; other commands do full analysis
+- **Recursive manifest scanning:** Scans up to 3 levels deep for dependency manifests,
+  enabling AUTO mode to work with monorepos and non-standard layouts.
+- **Ruby/Elixir framework detection:** Gemfile and mix.exs scanning for Rails, Sinatra,
+  Phoenix, Plug, and related frameworks.
+- **Foundry/Hardhat detection:** Solidity toolchain detection from config files.
+- **Usage-based pattern matching:** Route detection for call-based frameworks (Django `path()`,
+  Express `app.get()`, Rails route DSL, Go Gin, Phoenix router, etc.) via YAML patterns.
+- **12 new framework YAML patterns:** ktor, vapor, plug, fastify, grape, tornado, aiohttp,
+  slim, micronaut, graphql, electron, cli.
+- **GraphQL framework detection:** Python (strawberry, ariadne, graphene) and JavaScript
+  (apollo-server, graphql-yoga, mercurius).
 
 ### Changed
-- **Entrypoint detection: Legacy removal (Phase 2):** Removed 26 legacy `_detect_*` functions
-  from entrypoints.py (~1,700 lines deleted). Entrypoint detection is now 100% YAML-driven via
-  semantic concept metadata from the FRAMEWORK_PATTERNS phase. Legacy functions removed:
-  - Framework-specific: `_detect_django`, `_detect_flask`, `_detect_fastapi`, `_detect_express`,
-    `_detect_nestjs`, `_detect_spring`, `_detect_rails`, `_detect_phoenix`, `_detect_go_handlers`,
-    `_detect_laravel`, `_detect_rust_handlers`, `_detect_aspnet`, `_detect_sinatra`, `_detect_ktor`,
-    `_detect_vapor`, `_detect_plug`, `_detect_hapi`, `_detect_fastify`, `_detect_koa`,
-    `_detect_grape`, `_detect_tornado`, `_detect_aiohttp`, `_detect_slim`, `_detect_micronaut`,
-    `_detect_graphql_server`
-  - Pattern-based: `_detect_cli_main`, `_detect_electron_entrypoints`
-  - Helper: `_is_test_file` (moved to slice.py)
-  - `detect_entrypoints()` now only calls `_detect_from_concepts()` for semantic detection
-  - Test coverage maintained via updated tests using `meta.concepts` instead of name patterns
+- **Entrypoint detection now 100% YAML-driven:** Removed 26 legacy detection functions
+  (~1,700 lines). All framework entrypoint detection now uses semantic concept metadata
+  from YAML pattern files.
 
 ## [0.9.1] - 2026-01-09
 
