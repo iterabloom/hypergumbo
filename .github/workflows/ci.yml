@@ -7,7 +7,43 @@ on:
     branches: [ "main", "dev" ]
 
 jobs:
+  # Detect what files changed to skip expensive jobs for docs-only PRs
+  changes:
+    runs-on: codeberg-small-lazy
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect code changes
+        id: filter
+        run: |
+          # For PRs, compare against base branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            # For push, compare against previous commit
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          # Check if any non-doc files changed
+          # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
+          CODE_PATTERNS='\.py$|\.yaml$|\.yml$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+
+          if git diff --name-only "$base" "$head" | grep -qE "$CODE_PATTERNS"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Code changes detected"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only changes, skipping expensive jobs"
+          fi
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +84,8 @@ jobs:
           echo "✅ All commits have DCO sign-off"
 
   audit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +101,8 @@ jobs:
         run: pip-audit --skip-editable
 
   verify-generated:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -80,6 +120,8 @@ jobs:
         run: ./scripts/generate-architecture --check
 
   pytest:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
