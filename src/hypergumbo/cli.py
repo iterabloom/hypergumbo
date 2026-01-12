@@ -32,8 +32,11 @@ Why This Design
   to work with previously-generated JSON files
 """
 import argparse
+import gc
 import json
 import math
+import os
+import resource
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -77,6 +80,23 @@ from .compact import (
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
 from .framework_patterns import enrich_symbols, get_frameworks_dir
+
+
+def _log_memory(label: str) -> None:  # pragma: no cover
+    """Log current memory usage if HG_MEMORY_DEBUG is set.
+
+    Uses resource.getrusage to get max RSS (resident set size).
+    Output format: "MEMORY: <label>: <MB> MB"
+
+    Only logs if HG_MEMORY_DEBUG environment variable is set.
+    """
+    if not os.environ.get("HG_MEMORY_DEBUG"):
+        return
+    # ru_maxrss is in KB on Linux, bytes on macOS
+    rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # Normalize to MB (Linux uses KB, macOS uses bytes)
+    rss_mb = rss_kb / 1024 if sys.platform != "darwin" else rss_kb / (1024 * 1024)
+    print(f"MEMORY: {label}: {rss_mb:.1f} MB", file=sys.stderr)
 
 
 def _find_git_root(start_path: Path) -> Optional[Path]:
@@ -1548,6 +1568,7 @@ def run_behavior_map(
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
     """
+    _log_memory("start")
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
@@ -1567,6 +1588,7 @@ def run_behavior_map(
         limits,
         captured_symbols,
     ) = run_all_analyzers(repo_root, max_files=max_files)
+    _log_memory("after analyzers")
 
     # Enrich symbols with framework concept metadata (ADR-0003)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
@@ -1598,6 +1620,8 @@ def run_behavior_map(
             analysis_runs.append(linker_result.run.to_dict())
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
+    del linker_ctx, captured_symbols  # Free linker data structures
+    _log_memory("after linkers")
 
     # Filter out test files if requested
     if exclude_tests:
@@ -1649,6 +1673,7 @@ def run_behavior_map(
     # Rank symbols by importance (centrality + tier weighting) for output ordering
     ranked = rank_symbols(all_symbols, all_edges, first_party_priority=True)
     ranked_symbols = [r.symbol for r in ranked]
+    del ranked  # Free RankedSymbol wrappers
 
     # Convert to dicts for output (in ranked order)
     all_nodes = [s.to_dict() for s in ranked_symbols]
@@ -1658,6 +1683,7 @@ def run_behavior_map(
     behavior_map["nodes"] = all_nodes
     behavior_map["edges"] = all_edge_dicts
     behavior_map["usage_contexts"] = [uc.to_dict() for uc in all_usage_contexts]
+    del all_usage_contexts  # Free UsageContext objects
 
     # Compute metrics from analyzed nodes and edges
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
@@ -1665,6 +1691,7 @@ def run_behavior_map(
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
     entrypoints = detect_entrypoints(all_symbols, all_edges)
     behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
+    del entrypoints  # Free Entrypoint objects
 
     # Compute supply chain summary
     # Note: derived_paths would be tracked during file discovery in a full implementation
@@ -1698,7 +1725,11 @@ def run_behavior_map(
                 tiered_map = format_tiered_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
-                tier_path.write_text(json.dumps(tiered_map, indent=2))
+                with open(tier_path, "w") as f:
+                    json.dump(tiered_map, f, indent=2)
+                # Free memory between tiers (helps with large repos like tensorflow)
+                del tiered_map
+                gc.collect()
             except ValueError:
                 # Skip invalid tier specs silently
                 pass
@@ -1710,7 +1741,18 @@ def run_behavior_map(
             behavior_map, all_symbols, all_edges, config
         )
 
-    out_path.write_text(json.dumps(behavior_map, indent=2))
+    # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
+    # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
+    # symbols, 505k edges), this can free several GB of memory before final write.
+    del all_symbols
+    del all_edges
+    del ranked_symbols
+    gc.collect()
+    _log_memory("after cleanup")
+
+    with open(out_path, "w") as f:
+        json.dump(behavior_map, f, indent=2)
+    _log_memory("after write")
 
 
 def main(argv=None) -> int:
