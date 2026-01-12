@@ -106,9 +106,11 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
     For complex expressions (names, calls, etc.), returns string representation.
     """
     if isinstance(node, ast.Constant):
-        # Handle Ellipsis (...) which is not JSON-serializable
+        # Handle non-JSON-serializable constants
         if node.value is ...:
             return "..."
+        if isinstance(node.value, complex):
+            return str(node.value)  # "1+2j" format
         return node.value
     elif isinstance(node, ast.Name):
         # Variable reference - return name as string
@@ -134,6 +136,16 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
         if isinstance(val, (int, float)):
             return -val
         return f"-{val}"  # pragma: no cover - defensive for non-numeric negation
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+        # Complex number literal like 1+2j or 1-2j
+        left = _ast_value_to_python(node.left)
+        right = _ast_value_to_python(node.right)
+        # Check if this looks like a complex number (real +/- imaginary)
+        if isinstance(left, (int, float)) and isinstance(right, str) and right.endswith("j"):
+            op = "+" if isinstance(node.op, ast.Add) else "-"
+            return f"({left}{op}{right})"
+        # Fall through to string representation for other BinOps
+        return _format_annotation(node) or "<binop>"  # pragma: no cover
     else:
         # Complex expression - return string representation
         return _format_annotation(node) or "<complex>"  # pragma: no cover

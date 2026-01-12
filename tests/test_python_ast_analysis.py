@@ -2649,6 +2649,28 @@ class TestDecoratorMetadata:
         # Ellipsis should be serialized as "..." string (JSON-safe)
         assert decorators[0]["args"] == ["..."]
 
+    def test_decorator_with_complex_number_arg(self, tmp_path: Path) -> None:
+        """Decorator with complex number should serialize as string."""
+        py_file = tmp_path / "math_ops.py"
+        py_file.write_text(
+            "def default_value(val): pass\n"
+            "\n"
+            "@default_value(1+2j)\n"
+            "def get_complex():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "get_complex")
+
+        decorators = func["meta"]["decorators"]
+        # Complex number should be serialized as "(1+2j)" string (JSON-safe)
+        assert decorators[0]["args"] == ["(1+2j)"]
+
 
 class TestBaseClassMetadata:
     """Tests for base class metadata extraction per ADR-0003."""

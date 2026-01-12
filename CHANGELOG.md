@@ -10,6 +10,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Fixed
+- **Complex number JSON serialization:** Python code containing complex number literals (like `1+2j`)
+  no longer causes `TypeError: Object of type complex is not JSON serializable`. Complex numbers
+  are now serialized as strings (e.g., `"(1+2j)"`). This bug was discovered when analyzing tensorflow.
 - **`--frameworks all` now bypasses dependency scanning:** Previously, `--frameworks all` still
   scanned dependency files (requirements.txt, package.json, etc.) to detect frameworks, which
   meant frameworks not listed in dependencies wouldn't get pattern matching even when their
