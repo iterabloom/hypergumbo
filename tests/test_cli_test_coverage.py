@@ -746,7 +746,7 @@ def test_cmd_test_coverage_truncation_message(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_test_coverage_cold_spot_without_metrics(tmp_path: Path, capsys) -> None:
-    """Test cold spots work when LOC/complexity not available."""
+    """Test cold spots work when LOC/complexity not available (defaults to 1 LOC)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -777,11 +777,78 @@ def test_cmd_test_coverage_cold_spot_without_metrics(tmp_path: Path, capsys) -> 
 
     assert result == 0
     out, _ = capsys.readouterr()
-    # foo should appear without LOC/complexity info
+    # foo should appear (LOC defaults to 1 for density calculation)
     assert "foo()" in out
-    # No metrics shown
-    assert "LOC" not in out
+    # No complexity shown since it wasn't provided
     assert "complexity" not in out
+
+
+def test_cmd_test_coverage_json_includes_test_density(tmp_path: Path, capsys) -> None:
+    """Test JSON output includes test_density (tests per LOC) for hot spots."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:tests/test.py:1-5:test_fn:function",
+                "name": "test_fn",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+            {
+                "id": "python:tests/test2.py:1-5:test_fn2:function",
+                "name": "test_fn2",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test2.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+            {
+                "id": "python:src/util.py:1-10:util:function",
+                "name": "util",
+                "kind": "function",
+                "language": "python",
+                "path": "src/util.py",
+                "span": {"start_line": 1, "end_line": 10},
+                "lines_of_code": 10,
+            },
+        ],
+        "edges": [
+            {
+                "type": "calls",
+                "src": "python:tests/test.py:1-5:test_fn:function",
+                "dst": "python:src/util.py:1-10:util:function",
+            },
+            {
+                "type": "calls",
+                "src": "python:tests/test2.py:1-5:test_fn2:function",
+                "dst": "python:src/util.py:1-10:util:function",
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.format = "json"
+    args.min_tests = None
+    args.max_tests = None
+    args.top = None
+
+    result = cmd_test_coverage(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    output = json.loads(out)
+    assert len(output["hot_spots"]) == 1
+    hot_spot = output["hot_spots"][0]
+    assert hot_spot["test_count"] == 2
+    assert hot_spot["lines_of_code"] == 10
+    # test_density = 2 tests / 10 LOC = 0.2
+    assert hot_spot["test_density"] == 0.2
 
 
 def test_cmd_test_coverage_json_cold_spot_with_complexity(tmp_path: Path, capsys) -> None:

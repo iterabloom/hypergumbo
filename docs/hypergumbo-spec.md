@@ -154,15 +154,17 @@ Tested: 120 (80.0%)
 Untested: 30
 Total test functions: 45
 
-Hot Spots (most tested - potential redundancy)
-----------------------------------------------
-   15 tests  utils.py:10-20   helper()
-   12 tests  core.py:50-60    validate()
+Hot Spots (highest test density - tests per LOC)
+------------------------------------------------
+  5.00 t/LOC  ( 15 tests,   3 LOC)  utils.py:10-12   helper()
+  0.60 t/LOC  ( 12 tests,  20 LOC)  core.py:50-69    validate()
 
 Cold Spots (untested - need coverage)
 -------------------------------------
     0 tests  core.py:100-150  process()  [50 LOC, complexity: 8]
 ```
+
+**Note:** Hot spots are ranked by test density (tests/LOC), not raw test count. This surfaces small utility functions that are disproportionately tested relative to their size.
 
 **Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
 

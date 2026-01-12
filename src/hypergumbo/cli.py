@@ -998,27 +998,29 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             tests_per_target[dst].add(src)
 
     # Compute metrics
-    hot_spots: list[tuple[int, dict, list[str]]] = []
+    # hot_spots: (test_density, test_count, loc, target, test_names)
+    hot_spots: list[tuple[float, int, int, dict, list[str]]] = []
     cold_spots: list[tuple[dict, int, int | None]] = []
 
     for target_id, test_ids in tests_per_target.items():
         target = target_symbols[target_id]
         test_count = len(test_ids)
+        loc = target.get("lines_of_code") or 1  # Default to 1 to avoid division by zero
 
         if test_count == 0:
             # Cold spot - include LOC and complexity for prioritization
-            loc = target.get("lines_of_code")
             complexity = target.get("cyclomatic_complexity")
-            cold_spots.append((target, loc or 0, complexity))
+            cold_spots.append((target, loc, complexity))
         else:
-            # Tested function - collect test names
+            # Tested function - calculate test density (tests per LOC)
+            test_density = test_count / loc
             test_names = []
             for tid in test_ids:
                 test_node = nodes_by_id.get(tid, {})
                 test_names.append(test_node.get("name", tid))
-            hot_spots.append((test_count, target, test_names))
+            hot_spots.append((test_density, test_count, loc, target, test_names))
 
-    # Sort hot spots by test count (descending)
+    # Sort hot spots by test density (descending) - tests per LOC
     hot_spots.sort(key=lambda x: -x[0])
 
     # Sort cold spots by LOC (descending) - larger untested functions first
@@ -1030,10 +1032,9 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     top_n = args.top
 
     if min_tests is not None:
-        hot_spots = [(c, t, n) for c, t, n in hot_spots if c >= min_tests]
+        hot_spots = [(d, c, loc, t, n) for d, c, loc, t, n in hot_spots if c >= min_tests]
     if max_tests is not None:
-        hot_spots = [(c, t, n) for c, t, n in hot_spots if c <= max_tests]
-        cold_spots = [(t, loc_val, c) for t, loc_val, c in cold_spots]  # Keep all
+        hot_spots = [(d, c, loc, t, n) for d, c, loc, t, n in hot_spots if c <= max_tests]
 
     # Compute summary stats
     total_functions = len(target_symbols)
@@ -1059,7 +1060,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             "cold_spots": [],
         }
 
-        for test_count, target, test_names in hot_spots[:top_n] if top_n else hot_spots:
+        for density, test_count, loc, target, test_names in hot_spots[:top_n] if top_n else hot_spots:
             span = target.get("span", {})
             output["hot_spots"].append({
                 "id": target["id"],
@@ -1067,6 +1068,8 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "path": target.get("path", ""),
                 "span": span,
                 "test_count": test_count,
+                "lines_of_code": loc,
+                "test_density": round(density, 2),
                 "tests": sorted(test_names),
             })
 
@@ -1098,15 +1101,15 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         # Hot spots
         display_hot = hot_spots[:top_n] if top_n else hot_spots[:20]
         if display_hot:
-            print("\nHot Spots (most tested - potential redundancy)")
-            print("-" * 46)
-            for test_count, target, _ in display_hot:
+            print("\nHot Spots (highest test density - tests per LOC)")
+            print("-" * 48)
+            for density, test_count, loc, target, _ in display_hot:
                 name = target.get("name", "")
                 path = target.get("path", "")
                 span = target.get("span", {})
                 start = span.get("start_line", 0)
                 end = span.get("end_line", 0)
-                print(f"  {test_count:3} tests  {path}:{start}-{end}  {name}()")
+                print(f"  {density:5.2f} t/LOC  ({test_count:3} tests, {loc:3} LOC)  {path}:{start}-{end}  {name}()")
 
         # Cold spots
         display_cold = cold_spots[:top_n] if top_n else cold_spots[:20]
