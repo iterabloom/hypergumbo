@@ -16,4 +16,4 @@ These versions are independent. The schema version only changes when the output
 format has breaking changes, while the tool version changes with any release.
 """
 __all__ = ["__version__"]
-__version__ = "0.9.1"
+__version__ = "1.0.0"

@@ -2,14 +2,27 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v0.9.1
+- Released **tool** is at: v1.0.0
 - Released **schema** is at: v0.2.0
 
 This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-01-12
+
 ### Fixed
+- **Memory optimization for large repos:** Reduced peak memory usage from ~11GB to ~2.1GB (80%
+  reduction) when analyzing large repositories like tensorflow (154k symbols, 505k edges). Changes:
+  streaming JSON output via `json.dump()`, aggressive cleanup of intermediate data structures
+  (Symbol/Edge objects, RankedSymbol wrappers, LinkerContext), and `gc.collect()` between tiers.
+  Optional memory telemetry available via `HG_MEMORY_DEBUG=1` environment variable.
+- **Android framework detection from manifests:** Improved Android detection to find projects using
+  custom Gradle plugin IDs (like `ndksamples.android.application`). Now detects Android via:
+  - `android {}` DSL block in build.gradle (present in all Android projects)
+  - `com.android.tools.build:gradle` dependency
+  - AndroidManifest.xml file presence (definitive indicator)
+  This closes the detection gap for android-ndk-samples (AUTO=20) and tensorflow (AUTO=14).
 - **Non-JSON-serializable Python literals:** Python code containing complex numbers (`1+2j`) or
   bytes literals (`b'hello'`) no longer causes `TypeError` during JSON serialization. These values
   are now serialized as strings (e.g., `"(1+2j)"`, `"b'hello'"`). Discovered when analyzing tensorflow.
