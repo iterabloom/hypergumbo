@@ -16,6 +16,8 @@ build/
 .hypergumbo/
 hypergumbo_capsule/
 hypergumbo.results.json
+hypergumbo.results.*.json
+slice.json
 
 # Agent configuration
 **/*.local.json
