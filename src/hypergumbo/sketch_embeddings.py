@@ -14,12 +14,30 @@ These functions fall back gracefully when sentence-transformers isn't installed.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
+
+# Model name constant
+_EMBEDDING_MODEL = "microsoft/unixcoder-base"
+
+
+def _load_embedding_model():
+    """Load SentenceTransformer model with warnings suppressed.
+
+    The sentence-transformers library logs a warning when creating a new model
+    wrapper for models it doesn't recognize. This is expected for UnixCoder
+    and not useful to users.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    # Suppress "No sentence-transformers model found" warning
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+    return SentenceTransformer(_EMBEDDING_MODEL)
 
 # Probe patterns for embedding-based config extraction
 # These are embedded and compared against config file content
@@ -368,11 +386,9 @@ def _discover_config_files_embedding(
     Returns:
         Set of discovered config file paths.
     """
-    try:
-        from sentence_transformers import SentenceTransformer
-        import numpy as np
-    except ImportError:
+    if not _has_sentence_transformers():
         return set()  # No discovery without sentence-transformers
+    import numpy as np
 
     # Detect languages if not provided
     if detected_languages is None:
@@ -480,7 +496,7 @@ def _discover_config_files_embedding(
         )[:max_candidates]
 
     # Load embedding model and compute similarities
-    model = SentenceTransformer("microsoft/unixcoder-base")
+    model = _load_embedding_model()
 
     # Embed known config file names
     known_embeddings = model.encode(known_names, convert_to_numpy=True)
@@ -741,12 +757,10 @@ def extract_config_embedding(
     Returns:
         List of extracted metadata lines, ordered by file then relevance.
     """
-    try:
-        from sentence_transformers import SentenceTransformer
-        import numpy as np
-    except ImportError:
+    if not _has_sentence_transformers():
         # Fall back to heuristic if sentence-transformers not available
         return heuristic_fallback(repo_root)[:max_lines]
+    import numpy as np
 
     # Collect all config content (with embedding-based discovery)
     config_content = _collect_config_content_with_discovery(
@@ -767,7 +781,7 @@ def extract_config_embedding(
 
     # Load embedding model once
     _t_load = _time.time()
-    model = SentenceTransformer("microsoft/unixcoder-base")
+    model = _load_embedding_model()
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
     # Compute normalized embeddings for both probes
