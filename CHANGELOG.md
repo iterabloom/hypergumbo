@@ -15,6 +15,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   (untested functions). Uses call graph analysis without executing any code. Language agnostic.
 - **`--help --all` flag:** Shows comprehensive help including all subcommand documentation at once.
 
+### Changed
+- **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
+  markdown files change, saving ~6 minutes of CI time.
+
 ## [1.0.0] - 2026-01-12
 
 First stable release. Major focus on memory optimization, framework detection improvements,
