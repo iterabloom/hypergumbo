@@ -44,7 +44,7 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 ## 3) User experience (CLI)
 
 ### Install
-* `pipx install hypergumbo` (primary, includes all 65+ language analyzers)
+* `pipx install hypergumbo` (primary, includes all 67 language analyzers)
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[llm-assist]` (optional OpenAI support for plan generation)
 * `pip install hypergumbo[llm-local]` (optional local LLM support via llm package)
@@ -90,7 +90,7 @@ Available Passes:
   - javascript-ts-v1: JS/TS via tree-sitter
   - java-ts-v1: Java via tree-sitter
   - go-ts-v1: Go via tree-sitter
-  ... (65+ language passes available)
+  ... (67 language passes available)
 
 Available Packs:
   - python-fastapi: FastAPI route detection + call graph
@@ -173,7 +173,7 @@ Initialization may use language detection; **analysis execution requires no netw
 
 ## 4) Supported stacks
 
-Hypergumbo supports 65+ languages via tree-sitter grammars. All are included in the base package.
+Hypergumbo supports 67 languages via tree-sitter grammars. All are included in the base package.
 
 **Primary languages (full symbol/edge extraction):**
 * 🟩 **Python** (AST-based, full call edges)
@@ -385,43 +385,7 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-**Current implementation includes 65+ language analyzers (all tree-sitter based except Python):**
-* 🟩 **Core languages**: Python (AST), JavaScript/TypeScript/Svelte/Vue, Java, Go, Rust, Ruby, Elixir, PHP, C/C++, C#, Kotlin, Scala, Swift
-* 🟩 **Additional languages**: Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and 40+ more
-* 🟩 **Config/data formats**: JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
-* 🟩 **Markup**: HTML, CSS, LaTeX, Markdown
-
-**Current implementation includes 14 cross-language linkers:**
-* 🟩 `jni-linker-v1` — Java↔C native method matching
-* 🟩 `swift-objc-linker-v1` — Swift↔Objective-C bridging
-* 🟩 `ipc-linker-v1` — Electron IPC (`ipcRenderer`, `ipcMain`)
-* 🟩 `phoenix-ipc-linker-v1` — Phoenix Channels (`broadcast!`, `push`, `handle_in`)
-* 🟩 `websocket-linker-v1` — WebSocket/Socket.io patterns
-* 🟩 `http-linker-v1` — HTTP route patterns ↔ client calls
-* 🟩 `grpc-linker-v1` — gRPC/Protobuf service ↔ client/server
-* 🟩 `graphql-linker-v1` — GraphQL client calls ↔ schema operations
-* 🟩 `graphql-resolver-linker-v1` — GraphQL resolvers ↔ schema types
-* 🟩 `openapi-linker-v1` — OpenAPI/Swagger specs ↔ route handlers
-* 🟩 `database-query-linker-v1` — SQL queries ↔ table schemas
-* 🟩 `message-queue-linker-v1` — Message queue patterns (RabbitMQ, Kafka, etc.)
-* 🟩 `event-sourcing-linker-v1` — Event sourcing patterns
-* 🟩 `dependency-linker-v1` — Cross-file dependency resolution
-
-**Current implementation includes 37 framework pattern files:**
-* 🟩 Django, Flask, FastAPI, aiohttp, Tornado (Python web)
-* 🟩 Express, NestJS, Hapi, Next.js, Fastify, Koa (Node.js web)
-* 🟩 Rails, Sinatra, Grape (Ruby web)
-* 🟩 Phoenix, Plug (Elixir web)
-* 🟩 Spring Boot, JAX-RS, Micronaut (Java web)
-* 🟩 ASP.NET Core (C# web)
-* 🟩 Go-web (Gin, Echo, Chi, Fiber)
-* 🟩 Rust-web (Actix, Axum, Rocket)
-* 🟩 Ktor (Kotlin), Vapor (Swift), Slim (PHP)
-* 🟩 CLI frameworks: Click/Typer/Fire (Python), Commander/yargs (JS), clap (Rust), Cobra (Go), Thor/GLI (Ruby)
-* 🟩 GraphQL: graphql-js, Strawberry/Ariadne/Graphene (Python), graphql-ruby
-* 🟩 Electron (desktop), Celery (tasks), Android, Laravel
-
-**Design principle:** Language expansion via tree-sitter grammars. Most grammars available on PyPI; some built from source in CI.
+See §4 "Supported stacks" for the full list of 67 language analyzers, 14 cross-language linkers, and 37 framework patterns. Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
 
 ### Analyzer capsule
 
@@ -1921,7 +1885,7 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Tree-sitter install hell (platform-specific builds) | ~~Medium~~ **Resolved** | Medium | Tree-sitter grammars now bundled as standard dependencies; pre-built wheels available for all major platforms; 65+ languages supported |
+| Tree-sitter install hell (platform-specific builds) | ~~Medium~~ **Resolved** | Medium | Tree-sitter grammars now bundled as standard dependencies; pre-built wheels available for all major platforms; 67 languages supported |
 | "Best-effort" feels broken to users | Medium | High | Over-communicate in docs; show diffs with/without types; publish benchmark results showing quality scores; machine-readable evidence types enable transparency |
 | Users skip `init` step | Medium | Medium | `hypergumbo run` auto-generates default capsule if missing; warns when using auto-generated capsule |
 | Capsule becomes stale after updates | Medium | Medium | Include `generated_at` + version check; `hypergumbo run` warns if capsule older than 30 days or version mismatch |
