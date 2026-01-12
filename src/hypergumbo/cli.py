@@ -998,8 +998,8 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             tests_per_target[dst].add(src)
 
     # Compute metrics
-    # hot_spots: (test_density, test_count, loc, target, test_names)
-    hot_spots: list[tuple[float, int, int, dict, list[str]]] = []
+    # test_dense: (test_density, test_count, loc, target, test_names)
+    test_dense: list[tuple[float, int, int, dict, list[str]]] = []
     cold_spots: list[tuple[dict, int, int | None]] = []
 
     for target_id, test_ids in tests_per_target.items():
@@ -1018,10 +1018,10 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             for tid in test_ids:
                 test_node = nodes_by_id.get(tid, {})
                 test_names.append(test_node.get("name", tid))
-            hot_spots.append((test_density, test_count, loc, target, test_names))
+            test_dense.append((test_density, test_count, loc, target, test_names))
 
     # Sort hot spots by test density (descending) - tests per LOC
-    hot_spots.sort(key=lambda x: -x[0])
+    test_dense.sort(key=lambda x: -x[0])
 
     # Sort cold spots by LOC (descending) - larger untested functions first
     cold_spots.sort(key=lambda x: -x[1])
@@ -1032,9 +1032,9 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     top_n = args.top
 
     if min_tests is not None:
-        hot_spots = [(d, c, loc, t, n) for d, c, loc, t, n in hot_spots if c >= min_tests]
+        test_dense = [(d, c, loc, t, n) for d, c, loc, t, n in test_dense if c >= min_tests]
     if max_tests is not None:
-        hot_spots = [(d, c, loc, t, n) for d, c, loc, t, n in hot_spots if c <= max_tests]
+        test_dense = [(d, c, loc, t, n) for d, c, loc, t, n in test_dense if c <= max_tests]
 
     # Compute summary stats
     total_functions = len(target_symbols)
@@ -1056,13 +1056,13 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 "coverage_percent": round(coverage_percent, 1),
                 "total_tests": total_tests,
             },
-            "hot_spots": [],
+            "test_dense": [],
             "cold_spots": [],
         }
 
-        for density, test_count, loc, target, test_names in hot_spots[:top_n] if top_n else hot_spots:
+        for density, test_count, loc, target, test_names in test_dense[:top_n] if top_n else test_dense:
             span = target.get("span", {})
-            output["hot_spots"].append({
+            output["test_dense"].append({
                 "id": target["id"],
                 "name": target.get("name", ""),
                 "path": target.get("path", ""),
@@ -1098,10 +1098,10 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print(f"Untested: {untested_functions}")
         print(f"Total test functions: {total_tests}")
 
-        # Hot spots
-        display_hot = hot_spots[:top_n] if top_n else hot_spots[:20]
+        # Test-dense functions
+        display_hot = test_dense[:top_n] if top_n else test_dense[:20]
         if display_hot:
-            print("\nHot Spots (highest test density - tests per LOC)")
+            print("\nTest-Dense (highest test density - may indicate redundant tests)")
             print("-" * 48)
             for density, test_count, loc, target, _ in display_hot:
                 name = target.get("name", "")
@@ -1131,7 +1131,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 print(f"  {0:3} tests  {path}:{start}-{end}  {name}(){metrics_str}")
 
         # Show if results were truncated
-        if top_n and (len(hot_spots) > top_n or len(cold_spots) > top_n):
+        if top_n and (len(test_dense) > top_n or len(cold_spots) > top_n):
             print(f"\n(Showing top {top_n}. Use --top to see more.)")
 
     return 0

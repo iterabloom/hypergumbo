@@ -70,7 +70,7 @@ def test_cmd_test_coverage_basic_hot_cold_spots(tmp_path: Path, capsys) -> None:
                 "src": "python:tests/test_utils.py:1-5:test_helper:function",
                 "dst": "python:src/utils.py:1-10:helper:function",
             },
-            # test_helper2 also calls helper (making it a hot spot)
+            # test_helper2 also calls helper (making it a test-dense)
             {
                 "type": "calls",
                 "src": "python:tests/test_utils.py:10-15:test_helper2:function",
@@ -180,10 +180,10 @@ def test_cmd_test_coverage_json_output(tmp_path: Path, capsys) -> None:
     assert output["summary"]["total_tests"] == 1
 
     # Hot spot
-    assert len(output["hot_spots"]) == 1
-    assert output["hot_spots"][0]["name"] == "foo"
-    assert output["hot_spots"][0]["test_count"] == 1
-    assert "test_foo" in output["hot_spots"][0]["tests"]
+    assert len(output["test_dense"]) == 1
+    assert output["test_dense"][0]["name"] == "foo"
+    assert output["test_dense"][0]["test_count"] == 1
+    assert "test_foo" in output["test_dense"][0]["tests"]
 
     # Cold spot
     assert len(output["cold_spots"]) == 1
@@ -389,7 +389,7 @@ def test_cmd_test_coverage_min_tests_filter(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     # foo has 2 tests, should appear
     assert "foo()" in out
-    # bar has 1 test, should not appear in hot spots
+    # bar has 1 test, should not appear in test-denses
     # But summary still shows total counts
     assert "Total functions: 2" in out
 
@@ -454,7 +454,7 @@ def test_cmd_test_coverage_max_tests_filter(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     output = json.loads(out)
     # foo has 2 tests, should be filtered out
-    assert len(output["hot_spots"]) == 0
+    assert len(output["test_dense"]) == 0
 
 
 def test_cmd_test_coverage_top_n(tmp_path: Path, capsys) -> None:
@@ -519,8 +519,8 @@ def test_cmd_test_coverage_top_n(tmp_path: Path, capsys) -> None:
     assert result == 0
     out, _ = capsys.readouterr()
     output = json.loads(out)
-    # Only 1 hot spot and 1 cold spot
-    assert len(output["hot_spots"]) == 1
+    # Only 1 test-dense and 1 cold spot
+    assert len(output["test_dense"]) == 1
     assert len(output["cold_spots"]) == 1
 
 
@@ -784,7 +784,7 @@ def test_cmd_test_coverage_cold_spot_without_metrics(tmp_path: Path, capsys) -> 
 
 
 def test_cmd_test_coverage_json_includes_test_density(tmp_path: Path, capsys) -> None:
-    """Test JSON output includes test_density (tests per LOC) for hot spots."""
+    """Test JSON output includes test_density (tests per LOC) for test-denses."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -843,8 +843,8 @@ def test_cmd_test_coverage_json_includes_test_density(tmp_path: Path, capsys) ->
     assert result == 0
     out, _ = capsys.readouterr()
     output = json.loads(out)
-    assert len(output["hot_spots"]) == 1
-    hot_spot = output["hot_spots"][0]
+    assert len(output["test_dense"]) == 1
+    hot_spot = output["test_dense"][0]
     assert hot_spot["test_count"] == 2
     assert hot_spot["lines_of_code"] == 10
     # test_density = 2 tests / 10 LOC = 0.2
