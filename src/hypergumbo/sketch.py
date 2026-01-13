@@ -1789,7 +1789,7 @@ def _format_language_stats(
     repo_root: Optional[Path] = None,
     extra_excludes: Optional[List[str]] = None,
 ) -> str:
-    """Format language statistics as a summary line.
+    """Format language statistics as a multi-line summary.
 
     Args:
         profile: Repository profile with language statistics.
@@ -1797,7 +1797,7 @@ def _format_language_stats(
         extra_excludes: Additional exclude patterns for test LOC counting.
 
     Returns:
-        Formatted statistics line.
+        Formatted statistics (multi-line if test files detected).
     """
     if not profile.languages:
         return "No source files detected"
@@ -1820,6 +1820,7 @@ def _format_language_stats(
         if pct >= 1:  # Only show languages with ≥1%
             parts.append(f"{lang.title()} ({pct:.0f}%)")
 
+    lang_line = ", ".join(parts)
     total_files = sum(lang.files for lang in profile.languages.values())
 
     # Compute test LOC if repo_root provided
@@ -1828,12 +1829,26 @@ def _format_language_stats(
         if test_loc > 0:
             non_test_loc = total_loc - test_loc
             non_test_files = total_files - test_files
-            return (
-                f"{', '.join(parts)} · {non_test_files:,} files · "
-                f"~{non_test_loc:,} LOC ({test_files:,} test files, ~{test_loc:,} test LOC)"
+
+            # Format with aligned columns for easy comparison
+            # Determine widths for alignment
+            files_width = max(len(f"{non_test_files:,}"), len(f"{test_files:,}"))
+            loc_width = max(len(f"~{non_test_loc:,}"), len(f"~{test_loc:,}"))
+
+            files_line = (
+                f"{total_files:,} files    "
+                f"({non_test_files:>{files_width},} non-test + "
+                f"{test_files:>{files_width},} test)"
+            )
+            loc_line = (
+                f"~{total_loc:,} LOC "
+                f"(~{non_test_loc:>{loc_width - 1},} non-test + "
+                f"~{test_loc:>{loc_width - 1},} test)"
             )
 
-    return f"{', '.join(parts)} · {total_files} files · ~{total_loc:,} LOC"
+            return f"{lang_line}\n{files_line}\n{loc_line}"
+
+    return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC"
 
 
 def _format_structure(
