@@ -373,7 +373,8 @@ class TestGenerateSketch:
     def test_readme_truncation_no_word_boundary(self, tmp_path: Path) -> None:
         """README truncation handles long words without spaces."""
         # Create a description with a very long word (no spaces for truncation)
-        long_word = "a" * 300
+        # Must exceed max_chars (300) to trigger truncation
+        long_word = "a" * 400
         (tmp_path / "README.md").write_text(f"# Project\n\n{long_word}\n")
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
 

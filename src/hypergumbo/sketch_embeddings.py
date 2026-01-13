@@ -1330,9 +1330,10 @@ class ReadmeExtractionDebug:
 def extract_readme_description_embedding(
     readme_path: Path,
     max_lines: int = 80,
-    max_window: int = 10,
-    quality_drop_threshold: float = 0.10,
+    max_window: int = 15,
+    quality_drop_threshold: float = 0.07,
     top_k_probes: int = 3,
+    position_bias: float = 0.4,
     debug: bool = False,
 ) -> str | ReadmeExtractionDebug | None:
     """Extract project description from README using embedding similarity.
@@ -1342,12 +1343,16 @@ def extract_readme_description_embedding(
     consecutive window of lines (up to max_window) using a sliding window
     approach that stops when quality drops significantly.
 
+    Position bias ensures earlier lines are favored, since descriptions
+    typically appear near the top of READMEs, right after the title.
+
     Args:
         readme_path: Path to the README file.
         max_lines: Maximum lines from README to consider (default 80).
-        max_window: Maximum window size k (default 10).
-        quality_drop_threshold: Stop when score drops by this fraction (default 0.10).
+        max_window: Maximum window size k (default 15).
+        quality_drop_threshold: Stop when score drops by this fraction (default 0.07).
         top_k_probes: Number of top probe similarities to average (default 3).
+        position_bias: Penalty for later lines (default 0.4 = 40% penalty at end).
         debug: If True, return ReadmeExtractionDebug with k-value scores and timing.
 
     Returns:
@@ -1427,6 +1432,26 @@ def extract_readme_description_embedding(
     # Score each line as mean of top-k similarities with probes
     top_k = min(top_k_probes, len(README_DESCRIPTION_PROBES))
     line_scores = np.mean(np.sort(similarities, axis=1)[:, -top_k:], axis=1)
+
+    # Apply position bias - earlier lines are more likely to be descriptions
+    # Two-part bias:
+    # 1. Title-proximity bonus: lines 1-5 after title get 25% boost (not the title itself)
+    # 2. Exponential decay based on ABSOLUTE position (not relative to doc length)
+    #    This ensures consistent behavior regardless of README length
+    if position_bias > 0 and len(filtered_lines) > 1:
+        # Use absolute positions, normalized to a fixed scale (assume ~20 lines is typical)
+        # Lines 0-5 get minimal penalty, lines 20+ get maximum penalty
+        scale_factor = 20.0  # Typical number of meaningful lines in a README
+        absolute_positions = np.arange(len(filtered_lines)) / scale_factor
+        # Cap at 1.0 to avoid over-penalizing very long READMEs
+        absolute_positions = np.minimum(absolute_positions, 1.0)
+        # Exponential decay based on absolute position
+        position_weights = np.exp(-position_bias * 2 * absolute_positions)
+        # Title-proximity bonus for lines AFTER the title (positions 1-5)
+        # The title itself (position 0, usually "# Project") shouldn't get the bonus
+        title_bonus = np.ones(len(filtered_lines))
+        title_bonus[1:6] = 1.25  # 25% boost for lines 1-5 (right after title)
+        line_scores = line_scores * position_weights * title_bonus
 
     # Sliding window to find best consecutive k lines
     best_window: tuple[int, int] | None = None  # (start_idx, end_idx)

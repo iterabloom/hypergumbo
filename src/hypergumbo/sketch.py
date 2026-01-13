@@ -2053,7 +2053,7 @@ def _truncate_description(description: str, max_chars: int) -> str:
 
 
 def _extract_readme_description(
-    repo_root: Path, max_chars: int = 200
+    repo_root: Path, max_chars: int = 300
 ) -> Optional[str]:
     """Extract a description from the project README file.
 
@@ -2064,7 +2064,7 @@ def _extract_readme_description(
 
     Args:
         repo_root: Path to the repository root.
-        max_chars: Maximum characters to extract (default 200).
+        max_chars: Maximum characters to extract (default 300).
 
     Returns:
         Extracted description string, or None if no README found.
