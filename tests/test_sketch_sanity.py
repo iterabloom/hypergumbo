@@ -192,10 +192,11 @@ database:
         })
 
         # Only test with embedding mode since that's where extraction happens
+        # Use small token budget - we only need the Configuration section
         try:
             sketch = generate_sketch(
                 repo,
-                max_tokens=4000,
+                max_tokens=500,
                 config_extraction_mode=ConfigExtractionMode.EMBEDDING,
             )
         except Exception:

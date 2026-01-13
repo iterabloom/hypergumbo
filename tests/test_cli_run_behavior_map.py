@@ -13,7 +13,11 @@ def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     out_path = tmp_path / "hypergumbo.results.json"
 
     result = subprocess.run(
-        [sys.executable, "-m", "hypergumbo", "run", str(project_root), "--out", str(out_path)],
+        [
+            sys.executable, "-m", "hypergumbo", "run",
+            str(project_root), "--out", str(out_path),
+            "--max-files", "5",  # Limit files per analyzer for faster test
+        ],
         cwd=project_root,
         capture_output=True,
         text=True,

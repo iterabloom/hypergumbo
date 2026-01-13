@@ -1406,8 +1406,11 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     assert "Use a full node ID" in err
 
 
-def test_cmd_catalog_shows_all_passes(capsys) -> None:
+def test_cmd_catalog_shows_all_passes(capsys, tmp_path, monkeypatch) -> None:
     """Catalog shows all passes including extras by default."""
+    # Run from empty temp dir to avoid scanning full repo
+    monkeypatch.chdir(tmp_path)
+
     args = FakeArgs()
 
     result = cmd_catalog(args)
@@ -1530,7 +1533,10 @@ def test_main_with_slice(tmp_path: Path) -> None:
     assert out_file.exists()
 
 
-def test_main_with_catalog() -> None:
+def test_main_with_catalog(tmp_path, monkeypatch) -> None:
+    # Run from empty temp dir to avoid scanning full repo
+    monkeypatch.chdir(tmp_path)
+
     result = main(["catalog"])
     assert result == 0
 
@@ -1552,11 +1558,15 @@ def test_main_with_export_capsule(tmp_path: Path) -> None:
 
 
 def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
-    """Test --config-extraction flag with all modes."""
+    """Test --config-extraction flag parses correctly.
+
+    Note: Embedding mode behavior is thoroughly tested in test_sketch.py.
+    This test validates CLI argument parsing with fast heuristic mode.
+    """
     # Create a simple package.json
     (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
 
-    # Test default (heuristic) mode
+    # Test heuristic mode (fast, validates CLI plumbing)
     args = FakeArgs()
     args.path = str(tmp_path)
     args.tokens = 1000
@@ -1569,16 +1579,6 @@ def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
     assert result == 0
     out, _ = capsys.readouterr()
     assert "test" in out  # Should include package name
-
-    # Test embedding mode (will use heuristic if sentence-transformers unavailable)
-    args.config_extraction_mode = "embedding"
-    result = cmd_sketch(args)
-    assert result == 0
-
-    # Test hybrid mode
-    args.config_extraction_mode = "hybrid"
-    result = cmd_sketch(args)
-    assert result == 0
 
 
 def test_main_sketch_config_extraction_flag(tmp_path: Path) -> None:
