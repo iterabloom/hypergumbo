@@ -124,6 +124,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "ada": ["*.ads", "*.adb", "*.ada"],
     "d": ["*.d", "*.di"],
     "nim": ["*.nim", "*.nims", "*.nimble"],
+    "wgsl": ["*.wgsl"],
 }
 
 # Framework detection patterns
