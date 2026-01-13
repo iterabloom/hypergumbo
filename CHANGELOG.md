@@ -27,6 +27,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   `ReadmeExtractionDebug` object with k-value scores, timing, and early stopping info.
 - **`--progress` flag for sketch:** Shows progress indicator with ETA to stderr during sketch
   generation (e.g., `[45%] Extracting config... ETA 23s`).
+- **`--readme-debug` flag for sketch:** Shows README extraction debug info (k-scores, timing,
+  early stopping) to stderr. Useful for understanding how the sliding window extraction works.
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
