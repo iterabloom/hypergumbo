@@ -888,6 +888,41 @@ def test_cmd_test_coverage_json_cold_spot_with_complexity(tmp_path: Path, capsys
     assert output["cold_spots"][0]["cyclomatic_complexity"] == 15
 
 
+def test_cmd_test_coverage_prints_output_summary(tmp_path: Path, capsys) -> None:
+    """Test-coverage prints output summary to stderr."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.format = "text"
+    args.min_tests = None
+    args.max_tests = None
+    args.top = None
+
+    result = cmd_test_coverage(args)
+
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    assert "[hypergumbo test-coverage] Output: stdout" in err
+
+
 def test_help_all_shows_all_subcommands(capsys) -> None:
     """Test that --help --all shows help for all subcommands."""
     result = main(["--help", "--all"])

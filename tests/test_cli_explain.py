@@ -313,3 +313,35 @@ def test_cmd_explain_shows_no_callers_callees(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     assert "isolated" in out
     # Should indicate no callers/callees (or just not crash)
+
+
+def test_cmd_explain_prints_output_summary(tmp_path: Path, capsys) -> None:
+    """Explain prints output summary to stderr."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:test:function",
+                "name": "test",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "test"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    assert "[hypergumbo explain] Output: stdout" in err

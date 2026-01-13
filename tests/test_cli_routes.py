@@ -380,3 +380,36 @@ def test_main_with_routes(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "update_item" in out
+
+
+def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
+    """Routes prints output summary to stderr."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_items:function",
+                "name": "get_items",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "get",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    assert "[hypergumbo routes] Output: stdout" in err

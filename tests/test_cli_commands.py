@@ -1469,6 +1469,21 @@ def test_cmd_catalog_skips_large_directory(capsys, tmp_path, monkeypatch) -> Non
     assert "Available Framework Patterns" in out
 
 
+def test_cmd_catalog_prints_output_summary(capsys, tmp_path, monkeypatch) -> None:
+    """Catalog prints output summary to stderr."""
+    # Create a minimal directory
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+    monkeypatch.chdir(tmp_path)
+
+    args = FakeArgs()
+    result = cmd_catalog(args)
+
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    assert "[hypergumbo catalog] Output: stdout" in err
+
+
 def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:
     """Export capsule creates tarball."""
     # Setup capsule directory

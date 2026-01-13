@@ -600,6 +600,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(f"    language: {lang}")
         print()
 
+    print("\n[hypergumbo search] Output: stdout", file=sys.stderr)
     return 0
 
 
@@ -711,6 +712,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 print(f"  [{method}] {name} (line {line})")
         print()
 
+    print("\n[hypergumbo routes] Output: stdout", file=sys.stderr)
     return 0
 
 
@@ -830,6 +832,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         else:
             print("  Calls: (none)")
 
+    print("\n[hypergumbo explain] Output: stdout", file=sys.stderr)
     return 0
 
 
@@ -914,6 +917,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     print("Note: Packs are deprecated. Use --frameworks instead for semantic")
     print("      detection of routes, controllers, tasks, etc.")
 
+    print("\n[hypergumbo catalog] Output: stdout", file=sys.stderr)
     return 0
 
 
@@ -1171,6 +1175,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         if top_n and (len(test_dense) > top_n or len(cold_spots) > top_n):
             print(f"\n(Showing top {top_n}. Use --top to see more.)")
 
+    print("\n[hypergumbo test-coverage] Output: stdout", file=sys.stderr)
     return 0
 
 
