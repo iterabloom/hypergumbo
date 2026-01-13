@@ -889,7 +889,7 @@ def test_cmd_test_coverage_json_cold_spot_with_complexity(tmp_path: Path, capsys
 
 
 def test_cmd_test_coverage_prints_output_summary(tmp_path: Path, capsys) -> None:
-    """Test-coverage prints output summary to stderr."""
+    """Test-coverage prints output summary to stdout for text mode."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -919,8 +919,9 @@ def test_cmd_test_coverage_prints_output_summary(tmp_path: Path, capsys) -> None
 
     assert result == 0
 
-    _, err = capsys.readouterr()
-    assert "[hypergumbo test-coverage] Output: stdout" in err
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo test-coverage] Generated 0 artifact(s)" in out
+    assert "Output: stdout" in out
 
 
 def test_help_all_shows_all_subcommands(capsys) -> None:

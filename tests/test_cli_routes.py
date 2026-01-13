@@ -383,7 +383,7 @@ def test_main_with_routes(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
-    """Routes prints output summary to stderr."""
+    """Routes prints output summary to stdout."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -411,5 +411,6 @@ def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
 
     assert result == 0
 
-    _, err = capsys.readouterr()
-    assert "[hypergumbo routes] Output: stdout" in err
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo routes] Generated 0 artifact(s)" in out
+    assert "Output: stdout" in out

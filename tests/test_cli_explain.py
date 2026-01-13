@@ -316,7 +316,7 @@ def test_cmd_explain_shows_no_callers_callees(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_prints_output_summary(tmp_path: Path, capsys) -> None:
-    """Explain prints output summary to stderr."""
+    """Explain prints output summary to stdout."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -343,5 +343,6 @@ def test_cmd_explain_prints_output_summary(tmp_path: Path, capsys) -> None:
 
     assert result == 0
 
-    _, err = capsys.readouterr()
-    assert "[hypergumbo explain] Output: stdout" in err
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo explain] Generated 0 artifact(s)" in out
+    assert "Output: stdout" in out

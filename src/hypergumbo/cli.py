@@ -121,6 +121,36 @@ def _find_git_root(start_path: Path) -> Optional[Path]:
     return None
 
 
+def _print_output_summary(
+    command: str,
+    artifacts: list[Path] | None = None,
+    stdout_output: bool = False,
+    file: Any = None,
+) -> None:
+    """Print consistent output summary at end of command execution.
+
+    Always prints as the last thing, even if no artifacts generated.
+
+    Args:
+        command: The hypergumbo subcommand name (e.g., "sketch", "run")
+        artifacts: List of generated file paths (None or empty for stdout-only)
+        stdout_output: If True, indicate output went to stdout
+        file: Output file (default: sys.stdout). Use sys.stderr for JSON output
+            modes to avoid breaking JSON parsing.
+    """
+    if file is None:
+        file = sys.stdout
+
+    artifact_count = len(artifacts) if artifacts else 0
+    print(f"\n[hypergumbo {command}] Generated {artifact_count} artifact(s)", file=file)
+
+    if artifacts:
+        for artifact_path in artifacts:
+            print(f"  {artifact_path}", file=file)
+    if stdout_output:
+        print("  Output: stdout", file=file)
+
+
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -206,8 +236,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     )
     print(sketch)
 
-    # Output summary to stderr (doesn't interfere with piped output)
-    print("\n[hypergumbo sketch] Output: stdout", file=sys.stderr)
+    # Output summary (always to stdout at the end)
+    _print_output_summary("sketch", stdout_output=True)
 
     return 0
 
@@ -296,6 +326,9 @@ def cmd_init(args: argparse.Namespace) -> int:
         else:
             print(f"  LLM: failed ({llm_result.error}), using template fallback")
 
+    # Output summary (always at the end)
+    _print_output_summary("init", artifacts=[capsule_path, plan_path])
+
     return 0
 
 
@@ -325,10 +358,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         frameworks=frameworks,
     )
 
-    # Print summary of generated artifacts
-    print(f"\n[hypergumbo run] Generated {len(generated_files)} artifact(s):")
-    for file_path in generated_files:
-        print(f"  {file_path}")
+    # Output summary (always at the end)
+    _print_output_summary("run", artifacts=generated_files)
 
     return 0
 
@@ -432,6 +463,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
             for ep in entrypoints:
                 print(f"  [{ep.kind.value}] {ep.label} (confidence: {ep.confidence:.2f})")
                 print(f"    {ep.symbol_id}")
+        _print_output_summary("slice --list-entries", stdout_output=True)
         return 0
 
     # Handle --entry auto: use detected entrypoints
@@ -534,6 +566,9 @@ def cmd_slice(args: argparse.Namespace) -> int:
     if result.limits_hit:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
 
+    # Output summary (always at the end)
+    _print_output_summary("slice", artifacts=[out_path])
+
     return 0
 
 
@@ -600,7 +635,8 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(f"    language: {lang}")
         print()
 
-    print("\n[hypergumbo search] Output: stdout", file=sys.stderr)
+    # Output summary (always at the end)
+    _print_output_summary("search", stdout_output=True)
     return 0
 
 
@@ -712,7 +748,8 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 print(f"  [{method}] {name} (line {line})")
         print()
 
-    print("\n[hypergumbo routes] Output: stdout", file=sys.stderr)
+    # Output summary (always at the end)
+    _print_output_summary("routes", stdout_output=True)
     return 0
 
 
@@ -832,7 +869,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
         else:
             print("  Calls: (none)")
 
-    print("\n[hypergumbo explain] Output: stdout", file=sys.stderr)
+    # Output summary (always at the end)
+    _print_output_summary("explain", stdout_output=True)
     return 0
 
 
@@ -917,7 +955,8 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     print("Note: Packs are deprecated. Use --frameworks instead for semantic")
     print("      detection of routes, controllers, tasks, etc.")
 
-    print("\n[hypergumbo catalog] Output: stdout", file=sys.stderr)
+    # Output summary (always at the end)
+    _print_output_summary("catalog", stdout_output=True)
     return 0
 
 
@@ -939,6 +978,9 @@ def cmd_export_capsule(args: argparse.Namespace) -> int:
     print(f"[hypergumbo export-capsule] Exported {mode} capsule to {out_path}")
     if args.shareable:
         print("  Privacy redactions applied (see SHAREABLE.txt in archive)")
+
+    # Output summary (always at the end)
+    _print_output_summary("export-capsule", artifacts=[out_path])
 
     return 0
 
@@ -1175,7 +1217,9 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         if top_n and (len(test_dense) > top_n or len(cold_spots) > top_n):
             print(f"\n(Showing top {top_n}. Use --top to see more.)")
 
-    print("\n[hypergumbo test-coverage] Output: stdout", file=sys.stderr)
+    # Output summary (to stderr for JSON mode to avoid breaking JSON parsing)
+    summary_file = sys.stderr if args.format == "json" else None
+    _print_output_summary("test-coverage", stdout_output=True, file=summary_file)
     return 0
 
 

@@ -1470,7 +1470,7 @@ def test_cmd_catalog_skips_large_directory(capsys, tmp_path, monkeypatch) -> Non
 
 
 def test_cmd_catalog_prints_output_summary(capsys, tmp_path, monkeypatch) -> None:
-    """Catalog prints output summary to stderr."""
+    """Catalog prints output summary to stdout."""
     # Create a minimal directory
     (tmp_path / "main.py").write_text("def main(): pass\n")
     monkeypatch.chdir(tmp_path)
@@ -1480,8 +1480,9 @@ def test_cmd_catalog_prints_output_summary(capsys, tmp_path, monkeypatch) -> Non
 
     assert result == 0
 
-    _, err = capsys.readouterr()
-    assert "[hypergumbo catalog] Output: stdout" in err
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo catalog] Generated 0 artifact(s)" in out
+    assert "Output: stdout" in out
 
 
 def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:
@@ -1940,7 +1941,7 @@ def test_cmd_sketch_readme_debug_no_readme(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
-    """Test that sketch prints output summary to stderr."""
+    """Test that sketch prints output summary to stdout."""
     (tmp_path / "main.py").write_text("def main(): pass\n")
 
     args = FakeArgs()
@@ -1961,6 +1962,7 @@ def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     result = cmd_sketch(args)
     assert result == 0
 
-    _, err = capsys.readouterr()
+    out, _ = capsys.readouterr()
     # Should show output summary message
-    assert "[hypergumbo sketch] Output: stdout" in err
+    assert "[hypergumbo sketch] Generated 0 artifact(s)" in out
+    assert "Output: stdout" in out

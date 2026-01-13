@@ -124,7 +124,7 @@ def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     # Check that artifact summary is printed
-    assert "[hypergumbo run] Generated 1 artifact(s):" in result.stdout
+    assert "[hypergumbo run] Generated 1 artifact(s)" in result.stdout
     assert str(out_path) in result.stdout
 
 
@@ -148,7 +148,7 @@ def test_cli_run_prints_budget_files_in_summary(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     # Check artifact summary includes budget files
-    assert "[hypergumbo run] Generated 3 artifact(s):" in result.stdout
+    assert "[hypergumbo run] Generated 3 artifact(s)" in result.stdout
     assert "results.4k.json" in result.stdout
     assert "results.16k.json" in result.stdout
     assert str(out_path) in result.stdout
