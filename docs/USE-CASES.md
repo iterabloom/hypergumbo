@@ -16,6 +16,8 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | List all API routes | `hypergumbo routes` |
 | Search for symbols | `hypergumbo search "User"` |
 | Browse symbol connectivity | `hypergumbo symbols` |
+| Symbols without tests | `hypergumbo symbols -x` |
+| Static test coverage | `hypergumbo test-coverage` |
 
 ---
 
@@ -305,7 +307,40 @@ What are the major structural changes?
 
 ---
 
-## 11. Estimating Test Coverage (Static Analysis)
+## 11. Browsing Symbols
+
+**Scenario:** You want to explore the codebase's symbols with connectivity metrics.
+
+```bash
+# Browse all symbols sorted by call graph connectivity
+hypergumbo symbols
+
+# Exclude test files from display
+hypergumbo symbols -x
+
+# Limit symbols per file (prevent one file from dominating)
+hypergumbo symbols --max-per-file 5
+
+# Filter by symbol kind or language
+hypergumbo symbols --kind function
+hypergumbo symbols --language python
+```
+
+**What you get:**
+- Symbol name, kind, file path, and line number
+- In-degree (how many symbols call this one)
+- Out-degree (how many symbols this one calls)
+- Rich table formatting with auto-adjusting columns
+
+**Useful flags:**
+- `-x` / `--exclude-tests`: Hide test symbols for cleaner output
+- `--max-per-file N`: Show at most N symbols per file
+- `--kind`: Filter by symbol type (function, class, method, etc.)
+- `--language`: Filter by programming language
+
+---
+
+## 12. Estimating Test Coverage (Static Analysis)
 
 **Scenario:** You want to understand test coverage without running tests.
 
@@ -317,12 +352,13 @@ hypergumbo test-coverage /path/to/project
 **What you get:**
 - **Test-dense functions:** High tests-per-LOC ratio (may indicate redundant tests)
 - **Cold spots:** Functions with no detected test calls (potential coverage gaps)
-- **Test call graph:** Which tests call which functions
+- **Transitive coverage:** Tests are traced through the call graph (if `test_foo()` calls `helper()` which calls `core()`, both are considered tested)
 
 **When this is useful:**
 - When running tests is slow or environment setup is complex
 - To quickly identify untested code during PR review
 - To spot over-tested code that may have redundant tests
+- To understand the effective reach of your test suite
 
 ---
 
@@ -350,4 +386,5 @@ hypergumbo test-coverage /path/to/project
 - Default (`hypergumbo .`): Markdown to stdout (paste into chat)
 - Full analysis (`hypergumbo run`): JSON file for programmatic access
 - Routes (`hypergumbo routes`): Table of HTTP endpoints
+- Symbols (`hypergumbo symbols`): Rich table with connectivity metrics
 - Slice (`hypergumbo slice`): Subgraph in JSON format

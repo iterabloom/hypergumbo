@@ -78,7 +78,9 @@ hypergumbo run [path]          # Full JSON behavior map
 hypergumbo slice --entry X     # Subgraph from entry point
 hypergumbo routes [path]       # List HTTP routes
 hypergumbo search <query>      # Search symbols
-hypergumbo test-coverage       # Analyze test coverage
+hypergumbo symbols [path]      # Browse symbols with connectivity
+hypergumbo explain <symbol>    # Detailed symbol info
+hypergumbo test-coverage       # Analyze test coverage (transitive)
 hypergumbo catalog             # List analysis passes
 ```
 
