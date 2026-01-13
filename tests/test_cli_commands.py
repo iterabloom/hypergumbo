@@ -634,10 +634,22 @@ JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
 
 def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     """Test that slice command produces a valid slice file."""
-    # Create a simple Python file to analyze
-    src_dir = tmp_path / "src"
-    src_dir.mkdir()
-    (src_dir / "main.py").write_text("def hello():\n    pass\n")
+    # Create a behavior map file
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:hello:function",
+                "name": "hello",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
 
     args = FakeArgs()
     args.path = str(tmp_path)
@@ -727,6 +739,30 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     result = cmd_slice(args)
 
     assert result == 1  # Error exit code
+
+
+def test_cmd_slice_no_results_file(tmp_path: Path, capsys) -> None:
+    """Test slice command errors when no results file exists."""
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None  # No --input, and no hypergumbo.results.json
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+
+    assert result == 1
+
+    _, err = capsys.readouterr()
+    assert "No hypergumbo.results.json found" in err
+    assert "Run 'hypergumbo run' first" in err
 
 
 def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
@@ -1541,8 +1577,23 @@ def test_main_with_run(tmp_path: Path) -> None:
 
 
 def test_main_with_slice(tmp_path: Path) -> None:
-    # Create a simple Python file
-    (tmp_path / "main.py").write_text("def foo():\n    pass\n")
+    # Create a behavior map file
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
     out_file = tmp_path / "slice.json"
     result = main(["slice", str(tmp_path), "--entry", "foo", "--out", str(out_file)])
     assert result == 0

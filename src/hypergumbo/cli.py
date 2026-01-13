@@ -418,36 +418,24 @@ def cmd_slice(args: argparse.Namespace) -> int:
     else:
         repo_root = path_arg
 
-    # Determine input: use --input if provided, otherwise run analysis
+    # Determine input file
     if args.input:
         input_path = Path(args.input)
         if not input_path.exists():
             print(f"Error: Input file not found: {args.input}", file=sys.stderr)
             return 1
-        behavior_map = json.loads(input_path.read_text())
     else:
-        # Check for existing results file
-        default_results = repo_root / "hypergumbo.results.json"
-        if default_results.exists():
-            behavior_map = json.loads(default_results.read_text())
-        else:
-            # Run full analysis (all language analyzers)
-            behavior_map = new_behavior_map()
-            profile = detect_profile(repo_root)
-            behavior_map["profile"] = profile.to_dict()
-
-            # Use consolidated analyzer registry instead of Python/HTML only
-            analysis_runs, all_symbols, all_edges_obj, _, limits, _ = run_all_analyzers(
-                repo_root
+        # Look for default results file
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
             )
+            return 1
 
-            behavior_map["analysis_runs"] = analysis_runs
-            behavior_map["nodes"] = [s.to_dict() for s in all_symbols]
-            behavior_map["edges"] = [e.to_dict() for e in all_edges_obj]
-            behavior_map["metrics"] = compute_metrics(
-                behavior_map["nodes"], behavior_map["edges"]
-            )
-            behavior_map["limits"] = limits.to_dict()
+    behavior_map = json.loads(input_path.read_text())
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
@@ -1011,6 +999,155 @@ def cmd_build_grammars(args: argparse.Namespace) -> int:
         failed = [name for name, ok in results.items() if not ok]
         print(f"\nFailed to build: {', '.join(failed)}", file=sys.stderr)
         return 1
+
+
+def cmd_symbols(args: argparse.Namespace) -> int:
+    """Display symbol catalog with connectivity information.
+
+    Shows a table of symbols sorted by file connectivity (total degree of
+    symbols in each file), then by filename, then by individual symbol degree.
+    """
+    repo_root = Path(args.path).resolve()
+
+    # Determine input file
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            return 1
+    else:
+        input_path = repo_root / "hypergumbo.results.json"
+        if not input_path.exists():
+            print(
+                "Error: No hypergumbo.results.json found. "
+                "Run 'hypergumbo run' first or specify --input.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+    edges = behavior_map.get("edges", [])
+
+    # Build node ID set for filtering
+    node_ids = {n["id"] for n in nodes}
+
+    # Compute in-degree and out-degree for each node
+    in_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
+    out_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
+
+    for edge in edges:
+        src = edge.get("src", "")
+        dst = edge.get("dst", "")
+        if src in node_ids:
+            out_degree[src] = out_degree.get(src, 0) + 1
+        if dst in node_ids:
+            in_degree[dst] = in_degree.get(dst, 0) + 1
+
+    # Build list of symbols with their degrees
+    symbol_rows: list[tuple[str, str, int, int, int, str]] = []
+    for node in nodes:
+        node_id = node["id"]
+        name = node.get("name", "")
+        kind = node.get("kind", "")
+        path = node.get("path", "")
+        ind = in_degree.get(node_id, 0)
+        outd = out_degree.get(node_id, 0)
+        degree = ind + outd
+        symbol_rows.append((name, kind, ind, outd, degree, path))
+
+    # Apply filters
+    if args.kind:
+        symbol_rows = [r for r in symbol_rows if r[1] == args.kind]
+    if args.language:
+        # Filter by language - need to re-iterate over nodes to get language info
+        symbol_rows_with_id: list[tuple[str, str, int, int, int, str, str]] = []
+        for node in nodes:
+            node_id = node["id"]
+            name = node.get("name", "")
+            kind = node.get("kind", "")
+            path = node.get("path", "")
+            lang = node.get("language", "")
+            ind = in_degree.get(node_id, 0)
+            outd = out_degree.get(node_id, 0)
+            degree = ind + outd
+            if args.kind and kind != args.kind:
+                continue
+            if args.language and lang != args.language:
+                continue
+            symbol_rows_with_id.append((name, kind, ind, outd, degree, path, node_id))
+        # Convert back to original format
+        symbol_rows = [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in symbol_rows_with_id]
+
+    # Compute total degree per file (invisible column for sorting)
+    file_total_degree: dict[str, int] = {}
+    for _name, _kind, ind, outd, _degree, path in symbol_rows:
+        file_total_degree[path] = file_total_degree.get(path, 0) + ind + outd
+
+    # Sort by: total file degree (descending), filename, individual degree (descending)
+    symbol_rows.sort(key=lambda r: (-file_total_degree.get(r[5], 0), r[5], -r[4]))
+
+    # Output
+    total_count = len(symbol_rows)
+    limit = args.limit if not args.all else None
+
+    if limit and total_count > limit:
+        display_rows = symbol_rows[:limit]
+        omitted = total_count - limit
+    else:
+        display_rows = symbol_rows
+        omitted = 0
+
+    if not display_rows:
+        print("No symbols found.")
+        _print_output_summary("symbols", stdout_output=True)
+        return 0
+
+    # Calculate column widths for alignment
+    name_width = max(len(r[0]) for r in display_rows)
+    kind_width = max(len(r[1]) for r in display_rows)
+    path_width = max(len(r[5]) for r in display_rows)
+
+    # Clamp widths to reasonable limits
+    name_width = min(name_width, 40)
+    kind_width = min(kind_width, 15)
+    path_width = min(path_width, 50)
+
+    # Print header
+    header = (
+        f"{'Symbol':<{name_width}}  "
+        f"{'Kind':<{kind_width}}  "
+        f"{'In':>4}  "
+        f"{'Out':>4}  "
+        f"{'Deg':>4}  "
+        f"{'File':<{path_width}}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    # Print rows
+    for name, kind, ind, outd, degree, path in display_rows:
+        # Truncate long names/paths
+        display_name = name[:name_width] if len(name) > name_width else name
+        display_kind = kind[:kind_width] if len(kind) > kind_width else kind
+        display_path = path[:path_width] if len(path) > path_width else path
+        print(
+            f"{display_name:<{name_width}}  "
+            f"{display_kind:<{kind_width}}  "
+            f"{ind:>4}  "
+            f"{outd:>4}  "
+            f"{degree:>4}  "
+            f"{display_path:<{path_width}}"
+        )
+
+    # Show omitted message
+    if omitted > 0:
+        print(f"\n{omitted} additional symbols omitted for brevity; run with --all to show them")
+
+    # Output summary
+    _print_output_summary("symbols", stdout_output=True)
+    return 0
 
 
 def cmd_test_coverage(args: argparse.Namespace) -> int:
@@ -1847,6 +1984,61 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
     )
     p_test_cov.set_defaults(func=cmd_test_coverage)
 
+    # hypergumbo symbols
+    symbols_epilog = """\
+Examples:
+  hypergumbo symbols                        # Show top 200 symbols by connectivity
+  hypergumbo symbols --all                  # Show all symbols
+  hypergumbo symbols --kind function        # Only functions
+  hypergumbo symbols --language python      # Only Python symbols
+  hypergumbo symbols --limit 50             # Show top 50
+
+Output: Table with columns Symbol, Kind, In (in-degree), Out (out-degree),
+Deg (total degree), File. Sorted by file connectivity (hottest files first),
+then by filename, then by individual symbol degree.
+
+Requires: Run 'hypergumbo run .' first to create behavior map."""
+
+    p_symbols = sub.add_parser(
+        "symbols",
+        help="List symbols with connectivity (in-degree, out-degree)",
+        epilog=symbols_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_symbols.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_symbols.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_symbols.add_argument(
+        "--kind",
+        default=None,
+        help="Filter by symbol kind (e.g., function, class, method)",
+    )
+    p_symbols.add_argument(
+        "--language",
+        default=None,
+        help="Filter by language (e.g., python, javascript)",
+    )
+    p_symbols.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="Maximum number of symbols to show (default: 200)",
+    )
+    p_symbols.add_argument(
+        "--all",
+        action="store_true",
+        dest="all",
+        help="Show all symbols (ignore --limit)",
+    )
+    p_symbols.set_defaults(func=cmd_symbols)
+
     return p
 
 
@@ -2172,7 +2364,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars", "test-coverage"}
+    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars", "test-coverage", "symbols"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

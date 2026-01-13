@@ -9,11 +9,13 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | Get codebase overview | `hypergumbo .` |
 | Concise summary for chat | `hypergumbo . -t 500` |
 | Detailed context for coding | `hypergumbo . -t 4000` |
+| Full analysis (for query commands) | `hypergumbo run .` |
 | Find what calls a function | `hypergumbo slice --entry "myFunction" --reverse` |
 | Trace from an entry point | `hypergumbo slice --entry "handleRequest"` |
 | Understand a specific symbol | `hypergumbo explain "processPayment"` |
 | List all API routes | `hypergumbo routes` |
 | Search for symbols | `hypergumbo search "User"` |
+| Browse symbol connectivity | `hypergumbo symbols` |
 
 ---
 
@@ -55,12 +57,17 @@ Questions:
 **Scenario:** You're reviewing a PR that touches multiple files and want to understand the broader impact.
 
 ```bash
+# First, run full analysis to generate hypergumbo.results.json
+hypergumbo run /path/to/project
+
 # Find all callers of a changed function
 hypergumbo slice --entry "processPayment" --reverse
 
 # Trace what the function calls (downstream dependencies)
 hypergumbo slice --entry "processPayment"
 ```
+
+> **Note:** Commands like `slice`, `explain`, `routes`, `search`, and `symbols` require a `hypergumbo.results.json` file. Run `hypergumbo run` first to generate it.
 
 **Using with an LLM:**
 ```
