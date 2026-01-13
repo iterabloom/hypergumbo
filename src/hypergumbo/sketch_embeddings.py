@@ -1152,16 +1152,48 @@ def extract_config_hybrid(
 # WARNING: Changes require regenerating embeddings! Run:
 #     python scripts/compute_probe_embeddings.py
 README_DESCRIPTION_PROBES = [
+    # Canonical “what it is + what it does + why it matters”
     "(Project Name) is an open-source (tool type/category) built for (user demographic) to (do their job) in (relevant circumstances). It offers (top 2-3 capabilities) so you can (primary benefit) with (reliability/security/scale/simplicity).",
     "(Project Name) is an open-source (tool type/category) for (audience/context) that (does something). With (top 2-3 capabilities), it helps you (primary benefit) while keeping things (reliable/secure/scalable/simple).",
     "(Project Name) is a (tool type/category) that enables (user demographic) to (do their job) in (relevant circumstances). It combines (top 2-3 capabilities) to deliver (primary benefit) at (scale/security/reliability/simplicity).",
-    "(Project Name) is an open-source (tool type/category) designed to help (audience) (do something) in (context). It includes (top 2-3 capabilities), making it easier to (primary benefit) with (constraint).",
-    "(Project Name) is a (tool type/category) for (audience/context) that (does something) - so you can (benefit).",
+
+    # Concise one-liners (common when repos lead with a tight thesis)
+    "(Project Name) is a (tool type/category) for (audience/context) that (does something)—so you can (benefit).",
     "(Project Name) is a (tool type/category) that (does something) in (context) for (audience), helping you (benefit).",
-    "For (audience) in (context), (Project Name) is a (tool type/category) that (does something) to enable (benefit).",
-    "(Project Name) is a (tool type/category) that lets (audience) (do something) in (context), enabling (benefit).",
-    "(Project Name) is an open-source (tool type/category) that helps (user demographic) do (their job) in (the relevant circumstances). It provides (top 2-3 capabilities), enabling (primary benefit) with (constraint: reliability/security/scale/simplicity).",
-    "(Project Name) is a (tool type/category) that (does something) for (audience/context), enabling (benefit).",
+
+    # Two-beat openers (matches “local-first CLI…” style)
+    "A (adjective) (tool type/category) that (does something) from (input/source). Helps (audience) (achieve outcome) in (context).",
+    "(Does something) in (context). So (audience) can (benefit).",
+
+    # Tagline-led (common in trendy repos)
+    "(Project Name): (tagline describing outcome in 3-7 words).",
+    "(Punchy label/tagline). A (adjective) (tool type/category) for (audience/context) that (does something), so you can (benefit).",
+
+    # Noun-phrase + promise (very “README-first”)
+    "A (tool type/category) for (job-to-be-done) in (context). (Primary outcome/benefit), for (audience).",
+
+    # Problem-first / user-need framing
+    "If you need to (problem/job) in (context), (Project Name) helps by (core mechanism), so you can (benefit).",
+    "For (audience) who need to (job) in (context), (Project Name) (does something) to (benefit).",
+
+    # Purpose / mission framing (often used instead of “is a…”)
+    "Built to (primary job) for (audience) in (context), (Project Name) provides (capabilities) to deliver (benefit).",
+    "The goal of (Project Name) is to (primary outcome) for (audience) working in (context) by (mechanism).",
+
+    # Category implied (library/framework/service language)
+    "This (library/framework/service) lets you (do something) by (mechanism), making it easier to (benefit).",
+
+    # Positioning by analogy (“X for Y”, “like A but B”)
+    "(Project Name) is (known thing/category) for (new domain/audience)—like (comparison), but (key difference).",
+
+    # Feature-bundle opener (some READMEs list capabilities before benefits)
+    "(Project Name) is a (tool type/category) for (audience/context) that includes (capability 1), (capability 2), and (capability 3).",
+
+    # Trust/attribute hook (leads with adjectives instead of function)
+    "Fast, (secure/reliable/simple), and (scalable/portable), (Project Name) is a (tool type/category) for (audience) to (do job).",
+
+    # Imperative “use it to…” (instructional openers)
+    "Use (Project Name) to (primary job) in (context)—for example, (example use case).",
 ]
 
 # Cache for probe embeddings (decoded from pre-computed base64)
