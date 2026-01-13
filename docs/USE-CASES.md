@@ -11,6 +11,7 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | Detailed context for coding | `hypergumbo . -t 4000` |
 | Find what calls a function | `hypergumbo slice --entry "myFunction" --reverse` |
 | Trace from an entry point | `hypergumbo slice --entry "handleRequest"` |
+| Understand a specific symbol | `hypergumbo explain "processPayment"` |
 | List all API routes | `hypergumbo routes` |
 | Search for symbols | `hypergumbo search "User"` |
 
@@ -157,7 +158,12 @@ hypergumbo search "handle*"
 
 # Find what calls a specific symbol
 hypergumbo slice --entry "UserService.create" --reverse
+
+# Get detailed info about a symbol (callers, callees, metrics)
+hypergumbo explain "UserService"
 ```
+
+**See also:** The `explain` command shows a symbol's callers, callees, location, and metrics in one view—useful when you want the full picture rather than just a list.
 
 ---
 
@@ -171,6 +177,10 @@ hypergumbo . -t 2000 > context.md
 
 # Exclude test files for faster analysis on large codebases
 hypergumbo . -t 2000 -x > context.md
+
+# Generate multiple budget tiers at once (for different context window sizes)
+hypergumbo run . --tiers 4k,16k,64k
+# Creates: hypergumbo.results.4k.json, hypergumbo.results.16k.json, etc.
 ```
 
 **Workflow:**
@@ -325,6 +335,7 @@ hypergumbo test-coverage /path/to/project
 
 - Use `-x` to exclude test files (faster, less noise)
 - Use `--first-party-only` to skip vendored code
+- Use `--progress` to see ETA on large codebases
 - Run `hypergumbo run` once, then query the JSON for specific edges
 
 ### Output Formats
