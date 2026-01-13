@@ -1743,8 +1743,62 @@ def _format_config_section(config_info: str) -> str:
     return "\n".join(lines)
 
 
-def _format_language_stats(profile: RepoProfile) -> str:
-    """Format language statistics as a summary line."""
+def _count_test_loc(
+    repo_root: Path,
+    profile: RepoProfile,
+    extra_excludes: Optional[List[str]] = None,
+) -> tuple[int, int]:
+    """Count LOC in test files.
+
+    Args:
+        repo_root: Repository root path.
+        profile: Repository profile with detected languages.
+        extra_excludes: Additional exclude patterns.
+
+    Returns:
+        (test_loc, test_files) tuple.
+    """
+    from .discovery import find_files, DEFAULT_EXCLUDES
+    from .profile import LANGUAGE_EXTENSIONS
+
+    # Combine default and extra excludes (same as detect_profile)
+    excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:  # pragma: no cover
+        excludes.extend(extra_excludes)
+
+    test_loc = 0
+    test_files = 0
+
+    for lang in profile.languages:
+        patterns = LANGUAGE_EXTENSIONS.get(lang, [])
+        for f in find_files(repo_root, patterns, excludes=excludes):
+            rel_path = str(f.relative_to(repo_root))
+            if _is_test_path(rel_path):
+                test_files += 1
+                try:
+                    content = f.read_text(encoding="utf-8", errors="ignore")
+                    test_loc += sum(1 for line in content.splitlines() if line.strip())
+                except Exception:  # pragma: no cover
+                    pass  # Skip unreadable files
+
+    return test_loc, test_files
+
+
+def _format_language_stats(
+    profile: RepoProfile,
+    repo_root: Optional[Path] = None,
+    extra_excludes: Optional[List[str]] = None,
+) -> str:
+    """Format language statistics as a summary line.
+
+    Args:
+        profile: Repository profile with language statistics.
+        repo_root: If provided, compute and show test LOC separately.
+        extra_excludes: Additional exclude patterns for test LOC counting.
+
+    Returns:
+        Formatted statistics line.
+    """
     if not profile.languages:
         return "No source files detected"
 
@@ -1767,6 +1821,18 @@ def _format_language_stats(profile: RepoProfile) -> str:
             parts.append(f"{lang.title()} ({pct:.0f}%)")
 
     total_files = sum(lang.files for lang in profile.languages.values())
+
+    # Compute test LOC if repo_root provided
+    if repo_root is not None:
+        test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
+        if test_loc > 0:
+            non_test_loc = total_loc - test_loc
+            non_test_files = total_files - test_files
+            return (
+                f"{', '.join(parts)} · {non_test_files:,} files · "
+                f"~{non_test_loc:,} LOC ({test_files:,} test files, ~{test_loc:,} test LOC)"
+            )
+
     return f"{', '.join(parts)} · {total_files} files · ~{total_loc:,} LOC"
 
 
@@ -3615,10 +3681,13 @@ def generate_sketch(
         header = (
             f"# {repo_name}\n\n"
             f"{readme_desc}\n\n"
-            f"## Overview\n{_format_language_stats(profile)}"
+            f"## Overview\n{_format_language_stats(profile, repo_root, extra_excludes)}"
         )
     else:
-        header = f"# {repo_name}\n\n## Overview\n{_format_language_stats(profile)}"
+        header = (
+            f"# {repo_name}\n\n## Overview\n"
+            f"{_format_language_stats(profile, repo_root, extra_excludes)}"
+        )
     sections.append(header)
 
     # Section 2: Structure
@@ -3674,10 +3743,24 @@ def generate_sketch(
     base_sketch = "\n\n".join(sections)
     base_tokens = estimate_tokens(base_sketch)
 
-    # If no budget or budget is small, return base sketch (possibly truncated)
+    # If no budget, run analysis for coverage then return base sketch
     if max_tokens is None:
+        prog.start_phase("analysis")
+        _, _, coverage_stats = _run_analysis(
+            repo_root, profile, exclude_tests=exclude_tests
+        )
+        prog.complete_phase("analysis")
+
+        # Update test summary with coverage stats
+        if coverage_stats is not None:
+            updated_test_summary = _format_test_summary(repo_root, coverage_stats)
+            for i, section in enumerate(sections):
+                if section.startswith("## Tests"):
+                    sections[i] = updated_test_summary
+                    break
+
         prog.finish()
-        return base_sketch
+        return "\n\n".join(sections)
 
     if max_tokens <= base_tokens:
         prog.finish()

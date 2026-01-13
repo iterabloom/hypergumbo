@@ -164,6 +164,29 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     max_chunk_chars = getattr(args, "max_chunk_chars", 800)
     language_proportional = getattr(args, "language_proportional", False)
     show_progress = getattr(args, "progress", False)
+    readme_debug = getattr(args, "readme_debug", False)
+
+    # If --readme-debug, show README extraction debug info before sketch
+    if readme_debug:
+        from .sketch import _find_readme_path
+        from .sketch_embeddings import extract_readme_description_embedding
+
+        readme_path = _find_readme_path(repo_root)
+        if readme_path:
+            result = extract_readme_description_embedding(readme_path, debug=True)
+            if result:
+                print("README Extraction Debug:", file=sys.stderr)
+                print(f"  Description: {result.description!r}", file=sys.stderr)
+                print(f"  k-scores: {result.k_scores}", file=sys.stderr)
+                print(f"  Final k: {result.final_k}", file=sys.stderr)
+                print(f"  Stopped early: {result.stopped_early}", file=sys.stderr)
+                if result.quality_drop is not None:
+                    print(f"  Quality drop: {result.quality_drop:.1%}", file=sys.stderr)
+                print(f"  Lines processed: {result.lines_processed}", file=sys.stderr)
+                print(f"  Elapsed: {result.elapsed_seconds:.2f}s", file=sys.stderr)
+                print(file=sys.stderr)
+        else:
+            print("README Extraction Debug: No README found", file=sys.stderr)
 
     sketch = generate_sketch(
         repo_root,
@@ -1264,6 +1287,12 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         "--progress",
         action="store_true",
         help="Show progress indicator with ETA to stderr",
+    )
+    p_sketch.add_argument(
+        "--readme-debug",
+        action="store_true",
+        dest="readme_debug",
+        help="Show README extraction debug info (k-scores, timing) to stderr",
     )
     p_sketch.add_argument(
         "--max-config-files",

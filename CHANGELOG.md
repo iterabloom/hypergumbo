@@ -14,9 +14,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   "test-dense" functions (high tests/LOC ratio - may indicate redundant tests) and "cold spots"
   (untested functions). Uses call graph analysis without executing any code. Language agnostic.
 - **`--help --all` flag:** Shows comprehensive help including all subcommand documentation at once.
-- **Estimated coverage in sketch:** When static analysis runs, the Tests section now shows
-  estimated coverage (e.g., "~35% estimated coverage (460/1318 functions called by tests)")
-  instead of "Coverage requires execution". Based on direct call edges from test code.
+- **Estimated coverage in sketch:** The Tests section now shows estimated coverage
+  (e.g., "~35% estimated coverage (460/1318 functions called by tests)") even without a token
+  budget. Previously required `-t` flag; now runs analysis for coverage by default.
 - **Embedding-based README description extraction:** Sketch now uses semantic similarity to extract
   project descriptions from READMEs. Compares each line against probe embeddings of known project
   mission statements, using a sliding window approach to find the best consecutive description lines.
@@ -27,6 +27,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   `ReadmeExtractionDebug` object with k-value scores, timing, and early stopping info.
 - **`--progress` flag for sketch:** Shows progress indicator with ETA to stderr during sketch
   generation (e.g., `[45%] Extracting config... ETA 23s`).
+- **`--readme-debug` flag for sketch:** Shows README extraction debug info (k-scores, timing,
+  early stopping) to stderr. Useful for understanding how the sliding window extraction works.
+- **Separate test LOC in Overview:** The overview now shows test and non-test LOC separately
+  (e.g., "186 files · ~59,292 LOC (128 test files, ~56,204 test LOC)").
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only

@@ -1860,3 +1860,65 @@ def test_cmd_slice_smart_json_detection_does_not_override_explicit_input(
     # Should use json_file2 (explicit --input), so b.py should appear (not a.py)
     assert "b.py" in out
     assert "a.py" not in out
+
+
+def test_cmd_sketch_readme_debug_with_readme(tmp_path: Path, capsys) -> None:
+    """Test --readme-debug flag shows extraction debug info."""
+    # Create a README with a project description
+    (tmp_path / "README.md").write_text("""# Test Project
+
+This is a test project for validating README extraction.
+It demonstrates embedding-based description extraction.
+""")
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = True
+
+    result = cmd_sketch(args)
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    # Should show debug output
+    assert "README Extraction Debug" in err
+    # Should show k-scores or similar debug info
+    assert "k-scores" in err or "Elapsed" in err or "Final k" in err
+
+
+def test_cmd_sketch_readme_debug_no_readme(tmp_path: Path, capsys) -> None:
+    """Test --readme-debug flag when no README exists."""
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = True
+
+    result = cmd_sketch(args)
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    # Should show message about no README
+    assert "No README found" in err
