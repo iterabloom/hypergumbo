@@ -307,7 +307,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_files = getattr(args, "max_files", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
-    tiers = getattr(args, "tiers", None)
+    budgets = getattr(args, "budgets", None)
     exclude_tests = getattr(args, "exclude_tests", False)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
@@ -319,7 +319,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         max_files=max_files,
         compact=compact,
         coverage=coverage,
-        tiers=tiers,
+        budgets=budgets,
         exclude_tests=exclude_tests,
         extra_excludes=extra_excludes,
         frameworks=frameworks,
@@ -1437,12 +1437,20 @@ Output files:
         help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
     )
     p_run.add_argument(
+        "--budgets",
+        type=str,
+        default=None,
+        dest="budgets",
+        help="Generate output files at token budgets. Comma-separated specs "
+             "like '4k,16k,64k'. Use 'default' for standard budgets (4k,16k,64k), "
+             "'none' to disable. Default: generate budget files alongside full output.",
+    )
+    p_run.add_argument(
         "--tiers",
         type=str,
         default=None,
-        help="Generate tiered output files at token budgets. Comma-separated specs "
-             "like '4k,16k,64k'. Use 'default' for standard tiers (4k,16k,64k), "
-             "'none' to disable. Default: generate tiered files alongside full output.",
+        dest="budgets",  # Maps to same dest as --budgets
+        help=argparse.SUPPRESS,  # Hidden (deprecated alias for --budgets)
     )
     p_run.add_argument(
         "-x", "--exclude-tests",
@@ -1854,7 +1862,7 @@ def run_behavior_map(
     max_files: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
-    tiers: str | None = None,
+    budgets: str | None = None,
     exclude_tests: bool = False,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
@@ -1872,7 +1880,7 @@ def run_behavior_map(
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).
-        tiers: Tiered output specification. Comma-separated tier specs like
+        budgets: Token budget output specification. Comma-separated specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
         exclude_tests: If True, filter out symbols from test files after analysis.
@@ -2030,26 +2038,26 @@ def run_behavior_map(
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Generate tiered output files BEFORE compact mode
-    # (tiered files are always based on full analysis, not compact)
-    if tiers != "none":
-        tier_specs: list[str]
-        if tiers is None or tiers == "default":
-            tier_specs = list(DEFAULT_TIERS)
+    # Generate budget-tiered output files BEFORE compact mode
+    # (budget files are always based on full analysis, not compact)
+    if budgets != "none":
+        budget_specs: list[str]
+        if budgets is None or budgets == "default":
+            budget_specs = list(DEFAULT_TIERS)
         else:
-            tier_specs = [t.strip() for t in tiers.split(",") if t.strip()]
+            budget_specs = [b.strip() for b in budgets.split(",") if b.strip()]
 
-        # Generate each tier file from full behavior map
-        for tier_spec in tier_specs:
+        # Generate each budget file from full behavior map
+        for budget_spec in budget_specs:
             try:
-                target_tokens = parse_tier_spec(tier_spec)
-                tier_path = Path(generate_tier_filename(str(out_path), tier_spec))
+                target_tokens = parse_tier_spec(budget_spec)
+                budget_path = Path(generate_tier_filename(str(out_path), budget_spec))
                 tiered_map = format_tiered_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
-                with open(tier_path, "w") as f:
+                with open(budget_path, "w") as f:
                     json.dump(tiered_map, f, indent=2)
-                generated_files.append(tier_path)
+                generated_files.append(budget_path)
                 # Free memory between tiers (helps with large repos like tensorflow)
                 del tiered_map
                 gc.collect()

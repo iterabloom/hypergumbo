@@ -178,8 +178,8 @@ hypergumbo . -t 2000 > context.md
 # Exclude test files for faster analysis on large codebases
 hypergumbo . -t 2000 -x > context.md
 
-# Generate multiple budget tiers at once (for different context window sizes)
-hypergumbo run . --tiers 4k,16k,64k
+# Generate multiple token budgets at once (for different context window sizes)
+hypergumbo run . --budgets 4k,16k,64k
 # Creates: hypergumbo.results.4k.json, hypergumbo.results.16k.json, etc.
 ```
 

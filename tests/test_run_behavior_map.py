@@ -120,7 +120,7 @@ def test_run_behavior_map_compact_mode(tmp_path):
         out_path=out_path,
         compact=True,
         coverage=0.8,
-        tiers="none",  # Disable tiers for this test
+        budgets="none",  # Disable tiers for this test
     )
 
     data = json.loads(out_path.read_text())
@@ -160,32 +160,32 @@ def test_run_behavior_map_default_tiered_output(tmp_path):
     # Main file should exist
     assert out_path.is_file()
 
-    # Default tiered files should be generated
-    tier_4k = tmp_path / "hypergumbo.results.4k.json"
-    tier_16k = tmp_path / "hypergumbo.results.16k.json"
-    tier_64k = tmp_path / "hypergumbo.results.64k.json"
+    # Default budget files should be generated
+    budget_4k = tmp_path / "hypergumbo.results.4k.json"
+    budget_16k = tmp_path / "hypergumbo.results.16k.json"
+    budget_64k = tmp_path / "hypergumbo.results.64k.json"
 
-    assert tier_4k.is_file(), "4k tier file should be generated"
-    assert tier_16k.is_file(), "16k tier file should be generated"
-    assert tier_64k.is_file(), "64k tier file should be generated"
+    assert budget_4k.is_file(), "4k budget file should be generated"
+    assert budget_16k.is_file(), "16k budget file should be generated"
+    assert budget_64k.is_file(), "64k budget file should be generated"
 
-    # Check tiered file structure
-    data_4k = json.loads(tier_4k.read_text())
+    # Check budget file structure
+    data_4k = json.loads(budget_4k.read_text())
     assert data_4k["view"] == "tiered"
     assert data_4k["tier_tokens"] == 4000
     assert "nodes_summary" in data_4k
 
-    data_16k = json.loads(tier_16k.read_text())
+    data_16k = json.loads(budget_16k.read_text())
     assert data_16k["view"] == "tiered"
     assert data_16k["tier_tokens"] == 16000
 
-    data_64k = json.loads(tier_64k.read_text())
+    data_64k = json.loads(budget_64k.read_text())
     assert data_64k["view"] == "tiered"
     assert data_64k["tier_tokens"] == 64000
 
 
-def test_run_behavior_map_custom_tiers(tmp_path):
-    """Custom tier specification generates specified tier files."""
+def test_run_behavior_map_custom_budgets(tmp_path):
+    """Custom budget specification generates specified budget files."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
 
@@ -197,33 +197,33 @@ def test_run_behavior_map_custom_tiers(tmp_path):
     run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
-        tiers="2k,8k",  # Custom tiers
+        budgets="2k,8k",  # Custom budgets
     )
 
-    # Custom tier files should be generated
-    tier_2k = tmp_path / "output.2k.json"
-    tier_8k = tmp_path / "output.8k.json"
+    # Custom budget files should be generated
+    budget_2k = tmp_path / "output.2k.json"
+    budget_8k = tmp_path / "output.8k.json"
 
-    assert tier_2k.is_file(), "2k tier file should be generated"
-    assert tier_8k.is_file(), "8k tier file should be generated"
+    assert budget_2k.is_file(), "2k budget file should be generated"
+    assert budget_8k.is_file(), "8k budget file should be generated"
 
-    # Default tiers should NOT be generated
-    tier_4k = tmp_path / "output.4k.json"
-    tier_16k = tmp_path / "output.16k.json"
-    tier_64k = tmp_path / "output.64k.json"
+    # Default budgets should NOT be generated
+    budget_4k = tmp_path / "output.4k.json"
+    budget_16k = tmp_path / "output.16k.json"
+    budget_64k = tmp_path / "output.64k.json"
 
-    assert not tier_4k.exists(), "4k tier file should NOT be generated"
-    assert not tier_16k.exists(), "16k tier file should NOT be generated"
-    assert not tier_64k.exists(), "64k tier file should NOT be generated"
+    assert not budget_4k.exists(), "4k budget file should NOT be generated"
+    assert not budget_16k.exists(), "16k budget file should NOT be generated"
+    assert not budget_64k.exists(), "64k budget file should NOT be generated"
 
-    # Check custom tier structure
-    data_2k = json.loads(tier_2k.read_text())
+    # Check custom budget structure
+    data_2k = json.loads(budget_2k.read_text())
     assert data_2k["view"] == "tiered"
     assert data_2k["tier_tokens"] == 2000
 
 
-def test_run_behavior_map_tiers_none(tmp_path):
-    """tiers='none' disables tiered output generation."""
+def test_run_behavior_map_budgets_none(tmp_path):
+    """budgets='none' disables budget file generation."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
 
@@ -235,24 +235,24 @@ def test_run_behavior_map_tiers_none(tmp_path):
     run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
-        tiers="none",  # Disable tiered output
+        budgets="none",  # Disable budget output
     )
 
     # Main file should exist
     assert out_path.is_file()
 
-    # No tiered files should be generated
-    tier_4k = tmp_path / "output.4k.json"
-    tier_16k = tmp_path / "output.16k.json"
-    tier_64k = tmp_path / "output.64k.json"
+    # No budget files should be generated
+    budget_4k = tmp_path / "output.4k.json"
+    budget_16k = tmp_path / "output.16k.json"
+    budget_64k = tmp_path / "output.64k.json"
 
-    assert not tier_4k.exists(), "4k tier file should NOT be generated when tiers=none"
-    assert not tier_16k.exists(), "16k tier file should NOT be generated when tiers=none"
-    assert not tier_64k.exists(), "64k tier file should NOT be generated when tiers=none"
+    assert not budget_4k.exists(), "4k budget file should NOT be generated when budgets=none"
+    assert not budget_16k.exists(), "16k budget file should NOT be generated when budgets=none"
+    assert not budget_64k.exists(), "64k budget file should NOT be generated when budgets=none"
 
 
-def test_run_behavior_map_tiers_default_keyword(tmp_path):
-    """tiers='default' generates standard tier files."""
+def test_run_behavior_map_budgets_default_keyword(tmp_path):
+    """budgets='default' generates standard budget files."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
 
@@ -264,21 +264,21 @@ def test_run_behavior_map_tiers_default_keyword(tmp_path):
     run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
-        tiers="default",  # Explicit default
+        budgets="default",  # Explicit default
     )
 
-    # Default tiered files should be generated
-    tier_4k = tmp_path / "output.4k.json"
-    tier_16k = tmp_path / "output.16k.json"
-    tier_64k = tmp_path / "output.64k.json"
+    # Default budget files should be generated
+    budget_4k = tmp_path / "output.4k.json"
+    budget_16k = tmp_path / "output.16k.json"
+    budget_64k = tmp_path / "output.64k.json"
 
-    assert tier_4k.is_file(), "4k tier file should be generated"
-    assert tier_16k.is_file(), "16k tier file should be generated"
-    assert tier_64k.is_file(), "64k tier file should be generated"
+    assert budget_4k.is_file(), "4k budget file should be generated"
+    assert budget_16k.is_file(), "16k budget file should be generated"
+    assert budget_64k.is_file(), "64k budget file should be generated"
 
 
-def test_run_behavior_map_tiers_invalid_spec_skipped(tmp_path):
-    """Invalid tier specs are silently skipped, valid ones still work."""
+def test_run_behavior_map_budgets_invalid_spec_skipped(tmp_path):
+    """Invalid budget specs are silently skipped, valid ones still work."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
 
@@ -287,26 +287,26 @@ def test_run_behavior_map_tiers_invalid_spec_skipped(tmp_path):
     (src_dir / "app.py").write_text("def main(): pass\n")
 
     out_path = tmp_path / "output.json"
-    # Mix valid and invalid tier specs
+    # Mix valid and invalid budget specs
     run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
-        tiers="4k,invalid_tier,16k",  # Invalid spec in the middle
+        budgets="4k,invalid_budget,16k",  # Invalid spec in the middle
     )
 
     # Main file should exist
     assert out_path.is_file()
 
-    # Valid tier files should be generated
-    tier_4k = tmp_path / "output.4k.json"
-    tier_16k = tmp_path / "output.16k.json"
+    # Valid budget files should be generated
+    budget_4k = tmp_path / "output.4k.json"
+    budget_16k = tmp_path / "output.16k.json"
 
-    assert tier_4k.is_file(), "4k tier file should be generated"
-    assert tier_16k.is_file(), "16k tier file should be generated"
+    assert budget_4k.is_file(), "4k budget file should be generated"
+    assert budget_16k.is_file(), "16k budget file should be generated"
 
-    # Invalid tier file should NOT exist
-    tier_invalid = tmp_path / "output.invalid_tier.json"
-    assert not tier_invalid.exists(), "Invalid tier file should NOT be generated"
+    # Invalid budget file should NOT exist
+    budget_invalid = tmp_path / "output.invalid_budget.json"
+    assert not budget_invalid.exists(), "Invalid budget file should NOT be generated"
 
 
 def test_run_behavior_map_exclude_tests(tmp_path):
@@ -329,7 +329,7 @@ def test_run_behavior_map_exclude_tests(tmp_path):
         repo_root=repo_root,
         out_path=out_path,
         exclude_tests=True,
-        tiers="none",  # Disable tiered output for faster test
+        budgets="none",  # Disable tiered output for faster test
     )
 
     data = json.loads(out_path.read_text())

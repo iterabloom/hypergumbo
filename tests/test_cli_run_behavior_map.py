@@ -72,36 +72,36 @@ def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
 
-    # Run with tiers disabled (only main output)
+    # Run with budgets disabled (only main output)
     out_path = tmp_path / "results.json"
-    generated = run_behavior_map(tmp_path, out_path, tiers="none")
+    generated = run_behavior_map(tmp_path, out_path, budgets="none")
 
     assert len(generated) == 1
     assert generated[0] == out_path
     assert out_path.exists()
 
 
-def test_run_behavior_map_returns_tier_files(tmp_path: Path) -> None:
-    """Test that run_behavior_map returns tier files when generated."""
+def test_run_behavior_map_returns_budget_files(tmp_path: Path) -> None:
+    """Test that run_behavior_map returns budget files when generated."""
     from hypergumbo.cli import run_behavior_map
 
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
 
-    # Run with custom tiers
+    # Run with custom budgets
     out_path = tmp_path / "results.json"
-    generated = run_behavior_map(tmp_path, out_path, tiers="4k,16k")
+    generated = run_behavior_map(tmp_path, out_path, budgets="4k,16k")
 
-    # Should have 3 files: 2 tier files + main output
+    # Should have 3 files: 2 budget files + main output
     assert len(generated) == 3
     assert out_path in generated
-    # Check tier files were generated
-    tier_4k = tmp_path / "results.4k.json"
-    tier_16k = tmp_path / "results.16k.json"
-    assert tier_4k in generated
-    assert tier_16k in generated
-    assert tier_4k.exists()
-    assert tier_16k.exists()
+    # Check budget files were generated
+    budget_4k = tmp_path / "results.4k.json"
+    budget_16k = tmp_path / "results.16k.json"
+    assert budget_4k in generated
+    assert budget_16k in generated
+    assert budget_4k.exists()
+    assert budget_16k.exists()
 
 
 def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
@@ -116,7 +116,7 @@ def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
             sys.executable, "-m", "hypergumbo", "run",
             str(tmp_path),
             "--out", str(out_path),
-            "--tiers", "none",
+            "--budgets", "none",
         ],
         capture_output=True,
         text=True,
@@ -128,8 +128,8 @@ def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
     assert str(out_path) in result.stdout
 
 
-def test_cli_run_prints_tier_files_in_summary(tmp_path: Path) -> None:
-    """Test that cli run prints tier files in artifact summary."""
+def test_cli_run_prints_budget_files_in_summary(tmp_path: Path) -> None:
+    """Test that cli run prints budget files in artifact summary."""
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
 
@@ -140,14 +140,14 @@ def test_cli_run_prints_tier_files_in_summary(tmp_path: Path) -> None:
             sys.executable, "-m", "hypergumbo", "run",
             str(tmp_path),
             "--out", str(out_path),
-            "--tiers", "4k,16k",
+            "--budgets", "4k,16k",
         ],
         capture_output=True,
         text=True,
     )
 
     assert result.returncode == 0
-    # Check artifact summary includes tier files
+    # Check artifact summary includes budget files
     assert "[hypergumbo run] Generated 3 artifact(s):" in result.stdout
     assert "results.4k.json" in result.stdout
     assert "results.16k.json" in result.stdout
