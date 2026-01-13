@@ -10,6 +10,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **Common Lisp analyzer:** Full support for `.lisp`, `.lsp`, `.cl`, and `.asd` files. Detects
+  functions (defun/defmacro/defmethod/defgeneric), classes (defclass/defstruct), variables
+  (defvar/defparameter/defconstant), and packages (defpackage). Handles both lowercase and
+  uppercase forms (Common Lisp is case-insensitive). Includes cross-file call resolution.
+- **Improved README extraction:** Case-insensitive README finding (fixes `Readme.md` detection),
+  filters link reference definitions and GitHub callout syntax that were matching probes incorrectly.
 - **`hypergumbo test-coverage` command:** Static analysis test coverage estimation. Identifies
   "test-dense" functions (high tests/LOC ratio - may indicate redundant tests) and "cold spots"
   (untested functions). Uses call graph analysis without executing any code. Language agnostic.
