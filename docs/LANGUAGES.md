@@ -1,12 +1,12 @@
 # Supported Languages
 
-Hypergumbo includes 67 language analyzers. Each analyzer detects symbols (functions, classes, methods, interfaces) and edges (calls, imports, instantiates, extends, implements).
+Hypergumbo includes 68 language analyzers. Each analyzer detects symbols (functions, classes, methods, interfaces) and edges (calls, imports, instantiates, extends, implements).
 
 ## Language Table
 
 | Category | Languages |
 |----------|-----------|
-| **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
+| **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Common Lisp, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
 | **Systems** | C, C++, Zig, Objective-C, CUDA, Fortran |
 | **Smart Contracts** | Solidity |
 | **Hardware** | Verilog, VHDL, GLSL, WGSL |
