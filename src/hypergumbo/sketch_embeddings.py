@@ -285,6 +285,24 @@ def _has_sentence_transformers() -> bool:
         return False
 
 
+def _decode_probe_embeddings(b64_data: str, num_probes: int) -> "np.ndarray":
+    """Decode pre-computed probe embeddings from base64 float16.
+
+    Args:
+        b64_data: Base64-encoded float16 array.
+        num_probes: Number of probes (for reshape).
+
+    Returns:
+        Normalized float32 embeddings array of shape (num_probes, 768).
+    """
+    import base64
+    import numpy as np
+
+    raw = base64.b64decode(b64_data)
+    arr = np.frombuffer(raw, dtype=np.float16).reshape(num_probes, 768)
+    return arr.astype(np.float32)
+
+
 def _get_repo_languages(repo_root: Path) -> set[str]:
     """Detect languages in a repo by scanning for common file extensions."""
     ext_to_lang = {
@@ -784,19 +802,15 @@ def extract_config_embedding(
     model = _load_embedding_model()
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
-    # Compute normalized embeddings for both probes
+    # Get pre-computed normalized embeddings for both probes
     # Using max-to-any-pattern approach (not centroid) for better exact matching
     _t_probes = _time.time()
     # Probe 1: Answer patterns (factual metadata lines)
-    answer_embeddings = model.encode(ANSWER_PATTERNS, convert_to_numpy=True)
-    answer_norms = np.linalg.norm(answer_embeddings, axis=1, keepdims=True)
-    normalized_answer_patterns = answer_embeddings / (answer_norms + 1e-8)
+    normalized_answer_patterns = _get_answer_probe_embeddings()
 
     # Probe 2: Big-picture questions (architectural context)
-    question_embeddings = model.encode(BIG_PICTURE_QUESTIONS, convert_to_numpy=True)
-    question_norms = np.linalg.norm(question_embeddings, axis=1, keepdims=True)
-    normalized_question_patterns = question_embeddings / (question_norms + 1e-8)
-    _vlog(f"Probe embeddings ({len(ANSWER_PATTERNS)}+{len(BIG_PICTURE_QUESTIONS)}) in {_time.time() - _t_probes:.1f}s")
+    normalized_question_patterns = _get_bigpic_probe_embeddings()
+    _vlog(f"Probe embeddings ({len(ANSWER_PATTERNS)}+{len(BIG_PICTURE_QUESTIONS)}) decoded in {_time.time() - _t_probes:.3f}s")
 
     # === PASS 1: Score all files, collect top candidates from each ===
     # Structure: {source: [(sim, center_idx, chunk_text, file_lines), ...]}
@@ -1151,28 +1165,64 @@ README_DESCRIPTION_PROBES = [
     "(Software Project Name) is an open source trusted cloud native registry project that stores, signs, and scans content. (Software Project Name) extends the open source (Related Software Project Name) Distribution by adding the functionalities usually required by users such as security, identity and management. Having a registry closer to the build and run environment can improve the image transfer efficiency. (Software Project Name) supports replication of images between registries, and also offers advanced security features such as user management, access control and activity auditing.",
 ]
 
-# Cache for probe embeddings (computed once)
+# Cache for probe embeddings (decoded from pre-computed base64)
 _README_PROBE_EMBEDDINGS: "np.ndarray | None" = None
+_ANSWER_PROBE_EMBEDDINGS: "np.ndarray | None" = None
+_BIGPIC_PROBE_EMBEDDINGS: "np.ndarray | None" = None
 
 
-def _get_readme_probe_embeddings(model) -> "np.ndarray":
-    """Get cached probe embeddings for README description extraction.
+def _get_readme_probe_embeddings() -> "np.ndarray":
+    """Get pre-computed probe embeddings for README description extraction.
 
-    Args:
-        model: Loaded SentenceTransformer model.
+    Uses base64-encoded float16 embeddings from _embedding_data.py,
+    avoiding the ~2-3s startup cost of computing embeddings at runtime.
 
     Returns:
-        Normalized probe embeddings array.
+        Normalized probe embeddings array of shape (19, 768).
     """
     global _README_PROBE_EMBEDDINGS
-    import numpy as np
 
     if _README_PROBE_EMBEDDINGS is None:
-        embeddings = model.encode(README_DESCRIPTION_PROBES, convert_to_numpy=True)
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        _README_PROBE_EMBEDDINGS = embeddings / (norms + 1e-8)
+        from ._embedding_data import README_PROBES_B64
+        _README_PROBE_EMBEDDINGS = _decode_probe_embeddings(
+            README_PROBES_B64, len(README_DESCRIPTION_PROBES)
+        )
 
     return _README_PROBE_EMBEDDINGS
+
+
+def _get_answer_probe_embeddings() -> "np.ndarray":
+    """Get pre-computed probe embeddings for config answer patterns.
+
+    Returns:
+        Normalized probe embeddings array of shape (41, 768).
+    """
+    global _ANSWER_PROBE_EMBEDDINGS
+
+    if _ANSWER_PROBE_EMBEDDINGS is None:
+        from ._embedding_data import ANSWER_PROBES_B64
+        _ANSWER_PROBE_EMBEDDINGS = _decode_probe_embeddings(
+            ANSWER_PROBES_B64, len(ANSWER_PATTERNS)
+        )
+
+    return _ANSWER_PROBE_EMBEDDINGS
+
+
+def _get_bigpic_probe_embeddings() -> "np.ndarray":
+    """Get pre-computed probe embeddings for big picture questions.
+
+    Returns:
+        Normalized probe embeddings array of shape (127, 768).
+    """
+    global _BIGPIC_PROBE_EMBEDDINGS
+
+    if _BIGPIC_PROBE_EMBEDDINGS is None:
+        from ._embedding_data import BIGPIC_PROBES_B64
+        _BIGPIC_PROBE_EMBEDDINGS = _decode_probe_embeddings(
+            BIGPIC_PROBES_B64, len(BIG_PICTURE_QUESTIONS)
+        )
+
+    return _BIGPIC_PROBE_EMBEDDINGS
 
 
 def _is_readme_line_filterable(line: str) -> bool:
@@ -1216,13 +1266,44 @@ def _is_readme_line_filterable(line: str) -> bool:
     return False
 
 
+class ReadmeExtractionDebug:
+    """Debug info from README description extraction."""
+
+    def __init__(
+        self,
+        description: str | None,
+        k_scores: list[tuple[int, float]],
+        final_k: int,
+        stopped_early: bool,
+        quality_drop: float | None,
+        elapsed_seconds: float,
+        lines_processed: int,
+    ):
+        self.description = description
+        self.k_scores = k_scores  # List of (k, best_score) for each k tried
+        self.final_k = final_k  # The k value that was used
+        self.stopped_early = stopped_early  # True if stopped due to quality drop
+        self.quality_drop = quality_drop  # The drop that triggered early stop, if any
+        self.elapsed_seconds = elapsed_seconds
+        self.lines_processed = lines_processed
+
+    def __repr__(self) -> str:
+        return (
+            f"ReadmeExtractionDebug(k={self.final_k}, "
+            f"stopped_early={self.stopped_early}, "
+            f"quality_drop={self.quality_drop}, "
+            f"elapsed={self.elapsed_seconds:.2f}s)"
+        )
+
+
 def extract_readme_description_embedding(
     readme_path: Path,
     max_lines: int = 80,
     max_window: int = 10,
     quality_drop_threshold: float = 0.10,
     top_k_probes: int = 3,
-) -> str | None:
+    debug: bool = False,
+) -> str | ReadmeExtractionDebug | None:
     """Extract project description from README using embedding similarity.
 
     Uses probe embeddings from mission statements of well-known projects to
@@ -1236,11 +1317,21 @@ def extract_readme_description_embedding(
         max_window: Maximum window size k (default 10).
         quality_drop_threshold: Stop when score drops by this fraction (default 0.10).
         top_k_probes: Number of top probe similarities to average (default 3).
+        debug: If True, return ReadmeExtractionDebug with k-value scores and timing.
 
     Returns:
-        Extracted description string, or None if extraction fails.
+        If debug=False: Extracted description string, or None if extraction fails.
+        If debug=True: ReadmeExtractionDebug object with description and debug info.
     """
+    import time as _time
+    start_time = _time.time()
+
     if not _has_sentence_transformers():
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=[], final_k=0, stopped_early=False,
+                quality_drop=None, elapsed_seconds=0, lines_processed=0
+            )
         return None
 
     import numpy as np
@@ -1248,6 +1339,12 @@ def extract_readme_description_embedding(
     try:
         content = readme_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=[], final_k=0, stopped_early=False,
+                quality_drop=None, elapsed_seconds=_time.time() - start_time,
+                lines_processed=0
+            )
         return None
 
     lines = content.split("\n")[:max_lines]
@@ -1275,11 +1372,17 @@ def extract_readme_description_embedding(
         filtered_lines.append((idx, stripped))
 
     if not filtered_lines:
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=[], final_k=0, stopped_early=False,
+                quality_drop=None, elapsed_seconds=_time.time() - start_time,
+                lines_processed=0
+            )
         return None
 
-    # Load model and get probe embeddings
+    # Load model and get pre-computed probe embeddings
     model = _load_embedding_model()
-    probe_embeddings = _get_readme_probe_embeddings(model)
+    probe_embeddings = _get_readme_probe_embeddings()
 
     # Embed all filtered lines
     line_texts = [line for _, line in filtered_lines]
@@ -1297,6 +1400,10 @@ def extract_readme_description_embedding(
     # Sliding window to find best consecutive k lines
     best_window: tuple[int, int] | None = None  # (start_idx, end_idx)
     prev_best_score = -1.0
+    k_scores: list[tuple[int, float]] = []  # Track scores for debug
+    stopped_early = False
+    quality_drop_value: float | None = None
+    final_k = 0
 
     for k in range(1, max_window + 1):
         if k > len(filtered_lines):
@@ -1313,19 +1420,29 @@ def extract_readme_description_embedding(
 
         # Get best window for this k
         best_start, best_k_score = max(window_scores, key=lambda x: x[1])
+        k_scores.append((k, best_k_score))
 
         # Check for quality drop (only after k=1)
         if k > 1 and prev_best_score > 0:
             drop = (prev_best_score - best_k_score) / prev_best_score
             if drop >= quality_drop_threshold:
                 # Quality dropped too much, use previous k
+                stopped_early = True
+                quality_drop_value = drop
                 break
 
         # Update best
         best_window = (best_start, best_start + k)
         prev_best_score = best_k_score
+        final_k = k
 
     if best_window is None:
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=k_scores, final_k=0, stopped_early=False,
+                quality_drop=None, elapsed_seconds=_time.time() - start_time,
+                lines_processed=len(filtered_lines)
+            )
         return None
 
     # Extract the winning lines
@@ -1342,4 +1459,17 @@ def extract_readme_description_embedding(
     # Collapse whitespace
     description = " ".join(description.split())
 
-    return description if description else None
+    final_description = description if description else None
+
+    if debug:
+        return ReadmeExtractionDebug(
+            description=final_description,
+            k_scores=k_scores,
+            final_k=final_k,
+            stopped_early=stopped_early,
+            quality_drop=quality_drop_value,
+            elapsed_seconds=_time.time() - start_time,
+            lines_processed=len(filtered_lines)
+        )
+
+    return final_description

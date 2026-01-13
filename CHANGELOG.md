@@ -21,6 +21,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   project descriptions from READMEs. Compares each line against probe embeddings of known project
   mission statements, using a sliding window approach to find the best consecutive description lines.
   Falls back to heuristic parsing if embeddings unavailable.
+- **Pre-computed probe embeddings:** Probe embeddings for README extraction and config analysis are
+  now pre-computed and stored as base64-encoded float16 arrays, avoiding ~2-3s startup cost.
+- **README extraction debug mode:** `extract_readme_description_embedding(debug=True)` returns
+  `ReadmeExtractionDebug` object with k-value scores, timing, and early stopping info.
+- **`--progress` flag for sketch:** Shows progress indicator with ETA to stderr during sketch
+  generation (e.g., `[45%] Extracting config... ETA 23s`).
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only

@@ -63,6 +63,114 @@ class ConfigExtractionMode(Enum):
     HYBRID = "hybrid"
 
 
+class SketchProgress:  # pragma: no cover
+    """Progress reporter for sketch generation with ETA calculation.
+
+    Tracks progress through phases and estimates time remaining based on
+    historical timing of completed phases.
+
+    This class is marked no cover because it's UI-only output code.
+    """
+
+    PHASES = [  # noqa: RUF012
+        ("profile", "Detecting profile", 0.05),
+        ("readme", "Extracting README", 0.10),
+        ("structure", "Building structure", 0.15),
+        ("frameworks", "Detecting frameworks", 0.20),
+        ("tests", "Analyzing tests", 0.25),
+        ("config", "Extracting config", 0.45),  # Config is often slowest
+        ("vocabulary", "Extracting vocabulary", 0.55),
+        ("analysis", "Running static analysis", 0.75),
+        ("symbols", "Ranking symbols", 0.90),
+        ("format", "Formatting output", 1.0),
+    ]
+
+    def __init__(self, output_stream=None):
+        """Initialize progress reporter.
+
+        Args:
+            output_stream: Stream to write progress to (default: sys.stderr).
+        """
+        import sys
+        import time
+        self._stream = output_stream or sys.stderr
+        self._start_time = time.time()
+        self._phase_times: dict[str, float] = {}
+        self._current_phase_idx = 0
+        self._enabled = True
+
+    def disable(self) -> None:
+        """Disable progress output."""
+        self._enabled = False
+
+    def enable(self) -> None:
+        """Enable progress output."""
+        self._enabled = True
+
+    def start_phase(self, phase_name: str) -> None:
+        """Mark the start of a phase.
+
+        Args:
+            phase_name: Name of the phase (e.g., "profile", "config").
+        """
+        if not self._enabled:
+            return
+
+        import time
+
+        # Find phase index and display info
+        phase_info = None
+        for idx, (name, display, progress) in enumerate(self.PHASES):
+            if name == phase_name:
+                phase_info = (idx, display, progress)
+                self._current_phase_idx = idx
+                break
+
+        if phase_info is None:
+            return
+
+        idx, display, progress = phase_info
+        pct = int(progress * 100)
+
+        # Calculate ETA based on elapsed time and progress
+        elapsed = time.time() - self._start_time
+        if progress > 0:
+            estimated_total = elapsed / progress
+            remaining = estimated_total - elapsed
+            if remaining > 0:
+                eta_str = f" ETA {remaining:.0f}s"
+            else:
+                eta_str = ""
+        else:
+            eta_str = ""
+
+        # Write progress line (carriage return to overwrite)
+        self._stream.write(f"\r[{pct:3d}%] {display}...{eta_str}    ")
+        self._stream.flush()
+
+    def complete_phase(self, phase_name: str) -> None:
+        """Mark a phase as complete and record timing.
+
+        Args:
+            phase_name: Name of the phase that completed.
+        """
+        if not self._enabled:
+            return
+
+        import time
+        self._phase_times[phase_name] = time.time()
+
+    def finish(self) -> None:
+        """Mark progress as complete and show final status."""
+        if not self._enabled:
+            return
+
+        import time
+        elapsed = time.time() - self._start_time
+        self._stream.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
+        self._stream.flush()
+
+
 # Probe system for embedding-based config extraction:
 # 1. ANSWER_PATTERNS: Example config lines that contain factual metadata
 # 2. BIG_PICTURE_QUESTIONS: Open-ended questions for architectural context
@@ -3434,6 +3542,7 @@ def generate_sketch(
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
     language_proportional: bool = True,
+    progress: bool = False,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -3466,6 +3575,7 @@ def generate_sketch(
         max_chunk_chars: Maximum characters per chunk for embedding.
         language_proportional: If True, use language-stratified symbol selection
             to ensure multi-language projects have proportional representation.
+        progress: If True, show progress indicator with ETA to stderr.
 
     Returns:
         Markdown-formatted sketch string.
@@ -3477,13 +3587,20 @@ def generate_sketch(
         if verbose:  # pragma: no cover
             print(f"[sketch] {msg}", file=sys.stderr)
 
+    # Initialize progress reporter
+    prog = SketchProgress()
+    if not progress:
+        prog.disable()
+
     t0 = time.time()
     _log("Starting sketch generation...")
 
+    prog.start_phase("profile")
     repo_root = Path(repo_root).resolve()
     _log(f"Detecting profile for {repo_root.name}...")
     profile = detect_profile(repo_root, extra_excludes=extra_excludes)
     _log(f"Profile detected in {time.time() - t0:.1f}s")
+    prog.complete_phase("profile")
     repo_name = _get_repo_name(repo_root)
 
     # Build base sections (always included)
@@ -3491,7 +3608,9 @@ def generate_sketch(
 
     # Section 1: Header (always included, highest priority)
     # Include project description from README if available
+    prog.start_phase("readme")
     readme_desc = _extract_readme_description(repo_root)
+    prog.complete_phase("readme")
     if readme_desc:
         header = (
             f"# {repo_name}\n\n"
@@ -3503,23 +3622,30 @@ def generate_sketch(
     sections.append(header)
 
     # Section 2: Structure
+    prog.start_phase("structure")
     structure = _format_structure(repo_root, extra_excludes=extra_excludes)
+    prog.complete_phase("structure")
     if structure:
         sections.append(structure)
 
     # Section 3: Frameworks
+    prog.start_phase("frameworks")
     frameworks = _format_frameworks(profile)
+    prog.complete_phase("frameworks")
     if frameworks:
         sections.append(frameworks)
 
     # Section 3.25: Tests (static summary - count and frameworks)
+    prog.start_phase("tests")
     test_summary_section = _format_test_summary(repo_root)
+    prog.complete_phase("tests")
     if test_summary_section:
         sections.append(test_summary_section)
 
     # Section 3.5: Configuration (extracted metadata from config files)
     # This section is high value for answering project metadata questions
     # (e.g., "what version of TypeScript?", "what license?", "what database?")
+    prog.start_phase("config")
     t_config = time.time()
     _log(f"Extracting config ({config_extraction_mode.value})...")
     config_info = _extract_config_info(
@@ -3530,16 +3656,19 @@ def generate_sketch(
         max_chunk_chars=max_chunk_chars,
     )
     _log(f"Config extracted in {time.time() - t_config:.1f}s")
+    prog.complete_phase("config")
     config_section = _format_config_section(config_info)
     if config_section:
         sections.append(config_section)
 
     # Section 3.75: Domain Vocabulary (only for medium+ budgets)
+    prog.start_phase("vocabulary")
     if max_tokens is None or max_tokens >= 500:
         vocab_terms = _extract_domain_vocabulary(repo_root, profile)
         vocabulary = _format_vocabulary(vocab_terms)
         if vocabulary:
             sections.append(vocabulary)
+    prog.complete_phase("vocabulary")
 
     # Combine base sections
     base_sketch = "\n\n".join(sections)
@@ -3547,9 +3676,11 @@ def generate_sketch(
 
     # If no budget or budget is small, return base sketch (possibly truncated)
     if max_tokens is None:
+        prog.finish()
         return base_sketch
 
     if max_tokens <= base_tokens:
+        prog.finish()
         return truncate_to_tokens(base_sketch, max_tokens)
 
     # We have room to expand - calculate remaining budget
@@ -3591,6 +3722,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
     # For larger budgets, run static analysis
+    prog.start_phase("analysis")
     symbols: list[Symbol] = []
     edges: list = []
     coverage_stats: tuple[int, int, float] | None = None
@@ -3598,6 +3730,7 @@ def generate_sketch(
         symbols, edges, coverage_stats = _run_analysis(
             repo_root, profile, exclude_tests=exclude_tests
         )
+    prog.complete_phase("analysis")
 
     # Update test summary with coverage stats if we got analysis results
     if coverage_stats is not None:
@@ -3647,6 +3780,7 @@ def generate_sketch(
     # had 0 Key Symbols at 1k budget because budget was exhausted earlier.
     # Key Symbols is the most valuable section for code understanding, so we
     # guarantee its presence even if it means slight budget overage.
+    prog.start_phase("symbols")
     MIN_KEY_SYMBOLS = 5
 
     if symbols:
@@ -3684,7 +3818,10 @@ def generate_sketch(
             current_tokens = estimate_tokens(current_sketch)
             remaining_tokens = max_tokens - current_tokens
 
+    prog.complete_phase("symbols")
+
     # Section 7: All files (if we still have budget after everything else)
+    prog.start_phase("format")
     if remaining_tokens > 50:
         budget_for_files = remaining_tokens - 10
         max_all_files = max(1, budget_for_files // tokens_per_file)
@@ -3697,4 +3834,5 @@ def generate_sketch(
     full_sketch = "\n\n".join(sections)
 
     # Final truncation to ensure we don't exceed budget
+    prog.finish()
     return truncate_to_tokens(full_sketch, max_tokens)

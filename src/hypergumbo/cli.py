@@ -163,6 +163,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     fleximax_lines = getattr(args, "fleximax_lines", 100)
     max_chunk_chars = getattr(args, "max_chunk_chars", 800)
     language_proportional = getattr(args, "language_proportional", False)
+    show_progress = getattr(args, "progress", False)
 
     sketch = generate_sketch(
         repo_root,
@@ -176,6 +177,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         fleximax_lines=fleximax_lines,
         max_chunk_chars=max_chunk_chars,
         language_proportional=language_proportional,
+        progress=show_progress,
     )
     print(sketch)
     return 0
@@ -1257,6 +1259,11 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         "-v", "--verbose",
         action="store_true",
         help="Print progress messages to stderr",
+    )
+    p_sketch.add_argument(
+        "--progress",
+        action="store_true",
+        help="Show progress indicator with ETA to stderr",
     )
     p_sketch.add_argument(
         "--max-config-files",
