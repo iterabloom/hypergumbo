@@ -182,7 +182,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
                 print(f"  k-scores: {result.k_scores}", file=sys.stderr)
                 print(f"  Final k: {result.final_k}", file=sys.stderr)
                 print(f"  Stopped early: {result.stopped_early}", file=sys.stderr)
-                if result.quality_drop is not None:
+                if result.quality_drop is not None:  # pragma: no cover - only set on early stop
                     print(f"  Quality drop: {result.quality_drop:.1%}", file=sys.stderr)
                 print(f"  Lines processed: {result.lines_processed}", file=sys.stderr)
                 print(f"  Elapsed: {result.elapsed_seconds:.2f}s", file=sys.stderr)

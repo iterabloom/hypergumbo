@@ -36,6 +36,7 @@ dependencies = [
   "tree-sitter-agda>=0.2.1",
   "tree-sitter-ocaml>=0.21",
   "tree-sitter-language-pack>=0.13",  # Elixir, COBOL, Dart, LaTeX, R
+  "tree-sitter-commonlisp>=0.4",  # Common Lisp analyzer
   "tree-sitter-solidity>=0.0.1",
   "tree-sitter-c-sharp>=0.21",
   "tree-sitter-cpp>=0.22",
