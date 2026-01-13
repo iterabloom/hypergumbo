@@ -74,7 +74,7 @@ from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
-from .ranking import rank_symbols, _is_test_path
+from .ranking import rank_symbols, _is_test_path, compute_transitive_test_coverage
 from .compact import (
     format_compact_behavior_map,
     format_tiered_behavior_map,
@@ -1195,19 +1195,19 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print("No functions found to analyze.", file=sys.stderr)
         return 0
 
-    # Build test→callee mapping
-    # For each target, track which tests call it
-    tests_per_target: dict[str, set[str]] = {tid: set() for tid in target_symbols}
+    # Extract call edges for transitive BFS
+    call_edges = [
+        (edge.get("src", ""), edge.get("dst", ""))
+        for edge in edges
+        if edge.get("type") == "calls"
+    ]
 
-    for edge in edges:
-        if edge.get("type") != "calls":
-            continue
-        src = edge.get("src", "")
-        dst = edge.get("dst", "")
-
-        # If a test calls a target function, record it
-        if src in test_symbols and dst in tests_per_target:
-            tests_per_target[dst].add(src)
+    # Compute transitive test coverage using shared helper
+    tests_per_target = compute_transitive_test_coverage(
+        test_ids=test_symbols,
+        target_ids=set(target_symbols.keys()),
+        call_edges=call_edges,
+    )
 
     # Compute metrics
     # test_dense: (test_density, test_count, loc, target, test_names)

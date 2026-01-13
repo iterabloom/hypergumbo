@@ -359,3 +359,58 @@ def get_importance_threshold(
     index = int(len(scores) * (1 - percentile))
     index = max(0, min(index, len(scores) - 1))
     return scores[index]
+
+
+def compute_transitive_test_coverage(
+    test_ids: set[str],
+    target_ids: set[str],
+    call_edges: List[tuple[str, str]],
+) -> Dict[str, set[str]]:
+    """Compute which tests transitively reach each target using BFS.
+
+    This is the core test coverage algorithm shared between sketch.py and
+    cmd_test_coverage. Uses BFS from each test symbol to find all transitively
+    reachable production symbols.
+
+    If test_foo() calls helper() which calls core(), both helper and core
+    are considered "tested" by test_foo.
+
+    Args:
+        test_ids: Set of symbol IDs that are test functions/methods.
+        target_ids: Set of symbol IDs that are production functions/methods.
+        call_edges: List of (src, dst) tuples representing call relationships.
+
+    Returns:
+        Dictionary mapping target_id to set of test_ids that reach it.
+    """
+    from collections import deque
+
+    # Build call graph (src → list of dst)
+    call_graph: Dict[str, List[str]] = {}
+    for src, dst in call_edges:
+        if src and dst:
+            if src not in call_graph:
+                call_graph[src] = []
+            call_graph[src].append(dst)
+
+    # For each test symbol, BFS to find all transitively reachable targets
+    tests_per_target: Dict[str, set[str]] = {tid: set() for tid in target_ids}
+
+    for test_id in test_ids:
+        # BFS from this test symbol
+        visited: set[str] = set()
+        queue: deque[str] = deque([test_id])
+        visited.add(test_id)
+
+        while queue:
+            current = queue.popleft()
+            for neighbor in call_graph.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+
+        # All targets reachable from this test are "tested" by it
+        for target_id in visited & target_ids:
+            tests_per_target[target_id].add(test_id)
+
+    return tests_per_target

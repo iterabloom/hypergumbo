@@ -39,6 +39,7 @@ from .ranking import (
     apply_tier_weights,
     compute_file_scores,
     _is_test_path,
+    compute_transitive_test_coverage,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -2589,8 +2590,6 @@ def _estimate_test_coverage(
     Returns:
         (tested_count, total_count, percentage) or None if no targets.
     """
-    from collections import deque
-
     # Identify test symbols (functions/methods in test files)
     test_symbol_ids: set[str] = set()
     for s in symbols:
@@ -2606,32 +2605,21 @@ def _estimate_test_coverage(
     if not target_symbol_ids:
         return None
 
-    # Build adjacency list for call graph (src -> list of dst)
-    call_graph: dict[str, list[str]] = {}
-    for edge in edges:
-        src = getattr(edge, "src", None)
-        dst = getattr(edge, "dst", None)
-        if src is not None and dst is not None:
-            if src not in call_graph:
-                call_graph[src] = []
-            call_graph[src].append(dst)
+    # Extract call edges
+    call_edges = [
+        (getattr(edge, "src", None), getattr(edge, "dst", None))
+        for edge in edges
+    ]
 
-    # BFS from all test symbols to find transitively reachable targets
-    visited: set[str] = set()
-    queue: deque[str] = deque(test_symbol_ids)
-    visited.update(test_symbol_ids)
+    # Use shared helper for transitive BFS
+    tests_per_target = compute_transitive_test_coverage(
+        test_ids=test_symbol_ids,
+        target_ids=target_symbol_ids,
+        call_edges=call_edges,
+    )
 
-    while queue:
-        current = queue.popleft()
-        for neighbor in call_graph.get(current, []):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append(neighbor)
-
-    # Count how many targets are reachable from tests
-    tested_ids = visited & target_symbol_ids
-
-    tested_count = len(tested_ids)
+    # Count how many targets have at least one test reaching them
+    tested_count = sum(1 for tests in tests_per_target.values() if tests)
     total_count = len(target_symbol_ids)
     percentage = (tested_count / total_count * 100) if total_count > 0 else 0.0
 
