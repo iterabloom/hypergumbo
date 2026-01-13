@@ -14,6 +14,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   functions (defun/defmacro/defmethod/defgeneric), classes (defclass/defstruct), variables
   (defvar/defparameter/defconstant), and packages (defpackage). Handles both lowercase and
   uppercase forms (Common Lisp is case-insensitive). Includes cross-file call resolution.
+- **LLVM IR analyzer:** Support for `.ll` files (LLVM Intermediate Representation). Detects
+  function definitions, function declarations (external functions), global variables, and
+  function call edges. Useful for analyzing compiler and toolchain projects.
 - **Improved README extraction:** Case-insensitive README finding (fixes `Readme.md` detection),
   filters link reference definitions and GitHub callout syntax that were matching probes incorrectly.
 - **`hypergumbo test-coverage` command:** Static analysis test coverage estimation. Identifies

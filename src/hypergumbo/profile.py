@@ -94,6 +94,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
     "csharp": ["*.cs"],
     # New languages added for extended analyzer support
     "fortran": ["*.f", "*.f90", "*.f95", "*.f03", "*.f08", "*.F", "*.F90"],
+    "llvm_ir": ["*.ll"],
     "glsl": ["*.glsl", "*.vert", "*.frag", "*.geom", "*.comp", "*.tesc", "*.tese"],
     "nix": ["*.nix"],
     "cuda": ["*.cu", "*.cuh"],

@@ -134,6 +134,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("capnp", "hypergumbo.analyze.capnp", "analyze_capnp"),
     AnalyzerSpec("r", "hypergumbo.analyze.r_lang", "analyze_r_files"),
     AnalyzerSpec("fortran", "hypergumbo.analyze.fortran", "analyze_fortran_files"),
+    AnalyzerSpec("llvm_ir", "hypergumbo.analyze.llvm_ir", "analyze_llvm_ir"),
 
     # Shell/scripting
     AnalyzerSpec("powershell", "hypergumbo.analyze.powershell", "analyze_powershell"),
