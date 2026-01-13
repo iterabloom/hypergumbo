@@ -547,6 +547,7 @@ SYNTHETIC_KINDS = frozenset({
     "ipc_subscriber",
     "db_query",
     "http_client",
+    "subprocess_call",
 })
 
 

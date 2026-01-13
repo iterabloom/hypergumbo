@@ -41,6 +41,11 @@ def _load_embedding_model():
 
 # Probe patterns for embedding-based config extraction
 # These are embedded and compared against config file content
+#
+# WARNING: If you modify any probe patterns (ANSWER_PATTERNS, BIG_PICTURE_QUESTIONS,
+# or README_DESCRIPTION_PROBES), you MUST regenerate the precomputed embeddings:
+#     python scripts/compute_probe_embeddings.py
+# Otherwise the embeddings in _embedding_data.py will be out of sync with the probes.
 
 ANSWER_PATTERNS = [
     # Project identity
@@ -1143,26 +1148,20 @@ def extract_config_hybrid(
 # Probe patterns for README description extraction
 # These are mission statements from well-known open source projects
 # Used to identify lines that describe what a project does
+#
+# WARNING: Changes require regenerating embeddings! Run:
+#     python scripts/compute_probe_embeddings.py
 README_DESCRIPTION_PROBES = [
-    "(Software Project Name), a (Parent Organization) project, is a systems and service monitoring system.",
-    "It collects metrics from configured targets at given intervals, evaluates rule expressions, displays the results, and can trigger alerts when specified conditions are observed.",
-    "(Software Project Name) allows you to query, visualize, alert on and understand your metrics no matter where they are stored. Create, explore, and share dashboards with your team and foster a data-driven culture:",
-    "Add authentication to applications and secure services with minimum effort. No need to deal with storing users or authenticating users.",
-    "(Software Project Name) provides user federation, strong authentication, user management, fine-grained authorization, and more.",
-    "(Software Project Name), also known as (ShortName), is an open source system for managing containerized applications across multiple hosts.",
-    "It provides basic mechanisms for the deployment, maintenance, and scaling of applications.",
-    "(Software Project Name) is an open-source, enterprise-grade search and observability suite that brings order to unstructured data at scale.",
-    "(Software Project Name) (or simply ShortName) is a platform to programmatically author, schedule, and monitor workflows.",
-    "When workflows are defined as code, they become more maintainable, versionable, testable, and collaborative.",
-    "Use (ShortName) to author workflows (Dags) that orchestrate tasks. The (ShortName) scheduler executes your tasks on an array of workers while following the specified dependencies. Rich command line utilities make performing complex surgeries on Dags a snap. The rich user interface makes it easy to visualize pipelines running in production, monitor progress, and troubleshoot issues when needed.",
-    "(Software Project Name) is a declarative, GitOps continuous delivery tool for (Related Software Project Name).",
-    "Application definitions, configurations, and environments should be declarative and version controlled.",
-    "Application deployment and lifecycle management should be automated, auditable, and easy to understand.",
-    "(Software Project Name): like (Related Software Project Name), but for logs.",
-    "(Software Project Name) is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by (Related Software Project Name).",
-    "It is designed to be very cost effective and easy to operate.",
-    "It does not index the contents of the logs, but rather a set of labels for each log stream.",
-    "(Software Project Name) is an open source trusted cloud native registry project that stores, signs, and scans content. (Software Project Name) extends the open source (Related Software Project Name) Distribution by adding the functionalities usually required by users such as security, identity and management. Having a registry closer to the build and run environment can improve the image transfer efficiency. (Software Project Name) supports replication of images between registries, and also offers advanced security features such as user management, access control and activity auditing.",
+    "(Project Name) is an open-source (tool type/category) built for (user demographic) to (do their job) in (relevant circumstances). It offers (top 2-3 capabilities) so you can (primary benefit) with (reliability/security/scale/simplicity).",
+    "(Project Name) is an open-source (tool type/category) for (audience/context) that (does something). With (top 2-3 capabilities), it helps you (primary benefit) while keeping things (reliable/secure/scalable/simple).",
+    "(Project Name) is a (tool type/category) that enables (user demographic) to (do their job) in (relevant circumstances). It combines (top 2-3 capabilities) to deliver (primary benefit) at (scale/security/reliability/simplicity).",
+    "(Project Name) is an open-source (tool type/category) designed to help (audience) (do something) in (context). It includes (top 2-3 capabilities), making it easier to (primary benefit) with (constraint).",
+    "(Project Name) is a (tool type/category) for (audience/context) that (does something) - so you can (benefit).",
+    "(Project Name) is a (tool type/category) that (does something) in (context) for (audience), helping you (benefit).",
+    "For (audience) in (context), (Project Name) is a (tool type/category) that (does something) to enable (benefit).",
+    "(Project Name) is a (tool type/category) that lets (audience) (do something) in (context), enabling (benefit).",
+    "(Project Name) is an open-source (tool type/category) that helps (user demographic) do (their job) in (the relevant circumstances). It provides (top 2-3 capabilities), enabling (primary benefit) with (constraint: reliability/security/scale/simplicity).",
+    "(Project Name) is a (tool type/category) that (does something) for (audience/context), enabling (benefit).",
 ]
 
 # Cache for probe embeddings (decoded from pre-computed base64)

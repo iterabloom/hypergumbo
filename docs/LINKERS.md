@@ -1,6 +1,6 @@
 # Cross-Language Linkers
 
-Hypergumbo includes 14 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
+Hypergumbo includes 15 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
 
 ## Linker Table
 
@@ -20,6 +20,7 @@ Hypergumbo includes 14 linkers that connect symbols across language boundaries. 
 | Database Query | SQL in app code → table definitions in schema files |
 | Event Sourcing | EventEmitter, Django signals, Spring events |
 | Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
+| Subprocess | `subprocess.run()` → CLI command handlers (Click, Typer, argparse) |
 
 ## How Linkers Work
 
@@ -56,3 +57,23 @@ def link_myprotocol(symbols: list[Symbol], edges: list[Edge]) -> list[Edge]:
     # Find cross-language patterns, return new edges
     ...
 ```
+
+## Future Work
+
+### Subprocess Linker Extensions
+
+The subprocess linker currently supports Python. Future extensions:
+
+| Language | Patterns | Project Detection |
+|----------|----------|-------------------|
+| JavaScript | `child_process.spawn`, `execa`, `shelljs` | `package.json` bin |
+| Go | `exec.Command`, `os.Exec` | `go.mod` module name |
+| Rust | `std::process::Command` | `Cargo.toml [[bin]]` |
+| Ruby | `system()`, `Open3`, backticks | Gemspec executables |
+
+### Coverage Estimation Optimization
+
+The transitive BFS for test coverage estimation currently builds an adjacency list on each call. For very large repos (>100K functions), consider:
+- Caching the adjacency list if edges haven't changed
+- Using integer IDs instead of string IDs for memory efficiency
+- Providing a streaming/incremental mode for huge monorepos

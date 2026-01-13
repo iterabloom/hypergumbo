@@ -56,7 +56,9 @@ import hypergumbo.linkers.http as _http_linker  # noqa: F401
 import hypergumbo.linkers.ipc as _ipc_linker  # noqa: F401
 import hypergumbo.linkers.jni as _jni_linker  # noqa: F401
 import hypergumbo.linkers.message_queue as _message_queue_linker  # noqa: F401
+import hypergumbo.linkers.openapi as _openapi_linker  # noqa: F401
 import hypergumbo.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
+import hypergumbo.linkers.subprocess_cli as _subprocess_linker  # noqa: F401
 import hypergumbo.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
 from .entrypoints import detect_entrypoints

@@ -3125,6 +3125,85 @@ class TestEstimateTestCoverage:
         # Only the function counts, not the class
         assert total == 1
 
+    def test_transitive_coverage_via_bfs(self) -> None:
+        """Transitive calls through the call graph are counted as covered.
+
+        If test_foo() -> helper() -> core(), both helper and core are tested.
+        """
+        # Production functions forming a call chain
+        helper_sym = Symbol(
+            id="helper", name="helper", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0)
+        )
+        core_sym = Symbol(
+            id="core", name="core", kind="function", language="python",
+            path="src/app.py", span=Span(10, 15, 0, 0)
+        )
+        unreachable_sym = Symbol(
+            id="unreachable", name="unreachable", kind="function", language="python",
+            path="src/app.py", span=Span(20, 25, 0, 0)
+        )
+        # Test function
+        test_sym = Symbol(
+            id="test1", name="test_foo", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0)
+        )
+
+        # Edges: test -> helper -> core (transitive chain)
+        edge1 = Edge(id="e1", src="test1", dst="helper", edge_type="calls", line=3)
+        edge2 = Edge(id="e2", src="helper", dst="core", edge_type="calls", line=4)
+
+        result = _estimate_test_coverage(
+            [helper_sym, core_sym, unreachable_sym, test_sym],
+            [edge1, edge2]
+        )
+
+        assert result is not None
+        tested, total, pct = result
+        # Both helper AND core should be counted (transitive via BFS)
+        assert tested == 2
+        assert total == 3  # helper, core, unreachable
+        assert abs(pct - 66.67) < 1  # ~66.67%
+
+    def test_transitive_coverage_diamond_pattern(self) -> None:
+        """Diamond call pattern: test -> A -> C and test -> B -> C.
+
+        C should only be counted once even if reachable via multiple paths.
+        """
+        sym_a = Symbol(
+            id="a", name="func_a", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0)
+        )
+        sym_b = Symbol(
+            id="b", name="func_b", kind="function", language="python",
+            path="src/app.py", span=Span(10, 15, 0, 0)
+        )
+        sym_c = Symbol(
+            id="c", name="func_c", kind="function", language="python",
+            path="src/app.py", span=Span(20, 25, 0, 0)
+        )
+        test_sym = Symbol(
+            id="test1", name="test_diamond", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0)
+        )
+
+        # Diamond: test -> A, test -> B, A -> C, B -> C
+        edges = [
+            Edge(id="e1", src="test1", dst="a", edge_type="calls", line=1),
+            Edge(id="e2", src="test1", dst="b", edge_type="calls", line=2),
+            Edge(id="e3", src="a", dst="c", edge_type="calls", line=3),
+            Edge(id="e4", src="b", dst="c", edge_type="calls", line=4),
+        ]
+
+        result = _estimate_test_coverage([sym_a, sym_b, sym_c, test_sym], edges)
+
+        assert result is not None
+        tested, total, pct = result
+        # All three production functions reachable
+        assert tested == 3
+        assert total == 3
+        assert pct == 100.0
+
 
 class TestGroupFilesByLanguage:
     """Tests for language-based file grouping."""

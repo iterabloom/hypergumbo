@@ -2555,9 +2555,12 @@ def _get_coverage_hint(frameworks: set[str]) -> str:
 def _estimate_test_coverage(
     symbols: list[Symbol], edges: list
 ) -> tuple[int, int, float] | None:
-    """Estimate test coverage from call graph.
+    """Estimate test coverage from call graph using transitive BFS.
 
-    Counts how many non-test functions/methods are called by test code.
+    Counts how many non-test functions/methods are reachable from test code
+    via the call graph. This follows calls transitively: if test_foo() calls
+    helper() which calls core(), both helper and core are counted as tested.
+
     This is a static approximation - actual coverage requires execution.
 
     Args:
@@ -2567,6 +2570,8 @@ def _estimate_test_coverage(
     Returns:
         (tested_count, total_count, percentage) or None if no targets.
     """
+    from collections import deque
+
     # Identify test symbols (functions/methods in test files)
     test_symbol_ids: set[str] = set()
     for s in symbols:
@@ -2582,14 +2587,30 @@ def _estimate_test_coverage(
     if not target_symbol_ids:
         return None
 
-    # Find which targets are called (directly or transitively) by tests
-    # For now, just check direct calls - transitive would require BFS
-    tested_ids: set[str] = set()
+    # Build adjacency list for call graph (src -> list of dst)
+    call_graph: dict[str, list[str]] = {}
     for edge in edges:
         src = getattr(edge, "src", None)
         dst = getattr(edge, "dst", None)
-        if src in test_symbol_ids and dst in target_symbol_ids:
-            tested_ids.add(dst)
+        if src is not None and dst is not None:
+            if src not in call_graph:
+                call_graph[src] = []
+            call_graph[src].append(dst)
+
+    # BFS from all test symbols to find transitively reachable targets
+    visited: set[str] = set()
+    queue: deque[str] = deque(test_symbol_ids)
+    visited.update(test_symbol_ids)
+
+    while queue:
+        current = queue.popleft()
+        for neighbor in call_graph.get(current, []):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+
+    # Count how many targets are reachable from tests
+    tested_ids = visited & target_symbol_ids
 
     tested_count = len(tested_ids)
     total_count = len(target_symbol_ids)
