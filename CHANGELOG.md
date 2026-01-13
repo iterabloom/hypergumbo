@@ -39,6 +39,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
   markdown files change, saving ~6 minutes of CI time.
+- **pytest-xdist for parallel tests:** Added pytest-xdist dependency. Run `pytest -n auto` for
+  parallel execution (~2 min vs ~5 min sequential). Not enabled by default to preserve debug-ability.
 
 ## [1.0.0] - 2026-01-12
 

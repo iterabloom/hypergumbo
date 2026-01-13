@@ -20,7 +20,9 @@
   - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations". 
 
 ## Required Checks
-- **100% Coverage:** No code may be committed without full test coverage. Verify with: `pytest --cov=src --cov-fail-under=100`
+- **100% Coverage:** No code may be committed without full test coverage. Verify with:
+  - **Fast (parallel):** `pytest -n auto --cov=src --cov-fail-under=100` (~2 min)
+  - **Debug (sequential):** `pytest --cov=src --cov-fail-under=100` (~5 min)
 - **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
@@ -62,10 +64,10 @@ The script saves coverage data to `coverage-report.txt`, allowing multiple queri
 - Renamed from `.coverage.txt` to visible `coverage-report.txt`
 
 **Workflow for fixing coverage:**
-1. Run `./scripts/find-uncovered` once (takes ~2-3 min)
+1. Run `./scripts/find-uncovered` once (~2 min with xdist, ~5 min without)
 2. Use `--lines` or `--context` to locate uncovered code
 3. Add `# pragma: no cover` to defensive/unreachable code paths
-4. Run `pytest --cov=src --cov-fail-under=100` to verify
+4. Run `pytest -n auto --cov=src --cov-fail-under=100` to verify
 
 ## Pre-Work Checklist
 Run these checks before starting any new feature or task:
@@ -96,7 +98,7 @@ Run these checks before every commit:
 git config user.name && git config user.email
 
 # 2. Run tests with coverage (must be 100%)
-pytest --cov=src --cov-fail-under=100
+pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 
 # 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 

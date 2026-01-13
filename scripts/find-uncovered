@@ -20,10 +20,10 @@
 #   ./scripts/find-uncovered --context cli      # Show code for cli.py uncovered lines
 #
 # Workflow for fixing coverage:
-#   1. Run ./scripts/find-uncovered once (takes ~2-3 min)
+#   1. Run ./scripts/find-uncovered once (~2 min with xdist, ~5 min without)
 #   2. Use --report or --lines to query without re-running
 #   3. Fix uncovered lines or add # pragma: no cover
-#   4. Run full test suite to verify: pytest --cov=src --cov-fail-under=100
+#   4. Run full test suite to verify: pytest -n auto --cov=src --cov-fail-under=100
 
 set -e
 
@@ -74,10 +74,21 @@ need_coverage_run() {
     return 0  # true - run tests (default mode)
 }
 
+# Check if pytest-xdist is available for parallel execution
+has_xdist() {
+    python -c "import xdist" 2>/dev/null
+}
+
 # Run pytest if needed
 if need_coverage_run; then
-    echo "🔍 Running coverage analysis (this takes ~2-3 mins)..."
-    pytest --cov=src --cov-report=term-missing -q 2>&1 > "$COVERAGE_TXT" || true
+    if has_xdist; then
+        echo "🔍 Running coverage analysis in parallel (this takes ~1-2 mins)..."
+        pytest -n auto --cov=src --cov-report=term-missing -q 2>&1 > "$COVERAGE_TXT" || true
+    else
+        echo "🔍 Running coverage analysis (this takes ~5 mins)..."
+        echo "   💡 Install pytest-xdist for faster parallel execution"
+        pytest --cov=src --cov-report=term-missing -q 2>&1 > "$COVERAGE_TXT" || true
+    fi
     echo "   Coverage data saved to $COVERAGE_TXT"
 fi
 
