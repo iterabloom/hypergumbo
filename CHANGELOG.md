@@ -29,6 +29,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   generation (e.g., `[45%] Extracting config... ETA 23s`).
 - **`--readme-debug` flag for sketch:** Shows README extraction debug info (k-scores, timing,
   early stopping) to stderr. Useful for understanding how the sliding window extraction works.
+- **Separate test LOC in Overview:** The overview now shows test and non-test LOC separately
+  (e.g., "186 files · ~59,292 LOC (128 test files, ~56,204 test LOC)").
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
