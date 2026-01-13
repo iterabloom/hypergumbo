@@ -44,6 +44,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   314 files    (186 non-test + 128 test)
   ~115,510 LOC (~59,306 non-test + ~56,204 test)
   ```
+- **Artifact summary after `hypergumbo run`:** The run command now displays a summary listing all
+  generated files at the end. Shows the main output file plus any tier files (e.g., 4k, 16k, 64k)
+  that were created, making it easy to see where all outputs were written.
 
 ### Changed
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only

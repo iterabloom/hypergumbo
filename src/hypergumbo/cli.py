@@ -308,7 +308,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
 
-    run_behavior_map(
+    generated_files = run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
         max_tier=max_tier,
@@ -320,6 +320,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         extra_excludes=extra_excludes,
         frameworks=frameworks,
     )
+
+    # Print summary of generated artifacts
+    print(f"\n[hypergumbo run] Generated {len(generated_files)} artifact(s):")
+    for file_path in generated_files:
+        print(f"  {file_path}")
+
     return 0
 
 
@@ -1843,7 +1849,7 @@ def run_behavior_map(
     exclude_tests: bool = False,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
-) -> None:
+) -> list[Path]:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
 
@@ -1870,8 +1876,12 @@ def run_behavior_map(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
+
+    Returns:
+        List of file paths for all generated artifacts (main output + tier files).
     """
     _log_memory("start")
+    generated_files: list[Path] = []
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
@@ -2030,6 +2040,7 @@ def run_behavior_map(
                 )
                 with open(tier_path, "w") as f:
                     json.dump(tiered_map, f, indent=2)
+                generated_files.append(tier_path)
                 # Free memory between tiers (helps with large repos like tensorflow)
                 del tiered_map
                 gc.collect()
@@ -2055,7 +2066,10 @@ def run_behavior_map(
 
     with open(out_path, "w") as f:
         json.dump(behavior_map, f, indent=2)
+    generated_files.append(out_path)
     _log_memory("after write")
+
+    return generated_files
 
 
 def print_all_help(parser: argparse.ArgumentParser) -> None:
