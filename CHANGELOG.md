@@ -14,9 +14,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   "test-dense" functions (high tests/LOC ratio - may indicate redundant tests) and "cold spots"
   (untested functions). Uses call graph analysis without executing any code. Language agnostic.
 - **`--help --all` flag:** Shows comprehensive help including all subcommand documentation at once.
-- **Estimated coverage in sketch:** When static analysis runs, the Tests section now shows
-  estimated coverage (e.g., "~35% estimated coverage (460/1318 functions called by tests)")
-  instead of "Coverage requires execution". Based on direct call edges from test code.
+- **Estimated coverage in sketch:** The Tests section now shows estimated coverage
+  (e.g., "~35% estimated coverage (460/1318 functions called by tests)") even without a token
+  budget. Previously required `-t` flag; now runs analysis for coverage by default.
 - **Embedding-based README description extraction:** Sketch now uses semantic similarity to extract
   project descriptions from READMEs. Compares each line against probe embeddings of known project
   mission statements, using a sliding window approach to find the best consecutive description lines.

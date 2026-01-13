@@ -3674,10 +3674,24 @@ def generate_sketch(
     base_sketch = "\n\n".join(sections)
     base_tokens = estimate_tokens(base_sketch)
 
-    # If no budget or budget is small, return base sketch (possibly truncated)
+    # If no budget, run analysis for coverage then return base sketch
     if max_tokens is None:
+        prog.start_phase("analysis")
+        _, _, coverage_stats = _run_analysis(
+            repo_root, profile, exclude_tests=exclude_tests
+        )
+        prog.complete_phase("analysis")
+
+        # Update test summary with coverage stats
+        if coverage_stats is not None:
+            updated_test_summary = _format_test_summary(repo_root, coverage_stats)
+            for i, section in enumerate(sections):
+                if section.startswith("## Tests"):
+                    sections[i] = updated_test_summary
+                    break
+
         prog.finish()
-        return base_sketch
+        return "\n\n".join(sections)
 
     if max_tokens <= base_tokens:
         prog.finish()
