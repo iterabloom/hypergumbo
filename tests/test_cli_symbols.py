@@ -55,6 +55,8 @@ def test_cmd_symbols_shows_tabular_output(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -127,6 +129,8 @@ def test_cmd_symbols_sorts_by_file_degree(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -168,6 +172,8 @@ def test_cmd_symbols_truncates_with_message(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 10  # Only show 10
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -207,6 +213,8 @@ def test_cmd_symbols_all_flag(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 10  # Would truncate normally
     args.all = True  # But --all overrides
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -253,6 +261,8 @@ def test_cmd_symbols_filter_by_kind(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -297,6 +307,8 @@ def test_cmd_symbols_filter_by_language(tmp_path: Path, capsys) -> None:
     args.language = "python"
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -324,6 +336,8 @@ def test_cmd_symbols_no_symbols_found(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -359,6 +373,8 @@ def test_cmd_symbols_with_input_file(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -377,6 +393,8 @@ def test_cmd_symbols_input_not_found(tmp_path: Path) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -392,6 +410,8 @@ def test_cmd_symbols_no_results_file(tmp_path: Path) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -424,6 +444,8 @@ def test_cmd_symbols_prints_output_summary(tmp_path: Path, capsys) -> None:
     args.language = None
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -476,6 +498,8 @@ def test_cmd_symbols_filter_by_kind_and_language(tmp_path: Path, capsys) -> None
     args.language = "python"  # Filter to python only
     args.limit = 200
     args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
 
     result = cmd_symbols(args)
 
@@ -488,6 +512,152 @@ def test_cmd_symbols_filter_by_kind_and_language(tmp_path: Path, capsys) -> None
     assert "PyClass" not in out
     # Should not show JS function (wrong language)
     assert "jsFunc" not in out
+
+
+def test_cmd_symbols_exclude_tests(tmp_path: Path, capsys) -> None:
+    """--exclude-tests flag filters out test symbols."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:main_func:function",
+                "name": "main_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_main.py:1-10:test_main:function",
+                "name": "test_main",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:test_utils.py:1-10:test_helper:function",
+                "name": "test_helper",
+                "kind": "function",
+                "language": "python",
+                "path": "test_utils.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = True  # Exclude tests
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show non-test symbol
+    assert "main_func" in out
+    # Should not show test symbols
+    assert "test_main" not in out
+    assert "test_helper" not in out
+
+
+def test_cmd_symbols_max_per_file(tmp_path: Path, capsys) -> None:
+    """--max-per-file limits symbols shown per file."""
+    # Create multiple symbols in same file
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": f"python:src/hot.py:{i}-{i+5}:func{i}:function",
+                "name": f"func{i}",
+                "kind": "function",
+                "language": "python",
+                "path": "src/hot.py",
+                "span": {"start_line": i, "end_line": i+5, "start_col": 0, "end_col": 10},
+            }
+            for i in range(10)
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = 3  # Only 3 per file
+
+    result = cmd_symbols(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show some funcs from hot.py
+    assert "func" in out
+    # Count occurrences - should be limited to 3
+    count = sum(1 for i in range(10) if f"func{i}" in out)
+    assert count == 3, f"Expected 3 symbols from hot.py, got {count}"
+
+
+def test_cmd_symbols_max_per_file_with_all(tmp_path: Path, capsys) -> None:
+    """--max-per-file with --all shows all files but limited symbols per file."""
+    # Create symbols in multiple files
+    nodes = []
+    for file_idx in range(5):
+        for sym_idx in range(10):
+            nodes.append({
+                "id": f"python:src/file{file_idx}.py:{sym_idx}-{sym_idx+5}:func{file_idx}_{sym_idx}:function",
+                "name": f"func{file_idx}_{sym_idx}",
+                "kind": "function",
+                "language": "python",
+                "path": f"src/file{file_idx}.py",
+                "span": {"start_line": sym_idx, "end_line": sym_idx+5, "start_col": 0, "end_col": 10},
+            })
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": nodes,
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200  # Would normally truncate to 200
+    args.all = True   # But --all ignores this
+    args.exclude_tests = False
+    args.max_per_file = 2  # Limit to 2 per file
+
+    result = cmd_symbols(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # All 5 files should be represented
+    for file_idx in range(5):
+        assert f"file{file_idx}.py" in out
+    # Each file should have max 2 symbols
+    # Total should be 5 files * 2 symbols = 10 symbols
+    assert "additional symbols omitted" not in out  # --all with max-per-file
 
 
 def test_main_with_symbols(tmp_path: Path, capsys) -> None:

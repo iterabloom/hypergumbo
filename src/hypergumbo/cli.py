@@ -41,6 +41,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from rich.console import Console
+from rich.table import Table
+
 from . import __version__
 from .analyze.all_analyzers import run_all_analyzers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
@@ -1006,6 +1009,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
     Shows a table of symbols sorted by file connectivity (total degree of
     symbols in each file), then by filename, then by individual symbol degree.
+
+    Uses Rich for auto-adjusting column widths and proper text wrapping.
     """
     repo_root = Path(args.path).resolve()
 
@@ -1046,39 +1051,29 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             in_degree[dst] = in_degree.get(dst, 0) + 1
 
     # Build list of symbols with their degrees
+    # Tuple: (name, kind, in_degree, out_degree, total_degree, path)
     symbol_rows: list[tuple[str, str, int, int, int, str]] = []
+    exclude_tests = getattr(args, "exclude_tests", False)
+
     for node in nodes:
         node_id = node["id"]
         name = node.get("name", "")
         kind = node.get("kind", "")
         path = node.get("path", "")
+        lang = node.get("language", "")
         ind = in_degree.get(node_id, 0)
         outd = out_degree.get(node_id, 0)
         degree = ind + outd
-        symbol_rows.append((name, kind, ind, outd, degree, path))
 
-    # Apply filters
-    if args.kind:
-        symbol_rows = [r for r in symbol_rows if r[1] == args.kind]
-    if args.language:
-        # Filter by language - need to re-iterate over nodes to get language info
-        symbol_rows_with_id: list[tuple[str, str, int, int, int, str, str]] = []
-        for node in nodes:
-            node_id = node["id"]
-            name = node.get("name", "")
-            kind = node.get("kind", "")
-            path = node.get("path", "")
-            lang = node.get("language", "")
-            ind = in_degree.get(node_id, 0)
-            outd = out_degree.get(node_id, 0)
-            degree = ind + outd
-            if args.kind and kind != args.kind:
-                continue
-            if args.language and lang != args.language:
-                continue
-            symbol_rows_with_id.append((name, kind, ind, outd, degree, path, node_id))
-        # Convert back to original format
-        symbol_rows = [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in symbol_rows_with_id]
+        # Apply filters
+        if args.kind and kind != args.kind:
+            continue
+        if args.language and lang != args.language:
+            continue
+        if exclude_tests and _is_test_path(path):
+            continue
+
+        symbol_rows.append((name, kind, ind, outd, degree, path))
 
     # Compute total degree per file (invisible column for sorting)
     file_total_degree: dict[str, int] = {}
@@ -1087,6 +1082,19 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
     # Sort by: total file degree (descending), filename, individual degree (descending)
     symbol_rows.sort(key=lambda r: (-file_total_degree.get(r[5], 0), r[5], -r[4]))
+
+    # Apply --max-per-file limit if specified
+    max_per_file = getattr(args, "max_per_file", None)
+    if max_per_file is not None:
+        file_counts: dict[str, int] = {}
+        filtered_rows: list[tuple[str, str, int, int, int, str]] = []
+        for row in symbol_rows:
+            path = row[5]
+            count = file_counts.get(path, 0)
+            if count < max_per_file:
+                filtered_rows.append(row)
+                file_counts[path] = count + 1
+        symbol_rows = filtered_rows
 
     # Output
     total_count = len(symbol_rows)
@@ -1104,46 +1112,30 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         _print_output_summary("symbols", stdout_output=True)
         return 0
 
-    # Calculate column widths for alignment
-    name_width = max(len(r[0]) for r in display_rows)
-    kind_width = max(len(r[1]) for r in display_rows)
-    path_width = max(len(r[5]) for r in display_rows)
+    # Create Rich table with auto-adjusting columns
+    console = Console()
+    table = Table(show_header=True, header_style="bold", box=None)
 
-    # Clamp widths to reasonable limits
-    name_width = min(name_width, 40)
-    kind_width = min(kind_width, 15)
-    path_width = min(path_width, 50)
+    # Add columns - Rich handles width automatically
+    table.add_column("Symbol", style="cyan", no_wrap=False)
+    table.add_column("Kind", style="green")
+    table.add_column("In", justify="right", style="yellow")
+    table.add_column("Out", justify="right", style="yellow")
+    table.add_column("Deg", justify="right", style="bold yellow")
+    table.add_column("File", style="dim", no_wrap=False)
 
-    # Print header
-    header = (
-        f"{'Symbol':<{name_width}}  "
-        f"{'Kind':<{kind_width}}  "
-        f"{'In':>4}  "
-        f"{'Out':>4}  "
-        f"{'Deg':>4}  "
-        f"{'File':<{path_width}}"
-    )
-    print(header)
-    print("-" * len(header))
-
-    # Print rows
+    # Add rows
     for name, kind, ind, outd, degree, path in display_rows:
-        # Truncate long names/paths
-        display_name = name[:name_width] if len(name) > name_width else name
-        display_kind = kind[:kind_width] if len(kind) > kind_width else kind
-        display_path = path[:path_width] if len(path) > path_width else path
-        print(
-            f"{display_name:<{name_width}}  "
-            f"{display_kind:<{kind_width}}  "
-            f"{ind:>4}  "
-            f"{outd:>4}  "
-            f"{degree:>4}  "
-            f"{display_path:<{path_width}}"
-        )
+        table.add_row(name, kind, str(ind), str(outd), str(degree), path)
+
+    console.print(table)
 
     # Show omitted message
     if omitted > 0:
-        print(f"\n{omitted} additional symbols omitted for brevity; run with --all to show them")
+        console.print(
+            f"\n[dim]{omitted} additional symbols omitted for brevity; "
+            "run with --all to show them[/dim]"
+        )
 
     # Output summary
     _print_output_summary("symbols", stdout_output=True)
@@ -1989,13 +1981,15 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
 Examples:
   hypergumbo symbols                        # Show top 200 symbols by connectivity
   hypergumbo symbols --all                  # Show all symbols
+  hypergumbo symbols -x                     # Exclude test files
+  hypergumbo symbols --max-per-file 5       # Max 5 symbols per file
+  hypergumbo symbols --max-per-file 3 --all # All files, 3 symbols each
   hypergumbo symbols --kind function        # Only functions
   hypergumbo symbols --language python      # Only Python symbols
-  hypergumbo symbols --limit 50             # Show top 50
 
-Output: Table with columns Symbol, Kind, In (in-degree), Out (out-degree),
-Deg (total degree), File. Sorted by file connectivity (hottest files first),
-then by filename, then by individual symbol degree.
+Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
+Deg (total degree), File. Auto-adjusts column widths and wraps long text.
+Sorted by file connectivity (hottest files first), then filename, then degree.
 
 Requires: Run 'hypergumbo run .' first to create behavior map."""
 
@@ -2014,6 +2008,20 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
         "--input",
         default=None,
         help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_symbols.add_argument(
+        "-x", "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        help="Exclude symbols from test files",
+    )
+    p_symbols.add_argument(
+        "--max-per-file",
+        type=int,
+        default=None,
+        dest="max_per_file",
+        metavar="N",
+        help="Maximum symbols to show per file (prevents file domination)",
     )
     p_symbols.add_argument(
         "--kind",
