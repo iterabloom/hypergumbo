@@ -1259,7 +1259,8 @@ def _get_bigpic_probe_embeddings() -> "np.ndarray":
 def _is_readme_line_filterable(line: str) -> bool:
     """Check if a README line should be filtered out before embedding.
 
-    Filters badges, empty lines, and pure-image lines.
+    Filters badges, empty lines, pure-image lines, link reference definitions,
+    and GitHub callout syntax.
     Does NOT filter HTML with text content (may contain descriptions).
 
     Args:
@@ -1284,6 +1285,16 @@ def _is_readme_line_filterable(line: str) -> bool:
 
     # Skip pure link lines (often badge URLs)
     if re.match(r"^\[.*?\]\(https?://.*?\)$", stripped):
+        return True
+
+    # Skip markdown link reference definitions: [label]: https://...
+    # These are common at the top of READMEs but contain no description content
+    if re.match(r"^\[.+?\]:\s*https?://", stripped):
+        return True
+
+    # Skip GitHub callout syntax: > [!NOTE], > [!IMPORTANT], > [!WARNING], etc.
+    # These are typically announcements, not project descriptions
+    if re.match(r"^>\s*\[!", stripped):
         return True
 
     # Skip HTML comments

@@ -1922,8 +1922,8 @@ def _get_repo_name(repo_root: Path) -> str:
 def _find_readme_path(repo_root: Path) -> Optional[Path]:
     """Find the README file in a repository.
 
-    Looks for README.md, readme.md, README.rst, README.txt, README.markdown,
-    or README (in that order).
+    Uses case-insensitive matching for README files with common extensions.
+    Prioritizes .md > .rst > .txt > .markdown > no extension.
 
     Args:
         repo_root: Path to the repository root.
@@ -1931,15 +1931,34 @@ def _find_readme_path(repo_root: Path) -> Optional[Path]:
     Returns:
         Path to the README file, or None if not found.
     """
-    readme_names = [
-        "README.md", "readme.md", "README.rst", "README.txt",
-        "README.markdown", "README",
-    ]
-    for name in readme_names:
-        candidate = repo_root / name
-        if candidate.is_file():
-            return candidate
-    return None
+    # Priority order for extensions
+    extension_priority = [".md", ".rst", ".txt", ".markdown", ""]
+
+    # Collect all files that start with "readme" (case-insensitive)
+    try:
+        candidates = [
+            f for f in repo_root.iterdir()
+            if f.is_file() and f.name.lower().startswith("readme")
+        ]
+    except OSError:  # pragma: no cover
+        return None
+
+    if not candidates:
+        return None
+
+    # Sort by extension priority, then by name (prefer README over Readme)
+    def sort_key(path: Path) -> tuple[int, str]:
+        ext = path.suffix.lower()
+        try:
+            ext_rank = extension_priority.index(ext)
+        except ValueError:  # pragma: no cover
+            ext_rank = len(extension_priority)  # Unknown extension goes last
+        # Prefer all-caps README over mixed case
+        name_rank = path.name  # Alphabetically, README < Readme < readme
+        return (ext_rank, name_rank)
+
+    candidates.sort(key=sort_key)
+    return candidates[0]
 
 
 def _extract_readme_description_heuristic(

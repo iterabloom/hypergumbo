@@ -515,6 +515,21 @@ class TestFindReadmePath:
         from hypergumbo.sketch import _find_readme_path
         assert _find_readme_path(tmp_path) is None
 
+    def test_finds_mixedcase_readme(self, tmp_path: Path) -> None:
+        """Finds mixed-case Readme.md (case-insensitive)."""
+        from hypergumbo.sketch import _find_readme_path
+        (tmp_path / "Readme.md").write_text("# Hello")
+        assert _find_readme_path(tmp_path) == tmp_path / "Readme.md"
+
+    def test_prefers_readme_md_over_readme_rst(self, tmp_path: Path) -> None:
+        """Prefers .md extension over .rst."""
+        from hypergumbo.sketch import _find_readme_path
+        (tmp_path / "README.rst").write_text("Hello\n=====")
+        (tmp_path / "Readme.md").write_text("# Hello")
+        result = _find_readme_path(tmp_path)
+        assert result is not None
+        assert result.suffix.lower() == ".md"
+
 
 class TestTruncateDescription:
     """Tests for _truncate_description helper."""
@@ -716,6 +731,27 @@ class TestReadmeLineFilterable:
         """HTML containing text is kept."""
         from hypergumbo.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("<p>Project description here</p>") is False
+
+    def test_skips_link_reference_definitions(self) -> None:
+        """Markdown link reference definitions are filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        # Common pattern at top of READMEs
+        assert _is_readme_line_filterable("[bep]: https://github.com/bep") is True
+        assert _is_readme_line_filterable("[docs]: https://example.com/docs") is True
+        # With extra whitespace
+        assert _is_readme_line_filterable("[link]:  https://example.com") is True
+        # But keep inline links in text
+        assert _is_readme_line_filterable("See [the docs](https://example.com) for more.") is False
+
+    def test_skips_github_callout_syntax(self) -> None:
+        """GitHub callout syntax is filterable."""
+        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        assert _is_readme_line_filterable("> [!NOTE]") is True
+        assert _is_readme_line_filterable("> [!IMPORTANT]") is True
+        assert _is_readme_line_filterable("> [!WARNING]") is True
+        assert _is_readme_line_filterable(">  [!TIP]") is True  # Extra space
+        # But keep regular blockquotes
+        assert _is_readme_line_filterable("> This is a regular quote") is False
 
 
 class TestCollectSourceFiles:
