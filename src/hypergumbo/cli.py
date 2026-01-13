@@ -205,6 +205,10 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         progress=show_progress,
     )
     print(sketch)
+
+    # Output summary to stderr (doesn't interfere with piped output)
+    print("\n[hypergumbo sketch] Output: stdout", file=sys.stderr)
+
     return 0
 
 

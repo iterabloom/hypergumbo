@@ -1922,3 +1922,30 @@ def test_cmd_sketch_readme_debug_no_readme(tmp_path: Path, capsys) -> None:
     _, err = capsys.readouterr()
     # Should show message about no README
     assert "No README found" in err
+
+
+def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
+    """Test that sketch prints output summary to stderr."""
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = False
+
+    result = cmd_sketch(args)
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    # Should show output summary message
+    assert "[hypergumbo sketch] Output: stdout" in err
