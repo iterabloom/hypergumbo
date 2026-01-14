@@ -7,7 +7,7 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | Goal | Command |
 |------|---------|
 | Get codebase overview | `hypergumbo .`* |
-| Concise summary for chat | `hypergumbo . -t 500` |
+| Concise summary for chat | `hypergumbo . -t 1000` |
 | Detailed context for coding | `hypergumbo . -t 4000` |
 | Fast sketch from cached results | `hypergumbo sketch --input hypergumbo.results.json` |
 | Full analysis (for query commands) | `hypergumbo run .` |
@@ -17,7 +17,7 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | List all API routes | `hypergumbo routes` |
 | Search for symbols | `hypergumbo search "User"` |
 | Browse symbol connectivity | `hypergumbo symbols` |
-| Symbols without tests | `hypergumbo symbols -x` |
+| Non-test symbols only | `hypergumbo symbols -x` |
 | Static test coverage | `hypergumbo test-coverage` |
 
 *\* `hypergumbo`, `hypergumbo .`, and `hypergumbo sketch .` are all equivalent. The `sketch` command is the default when no subcommand is specified.*
@@ -33,7 +33,7 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 hypergumbo /path/to/project
 
 # For a larger budget (more detail)
-hypergumbo /path/to/project -t 3000
+hypergumbo /path/to/project -t 4000
 ```
 
 **What you get:**
@@ -162,20 +162,23 @@ hypergumbo routes
 **Scenario:** You want to find all usages of a class, function, or pattern.
 
 ```bash
-# Search for symbols by name
+# Search for symbols by name (case-insensitive substring match)
 hypergumbo search "UserService"
 
-# Search with wildcards
-hypergumbo search "handle*"
+# Search for partial matches
+hypergumbo search "handle"
 
 # Find what calls a specific symbol
 hypergumbo slice --entry "UserService.create" --reverse
 
 # Get detailed info about a symbol (callers, callees, metrics)
 hypergumbo explain "UserService"
+
+# Include source code for the symbol and its callers/callees
+hypergumbo explain "UserService" --with-source
 ```
 
-**See also:** The `explain` command shows a symbol's callers, callees, location, and metrics in one view—useful when you want the full picture rather than just a list.
+**See also:** The `explain` command shows a symbol's callers, callees, location, and metrics in one view—useful when you want the full picture rather than just a list. Add `--with-source` to see the actual code.
 
 ---
 
@@ -185,10 +188,13 @@ hypergumbo explain "UserService"
 
 ```bash
 # Generate a sketch sized for typical context windows
-hypergumbo . -t 2000 > context.md
+hypergumbo . -t 4000 > context.md
 
 # Exclude test files for faster analysis on large codebases
-hypergumbo . -t 2000 -x > context.md
+hypergumbo . -t 4000 -x > context.md
+
+# Include full source code after the sketch (uses remaining token budget)
+hypergumbo . -t 8000 --with-source > context.md
 
 # Generate multiple token budgets at once (for different context window sizes)
 hypergumbo run . --budgets 4k,16k,64k
@@ -288,10 +294,10 @@ hypergumbo run --max-tier 2  # Exclude vendored/derived code
 ```bash
 # Generate sketches at different commits
 git checkout main~10
-hypergumbo . -t 2000 > old.md
+hypergumbo . -t 4000 > old.md
 
 git checkout main
-hypergumbo . -t 2000 > new.md
+hypergumbo . -t 4000 > new.md
 
 # Compare
 diff old.md new.md
@@ -371,11 +377,10 @@ hypergumbo test-coverage /path/to/project
 
 | Budget | What you get |
 |--------|--------------|
-| 500 | Overview, structure, frameworks only |
-| 1000 | + Source file list |
-| 2000 | + Entry points, key symbols |
-| 4000 | + Detailed symbols across many files |
-| 8000+ | Full detail for large codebases |
+| 1000 | Brief overview: structure, frameworks |
+| 4000 | Good balance: + key symbols, entry points |
+| 8000 | Detailed: + symbols across many files |
+| 16000+ | Comprehensive: full detail for large codebases |
 
 ### Performance Tips
 
@@ -393,7 +398,7 @@ For large codebases where analysis is slow, you can generate sketches from a cac
 hypergumbo run .
 
 # Generate sketches instantly with different token budgets
-hypergumbo sketch --input hypergumbo.results.json -t 2000
+hypergumbo sketch --input hypergumbo.results.json -t 4000
 hypergumbo sketch --input hypergumbo.results.json -t 8000
 hypergumbo sketch --input hypergumbo.results.json -t 16000
 

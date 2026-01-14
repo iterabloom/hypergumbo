@@ -34,8 +34,9 @@ Python (72%), TypeScript (18%), Markdown (10%) · 84 files · ~12,400 LOC
 
 Use `-t` to control the token budget:
 ```bash
-hypergumbo . -t 500   # concise
-hypergumbo . -t 2000  # include symbols and entry points
+hypergumbo . -t 1000   # brief overview (structure only)
+hypergumbo . -t 4000   # good balance for most LLMs
+hypergumbo . -t 8000   # detailed with many symbols
 ```
 
 ## How It Works
@@ -62,7 +63,7 @@ All analyzers produce the same IR types:
 - **Edge**: A relationship between symbols (calls, imports, extends, implements)
 - **Span**: Source location (file, line, column)
 
-This uniform IR is what allows 67 language analyzers and 14 cross-language linkers to work together coherently.
+This uniform IR is what allows 67 language analyzers and 15 cross-language linkers to work together coherently.
 
 ### Two Outputs
 
@@ -84,12 +85,26 @@ hypergumbo test-coverage       # Analyze test coverage (transitive)
 hypergumbo catalog             # List analysis passes
 ```
 
+Useful flags:
+```bash
+hypergumbo . -x                # exclude test files (faster)
+hypergumbo . --with-source     # append full source code
+hypergumbo . --progress        # show ETA during generation
+hypergumbo --help --all        # comprehensive help for all commands
+```
+
+For large codebases, generate results once and re-sketch quickly:
+```bash
+hypergumbo run .                                    # generate once
+hypergumbo sketch --input hypergumbo.results.json -t 4000  # fast re-sketch
+```
+
 See `hypergumbo --help` for all options.
 
 ## What It Understands
 
 - **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](docs/LANGUAGES.md))
-- **14 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](docs/LINKERS.md))
+- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](docs/LINKERS.md))
 - **37 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
 
 ## Architecture
@@ -102,7 +117,7 @@ src/hypergumbo/
 ├── sketch.py           # Markdown generation with token budgeting
 ├── ranking.py          # Graph centrality for symbol importance
 ├── analyze/            # 67 language analyzers
-├── linkers/            # 14 cross-language linkers
+├── linkers/            # 15 cross-language linkers
 ├── frameworks/         # 37 YAML pattern definitions
 └── selection/          # Token budget allocation
 ```
@@ -121,7 +136,7 @@ cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
-pytest --cov=src --cov-fail-under=100
+pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 ```
 
 100% test coverage required. All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
@@ -131,7 +146,7 @@ pytest --cov=src --cov-fail-under=100
 - [docs/USE-CASES.md](docs/USE-CASES.md) — Practical workflows and examples
 - [CHANGELOG.md](CHANGELOG.md) — Implementation history
 - [docs/LANGUAGES.md](docs/LANGUAGES.md) — All 67 supported languages
-- [docs/LINKERS.md](docs/LINKERS.md) — All 14 cross-language linkers
+- [docs/LINKERS.md](docs/LINKERS.md) — All 15 cross-language linkers
 - [docs/hypergumbo-spec.md](docs/hypergumbo-spec.md) — Detailed specification
 - [SECURITY.md](SECURITY.md) — Vulnerability reporting
 
