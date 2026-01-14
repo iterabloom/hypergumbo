@@ -149,7 +149,8 @@ def _print_output_summary(
 
     if artifacts:
         for artifact_path in artifacts:
-            print(f"  {artifact_path}", file=file)
+            # Show full absolute path for clarity
+            print(f"  {artifact_path.resolve()}", file=file)
     if stdout_output:
         print("  Output: stdout", file=file)
 
