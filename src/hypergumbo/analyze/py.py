@@ -57,6 +57,7 @@ Why This Design
 """
 import ast
 import hashlib
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -1078,7 +1079,11 @@ def _extract_file_analysis(
     """
     try:
         source = py_file.read_text()
-        tree = ast.parse(source, filename=str(py_file))
+        # Suppress SyntaxWarning from invalid escape sequences in analyzed code.
+        # These warnings come from the target codebase, not hypergumbo.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=SyntaxWarning)
+            tree = ast.parse(source, filename=str(py_file))
     except (SyntaxError, UnicodeDecodeError):
         return None
 
