@@ -2017,3 +2017,175 @@ def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     # Should show output summary message
     assert "[hypergumbo sketch] Generated 0 artifact(s)" in out
     assert "Output: stdout" in out
+
+
+def test_cmd_sketch_input_file_not_found(tmp_path: Path, capsys) -> None:
+    """Test that sketch returns error when --input file doesn't exist."""
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = False
+    args.input = str(tmp_path / "nonexistent.json")
+
+    result = cmd_sketch(args)
+    assert result == 1
+
+    _, err = capsys.readouterr()
+    assert "Error: Input file not found" in err
+
+
+def test_cmd_sketch_input_uses_cached_results(tmp_path: Path, capsys) -> None:
+    """Test that sketch uses cached results from --input file."""
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    # Create a cached results file
+    cached_results = {
+        "profile": {
+            "languages": {"python": {"files": 5, "loc": 500}},
+            "frameworks": ["flask"],
+            "framework_mode": "auto",
+        },
+        "nodes": [
+            {
+                "id": "python:src/api.py:10-20:cached_function:function",
+                "name": "cached_function",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 0},
+                "origin": "python-ast-v1",
+                "supply_chain": {"tier": 1, "reason": "first_party"},
+            }
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(cached_results))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 2000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = False
+    args.input = str(results_file)
+
+    result = cmd_sketch(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Cached symbol should appear in output
+    assert "cached_function" in out
+    # Cached framework should appear
+    assert "flask" in out.lower() or "Flask" in out
+
+
+def test_cmd_sketch_input_staleness_warning(tmp_path: Path, capsys) -> None:
+    """Test that sketch warns when --input file is stale."""
+    import time
+
+    # Create results file first
+    cached_results = {
+        "profile": {
+            "languages": {"python": {"files": 1, "loc": 10}},
+            "frameworks": [],
+            "framework_mode": "auto",
+        },
+        "nodes": [],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(cached_results))
+
+    # Wait briefly then create a source file (newer than results)
+    time.sleep(0.1)
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = False
+    args.input = str(results_file)
+
+    result = cmd_sketch(args)
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    # Should warn about stale results
+    assert "may be stale" in err
+    assert "Run 'hypergumbo run' to regenerate" in err
+
+
+def test_cmd_sketch_input_no_staleness_warning_when_fresh(tmp_path: Path, capsys) -> None:
+    """Test that sketch does not warn when --input file is fresh."""
+    import time
+
+    # Create a source file first
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+
+    # Wait briefly then create results file (newer than source)
+    time.sleep(0.1)
+    cached_results = {
+        "profile": {
+            "languages": {"python": {"files": 1, "loc": 10}},
+            "frameworks": [],
+            "framework_mode": "auto",
+        },
+        "nodes": [],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(cached_results))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 100
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.verbose = False
+    args.max_config_files = 15
+    args.fleximax_lines = 100
+    args.max_chunk_chars = 800
+    args.language_proportional = False
+    args.progress = False
+    args.readme_debug = False
+    args.input = str(results_file)
+
+    result = cmd_sketch(args)
+    assert result == 0
+
+    _, err = capsys.readouterr()
+    # Should NOT warn about stale results
+    assert "stale" not in err

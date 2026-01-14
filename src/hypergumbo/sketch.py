@@ -32,7 +32,7 @@ from typing import List, Optional
 
 from .discovery import find_files, is_excluded, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
-from .ir import Symbol
+from .ir import Symbol, Edge
 from .entrypoints import detect_entrypoints, Entrypoint
 from .ranking import (
     compute_centrality,
@@ -3652,6 +3652,7 @@ def generate_sketch(
     max_chunk_chars: int = 800,
     language_proportional: bool = True,
     progress: bool = False,
+    cached_results: Optional[dict] = None,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -3670,6 +3671,7 @@ def generate_sketch(
         repo_root: Path to the repository root.
         max_tokens: Target tokens for output. If None, returns minimal sketch.
         exclude_tests: If True, skip analyzing test files for faster performance.
+            When using cached_results, filters test symbols/edges at load time.
         first_party_priority: If True (default), boost first-party symbols in
             ranking. Set False to use raw centrality scores.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
@@ -3685,6 +3687,9 @@ def generate_sketch(
         language_proportional: If True, use language-stratified symbol selection
             to ensure multi-language projects have proportional representation.
         progress: If True, show progress indicator with ETA to stderr.
+        cached_results: If provided, use this behavior map instead of running
+            analysis. Should be the parsed JSON from hypergumbo.results.json.
+            Skips profile detection and analysis phases for faster generation.
 
     Returns:
         Markdown-formatted sketch string.
@@ -3706,9 +3711,16 @@ def generate_sketch(
 
     prog.start_phase("profile")
     repo_root = Path(repo_root).resolve()
-    _log(f"Detecting profile for {repo_root.name}...")
-    profile = detect_profile(repo_root, extra_excludes=extra_excludes)
-    _log(f"Profile detected in {time.time() - t0:.1f}s")
+
+    # Use cached profile if available, otherwise detect fresh
+    if cached_results is not None and "profile" in cached_results:
+        _log("Using cached profile...")
+        profile = RepoProfile.from_dict(cached_results["profile"])
+    else:
+        _log(f"Detecting profile for {repo_root.name}...")
+        profile = detect_profile(repo_root, extra_excludes=extra_excludes)
+
+    _log(f"Profile ready in {time.time() - t0:.1f}s")
     prog.complete_phase("profile")
     repo_name = _get_repo_name(repo_root)
 
@@ -3847,15 +3859,38 @@ def generate_sketch(
         current_tokens = estimate_tokens(current_sketch)
         remaining_tokens = max_tokens - current_tokens
 
-    # For larger budgets, run static analysis
+    # For larger budgets, run static analysis (or use cached results)
     prog.start_phase("analysis")
     symbols: list[Symbol] = []
     edges: list = []
     coverage_stats: tuple[int, int, float] | None = None
+
     if remaining_tokens > 100:
-        symbols, edges, coverage_stats = _run_analysis(
-            repo_root, profile, exclude_tests=exclude_tests
-        )
+        if cached_results is not None and "nodes" in cached_results:
+            # Use cached symbols and edges from behavior map
+            _log("Using cached analysis results...")
+            symbols = [Symbol.from_dict(n) for n in cached_results.get("nodes", [])]
+            edges = [Edge.from_dict(e) for e in cached_results.get("edges", [])]
+
+            # Apply exclude_tests filter if requested
+            if exclude_tests:
+                # Filter out test symbols
+                symbols = [s for s in symbols if not _is_test_path(s.path)]
+                # Get IDs of remaining symbols for edge filtering
+                remaining_ids = {s.id for s in symbols}
+                # Filter edges to only include those between remaining symbols
+                edges = [
+                    e for e in edges
+                    if e.src in remaining_ids and e.dst in remaining_ids
+                ]
+
+            # Coverage stats not available from cached results
+            # (would need to be computed fresh or stored separately)
+        else:
+            symbols, edges, coverage_stats = _run_analysis(
+                repo_root, profile, exclude_tests=exclude_tests
+            )
+
     prog.complete_phase("analysis")
 
     # Update test summary with coverage stats if we got analysis results

@@ -6,9 +6,10 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 
 | Goal | Command |
 |------|---------|
-| Get codebase overview | `hypergumbo .` |
+| Get codebase overview | `hypergumbo .`* |
 | Concise summary for chat | `hypergumbo . -t 500` |
 | Detailed context for coding | `hypergumbo . -t 4000` |
+| Fast sketch from cached results | `hypergumbo sketch --input hypergumbo.results.json` |
 | Full analysis (for query commands) | `hypergumbo run .` |
 | Find what calls a function | `hypergumbo slice --entry "myFunction" --reverse` |
 | Trace from an entry point | `hypergumbo slice --entry "handleRequest"` |
@@ -18,6 +19,8 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | Browse symbol connectivity | `hypergumbo symbols` |
 | Symbols without tests | `hypergumbo symbols -x` |
 | Static test coverage | `hypergumbo test-coverage` |
+
+*\* `hypergumbo`, `hypergumbo .`, and `hypergumbo sketch .` are all equivalent. The `sketch` command is the default when no subcommand is specified.*
 
 ---
 
@@ -380,6 +383,25 @@ hypergumbo test-coverage /path/to/project
 - Use `--first-party-only` to skip vendored code
 - Use `--progress` to see ETA on large codebases
 - Run `hypergumbo run` once, then query the JSON for specific edges
+
+### Fast Sketches with Cached Results
+
+For large codebases where analysis is slow, you can generate sketches from a cached results file:
+
+```bash
+# Run full analysis once (slow but comprehensive)
+hypergumbo run .
+
+# Generate sketches instantly with different token budgets
+hypergumbo sketch --input hypergumbo.results.json -t 2000
+hypergumbo sketch --input hypergumbo.results.json -t 8000
+hypergumbo sketch --input hypergumbo.results.json -t 16000
+
+# Combine with -x to exclude test symbols
+hypergumbo sketch --input hypergumbo.results.json -t 4000 -x
+```
+
+This skips the analysis phase entirely, using the cached profile and symbols from the results file. Hypergumbo will warn if the results file is stale (source files modified since generation).
 
 ### Output Formats
 

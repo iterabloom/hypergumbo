@@ -3527,3 +3527,188 @@ class TestLanguageProportionalSelection:
         # Should have same number of results
         assert len(selected_with) == len(selected_without)
 
+
+class TestCachedResults:
+    """Tests for using cached results with generate_sketch."""
+
+    def test_uses_cached_profile(self, tmp_path: Path) -> None:
+        """Sketch uses profile from cached results instead of re-detecting."""
+        # Create a minimal repo
+        (tmp_path / "main.py").write_text("def hello(): pass\n")
+
+        # Create cached results with a specific profile
+        cached_results = {
+            "profile": {
+                "languages": {
+                    "python": {"files": 10, "loc": 500},
+                    "javascript": {"files": 5, "loc": 200},
+                },
+                "frameworks": ["flask", "react"],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=500, cached_results=cached_results)
+
+        # Cached profile should be used (showing both languages)
+        assert "python" in sketch.lower() or "Python" in sketch
+        assert "flask" in sketch.lower() or "Flask" in sketch
+
+    def test_uses_cached_symbols(self, tmp_path: Path) -> None:
+        """Sketch uses symbols from cached results instead of running analysis."""
+        # Create empty repo (no actual code)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "api.py").write_text("# placeholder\n")
+
+        # Create cached results with specific symbols
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 100}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [
+                {
+                    "id": "python:src/api.py:10-20:process_request:function",
+                    "name": "process_request",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/api.py",
+                    "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 0},
+                    "origin": "python-ast-v1",
+                    "supply_chain": {"tier": 1, "reason": "first_party"},
+                },
+                {
+                    "id": "python:src/api.py:25-35:validate_input:function",
+                    "name": "validate_input",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/api.py",
+                    "span": {"start_line": 25, "end_line": 35, "start_col": 0, "end_col": 0},
+                    "origin": "python-ast-v1",
+                    "supply_chain": {"tier": 1, "reason": "first_party"},
+                },
+            ],
+            "edges": [
+                {
+                    "src": "python:src/api.py:10-20:process_request:function",
+                    "dst": "python:src/api.py:25-35:validate_input:function",
+                    "type": "calls",
+                    "line": 15,
+                }
+            ],
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=2000, cached_results=cached_results)
+
+        # Cached symbols should appear in output
+        assert "process_request" in sketch
+        assert "validate_input" in sketch
+
+    def test_exclude_tests_with_cached_results(self, tmp_path: Path) -> None:
+        """The -x flag filters test symbols from cached results."""
+        # Create minimal repo structure
+        (tmp_path / "src").mkdir()
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "src" / "core.py").write_text("# placeholder\n")
+        (tmp_path / "tests" / "test_core.py").write_text("# placeholder\n")
+
+        # Create cached results with both test and non-test symbols
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 2, "loc": 200}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [
+                {
+                    "id": "python:src/core.py:5-15:main_logic:function",
+                    "name": "main_logic",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/core.py",
+                    "span": {"start_line": 5, "end_line": 15, "start_col": 0, "end_col": 0},
+                    "origin": "python-ast-v1",
+                    "supply_chain": {"tier": 1, "reason": "first_party"},
+                },
+                {
+                    "id": "python:tests/test_core.py:10-20:test_main_logic:function",
+                    "name": "test_main_logic",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "tests/test_core.py",
+                    "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 0},
+                    "origin": "python-ast-v1",
+                    "supply_chain": {"tier": 1, "reason": "first_party"},
+                },
+            ],
+            "edges": [
+                {
+                    "src": "python:tests/test_core.py:10-20:test_main_logic:function",
+                    "dst": "python:src/core.py:5-15:main_logic:function",
+                    "type": "calls",
+                    "line": 12,
+                }
+            ],
+        }
+
+        # Generate sketch WITH test exclusion
+        sketch_no_tests = generate_sketch(
+            tmp_path, max_tokens=2000, cached_results=cached_results, exclude_tests=True
+        )
+
+        # Generate sketch WITHOUT test exclusion
+        sketch_with_tests = generate_sketch(
+            tmp_path, max_tokens=2000, cached_results=cached_results, exclude_tests=False
+        )
+
+        # With exclude_tests, test symbol should not appear
+        assert "main_logic" in sketch_no_tests
+        # Test symbol should be filtered out
+        assert "test_main_logic" not in sketch_no_tests
+
+        # Without exclude_tests, test symbol should appear
+        assert "main_logic" in sketch_with_tests
+        # Can include test symbols in "Key Symbols" or "Test Summary" section
+        # The test file path should appear somewhere
+
+    def test_cached_results_with_empty_nodes(self, tmp_path: Path) -> None:
+        """Sketch handles cached results with empty nodes gracefully."""
+        (tmp_path / "main.py").write_text("def hello(): pass\n")
+
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 10}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+        }
+
+        # Should not raise, just produce minimal sketch
+        sketch = generate_sketch(tmp_path, max_tokens=500, cached_results=cached_results)
+        assert "python" in sketch.lower() or "Python" in sketch
+
+    def test_cached_results_profile_frameworks(self, tmp_path: Path) -> None:
+        """Cached profile frameworks are displayed in sketch."""
+        (tmp_path / "main.py").write_text("def hello(): pass\n")
+
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 5, "loc": 1000}},
+                "frameworks": ["django", "celery", "postgresql"],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=500, cached_results=cached_results)
+
+        # Frameworks from cached profile should appear
+        assert "django" in sketch.lower() or "Django" in sketch
+        assert "celery" in sketch.lower() or "Celery" in sketch
+

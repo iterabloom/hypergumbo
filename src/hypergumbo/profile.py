@@ -531,6 +531,10 @@ class LanguageStats:
     def to_dict(self) -> dict:
         return {"files": self.files, "loc": self.loc}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "LanguageStats":
+        return cls(files=d.get("files", 0), loc=d.get("loc", 0))
+
 
 @dataclass
 class RepoProfile:
@@ -551,6 +555,20 @@ class RepoProfile:
         if self.framework_mode == "explicit":
             result["requested_frameworks"] = sorted(self.requested_frameworks)
         return result
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "RepoProfile":
+        """Reconstruct a RepoProfile from a dict (e.g., from cached results)."""
+        languages = {
+            k: LanguageStats.from_dict(v)
+            for k, v in d.get("languages", {}).items()
+        }
+        return cls(
+            languages=languages,
+            frameworks=d.get("frameworks", []),
+            framework_mode=d.get("framework_mode", "auto"),
+            requested_frameworks=d.get("requested_frameworks", []),
+        )
 
 
 def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:

@@ -201,6 +201,34 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     show_progress = getattr(args, "progress", False)
     readme_debug = getattr(args, "readme_debug", False)
 
+    # Load cached results if --input is provided
+    cached_results = None
+    input_path = getattr(args, "input", None)
+    if input_path:
+        input_file = Path(input_path)
+        if not input_file.exists():
+            print(f"Error: Input file not found: {input_path}", file=sys.stderr)
+            return 1
+        cached_results = json.loads(input_file.read_text())
+
+        # Warn if results file is older than any source files in repo
+        results_mtime = input_file.stat().st_mtime
+        newest_source_mtime = 0.0
+        for ext in ["*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs", "*.java"]:
+            for src_file in repo_root.rglob(ext):
+                try:
+                    src_mtime = src_file.stat().st_mtime
+                    if src_mtime > newest_source_mtime:
+                        newest_source_mtime = src_mtime
+                except OSError:  # pragma: no cover
+                    continue
+        if newest_source_mtime > results_mtime:
+            print(
+                f"NOTE: {input_path} may be stale (source files modified since).\n"
+                f"      Run 'hypergumbo run' to regenerate.\n",
+                file=sys.stderr,
+            )
+
     # If --readme-debug, show README extraction debug info before sketch
     if readme_debug:
         from .sketch import _find_readme_path
@@ -236,6 +264,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         max_chunk_chars=max_chunk_chars,
         language_proportional=language_proportional,
         progress=show_progress,
+        cached_results=cached_results,
     )
     print(sketch)
 
@@ -1521,6 +1550,11 @@ Examples:
   hypergumbo sketch . -t 1000 -x        # Brief overview, no tests
   hypergumbo . -t 8000                  # Shorthand (sketch is default)
 
+Using cached results (faster for large codebases):
+  hypergumbo run .                      # Generate results file once
+  hypergumbo sketch --input hypergumbo.results.json -t 4000
+  hypergumbo sketch --input hypergumbo.results.json -t 8000
+
 Token budget guidelines:
   1000    Structure only (files, folders)
   4000    Good balance for most LLMs
@@ -1543,6 +1577,13 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         nargs="?",
         default=".",
         help="Path to repo (default: current directory)",
+    )
+    p_sketch.add_argument(
+        "--input",
+        type=str,
+        default=None,
+        metavar="FILE",
+        help="Use cached results file instead of re-analyzing (faster)",
     )
     p_sketch.add_argument(
         "-t", "--tokens",

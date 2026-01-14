@@ -566,3 +566,139 @@ def test_usage_context_all_kinds() -> None:
             span=span,
         )
         assert ctx.kind == kind
+
+
+# ==================== FROM_DICT TESTS ====================
+
+
+def test_span_from_dict() -> None:
+    """Span.from_dict should reconstruct Span from dict."""
+    d = {"start_line": 10, "end_line": 20, "start_col": 5, "end_col": 50}
+    span = Span.from_dict(d)
+
+    assert span.start_line == 10
+    assert span.end_line == 20
+    assert span.start_col == 5
+    assert span.end_col == 50
+
+
+def test_span_from_dict_with_defaults() -> None:
+    """Span.from_dict should use defaults for missing fields."""
+    span = Span.from_dict({})
+
+    assert span.start_line == 0
+    assert span.end_line == 0
+    assert span.start_col == 0
+    assert span.end_col == 0
+
+
+def test_symbol_from_dict() -> None:
+    """Symbol.from_dict should reconstruct Symbol from dict."""
+    d = {
+        "id": "python:src/api.py:10-20:process_request:function",
+        "name": "process_request",
+        "kind": "function",
+        "language": "python",
+        "path": "src/api.py",
+        "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 30},
+        "origin": "python-ast-v1",
+        "origin_run_id": "uuid:12345",
+        "origin_run_signature": "sha256:abcdef",
+        "stable_id": "stable:123",
+        "canonical_name": "api.process_request",
+        "supply_chain": {"tier": 1, "reason": "first_party"},
+        "cyclomatic_complexity": 5,
+        "lines_of_code": 10,
+        "signature": "(request: Request) -> Response",
+        "modifiers": ["async", "public"],
+    }
+
+    symbol = Symbol.from_dict(d)
+
+    assert symbol.id == "python:src/api.py:10-20:process_request:function"
+    assert symbol.name == "process_request"
+    assert symbol.kind == "function"
+    assert symbol.language == "python"
+    assert symbol.path == "src/api.py"
+    assert symbol.span.start_line == 10
+    assert symbol.span.end_line == 20
+    assert symbol.origin == "python-ast-v1"
+    assert symbol.supply_chain_tier == 1
+    assert symbol.supply_chain_reason == "first_party"
+    assert symbol.cyclomatic_complexity == 5
+    assert symbol.lines_of_code == 10
+    assert symbol.signature == "(request: Request) -> Response"
+    assert symbol.modifiers == ["async", "public"]
+
+
+def test_symbol_from_dict_with_defaults() -> None:
+    """Symbol.from_dict should use defaults for optional fields."""
+    d = {
+        "id": "python:test.py:1-5:foo:function",
+        "name": "foo",
+        "kind": "function",
+        "language": "python",
+        "path": "test.py",
+    }
+
+    symbol = Symbol.from_dict(d)
+
+    assert symbol.id == "python:test.py:1-5:foo:function"
+    assert symbol.name == "foo"
+    assert symbol.origin == ""
+    assert symbol.supply_chain_tier == 1  # Default
+    assert symbol.modifiers == []
+
+
+def test_edge_from_dict() -> None:
+    """Edge.from_dict should reconstruct Edge from dict."""
+    d = {
+        "id": "edge:sha256:abcdef123456",
+        "edge_key": "edgekey:sha256:123456",
+        "src": "python:a.py:1-5:caller:function",
+        "dst": "python:b.py:10-15:callee:function",
+        "type": "calls",
+        "line": 3,
+        "confidence": 0.95,
+        "origin": "python-ast-v1",
+        "origin_run_id": "uuid:12345",
+        "origin_run_signature": "sha256:abcdef",
+        "quality": {"score": 0.9, "reason": "direct call"},
+        "meta": {
+            "evidence_type": "ast_call_direct",
+            "evidence_lang": "python",
+        },
+    }
+
+    edge = Edge.from_dict(d)
+
+    assert edge.id == "edge:sha256:abcdef123456"
+    assert edge.edge_key == "edgekey:sha256:123456"
+    assert edge.src == "python:a.py:1-5:caller:function"
+    assert edge.dst == "python:b.py:10-15:callee:function"
+    assert edge.edge_type == "calls"
+    assert edge.line == 3
+    assert edge.confidence == 0.95
+    assert edge.origin == "python-ast-v1"
+    assert edge.evidence_type == "ast_call_direct"
+    assert edge.evidence_lang == "python"
+
+
+def test_edge_from_dict_with_defaults() -> None:
+    """Edge.from_dict should use defaults for optional fields."""
+    d = {
+        "src": "python:a.py:1-5:caller:function",
+        "dst": "python:b.py:10-15:callee:function",
+        "type": "calls",
+        "line": 5,
+    }
+
+    edge = Edge.from_dict(d)
+
+    assert edge.src == "python:a.py:1-5:caller:function"
+    assert edge.dst == "python:b.py:10-15:callee:function"
+    assert edge.edge_type == "calls"
+    assert edge.line == 5
+    assert edge.id == ""  # Default
+    assert edge.confidence == 0.85  # Default
+    assert edge.evidence_type == "ast_call_direct"  # Default

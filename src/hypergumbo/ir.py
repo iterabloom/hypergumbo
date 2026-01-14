@@ -45,6 +45,15 @@ class Span:
             "end_col": self.end_col,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Span":
+        return cls(
+            start_line=d.get("start_line", 0),
+            end_line=d.get("end_line", 0),
+            start_col=d.get("start_col", 0),
+            end_col=d.get("end_col", 0),
+        )
+
 
 def _compute_run_signature(
     pass_id: str, version: str, config_fingerprint: str, toolchain: Dict[str, str]
@@ -244,6 +253,35 @@ class Symbol:
             "modifiers": self.modifiers,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Symbol":
+        """Reconstruct a Symbol from its dict representation (e.g., from cached results)."""
+        span_data = d.get("span", {})
+        supply_chain = d.get("supply_chain", {})
+        return cls(
+            id=d["id"],
+            name=d["name"],
+            kind=d["kind"],
+            language=d["language"],
+            path=d["path"],
+            span=Span.from_dict(span_data),
+            origin=d.get("origin", ""),
+            origin_run_id=d.get("origin_run_id", ""),
+            origin_run_signature=d.get("origin_run_signature"),
+            stable_id=d.get("stable_id"),
+            shape_id=d.get("shape_id"),
+            canonical_name=d.get("canonical_name"),
+            fingerprint=d.get("fingerprint"),
+            quality=d.get("quality"),
+            meta=d.get("meta"),
+            supply_chain_tier=supply_chain.get("tier", 1),
+            supply_chain_reason=supply_chain.get("reason", ""),
+            cyclomatic_complexity=d.get("cyclomatic_complexity"),
+            lines_of_code=d.get("lines_of_code"),
+            signature=d.get("signature"),
+            modifiers=d.get("modifiers", []),
+        )
+
 
 def _compute_edge_key(src: str, dst: str, edge_type: str) -> str:
     """Compute canonical edge_key for deduplication across passes."""
@@ -348,6 +386,28 @@ class Edge:
             "quality": self.quality,
             "meta": meta,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Edge":
+        """Reconstruct an Edge from its dict representation (e.g., from cached results)."""
+        meta = d.get("meta", {})
+        return cls(
+            id=d.get("id", ""),
+            src=d.get("src", ""),
+            dst=d.get("dst", ""),
+            edge_type=d.get("type", "calls"),
+            line=d.get("line", 0),
+            edge_key=d.get("edge_key"),
+            confidence=d.get("confidence", 0.85),
+            origin=d.get("origin", ""),
+            origin_run_id=d.get("origin_run_id", ""),
+            origin_run_signature=d.get("origin_run_signature"),
+            evidence_type=meta.get("evidence_type", "ast_call_direct"),
+            evidence_lang=meta.get("evidence_lang"),
+            evidence_spans=meta.get("evidence_spans"),
+            quality=d.get("quality"),
+            meta=meta,
+        )
 
 
 def _compute_usage_context_id(
