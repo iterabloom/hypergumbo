@@ -407,6 +407,38 @@ def _edge_from_dict(d: Dict[str, Any]) -> Edge:
     )
 
 
+def _format_symbol_display_name(node: Dict[str, Any] | None, fallback_id: str = "") -> str:
+    """Format a symbol for display, handling file-level symbols gracefully.
+
+    File-level symbols (kind="file") represent module-level code (imports,
+    top-level statements). Instead of showing the raw symbol ID like
+    "python:/path/to/file.py:1-1:file:file", we show "<module level>".
+
+    Args:
+        node: The symbol node dict, or None if not found.
+        fallback_id: The raw symbol ID to use as fallback.
+
+    Returns:
+        A human-readable display name for the symbol.
+    """
+    if node is None:
+        # Node not found - check if fallback_id looks like a file-level symbol
+        # Format: {lang}:{path}:{start}-{end}:{kind}:{name}
+        if fallback_id.endswith(":file:file"):
+            return "<module level>"
+        return fallback_id
+
+    kind = node.get("kind", "")
+    name = node.get("name", "")
+
+    # File-level symbols have kind="file" and name="file"
+    if kind == "file" and name == "file":
+        return "<module level>"
+
+    # Normal symbol - use the name, falling back to ID if empty
+    return name if name else fallback_id
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -614,7 +646,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     print(f"Found {len(matches)} symbol(s) matching '{args.pattern}':\n")
     for node in matches:
-        name = node.get("name", "")
+        name = _format_symbol_display_name(node, node.get("id", ""))
         kind = node.get("kind", "")
         lang = node.get("language", "")
         path = node.get("path", "")
@@ -826,9 +858,9 @@ def cmd_explain(args: argparse.Namespace) -> int:
         for edge in edges:
             if edge.get("dst") == symbol_id:
                 src_id = edge.get("src", "")
-                src_node = nodes_by_id.get(src_id, {})
-                src_name = src_node.get("name", src_id)
-                src_path = src_node.get("path", "")
+                src_node = nodes_by_id.get(src_id)
+                src_name = _format_symbol_display_name(src_node, src_id)
+                src_path = src_node.get("path", "") if src_node else ""
                 src_line = edge.get("line", 0)
                 callers.append((src_name, src_path, src_line))
 
@@ -837,9 +869,9 @@ def cmd_explain(args: argparse.Namespace) -> int:
         for edge in edges:
             if edge.get("src") == symbol_id:
                 dst_id = edge.get("dst", "")
-                dst_node = nodes_by_id.get(dst_id, {})
-                dst_name = dst_node.get("name", dst_id)
-                dst_path = dst_node.get("path", "")
+                dst_node = nodes_by_id.get(dst_id)
+                dst_name = _format_symbol_display_name(dst_node, dst_id)
+                dst_path = dst_node.get("path", "") if dst_node else ""
                 edge_line = edge.get("line", 0)
                 callees.append((dst_name, dst_path, edge_line))
 
@@ -1057,7 +1089,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
     for node in nodes:
         node_id = node["id"]
-        name = node.get("name", "")
+        name = _format_symbol_display_name(node, node_id)
         kind = node.get("kind", "")
         path = node.get("path", "")
         lang = node.get("language", "")
@@ -1228,8 +1260,8 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             test_density = test_count / loc
             test_names = []
             for tid in test_ids:
-                test_node = nodes_by_id.get(tid, {})
-                test_names.append(test_node.get("name", tid))
+                test_node = nodes_by_id.get(tid)
+                test_names.append(_format_symbol_display_name(test_node, tid))
             test_dense.append((test_density, test_count, loc, target, test_names))
 
     # Sort hot spots by test density (descending) - tests per LOC
@@ -1316,7 +1348,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             print("\nTest-Dense (highest test density - may indicate redundant tests)")
             print("-" * 48)
             for density, test_count, loc, target, _ in display_hot:
-                name = target.get("name", "")
+                name = _format_symbol_display_name(target, target.get("id", ""))
                 path = target.get("path", "")
                 span = target.get("span", {})
                 start = span.get("start_line", 0)
@@ -1329,7 +1361,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
             print("\nCold Spots (untested - need coverage)")
             print("-" * 37)
             for target, loc, complexity in display_cold:
-                name = target.get("name", "")
+                name = _format_symbol_display_name(target, target.get("id", ""))
                 path = target.get("path", "")
                 span = target.get("span", {})
                 start = span.get("start_line", 0)

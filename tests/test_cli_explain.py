@@ -346,3 +346,100 @@ def test_cmd_explain_prints_output_summary(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     assert "[hypergumbo explain] Generated 0 artifact(s)" in out
     assert "Output: stdout" in out
+
+
+def test_cmd_explain_formats_file_level_callers(tmp_path: Path, capsys) -> None:
+    """File-level symbols (kind=file) are shown as '<module level>' not raw ID."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_foo.py:1-1:file:file",
+                "name": "file",
+                "kind": "file",
+                "language": "python",
+                "path": "tests/test_foo.py",
+                "span": {"start_line": 1, "end_line": 1, "start_col": 0, "end_col": 0},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:tests/test_foo.py:1-1:file:file",
+                "dst": "python:src/main.py:1-10:foo:function",
+                "type": "calls",
+                "line": 5,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show "<module level>" instead of "file" or the raw ID
+    assert "<module level>" in out
+    # Should NOT show the raw symbol ID format
+    assert ":file:file" not in out
+
+
+def test_cmd_explain_formats_missing_file_level_callers(tmp_path: Path, capsys) -> None:
+    """Edge referencing file-level symbol NOT in nodes still shows '<module level>'."""
+    # This tests the case where an edge references a symbol that's not in the
+    # nodes list but ends with ":file:file" - the fallback ID detection path.
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            # Note: the file-level symbol is NOT included in nodes
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:tests/test_bar.py:1-1:file:file",
+                "dst": "python:src/main.py:1-10:bar:function",
+                "type": "calls",
+                "line": 10,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "bar"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show "<module level>" via fallback ID detection
+    assert "<module level>" in out
+    # Should NOT show the raw symbol ID format
+    assert ":file:file" not in out
