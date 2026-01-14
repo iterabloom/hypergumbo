@@ -1540,3 +1540,309 @@ def extract_readme_description_embedding(
         )
 
     return final_description
+
+
+# ==============================================================================
+# Additional Files Semantic Ranking (5W1H probes)
+# ==============================================================================
+
+# 5W1H probes for semantic ranking of Additional Files
+# These help surface documentation and explanatory files at the top
+#
+# WARNING: Changes require regenerating embeddings! Run:
+#     python scripts/compute_probe_embeddings.py
+ADDITIONAL_FILES_PROBES = [
+    "Who this thing is for",
+    "What this thing does",
+    "When this thing is good to use",
+    "Where this thing comes from",
+    "Why this thing was built",
+    "How this thing works",
+]
+
+# ModernBERT model for Additional Files embedding
+_MODERNBERT_MODEL_NAME = "nomic-ai/modernbert-embed-base"
+_MODERNBERT_TRUNCATE_DIM = 256
+
+# Cache for 5W1H probe embeddings (ModernBERT)
+_ADDITIONAL_FILES_PROBE_EMBEDDINGS: "np.ndarray | None" = None
+
+
+def _get_cache_dir(repo_root: Path) -> Path:
+    """Get or create the embedding cache directory.
+
+    Creates .hypergumbo_cache/ in the repo root for storing file embeddings.
+    This directory should be gitignored.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        Path to the cache directory.
+    """
+    cache_dir = repo_root / ".hypergumbo_cache"
+    cache_dir.mkdir(exist_ok=True)
+    return cache_dir
+
+
+def _compute_file_hash(file_path: Path) -> str:
+    """Compute hash of file content for cache invalidation.
+
+    Args:
+        file_path: Path to the file.
+
+    Returns:
+        Short SHA256 hash of file content, or empty string on error.
+    """
+    import hashlib
+
+    try:
+        content = file_path.read_bytes()
+        return hashlib.sha256(content).hexdigest()[:16]
+    except OSError:
+        return ""
+
+
+def _load_cached_embedding(cache_dir: Path, file_hash: str) -> "np.ndarray | None":
+    """Load embedding from cache if it exists.
+
+    Args:
+        cache_dir: Path to cache directory.
+        file_hash: Content hash of the file.
+
+    Returns:
+        Cached embedding array, or None if not cached.
+    """
+    if not file_hash:
+        return None
+
+    cache_file = cache_dir / f"embed_{file_hash}.npy"
+    if cache_file.exists():
+        try:
+            import numpy as np
+            return np.load(cache_file)
+        except Exception:
+            return None
+    return None
+
+
+def _save_cached_embedding(
+    cache_dir: Path, file_hash: str, embedding: "np.ndarray"
+) -> None:
+    """Save embedding to cache.
+
+    Args:
+        cache_dir: Path to cache directory.
+        file_hash: Content hash of the file.
+        embedding: Embedding array to cache.
+    """
+    if not file_hash:
+        return
+
+    cache_file = cache_dir / f"embed_{file_hash}.npy"
+    try:
+        import numpy as np
+        np.save(cache_file, embedding)
+    except Exception:
+        pass  # Silently fail if caching doesn't work
+
+
+def _extract_file_samples(
+    file_path: Path,
+    num_samples: int = 3,
+    sample_size: int = 800,
+) -> str:
+    """Extract random non-overlapping substrings from first third of file.
+
+    Used to create a representative sample of file content for embedding.
+    Strips HTML tags but keeps text content.
+
+    Args:
+        file_path: Path to the file.
+        num_samples: Number of samples to extract.
+        sample_size: Character count per sample.
+
+    Returns:
+        Ellipsis-concatenated string of samples, de-HTMLified.
+    """
+    import random
+    import re
+
+    try:
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return ""
+
+    if not content:
+        return ""
+
+    # Use first third of file (most likely to contain description/overview)
+    first_third_len = len(content) // 3
+    if first_third_len < 100:
+        first_third = content  # File is very small, use all of it
+    else:
+        first_third = content[:first_third_len]
+
+    # De-HTMLify: remove HTML tags but keep content
+    first_third = re.sub(r'<[^>]+>', ' ', first_third)
+    # Collapse whitespace
+    first_third = ' '.join(first_third.split())
+
+    total_needed = sample_size * num_samples
+    if len(first_third) <= total_needed:
+        return first_third
+
+    # Extract non-overlapping samples with deterministic seeding
+    # Use file path hash for reproducibility (not cryptographic, just for stability)
+    seed = hash(str(file_path)) % (2**32)
+    rng = random.Random(seed)  # noqa: S311 # nosec B311
+
+    samples = []
+    available_start = 0
+
+    for _ in range(num_samples):
+        # Calculate max start position leaving room for remaining samples
+        remaining_samples = num_samples - len(samples) - 1
+        max_start = len(first_third) - sample_size - (sample_size * remaining_samples)
+
+        if available_start >= max_start:
+            break
+
+        start = rng.randint(available_start, max_start)
+        samples.append(first_third[start:start + sample_size])
+        available_start = start + sample_size
+
+    return " ... ".join(samples)
+
+
+def _load_modernbert_model():
+    """Load ModernBERT model with truncation dimension.
+
+    Returns:
+        SentenceTransformer model configured for 256-dim output.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+    return SentenceTransformer(
+        _MODERNBERT_MODEL_NAME,
+        truncate_dim=_MODERNBERT_TRUNCATE_DIM
+    )
+
+
+def _get_additional_files_probe_embeddings() -> "np.ndarray":
+    """Get probe embeddings for 5W1H Additional Files ranking.
+
+    Uses pre-computed embeddings from _embedding_data.py if available,
+    otherwise computes them at runtime.
+
+    Returns:
+        Normalized probe embeddings array of shape (6, 256).
+    """
+    global _ADDITIONAL_FILES_PROBE_EMBEDDINGS
+
+    if _ADDITIONAL_FILES_PROBE_EMBEDDINGS is None:
+        try:
+            # Try to load pre-computed embeddings
+            from ._embedding_data import ADDITIONAL_FILES_PROBES_B64
+            import base64
+            import numpy as np
+
+            raw = base64.b64decode(ADDITIONAL_FILES_PROBES_B64)
+            arr = np.frombuffer(raw, dtype=np.float16).reshape(
+                len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM
+            )
+            _ADDITIONAL_FILES_PROBE_EMBEDDINGS = arr.astype(np.float32)
+        except (ImportError, AttributeError):
+            # Pre-computed embeddings not available, compute at runtime
+            if not _has_sentence_transformers():
+                import numpy as np
+                return np.zeros((len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM))
+
+            model = _load_modernbert_model()
+            import numpy as np
+            _ADDITIONAL_FILES_PROBE_EMBEDDINGS = model.encode(
+                ADDITIONAL_FILES_PROBES, convert_to_numpy=True
+            )
+
+    return _ADDITIONAL_FILES_PROBE_EMBEDDINGS
+
+
+def embed_file_for_semantic_ranking(
+    file_path: Path,
+    cache_dir: Path | None = None,
+) -> "np.ndarray | None":
+    """Embed a file using ModernBERT for semantic ranking.
+
+    Uses 3 random non-overlapping 800-char substrings from first third,
+    de-HTMLified and ellipsis-concatenated.
+
+    Args:
+        file_path: Path to the file.
+        cache_dir: Optional cache directory for embeddings.
+
+    Returns:
+        256-dimensional embedding vector, or None if unavailable.
+    """
+    if not _has_sentence_transformers():
+        return None
+
+    # Check cache first
+    file_hash = _compute_file_hash(file_path)
+    if cache_dir and file_hash:
+        cached = _load_cached_embedding(cache_dir, file_hash)
+        if cached is not None:
+            return cached
+
+    # Extract samples
+    sample_text = _extract_file_samples(file_path)
+    if not sample_text:
+        return None
+
+    # Load model and embed
+    model = _load_modernbert_model()
+    embedding = model.encode(sample_text, convert_to_numpy=True)
+
+    # Cache result
+    if cache_dir and file_hash:
+        _save_cached_embedding(cache_dir, file_hash, embedding)
+
+    return embedding
+
+
+def compute_5w1h_similarity(
+    file_embedding: "np.ndarray",
+    probe_embeddings: "np.ndarray | None" = None,
+) -> float:
+    """Compute aggregate cosine similarity to 5W1H probes.
+
+    Args:
+        file_embedding: 256-dim embedding of file content.
+        probe_embeddings: Pre-computed probe embeddings (optional).
+
+    Returns:
+        Aggregate similarity score (mean of cosine similarities).
+    """
+    import numpy as np
+
+    if probe_embeddings is None:
+        probe_embeddings = _get_additional_files_probe_embeddings()
+
+    if probe_embeddings is None or len(probe_embeddings) == 0:
+        return 0.0
+
+    # Normalize embeddings
+    file_norm = np.linalg.norm(file_embedding)
+    if file_norm < 1e-8:
+        return 0.0
+    file_normalized = file_embedding / file_norm
+
+    probe_norms = np.linalg.norm(probe_embeddings, axis=1, keepdims=True)
+    probe_norms = np.maximum(probe_norms, 1e-8)  # Avoid division by zero
+    probe_normalized = probe_embeddings / probe_norms
+
+    # Compute cosine similarities
+    similarities = np.dot(probe_normalized, file_normalized)
+
+    # Return mean similarity
+    return float(np.mean(similarities))

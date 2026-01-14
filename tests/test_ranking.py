@@ -18,6 +18,10 @@ from hypergumbo.ranking import (
     TIER_WEIGHTS,
     RankedSymbol,
     RankedFile,
+    compute_raw_in_degree,
+    compute_file_loc,
+    compute_symbol_importance_density,
+    compute_symbol_mention_centrality,
 )
 
 
@@ -566,3 +570,246 @@ class TestTierWeightsConstant:
     def test_derived_is_zero(self):
         """Tier 4 (derived) has zero weight."""
         assert TIER_WEIGHTS[4] == 0.0
+
+
+class TestComputeRawInDegree:
+    """Tests for compute_raw_in_degree function."""
+
+    def test_empty_inputs(self):
+        """Returns empty dict for empty inputs."""
+        result = compute_raw_in_degree([], [])
+        assert result == {}
+
+    def test_symbols_with_no_edges(self):
+        """All symbols get 0 in-degree when no edges."""
+        foo = make_symbol("foo")
+        bar = make_symbol("bar")
+
+        result = compute_raw_in_degree([foo, bar], [])
+
+        assert result[foo.id] == 0
+        assert result[bar.id] == 0
+
+    def test_counts_incoming_edges(self):
+        """Correctly counts incoming edges."""
+        core = make_symbol("core")
+        caller1 = make_symbol("caller1")
+        caller2 = make_symbol("caller2")
+
+        edges = [
+            make_edge(caller1.id, core.id),
+            make_edge(caller2.id, core.id),
+            make_edge(caller1.id, caller2.id),
+        ]
+
+        result = compute_raw_in_degree([core, caller1, caller2], edges)
+
+        assert result[core.id] == 2  # called by caller1 and caller2
+        assert result[caller1.id] == 0  # not called by anyone
+        assert result[caller2.id] == 1  # called by caller1
+
+    def test_ignores_edges_to_unknown_targets(self):
+        """Edges to unknown symbols are ignored."""
+        foo = make_symbol("foo")
+        edge = make_edge(foo.id, "unknown:path:1-2:function:bar")
+
+        result = compute_raw_in_degree([foo], [edge])
+
+        assert result[foo.id] == 0
+
+
+class TestComputeFileLoc:
+    """Tests for compute_file_loc function."""
+
+    def test_counts_lines(self, tmp_path):
+        """Correctly counts lines in a file."""
+        f = tmp_path / "test.py"
+        f.write_text("line1\nline2\nline3\n")
+
+        assert compute_file_loc(f) == 3
+
+    def test_empty_file(self, tmp_path):
+        """Returns 0 for empty file."""
+        f = tmp_path / "empty.py"
+        f.write_text("")
+
+        assert compute_file_loc(f) == 0
+
+    def test_no_trailing_newline(self, tmp_path):
+        """Counts correctly without trailing newline."""
+        f = tmp_path / "test.py"
+        f.write_text("line1\nline2")
+
+        assert compute_file_loc(f) == 2
+
+    def test_nonexistent_file(self, tmp_path):
+        """Returns 0 for nonexistent file."""
+        f = tmp_path / "does_not_exist.py"
+
+        assert compute_file_loc(f) == 0
+
+
+class TestComputeSymbolImportanceDensity:
+    """Tests for compute_symbol_importance_density function."""
+
+    def test_empty_inputs(self, tmp_path):
+        """Returns empty dict for empty inputs."""
+        result = compute_symbol_importance_density({}, {}, tmp_path)
+        assert result == {}
+
+    def test_basic_density_calculation(self, tmp_path):
+        """Computes density = sum(in_degree) / LOC."""
+        # Create a file with 10 lines
+        src = tmp_path / "main.py"
+        src.write_text("\n".join(["line"] * 10) + "\n")
+
+        foo = make_symbol("foo", path="main.py")
+        bar = make_symbol("bar", path="main.py")
+
+        by_file = {"main.py": [foo, bar]}
+        in_degree = {foo.id: 5, bar.id: 3}
+
+        result = compute_symbol_importance_density(by_file, in_degree, tmp_path)
+
+        # 8 total in-degree / 10 lines = 0.8
+        assert result["main.py"] == pytest.approx(0.8)
+
+    def test_min_loc_threshold(self, tmp_path):
+        """Files below min_loc get 0 density."""
+        # Create a file with only 3 lines (below default threshold of 5)
+        src = tmp_path / "tiny.py"
+        src.write_text("a\nb\nc\n")
+
+        foo = make_symbol("foo", path="tiny.py")
+        by_file = {"tiny.py": [foo]}
+        in_degree = {foo.id: 10}
+
+        result = compute_symbol_importance_density(by_file, in_degree, tmp_path)
+
+        # Below min_loc, so gets 0
+        assert result["tiny.py"] == 0.0
+
+    def test_nonexistent_file_skipped(self, tmp_path):
+        """Files that don't exist are handled gracefully."""
+        foo = make_symbol("foo", path="does_not_exist.py")
+        by_file = {"does_not_exist.py": [foo]}
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_importance_density(by_file, in_degree, tmp_path)
+
+        # File doesn't exist, LOC is 0, below min_loc
+        assert result["does_not_exist.py"] == 0.0
+
+
+class TestComputeSymbolMentionCentrality:
+    """Tests for compute_symbol_mention_centrality function."""
+
+    def test_empty_symbols(self, tmp_path):
+        """Returns 0 for empty symbol list."""
+        f = tmp_path / "readme.md"
+        f.write_text("Hello world")
+
+        result = compute_symbol_mention_centrality(f, [], {})
+        assert result == 0.0
+
+    def test_no_matches(self, tmp_path):
+        """Returns 0 when no symbols are mentioned."""
+        f = tmp_path / "readme.md"
+        f.write_text("Hello world")
+
+        foo = make_symbol("foo")
+        result = compute_symbol_mention_centrality(
+            f, [foo], {foo.id: 5}, min_in_degree=2
+        )
+        assert result == 0.0
+
+    def test_matches_with_word_boundaries(self, tmp_path):
+        """Matches symbol names with word boundaries."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use the foo function to process data")
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_mention_centrality(
+            f, [foo], in_degree, min_in_degree=2
+        )
+
+        # 5 in-degree / 36 chars
+        assert result == pytest.approx(5 / 36)
+
+    def test_no_partial_matches(self, tmp_path):
+        """Does not match partial words."""
+        f = tmp_path / "readme.md"
+        f.write_text("The foobar function is great")
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_mention_centrality(
+            f, [foo], in_degree, min_in_degree=2
+        )
+
+        # "foo" is part of "foobar", not a word match
+        assert result == 0.0
+
+    def test_min_in_degree_filter(self, tmp_path):
+        """Filters symbols below min_in_degree threshold."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use the foo function")
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 1}  # Below threshold of 2
+
+        result = compute_symbol_mention_centrality(
+            f, [foo], in_degree, min_in_degree=2
+        )
+
+        assert result == 0.0
+
+    def test_max_file_size_limit(self, tmp_path):
+        """Skips files larger than max_file_size."""
+        f = tmp_path / "large.md"
+        f.write_text("foo " * 1000)  # 4000 bytes
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_mention_centrality(
+            f, [foo], in_degree, min_in_degree=2, max_file_size=100
+        )
+
+        assert result == 0.0
+
+    def test_multiple_symbols(self, tmp_path):
+        """Sums in-degrees for all matched symbols."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo and bar together")
+
+        foo = make_symbol("foo")
+        bar = make_symbol("bar")
+        in_degree = {foo.id: 3, bar.id: 5}
+
+        result = compute_symbol_mention_centrality(
+            f, [foo, bar], in_degree, min_in_degree=2
+        )
+
+        # (3 + 5) / 24 chars
+        assert result == pytest.approx(8 / 24)
+
+    def test_nonexistent_file(self, tmp_path):
+        """Returns 0 for nonexistent file."""
+        f = tmp_path / "does_not_exist.md"
+        foo = make_symbol("foo")
+
+        result = compute_symbol_mention_centrality(f, [foo], {foo.id: 5})
+        assert result == 0.0
+
+    def test_empty_file(self, tmp_path):
+        """Returns 0 for empty file."""
+        f = tmp_path / "empty.md"
+        f.write_text("")
+
+        foo = make_symbol("foo")
+        result = compute_symbol_mention_centrality(f, [foo], {foo.id: 5})
+        assert result == 0.0

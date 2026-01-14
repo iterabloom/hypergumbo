@@ -10,6 +10,7 @@ from hypergumbo.sketch import (
     _collect_source_files,
     _format_source_files,
     _format_all_files,
+    _format_additional_files,
     _run_analysis,
     _format_entrypoints,
     _format_symbols,
@@ -820,6 +821,32 @@ class TestFormatSourceFiles:
         result = _format_source_files(tmp_path, [])
         assert result == ""
 
+    def test_sorts_by_density_when_provided(self, tmp_path: Path) -> None:
+        """Sorts files by density scores when provided."""
+        files = [
+            tmp_path / "low.py",
+            tmp_path / "high.py",
+            tmp_path / "medium.py",
+        ]
+        # Create the files
+        for f in files:
+            f.write_text("# placeholder")
+
+        density_scores = {
+            "low.py": 0.1,
+            "high.py": 0.9,
+            "medium.py": 0.5,
+        }
+
+        result = _format_source_files(tmp_path, files, density_scores=density_scores)
+        lines = result.split("\n")
+
+        # Find the file lines (skip header)
+        file_lines = [l for l in lines if l.startswith("- `")]
+        assert "`high.py`" in file_lines[0]  # highest density first
+        assert "`medium.py`" in file_lines[1]
+        assert "`low.py`" in file_lines[2]
+
 
 class TestFormatAllFiles:
     """Tests for all files formatting."""
@@ -870,6 +897,274 @@ class TestFormatAllFiles:
         """Returns empty string for empty directory."""
         result = _format_all_files(tmp_path)
         assert result == ""
+
+
+def _make_test_symbol(
+    name: str,
+    path: str = "src/main.py",
+    kind: str = "function",
+) -> Symbol:
+    """Create a test symbol for _format_additional_files tests."""
+    return Symbol(
+        id=f"python:{path}:1-10:{kind}:{name}",
+        name=name,
+        kind=kind,
+        language="python",
+        path=path,
+        span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+    )
+
+
+class TestFormatAdditionalFiles:
+    """Tests for additional files formatting (hybrid semantic + centrality)."""
+
+    def test_excludes_source_files(self, tmp_path: Path) -> None:
+        """Excludes source files from additional files list."""
+        src = tmp_path / "src"
+        src.mkdir()
+        source_file = src / "main.py"
+        source_file.write_text("def foo(): pass")
+        readme = tmp_path / "README.md"
+        readme.write_text("# Project")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[source_file],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert "## Additional Files" in result
+        assert "`README.md`" in result
+        assert "main.py" not in result
+
+    def test_orders_by_centrality_when_no_embeddings(self, tmp_path: Path) -> None:
+        """Orders files by symbol mention centrality when no embeddings."""
+        # Create files with different centrality
+        doc_mentions = tmp_path / "doc_mentions.md"
+        doc_mentions.write_text("Use the foo function to process data with bar")
+        doc_none = tmp_path / "doc_none.md"
+        doc_none.write_text("This file has no symbol mentions at all")
+
+        # Create source file (will be excluded from additional files)
+        src = tmp_path / "src"
+        src.mkdir()
+        source_file = src / "main.py"
+        source_file.write_text("def foo(): pass")
+
+        foo = _make_test_symbol("foo")
+        bar = _make_test_symbol("bar")
+        in_degree = {foo.id: 5, bar.id: 3}
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[source_file],
+            symbols=[foo, bar],
+            in_degree=in_degree,
+            semantic_top_n=0,  # Disable semantic ranking
+        )
+
+        # doc_mentions should appear before doc_none due to symbol mentions
+        lines = result.split("\n")
+        file_lines = [l for l in lines if l.startswith("- `")]
+        # File with mentions should come first
+        assert "`doc_mentions.md`" in file_lines[0]
+
+    def test_empty_when_no_additional_files(self, tmp_path: Path) -> None:
+        """Returns empty string when all files are source files."""
+        src = tmp_path / "main.py"
+        src.write_text("def foo(): pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert result == ""
+
+    def test_respects_max_files(self, tmp_path: Path) -> None:
+        """Limits output to max_files."""
+        # Create many files
+        for i in range(10):
+            (tmp_path / f"file_{i}.txt").write_text(f"content {i}")
+
+        # Create source file
+        src = tmp_path / "main.py"
+        src.write_text("def foo(): pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            max_files=3,
+            semantic_top_n=0,
+        )
+
+        assert "## Additional Files" in result
+        assert "... and 7 more files" in result
+
+    def test_excludes_hidden_files(self, tmp_path: Path) -> None:
+        """Excludes hidden files from additional files."""
+        (tmp_path / ".hidden").write_text("secret")
+        (tmp_path / "visible.txt").write_text("public")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert ".hidden" not in result
+        assert "`visible.txt`" in result
+
+    def test_excludes_node_modules(self, tmp_path: Path) -> None:
+        """Excludes node_modules directory from additional files."""
+        nm = tmp_path / "node_modules"
+        nm.mkdir()
+        (nm / "package.json").write_text("{}")
+        (tmp_path / "index.js").write_text("console.log('hi')")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert "node_modules" not in result
+        assert "`index.js`" in result
+
+    def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string for empty directory."""
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[],
+            symbols=[],
+            in_degree={},
+        )
+        assert result == ""
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not available"
+    )
+    def test_semantic_ranking_with_empty_file(self, tmp_path: Path) -> None:
+        """Verifies semantic ranking handles empty files (returns None embedding).
+
+        This test is skipped on CI where sentence-transformers isn't installed,
+        but runs locally to verify the defensive code path works correctly.
+        The line is marked with pragma:no cover for CI coverage.
+        """
+        # Create an empty file - embedding will return None
+        empty_file = tmp_path / "empty.txt"
+        empty_file.write_text("")
+        # Create a file with content
+        content_file = tmp_path / "content.txt"
+        content_file.write_text("This file has content for embedding")
+        # Create source file (excluded from additional files)
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        # Run with semantic ranking enabled - empty file should get 0.0 score
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            semantic_top_n=3,  # Enable semantic ranking
+        )
+
+        # Both files should be in output
+        assert "## Additional Files" in result
+        assert "empty.txt" in result
+        assert "content.txt" in result
+
+    def test_semantic_ranking_fallback_when_embedding_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Tests semantic ranking path with mocked embedding returning None.
+
+        This ensures the embedding code path is covered on CI where
+        sentence-transformers isn't installed, by mocking the availability.
+        """
+        from unittest.mock import patch
+
+        # Create files
+        (tmp_path / "readme.md").write_text("# Project documentation")
+        (tmp_path / "notes.txt").write_text("Some notes")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        # Mock _has_sentence_transformers to return True
+        # and embed_file_for_semantic_ranking to return None (simulating failure)
+        with patch(
+            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            return_value=True
+        ), patch(
+            "hypergumbo.sketch_embeddings.embed_file_for_semantic_ranking",
+            return_value=None
+        ), patch(
+            "hypergumbo.sketch_embeddings._get_cache_dir",
+            return_value=tmp_path / ".cache"
+        ):
+            result = _format_additional_files(
+                tmp_path,
+                source_files=[src],
+                symbols=[],
+                in_degree={},
+                semantic_top_n=2,
+            )
+
+        # Files should still appear (with 0.0 score)
+        assert "## Additional Files" in result
+        assert "readme.md" in result
+        assert "notes.txt" in result
+
+    def test_semantic_ranking_with_mock_embeddings(self, tmp_path: Path) -> None:
+        """Tests semantic ranking with mocked embeddings.
+
+        This ensures the full embedding code path is covered on CI.
+        """
+        from unittest.mock import patch, MagicMock
+
+        # Create files
+        (tmp_path / "readme.md").write_text("# Project documentation")
+        (tmp_path / "notes.txt").write_text("Some notes")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        # Use a MagicMock for the embedding - we don't need actual numpy
+        fake_embedding = MagicMock()
+
+        with patch(
+            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            return_value=True
+        ), patch(
+            "hypergumbo.sketch_embeddings.embed_file_for_semantic_ranking",
+            return_value=fake_embedding
+        ), patch(
+            "hypergumbo.sketch_embeddings.compute_5w1h_similarity", return_value=0.5
+        ), patch(
+            "hypergumbo.sketch_embeddings._get_cache_dir",
+            return_value=tmp_path / ".cache"
+        ):
+            result = _format_additional_files(
+                tmp_path,
+                source_files=[src],
+                symbols=[],
+                in_degree={},
+                semantic_top_n=2,
+            )
+
+        assert "## Additional Files" in result
 
 
 class TestRunAnalysis:

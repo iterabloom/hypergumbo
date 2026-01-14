@@ -40,6 +40,9 @@ from .ranking import (
     compute_file_scores,
     _is_test_path,
     compute_transitive_test_coverage,
+    compute_raw_in_degree,
+    compute_symbol_importance_density,
+    compute_symbol_mention_centrality,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -2349,10 +2352,24 @@ def _format_source_files(
     repo_root: Path,
     files: list[Path],
     max_files: int = 50,
+    density_scores: dict[str, float] | None = None,
 ) -> str:
-    """Format source files as a Markdown section."""
+    """Format source files as a Markdown section.
+
+    When density_scores is provided, files are sorted by symbol importance
+    density (sum of raw in-degrees of symbols / LOC) in descending order.
+    Otherwise, files are displayed in their original order.
+    """
     if not files:
         return ""
+
+    # Sort by density if scores are provided
+    if density_scores:
+        files = sorted(
+            files,
+            key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
+            reverse=True,
+        )
 
     lines = ["## Source Files", ""]
 
@@ -2403,6 +2420,124 @@ def _format_all_files(
 
     if len(files) > max_files:
         lines.append(f"- ... and {len(files) - max_files} more files")
+
+    return "\n".join(lines)
+
+
+def _format_additional_files(
+    repo_root: Path,
+    source_files: list[Path],
+    symbols: list[Symbol],
+    in_degree: dict[str, int],
+    max_files: int = 200,
+    semantic_top_n: int = 3,
+) -> str:
+    """Format additional files (non-source) as a Markdown section.
+
+    Uses a hybrid ordering approach:
+    1. Top N files are selected by semantic similarity to 5W1H probes
+       (surfaces docs, READMEs, and descriptive content)
+    2. Remaining files are ordered by symbol mention centrality
+       (surfaces files that reference important code)
+
+    Args:
+        repo_root: Repository root path.
+        source_files: List of source files (to be excluded from output).
+        symbols: List of symbols from analysis.
+        in_degree: Raw in-degree counts for symbols.
+        max_files: Maximum files to show.
+        semantic_top_n: Number of files to pick by semantic similarity.
+
+    Returns:
+        Markdown formatted section for additional files.
+    """
+    # Import embedding functions lazily to avoid circular imports
+    from .sketch_embeddings import (
+        embed_file_for_semantic_ranking,
+        compute_5w1h_similarity,
+        _get_cache_dir,
+        _has_sentence_transformers,
+    )
+
+    # Collect all non-excluded files
+    all_files: list[Path] = []
+    for f in repo_root.rglob("*"):
+        if f.is_file():
+            # Check exclusions
+            excluded = False
+            for part in f.relative_to(repo_root).parts:
+                for pattern in DEFAULT_EXCLUDES:
+                    if part == pattern or (
+                        "*" in pattern and part.endswith(pattern.lstrip("*"))
+                    ):
+                        excluded = True
+                        break
+                if excluded:
+                    break
+            if not excluded and not any(p.startswith(".") for p in f.parts):
+                all_files.append(f)
+
+    if not all_files:
+        return ""
+
+    # Create set of source file paths for exclusion
+    source_set = {str(f.relative_to(repo_root)) for f in source_files}
+
+    # Exclude source files from candidates
+    candidate_files = [
+        f for f in all_files
+        if str(f.relative_to(repo_root)) not in source_set
+    ]
+
+    if not candidate_files:
+        return ""
+
+    # Phase 1: Semantic ranking for top N (if embeddings available)
+    semantic_files: list[Path] = []
+    remaining_files = candidate_files
+
+    if semantic_top_n > 0 and _has_sentence_transformers():
+        cache_dir = _get_cache_dir(repo_root)
+
+        # Score all candidates by 5W1H similarity
+        file_scores: list[tuple[Path, float]] = []
+        for f in candidate_files:
+            embedding = embed_file_for_semantic_ranking(f, cache_dir)
+            if embedding is not None:
+                score = compute_5w1h_similarity(embedding)
+                file_scores.append((f, score))
+            else:  # pragma: no cover - defensive: empty/unreadable files
+                file_scores.append((f, 0.0))
+
+        # Sort by score descending and take top N
+        file_scores.sort(key=lambda x: x[1], reverse=True)
+        semantic_files = [f for f, _ in file_scores[:semantic_top_n]]
+        remaining_files = [f for f, _ in file_scores[semantic_top_n:]]
+
+    # Phase 2: Symbol mention centrality for remaining files
+    mention_scores: list[tuple[Path, float]] = []
+    for f in remaining_files:
+        score = compute_symbol_mention_centrality(
+            f, symbols, in_degree, min_in_degree=2, max_file_size=100 * 1024
+        )
+        mention_scores.append((f, score))
+
+    # Sort remaining by mention centrality descending
+    mention_scores.sort(key=lambda x: x[1], reverse=True)
+    centrality_files = [f for f, _ in mention_scores]
+
+    # Combine: semantic top N first, then centrality-ordered
+    ordered_files = semantic_files + centrality_files
+
+    # Format output
+    lines = ["## Additional Files", ""]
+
+    for f in ordered_files[:max_files]:
+        rel_path = f.relative_to(repo_root)
+        lines.append(f"- `{rel_path}`")
+
+    if len(ordered_files) > max_files:
+        lines.append(f"- ... and {len(ordered_files) - max_files} more files")
 
     return "\n".join(lines)
 
@@ -3836,36 +3971,16 @@ def generate_sketch(
     # is ~100-150 chars = ~25-38 tokens. Use realistic estimate based on qwix data.
     tokens_per_symbol = 35
 
-    # Section 4: Source files (if we have budget >= 50 tokens remaining)
-    if remaining_tokens > 50 and source_files:
-        # Use up to half of remaining budget for source files at small budgets
-        # Scale down the fraction as budget grows (files are less important)
-        # Reserve space for Entry Points and Key Symbols sections
-        if remaining_tokens < 300:
-            budget_for_files = (remaining_tokens * 2) // 3  # 66% at small budgets
-        else:
-            # At larger budgets, limit files to 25% to leave room for analysis
-            budget_for_files = remaining_tokens // 4  # 25% at larger budgets
-        max_source_files = max(5, budget_for_files // tokens_per_file)
-
-        source_section = _format_source_files(
-            repo_root, source_files, max_files=max_source_files
-        )
-        if source_section:
-            sections.append(source_section)
-
-        # Recalculate remaining budget
-        current_sketch = "\n\n".join(sections)
-        current_tokens = estimate_tokens(current_sketch)
-        remaining_tokens = max_tokens - current_tokens
-
-    # For larger budgets, run static analysis (or use cached results)
+    # Run static analysis early to enable density-based source file ordering
+    # (needed before the source files section)
     prog.start_phase("analysis")
     symbols: list[Symbol] = []
-    edges: list = []
+    edges: list[Edge] = []
     coverage_stats: tuple[int, int, float] | None = None
+    raw_in_degree: dict[str, int] = {}
+    density_scores: dict[str, float] = {}
 
-    if remaining_tokens > 100:
+    if remaining_tokens > 50:  # Run analysis if we have any room to expand
         if cached_results is not None and "nodes" in cached_results:
             # Use cached symbols and edges from behavior map
             _log("Using cached analysis results...")
@@ -3891,7 +4006,45 @@ def generate_sketch(
                 repo_root, profile, exclude_tests=exclude_tests
             )
 
+        # Compute raw in-degree and density scores for source file ordering
+        if symbols and edges:
+            raw_in_degree = compute_raw_in_degree(symbols, edges)
+            by_file: dict[str, list[Symbol]] = {}
+            for sym in symbols:
+                if sym.path:
+                    by_file.setdefault(sym.path, []).append(sym)
+            density_scores = compute_symbol_importance_density(
+                by_file, raw_in_degree, repo_root, min_loc=5
+            )
+
     prog.complete_phase("analysis")
+
+    # Section 4: Source files (if we have budget >= 50 tokens remaining)
+    # Files are now ordered by symbol importance density when scores available
+    if remaining_tokens > 50 and source_files:
+        # Use up to half of remaining budget for source files at small budgets
+        # Scale down the fraction as budget grows (files are less important)
+        # Reserve space for Entry Points and Key Symbols sections
+        if remaining_tokens < 300:
+            budget_for_files = (remaining_tokens * 2) // 3  # 66% at small budgets
+        else:
+            # At larger budgets, limit files to 25% to leave room for analysis
+            budget_for_files = remaining_tokens // 4  # 25% at larger budgets
+        max_source_files = max(5, budget_for_files // tokens_per_file)
+
+        source_section = _format_source_files(
+            repo_root,
+            source_files,
+            max_files=max_source_files,
+            density_scores=density_scores if density_scores else None,
+        )
+        if source_section:
+            sections.append(source_section)
+
+        # Recalculate remaining budget
+        current_sketch = "\n\n".join(sections)
+        current_tokens = estimate_tokens(current_sketch)
+        remaining_tokens = max_tokens - current_tokens
 
     # Update test summary with coverage stats if we got analysis results
     if coverage_stats is not None:
@@ -3981,15 +4134,23 @@ def generate_sketch(
 
     prog.complete_phase("symbols")
 
-    # Section 7: All files (if we still have budget after everything else)
+    # Section 7: Additional files (if we still have budget after everything else)
+    # These are files NOT in source_files, ordered by hybrid semantic + centrality
     prog.start_phase("format")
     if remaining_tokens > 50:
         budget_for_files = remaining_tokens - 10
-        max_all_files = max(1, budget_for_files // tokens_per_file)
+        max_additional_files = max(1, budget_for_files // tokens_per_file)
 
-        all_files_section = _format_all_files(repo_root, max_files=max_all_files)
-        if all_files_section:
-            sections.append(all_files_section)
+        additional_files_section = _format_additional_files(
+            repo_root,
+            source_files=source_files,
+            symbols=symbols,
+            in_degree=raw_in_degree,
+            max_files=max_additional_files,
+            semantic_top_n=3,
+        )
+        if additional_files_section:
+            sections.append(additional_files_section)
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)
