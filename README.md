@@ -9,7 +9,7 @@ pip install hypergumbo
 hypergumbo .
 ```
 
-**Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](docs/INTEL_MAC.md) for a Docker-based workaround.
+**Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/INTEL_MAC.md) for a Docker-based workaround.
 
 Output:
 ```markdown
@@ -103,8 +103,8 @@ See `hypergumbo --help` for all options.
 
 ## What It Understands
 
-- **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](docs/LANGUAGES.md))
-- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](docs/LINKERS.md))
+- **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LANGUAGES.md))
+- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LINKERS.md))
 - **37 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
 
 ## Architecture
@@ -139,19 +139,19 @@ pip install -e .[dev]
 pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 ```
 
-100% test coverage required. All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
+100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
 
 ## Links
 
-- [docs/USE-CASES.md](docs/USE-CASES.md) — Practical workflows and examples
-- [CHANGELOG.md](CHANGELOG.md) — Implementation history
-- [docs/LANGUAGES.md](docs/LANGUAGES.md) — All 67 supported languages
-- [docs/LINKERS.md](docs/LINKERS.md) — All 15 cross-language linkers
-- [docs/hypergumbo-spec.md](docs/hypergumbo-spec.md) — Detailed specification
-- [SECURITY.md](SECURITY.md) — Vulnerability reporting
+- [docs/USE-CASES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/USE-CASES.md) — Practical workflows and examples
+- [CHANGELOG.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/CHANGELOG.md) — Implementation history
+- [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LANGUAGES.md) — All 67 supported languages
+- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LINKERS.md) — All 15 cross-language linkers
+- [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/hypergumbo-spec.md) — Detailed specification
+- [SECURITY.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/SECURITY.md) — Vulnerability reporting
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE)
+[AGPL-3.0-or-later](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/LICENSE)
 
-![Hypergumbo logo](docs/hypergumbo%20FINAL%20halfres.jpg)
+![Hypergumbo logo](https://codeberg.org/iterabloom/hypergumbo/raw/branch/main/docs/hypergumbo%20FINAL%20halfres.jpg)
