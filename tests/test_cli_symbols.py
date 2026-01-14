@@ -660,6 +660,108 @@ def test_cmd_symbols_max_per_file_with_all(tmp_path: Path, capsys) -> None:
     assert "additional symbols omitted" not in out  # --all with max-per-file
 
 
+def test_cmd_symbols_exclude_tests_affects_degree_counts(tmp_path: Path, capsys) -> None:
+    """--exclude-tests excludes test edges from degree counts, not just display."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:main_func:function",
+                "name": "main_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:11-20:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 11, "end_line": 20, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_main.py:1-10:test_main:function",
+                "name": "test_main",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            # test_main calls main_func (should be excluded from degree when -x)
+            {
+                "id": "edge:1",
+                "src": "python:tests/test_main.py:1-10:test_main:function",
+                "dst": "python:src/main.py:1-10:main_func:function",
+                "type": "calls",
+                "line": 5,
+                "confidence": 0.9,
+            },
+            # main_func calls helper (non-test edge, should always be counted)
+            {
+                "id": "edge:2",
+                "src": "python:src/main.py:1-10:main_func:function",
+                "dst": "python:src/main.py:11-20:helper:function",
+                "type": "calls",
+                "line": 8,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    # First, run WITHOUT exclude_tests to see baseline degrees
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    cmd_symbols(args)
+    out_without_exclude, _ = capsys.readouterr()
+
+    # main_func should have in-degree=1 (from test_main) without exclude
+    # The output shows: name, kind, in, out, deg, file
+    # Find the line with main_func and check its in-degree
+    for line in out_without_exclude.split("\n"):
+        if "main_func" in line:
+            # In the table, columns are: Symbol, Kind, In, Out, Deg, File
+            # The "In" column should show 1 (from test_main calling it)
+            parts = line.split()
+            # We need to find the In value - it's the 3rd column after Symbol and Kind
+            # But parsing Rich table output is tricky; let's just check "1" appears
+            assert "1" in line, f"main_func should have in-degree 1: {line}"
+            break
+
+    # Now run WITH exclude_tests
+    args.exclude_tests = True
+    cmd_symbols(args)
+    out_with_exclude, _ = capsys.readouterr()
+
+    # main_func should have in-degree=0 (test edge excluded)
+    # helper should have in-degree=1 (from main_func, non-test edge)
+    for line in out_with_exclude.split("\n"):
+        if "main_func" in line:
+            # main_func: in=0, out=1 (calls helper)
+            # The line should show "0" for in-degree (first number after "function")
+            # Let's check that the pattern shows 0 for in-degree
+            parts = line.split()
+            # Find index of "function" then next should be in-degree
+            if "function" in parts:
+                idx = parts.index("function")
+                in_deg = parts[idx + 1] if idx + 1 < len(parts) else None
+                assert in_deg == "0", f"main_func should have in-degree 0 with -x: {line}"
+            break
+
+
 def test_main_with_symbols(tmp_path: Path, capsys) -> None:
     """Main with symbols command."""
     behavior_map = {

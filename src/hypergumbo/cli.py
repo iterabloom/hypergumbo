@@ -1136,16 +1136,29 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
-    # Build node ID set for filtering
+    # Build node ID set and ID->path mapping for filtering
     node_ids = {n["id"] for n in nodes}
+    node_paths: dict[str, str] = {n["id"]: n.get("path", "") for n in nodes}
+
+    # Check exclude_tests flag before computing degrees
+    exclude_tests = getattr(args, "exclude_tests", False)
 
     # Compute in-degree and out-degree for each node
+    # When exclude_tests is set, skip edges where src or dst is a test path
     in_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
     out_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
 
     for edge in edges:
         src = edge.get("src", "")
         dst = edge.get("dst", "")
+
+        # If excluding tests, skip edges involving test files
+        if exclude_tests:
+            src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
+            dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
+            if _is_test_path(src_path) or _is_test_path(dst_path):
+                continue
+
         if src in node_ids:
             out_degree[src] = out_degree.get(src, 0) + 1
         if dst in node_ids:
@@ -1154,7 +1167,6 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Build list of symbols with their degrees
     # Tuple: (name, kind, in_degree, out_degree, total_degree, path)
     symbol_rows: list[tuple[str, str, int, int, int, str]] = []
-    exclude_tests = getattr(args, "exclude_tests", False)
 
     for node in nodes:
         node_id = node["id"]
