@@ -838,6 +838,16 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # Build lookup tables
     nodes_by_id = {n["id"]: n for n in nodes}
 
+    # Compute in-degree for sorting callers/callees by importance
+    in_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
+    for edge in edges:
+        dst = edge.get("dst", "")
+        if dst in in_degree:
+            in_degree[dst] += 1
+
+    # Get flags
+    exclude_tests = getattr(args, "exclude_tests", False)
+
     # Find matching symbols (case-insensitive exact match on name)
     pattern = args.symbol.lower()
     matches = [n for n in nodes if n.get("name", "").lower() == pattern]
@@ -887,7 +897,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 print(f"  Supply chain: {sc_info}")
 
         # Find callers (edges where dst = this symbol)
-        callers = []
+        # Tuple: (in_degree, name, path, line) - in_degree for sorting
+        callers: list[tuple[int, str, str, int]] = []
         for edge in edges:
             if edge.get("dst") == symbol_id:
                 src_id = edge.get("src", "")
@@ -899,11 +910,19 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     if src_node
                     else _extract_path_from_symbol_id(src_id)
                 )
+                # Skip test files if --exclude-tests
+                if exclude_tests and _is_test_path(src_path):
+                    continue
                 src_line = edge.get("line", 0)
-                callers.append((src_name, src_path, src_line))
+                src_in_degree = in_degree.get(src_id, 0)
+                callers.append((src_in_degree, src_name, src_path, src_line))
+
+        # Sort callers by in-degree (descending), then by name for stability
+        callers.sort(key=lambda x: (-x[0], x[1]))
 
         # Find callees (edges where src = this symbol)
-        callees = []
+        # Tuple: (in_degree, name, path, line) - in_degree for sorting
+        callees: list[tuple[int, str, str, int]] = []
         for edge in edges:
             if edge.get("src") == symbol_id:
                 dst_id = edge.get("dst", "")
@@ -915,14 +934,21 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     if dst_node
                     else _extract_path_from_symbol_id(dst_id)
                 )
+                # Skip test files if --exclude-tests
+                if exclude_tests and _is_test_path(dst_path):
+                    continue
                 edge_line = edge.get("line", 0)
-                callees.append((dst_name, dst_path, edge_line))
+                dst_in_degree = in_degree.get(dst_id, 0)
+                callees.append((dst_in_degree, dst_name, dst_path, edge_line))
+
+        # Sort callees by in-degree (descending), then by name for stability
+        callees.sort(key=lambda x: (-x[0], x[1]))
 
         # Display callers
         print()
         if callers:
             print(f"  Called by ({len(callers)}):")
-            for caller_name, caller_path, caller_line in callers:
+            for _, caller_name, caller_path, caller_line in callers:
                 print(f"    - {caller_name} ({caller_path}:{caller_line})")
         else:
             print("  Called by: (none)")
@@ -930,7 +956,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # Display callees
         if callees:
             print(f"  Calls ({len(callees)}):")
-            for callee_name, callee_path, callee_line in callees:
+            for _, callee_name, callee_path, callee_line in callees:
                 print(f"    - {callee_name} ({callee_path}:{callee_line})")
         else:
             print("  Calls: (none)")
@@ -1935,6 +1961,13 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
         "--input",
         default=None,
         help="Input behavior map file (default: hypergumbo.results.json)",
+    )
+    p_explain.add_argument(
+        "-x",
+        "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        help="Exclude callers/callees from test files",
     )
     p_explain.set_defaults(func=cmd_explain)
 

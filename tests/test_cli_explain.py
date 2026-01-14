@@ -472,3 +472,268 @@ def test_extract_path_from_symbol_id() -> None:
 
     # Invalid format (no line range pattern)
     assert _extract_path_from_symbol_id("python:path/only") == ""
+
+
+def test_cmd_explain_exclude_tests(tmp_path: Path, capsys) -> None:
+    """--exclude-tests hides callers/callees from test files."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/core.py:1-10:process:function",
+                "name": "process",
+                "kind": "function",
+                "language": "python",
+                "path": "src/core.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:1-10:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:1-10:test_process:function",
+                "name": "test_process",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-10:main:function",
+                "dst": "python:src/core.py:1-10:process:function",
+                "type": "calls",
+                "line": 5,
+            },
+            {
+                "id": "edge2",
+                "src": "python:tests/test_core.py:1-10:test_process:function",
+                "dst": "python:src/core.py:1-10:process:function",
+                "type": "calls",
+                "line": 8,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    # Without --exclude-tests: both callers shown
+    args = FakeArgs()
+    args.symbol = "process"
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+
+    cmd_explain(args)
+    out, _ = capsys.readouterr()
+    assert "main" in out
+    assert "test_process" in out
+    assert "Called by (2)" in out
+
+    # With --exclude-tests: only production caller shown
+    args.exclude_tests = True
+    cmd_explain(args)
+    out, _ = capsys.readouterr()
+    assert "main" in out
+    assert "test_process" not in out
+    assert "Called by (1)" in out
+
+
+def test_cmd_explain_exclude_tests_for_callees(tmp_path: Path, capsys) -> None:
+    """--exclude-tests also hides test callees (what the symbol calls)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/core.py:1-10:process:function",
+                "name": "process",
+                "kind": "function",
+                "language": "python",
+                "path": "src/core.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-10:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/conftest.py:1-10:fixture:function",
+                "name": "fixture",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/conftest.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            # process calls helper (production)
+            {
+                "id": "edge1",
+                "src": "python:src/core.py:1-10:process:function",
+                "dst": "python:src/utils.py:1-10:helper:function",
+                "type": "calls",
+                "line": 5,
+            },
+            # process calls fixture (test code)
+            {
+                "id": "edge2",
+                "src": "python:src/core.py:1-10:process:function",
+                "dst": "python:tests/conftest.py:1-10:fixture:function",
+                "type": "calls",
+                "line": 8,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    # With --exclude-tests: only production callee shown
+    args = FakeArgs()
+    args.symbol = "process"
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = True
+
+    cmd_explain(args)
+    out, _ = capsys.readouterr()
+    assert "helper" in out
+    assert "fixture" not in out
+    assert "Calls (1)" in out
+
+
+def test_cmd_explain_formats_missing_non_file_symbol(tmp_path: Path, capsys) -> None:
+    """Edge referencing a symbol NOT in nodes shows raw ID as fallback."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:baz:function",
+                "name": "baz",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            # Note: the external_lib symbol is NOT included in nodes
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:external/lib.py:1-10:external_func:function",
+                "dst": "python:src/main.py:1-10:baz:function",
+                "type": "calls",
+                "line": 15,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "baz"
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show the raw symbol ID since node is not found and it's not :file:file
+    assert "python:external/lib.py:1-10:external_func:function" in out
+
+
+def test_cmd_explain_sorts_by_in_degree(tmp_path: Path, capsys) -> None:
+    """Callers/callees are sorted by in-degree (most called first)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-10:api_handler:function",
+                "name": "api_handler",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-10:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:1-10:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            # main calls api_handler
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-10:main:function",
+                "dst": "python:src/api.py:1-10:api_handler:function",
+                "type": "calls",
+                "line": 5,
+            },
+            # helper calls api_handler
+            {
+                "id": "edge2",
+                "src": "python:src/utils.py:1-10:helper:function",
+                "dst": "python:src/api.py:1-10:api_handler:function",
+                "type": "calls",
+                "line": 3,
+            },
+            # 5 things call helper (making it high in-degree)
+            {
+                "id": "edge3",
+                "src": "python:src/api.py:1-10:api_handler:function",
+                "dst": "python:src/utils.py:1-10:helper:function",
+                "type": "calls",
+                "line": 7,
+            },
+            {
+                "id": "edge4",
+                "src": "python:src/main.py:1-10:main:function",
+                "dst": "python:src/utils.py:1-10:helper:function",
+                "type": "calls",
+                "line": 8,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "api_handler"
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+
+    cmd_explain(args)
+    out, _ = capsys.readouterr()
+
+    # helper has in-degree 2 (called by api_handler and main)
+    # main has in-degree 0 (nothing calls it)
+    # So helper should appear before main in the "Called by" list
+    helper_pos = out.find("helper")
+    main_pos = out.find("main")
+    assert helper_pos < main_pos, "helper (higher in-degree) should appear before main"
