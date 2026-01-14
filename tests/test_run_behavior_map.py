@@ -308,37 +308,3 @@ def test_run_behavior_map_budgets_invalid_spec_skipped(tmp_path):
     budget_invalid = tmp_path / "output.invalid_budget.json"
     assert not budget_invalid.exists(), "Invalid budget file should NOT be generated"
 
-
-def test_run_behavior_map_exclude_tests(tmp_path):
-    """exclude_tests=True filters out symbols from test files."""
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-
-    # Create production code
-    src_dir = repo_root / "src"
-    src_dir.mkdir()
-    (src_dir / "app.py").write_text("def main(): pass\n")
-
-    # Create test code
-    tests_dir = repo_root / "tests"
-    tests_dir.mkdir()
-    (tests_dir / "test_app.py").write_text("def test_main(): pass\n")
-
-    out_path = tmp_path / "output.json"
-    run_behavior_map(
-        repo_root=repo_root,
-        out_path=out_path,
-        exclude_tests=True,
-        budgets="none",  # Disable tiered output for faster test
-    )
-
-    data = json.loads(out_path.read_text())
-
-    # Should have main from src/app.py but NOT test_main from tests/
-    node_names = [n["name"] for n in data["nodes"]]
-    assert "main" in node_names
-    assert "test_main" not in node_names
-
-    # Limits should indicate tests were excluded
-    assert data["limits"]["test_files_excluded"] is True
-

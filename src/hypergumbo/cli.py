@@ -344,7 +344,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
     budgets = getattr(args, "budgets", None)
-    exclude_tests = getattr(args, "exclude_tests", False)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
 
@@ -356,7 +355,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         compact=compact,
         coverage=coverage,
         budgets=budgets,
-        exclude_tests=exclude_tests,
         extra_excludes=extra_excludes,
         frameworks=frameworks,
     )
@@ -1657,7 +1655,6 @@ Examples:
   hypergumbo run . --out analysis.json  # Custom output file
   hypergumbo run . --compact            # LLM-friendly: top symbols + summary
   hypergumbo run . --first-party-only   # Exclude vendored/external code
-  hypergumbo run . -x                   # Exclude test files
 
 After running, use search/explain/slice to query the results:
   hypergumbo search "parse"             # Find symbols containing "parse"
@@ -1737,12 +1734,6 @@ Output files:
         default=None,
         dest="budgets",  # Maps to same dest as --budgets
         help=argparse.SUPPRESS,  # Hidden (deprecated alias for --budgets)
-    )
-    p_run.add_argument(
-        "-x", "--exclude-tests",
-        action="store_true",
-        dest="exclude_tests",
-        help="Exclude test files from analysis output",
     )
     p_run.add_argument(
         "-e", "--exclude",
@@ -2227,7 +2218,6 @@ def run_behavior_map(
     compact: bool = False,
     coverage: float = 0.8,
     budgets: str | None = None,
-    exclude_tests: bool = False,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
 ) -> list[Path]:
@@ -2247,8 +2237,6 @@ def run_behavior_map(
         budgets: Token budget output specification. Comma-separated specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
-        exclude_tests: If True, filter out symbols from test files after analysis.
-            This removes test helpers and test fixtures from the behavior map.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
             Affects profile detection (language stats). Use for excluding
             project-specific files like "*.json" or "vendor".
@@ -2316,21 +2304,6 @@ def run_behavior_map(
         all_edges.extend(linker_result.edges)
     del linker_ctx, captured_symbols  # Free linker data structures
     _log_memory("after linkers")
-
-    # Filter out test files if requested
-    if exclude_tests:
-        # Filter symbols from test files
-        filtered_symbols = [s for s in all_symbols if not _is_test_path(s.path)]
-        # Get IDs of remaining symbols for edge filtering
-        remaining_ids = {s.id for s in filtered_symbols}
-        # Filter edges to only include those between remaining symbols
-        filtered_edges = [
-            e for e in all_edges
-            if e.src in remaining_ids and e.dst in remaining_ids
-        ]
-        all_symbols = filtered_symbols
-        all_edges = filtered_edges
-        limits.test_files_excluded = True
 
     # Apply supply chain classification to all symbols
     _classify_symbols(all_symbols, repo_root, package_roots)
