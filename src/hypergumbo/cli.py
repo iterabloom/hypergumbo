@@ -200,6 +200,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     language_proportional = getattr(args, "language_proportional", False)
     show_progress = getattr(args, "progress", False)
     readme_debug = getattr(args, "readme_debug", False)
+    with_source = getattr(args, "with_source", False)
 
     # Load cached results if --input is provided
     cached_results = None
@@ -265,6 +266,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         language_proportional=language_proportional,
         progress=show_progress,
         cached_results=cached_results,
+        with_source=with_source,
     )
     print(sketch)
 
@@ -836,6 +838,55 @@ def cmd_routes(args: argparse.Namespace) -> int:
     return 0
 
 
+def _extract_source_lines(
+    repo_root: Path,
+    rel_path: str,
+    start_line: int,
+    end_line: int,
+) -> Optional[str]:
+    """Extract source code lines from a file.
+
+    Args:
+        repo_root: Repository root directory.
+        rel_path: Relative path to the source file.
+        start_line: Starting line number (1-indexed).
+        end_line: Ending line number (1-indexed, inclusive).
+
+    Returns:
+        Source code as string, or None if file not found/unreadable.
+    """
+    file_path = repo_root / rel_path
+    if not file_path.exists():
+        return None
+
+    try:
+        lines = file_path.read_text(errors="replace").splitlines()
+        # Convert to 0-indexed, handle out-of-range
+        start_idx = max(0, start_line - 1)
+        end_idx = min(len(lines), end_line)
+        if start_idx >= len(lines):
+            return None  # pragma: no cover - out-of-range line numbers
+        return "\n".join(lines[start_idx:end_idx])
+    except (OSError, IOError):  # pragma: no cover - rare I/O errors
+        return None  # pragma: no cover
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count using shared heuristic from token_budget module.
+
+    Delegates to the shared implementation for consistency across
+    sketch, explain, and other commands.
+
+    Args:
+        text: Source text to estimate.
+
+    Returns:
+        Estimated token count.
+    """
+    from .selection.token_budget import estimate_tokens as _shared_estimate_tokens
+    return _shared_estimate_tokens(text)
+
+
 def cmd_explain(args: argparse.Namespace) -> int:
     """Explain a symbol with its callers and callees."""
     repo_root = Path(args.path).resolve()
@@ -874,6 +925,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
     # Get flags
     exclude_tests = getattr(args, "exclude_tests", False)
+    verbose = getattr(args, "verbose", False)
+    token_budget = getattr(args, "tokens", None)
 
     # Find matching symbols (case-insensitive exact match on name)
     pattern = args.symbol.lower()
@@ -923,9 +976,35 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     sc_info += f" ({reason})"
                 print(f"  Supply chain: {sc_info}")
 
+        # Track sources shown for deduplication in verbose mode
+        sources_shown: set[str] = set()
+        tokens_used = 0
+
+        # In verbose mode, show source for queried symbol first
+        if verbose:
+            symbol_source = _extract_source_lines(repo_root, path, start_line, end_line)
+            if symbol_source:
+                source_tokens = _estimate_tokens(symbol_source)
+                # Always show queried symbol's source (reserve budget)
+                if token_budget is None or tokens_used + source_tokens <= token_budget:
+                    print(f"\n  Source ({path}:{start_line}-{end_line}):")
+                    for line in symbol_source.splitlines():
+                        print(f"    {line}")
+                    tokens_used += source_tokens
+                    sources_shown.add(symbol_id)
+                else:
+                    # Even with budget, always show queried symbol
+                    print(f"\n  Source ({path}:{start_line}-{end_line}):")
+                    for line in symbol_source.splitlines():
+                        print(f"    {line}")
+                    tokens_used += source_tokens
+                    sources_shown.add(symbol_id)
+            else:
+                print(f"\n  [Source unavailable: {path}]")
+
         # Find callers (edges where dst = this symbol)
-        # Tuple: (in_degree, name, path, line) - in_degree for sorting
-        callers: list[tuple[int, str, str, int]] = []
+        # Tuple: (in_degree, name, path, line, src_id, src_node) - in_degree for sorting
+        callers: list[tuple[int, str, str, int, str, Optional[Dict[str, Any]]]] = []
         for edge in edges:
             if edge.get("dst") == symbol_id:
                 src_id = edge.get("src", "")
@@ -942,14 +1021,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     continue
                 src_line = edge.get("line", 0)
                 src_in_degree = in_degree.get(src_id, 0)
-                callers.append((src_in_degree, src_name, src_path, src_line))
+                callers.append((src_in_degree, src_name, src_path, src_line, src_id, src_node))
 
         # Sort callers by in-degree (descending), then by name for stability
         callers.sort(key=lambda x: (-x[0], x[1]))
 
         # Find callees (edges where src = this symbol)
-        # Tuple: (in_degree, name, path, line) - in_degree for sorting
-        callees: list[tuple[int, str, str, int]] = []
+        # Tuple: (in_degree, name, path, line, dst_id, dst_node) - in_degree for sorting
+        callees: list[tuple[int, str, str, int, str, Optional[Dict[str, Any]]]] = []
         for edge in edges:
             if edge.get("src") == symbol_id:
                 dst_id = edge.get("dst", "")
@@ -966,7 +1045,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     continue
                 edge_line = edge.get("line", 0)
                 dst_in_degree = in_degree.get(dst_id, 0)
-                callees.append((dst_in_degree, dst_name, dst_path, edge_line))
+                callees.append((dst_in_degree, dst_name, dst_path, edge_line, dst_id, dst_node))
 
         # Sort callees by in-degree (descending), then by name for stability
         callees.sort(key=lambda x: (-x[0], x[1]))
@@ -975,7 +1054,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print()
         if callers:
             print(f"  Called by ({len(callers)}):")
-            for _, caller_name, caller_path, caller_line in callers:
+            for _, caller_name, caller_path, caller_line, _, _ in callers:
                 print(f"    - {caller_name} ({caller_path}:{caller_line})")
         else:
             print("  Called by: (none)")
@@ -983,10 +1062,94 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # Display callees
         if callees:
             print(f"  Calls ({len(callees)}):")
-            for _, callee_name, callee_path, callee_line in callees:
+            for _, callee_name, callee_path, callee_line, _, _ in callees:
                 print(f"    - {callee_name} ({callee_path}:{callee_line})")
         else:
             print("  Calls: (none)")
+
+        # In verbose mode, show source for callers and callees
+        if verbose:
+            # Prepare source items for callers and callees (combined for budgeting)
+            # We show them in order: high in-degree first, callers before callees at same level
+            source_items: list[tuple[int, str, str, str, int, int, Optional[Dict[str, Any]], bool]] = []
+            # (in_degree, symbol_id, display_name, path, start, end, node, is_module_level)
+
+            for caller_in_degree, caller_name, caller_path, caller_line, caller_id, caller_node in callers:
+                if caller_id in sources_shown:
+                    continue
+                # Determine if module-level (kind == "file")
+                is_module_level = (
+                    caller_node is not None and caller_node.get("kind") == "file"
+                ) or caller_id.endswith(":file:file")
+
+                if is_module_level:
+                    # For module-level, show only the single call line
+                    source_items.append((
+                        caller_in_degree, caller_id, caller_name, caller_path,
+                        caller_line, caller_line, caller_node, True
+                    ))
+                elif caller_node:
+                    caller_span = caller_node.get("span", {})
+                    c_start = caller_span.get("start_line", 0)
+                    c_end = caller_span.get("end_line", 0)
+                    if c_start and c_end:
+                        source_items.append((
+                            caller_in_degree, caller_id, caller_name, caller_path,
+                            c_start, c_end, caller_node, False
+                        ))
+
+            for callee_in_degree, callee_name, callee_path, callee_line, callee_id, callee_node in callees:
+                if callee_id in sources_shown:
+                    continue
+                # Determine if module-level
+                is_module_level = (
+                    callee_node is not None and callee_node.get("kind") == "file"
+                ) or callee_id.endswith(":file:file")
+
+                if is_module_level:
+                    source_items.append((
+                        callee_in_degree, callee_id, callee_name, callee_path,
+                        callee_line, callee_line, callee_node, True
+                    ))
+                elif callee_node:
+                    callee_span = callee_node.get("span", {})
+                    c_start = callee_span.get("start_line", 0)
+                    c_end = callee_span.get("end_line", 0)
+                    if c_start and c_end:
+                        source_items.append((
+                            callee_in_degree, callee_id, callee_name, callee_path,
+                            c_start, c_end, callee_node, False
+                        ))
+
+            # Sort by in-degree descending (most important first)
+            source_items.sort(key=lambda x: -x[0])
+
+            # Show sources, respecting budget
+            omitted_count = 0
+            for _item_in_degree, item_id, item_name, item_path, item_start, item_end, _, is_mod in source_items:
+                if item_id in sources_shown:
+                    continue
+
+                source = _extract_source_lines(repo_root, item_path, item_start, item_end)
+                if source:
+                    source_tokens = _estimate_tokens(source)
+
+                    # Check budget
+                    if token_budget is not None and tokens_used + source_tokens > token_budget:
+                        omitted_count += 1
+                        continue
+
+                    # Print source
+                    loc_str = f"{item_path}:{item_start}" if item_start == item_end else f"{item_path}:{item_start}-{item_end}"
+                    label = "(module level)" if is_mod else ""
+                    print(f"\n  Source for {item_name} {label}({loc_str}):")
+                    for line in source.splitlines():
+                        print(f"    {line}")
+                    tokens_used += source_tokens
+                    sources_shown.add(item_id)
+
+            if omitted_count > 0:
+                print(f"\n  [{omitted_count} source(s) omitted due to token budget]")
 
     # Output summary (always at the end)
     _print_output_summary("explain", stdout_output=True)
@@ -1660,6 +1823,12 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         dest="language_proportional",
         help="Disable language-proportional symbol selection (enabled by default)",
     )
+    p_sketch.add_argument(
+        "--with-source",
+        action="store_true",
+        dest="with_source",
+        help="Append full source file contents after the sketch (uses remaining token budget)",
+    )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo init
@@ -2012,6 +2181,21 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
         action="store_true",
         dest="exclude_tests",
         help="Exclude callers/callees from test files",
+    )
+    p_explain.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        dest="verbose",
+        help="Show source code for symbol, callers, and callees",
+    )
+    p_explain.add_argument(
+        "-t",
+        "--tokens",
+        type=int,
+        default=None,
+        dest="tokens",
+        help="Token budget for verbose output (omits low-priority sources when exceeded)",
     )
     p_explain.set_defaults(func=cmd_explain)
 

@@ -3841,6 +3841,7 @@ def generate_sketch(
     language_proportional: bool = True,
     progress: bool = False,
     cached_results: Optional[dict] = None,
+    with_source: bool = False,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -3878,6 +3879,9 @@ def generate_sketch(
         cached_results: If provided, use this behavior map instead of running
             analysis. Should be the parsed JSON from hypergumbo.results.json.
             Skips profile detection and analysis phases for faster generation.
+        with_source: If True, append full source file contents after the sketch.
+            Files are ordered by symbol importance density. Uses remaining
+            token budget after other sections are filled.
 
     Returns:
         Markdown-formatted sketch string.
@@ -4209,6 +4213,52 @@ def generate_sketch(
         )
         if additional_files_section:
             sections.append(additional_files_section)
+
+    # Section 8: Source Content (if with_source is True and we have budget)
+    if with_source and source_files and max_tokens is not None:
+        # Recalculate remaining budget
+        current_sketch = "\n\n".join(sections)
+        current_tokens = estimate_tokens(current_sketch)
+        remaining_tokens = max_tokens - current_tokens
+
+        if remaining_tokens > 100:  # Need meaningful space for source content
+            source_content_lines = ["## Source Content", ""]
+
+            # Order source files by density if available
+            ordered_files = source_files
+            if density_scores:
+                # Sort by density descending
+                ordered_files = sorted(
+                    source_files,
+                    key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0),
+                    reverse=True,
+                )
+
+            source_tokens_used = 0
+            source_budget = remaining_tokens - 50  # Reserve some tokens for headers
+
+            for src_file in ordered_files:
+                try:
+                    content = src_file.read_text(errors="replace")
+                    file_tokens = estimate_tokens(content)
+
+                    if source_tokens_used + file_tokens > source_budget:
+                        # Stop if this file would exceed budget
+                        continue
+
+                    rel_path = src_file.relative_to(repo_root)
+                    source_content_lines.append(f"### {rel_path}")
+                    source_content_lines.append("```")
+                    source_content_lines.append(content.rstrip())
+                    source_content_lines.append("```")
+                    source_content_lines.append("")
+
+                    source_tokens_used += file_tokens
+                except (OSError, IOError):  # pragma: no cover - rare I/O errors
+                    continue
+
+            if len(source_content_lines) > 2:  # More than just header
+                sections.append("\n".join(source_content_lines))
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)

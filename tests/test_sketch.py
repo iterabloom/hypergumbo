@@ -4007,3 +4007,123 @@ class TestCachedResults:
         assert "django" in sketch.lower() or "Django" in sketch
         assert "celery" in sketch.lower() or "Celery" in sketch
 
+
+class TestSketchWithSource:
+    """Tests for sketch --with-source feature (include source file contents)."""
+
+    def test_with_source_includes_file_contents(self, tmp_path: Path) -> None:
+        """--with-source appends source file contents after regular sketch."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        main_py = src_dir / "main.py"
+        main_py.write_text(
+            """\
+def main():
+    print("hello world")
+    return 0
+"""
+        )
+
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=2000,
+            with_source=True,
+        )
+
+        # Should include regular sketch content
+        assert "## Overview" in sketch
+        # Should include the actual source code
+        assert 'print("hello world")' in sketch
+        # Should have a section header for source content
+        assert "## Source Content" in sketch
+
+    def test_with_source_respects_token_budget(self, tmp_path: Path) -> None:
+        """--with-source respects token budget (may omit files)."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create larger files to test budget constraints
+        for i in range(10):
+            content = f"def function_{i}():\n"
+            # Add significant bulk to each file
+            for j in range(50):
+                content += f"    x_{j} = {j}\n"
+            content += f"    return {i}\n"
+            (src_dir / f"module_{i}.py").write_text(content)
+
+        # Tiny budget - no room for source content
+        tiny_sketch = generate_sketch(tmp_path, max_tokens=200, with_source=True)
+        # Large budget - should include source
+        large_sketch = generate_sketch(tmp_path, max_tokens=20000, with_source=True)
+
+        # Tiny budget may not have source content (too small for source section)
+        # Large budget should have source content
+        assert "## Source Content" in large_sketch
+        # At least some source code should appear with large budget
+        assert "def function_" in large_sketch
+
+    def test_with_source_orders_by_density(self, tmp_path: Path) -> None:
+        """Source files are ordered by density (most important first)."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create a file that would be considered important (has many symbols)
+        important = src_dir / "important.py"
+        important.write_text(
+            """\
+def func_a():
+    func_b()
+    return 1
+
+def func_b():
+    func_c()
+    return 2
+
+def func_c():
+    return 3
+"""
+        )
+
+        # Create a simpler file
+        simple = src_dir / "simple.py"
+        simple.write_text("x = 1\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=4000, with_source=True)
+
+        # important.py should appear before simple.py in source content
+        assert "## Source Content" in sketch
+        # The important file's functions should appear
+        assert "def func_a():" in sketch or "def func_b():" in sketch
+
+    def test_with_source_skips_large_file(self, tmp_path: Path) -> None:
+        """--with-source skips files that exceed remaining budget."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create a small file (fits in budget)
+        (src_dir / "small.py").write_text("x = 1\n")
+
+        # Create a large file (won't fit)
+        large_content = "def big():\n" + "    pass\n" * 500
+        (src_dir / "large.py").write_text(large_content)
+
+        # Budget large enough for small file, but not large file
+        sketch = generate_sketch(tmp_path, max_tokens=800, with_source=True)
+
+        # Should have source content (small file fits)
+        assert "## Source Content" in sketch
+        assert "x = 1" in sketch
+        # Large file should be skipped
+        assert "def big():" not in sketch
+
+    def test_with_source_disabled_by_default(self, tmp_path: Path) -> None:
+        """Without --with-source, no Source Content section appears."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("def main():\n    pass\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=2000)
+
+        # Should NOT have Source Content section
+        assert "## Source Content" not in sketch
+

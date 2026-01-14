@@ -737,3 +737,675 @@ def test_cmd_explain_sorts_by_in_degree(tmp_path: Path, capsys) -> None:
     helper_pos = out.find("helper")
     main_pos = out.find("main")
     assert helper_pos < main_pos, "helper (higher in-degree) should appear before main"
+
+
+# =============================================================================
+# Tests for explain --verbose mode
+# =============================================================================
+
+
+def test_cmd_explain_verbose_shows_source(tmp_path: Path, capsys) -> None:
+    """--verbose shows source code for queried symbol."""
+    # Create actual source file
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    print("hello")
+    return 42
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-3:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 13},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show the source code
+    assert 'def foo():' in out
+    assert 'print("hello")' in out
+    assert 'return 42' in out
+
+
+def test_cmd_explain_verbose_shows_caller_source(tmp_path: Path, capsys) -> None:
+    """--verbose shows source code for callers."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def main():
+    result = foo()
+    return result
+
+def foo():
+    return 42
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:5-6:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 5, "end_line": 6, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:1-3:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 17},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-3:main:function",
+                "dst": "python:src/main.py:5-6:foo:function",
+                "type": "calls",
+                "line": 2,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show caller source code
+    assert 'def main():' in out
+    assert 'result = foo()' in out
+
+
+def test_cmd_explain_verbose_module_level_shows_single_line(tmp_path: Path, capsys) -> None:
+    """Module-level calls show only the single line of the call, not entire file."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    return 42
+"""
+    )
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_main = tests_dir / "test_main.py"
+    test_main.write_text(
+        """\
+import pytest
+from src.main import foo
+
+# Module-level call
+result = foo()
+
+def test_foo():
+    assert foo() == 42
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 13},
+            },
+            {
+                # Module-level file node
+                "id": "python:tests/test_main.py:1-1:file:file",
+                "name": "file",
+                "kind": "file",
+                "language": "python",
+                "path": "tests/test_main.py",
+                "span": {"start_line": 1, "end_line": 1, "start_col": 0, "end_col": 0},
+            },
+        ],
+        "edges": [
+            {
+                # Module-level call at line 5
+                "id": "edge1",
+                "src": "python:tests/test_main.py:1-1:file:file",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                "line": 5,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show only the call line, not the entire file
+    assert "result = foo()" in out
+    # Should NOT show other lines from the test file
+    assert "import pytest" not in out
+    assert "def test_foo" not in out
+
+
+def test_cmd_explain_verbose_token_budget_omits_low_priority(tmp_path: Path, capsys) -> None:
+    """--tokens budget causes omission of low-priority sources (bottom-up by in-degree)."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    # Create a long source file
+    main_py.write_text(
+        """\
+def foo():
+    return 42
+
+def caller_important():
+    # This is a very long function
+    x = 1
+    y = 2
+    z = 3
+    return foo()
+
+def caller_unimportant():
+    # This is also a very long function
+    a = 1
+    b = 2
+    c = 3
+    return foo()
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:4-9:caller_important:function",
+                "name": "caller_important",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 4, "end_line": 9, "start_col": 0, "end_col": 17},
+            },
+            {
+                "id": "python:src/main.py:11-17:caller_unimportant:function",
+                "name": "caller_unimportant",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 11, "end_line": 17, "start_col": 0, "end_col": 17},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:4-9:caller_important:function",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                "line": 9,
+            },
+            {
+                "id": "edge2",
+                "src": "python:src/main.py:11-17:caller_unimportant:function",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                "line": 17,
+            },
+            # Make caller_important have higher in-degree (more important)
+            {
+                "id": "edge3",
+                "src": "python:external:1-1:ext:function",
+                "dst": "python:src/main.py:4-9:caller_important:function",
+                "type": "calls",
+                "line": 1,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = 40  # Small budget: only fits foo + one caller
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show the queried symbol
+    assert "def foo():" in out
+    # caller_important has higher in-degree, should be shown first
+    # With tight budget, lower-priority caller should be omitted
+    assert "caller_important" in out
+    # Should indicate sources were omitted
+    assert "omitted" in out.lower()
+
+
+def test_cmd_explain_verbose_shows_callee_source(tmp_path: Path, capsys) -> None:
+    """--verbose shows source code for callees (what the symbol calls)."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def main():
+    result = helper()
+    return result
+
+def helper():
+    return 42
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-3:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 17},
+            },
+            {
+                "id": "python:src/main.py:5-6:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 5, "end_line": 6, "start_col": 0, "end_col": 13},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-3:main:function",
+                "dst": "python:src/main.py:5-6:helper:function",
+                "type": "calls",
+                "line": 2,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show callee source code
+    assert 'def helper():' in out
+    assert 'return 42' in out
+
+
+def test_cmd_explain_verbose_deduplicates_source(tmp_path: Path, capsys) -> None:
+    """--verbose deduplicates source when same symbol is both caller and callee."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    bar()
+    return 42
+
+def bar():
+    foo()
+    return 0
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-3:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:5-7:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 5, "end_line": 7, "start_col": 0, "end_col": 12},
+            },
+        ],
+        "edges": [
+            # foo calls bar
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-3:foo:function",
+                "dst": "python:src/main.py:5-7:bar:function",
+                "type": "calls",
+                "line": 2,
+            },
+            # bar calls foo (mutual recursion)
+            {
+                "id": "edge2",
+                "src": "python:src/main.py:5-7:bar:function",
+                "dst": "python:src/main.py:1-3:foo:function",
+                "type": "calls",
+                "line": 6,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # bar appears in both callers and callees, but source should only be shown once
+    # Count occurrences of "def bar():"
+    bar_count = out.count("def bar():")
+    assert bar_count == 1, f"bar source shown {bar_count} times, expected 1 (deduplicated)"
+
+
+def test_cmd_explain_verbose_missing_source_file(tmp_path: Path, capsys) -> None:
+    """--verbose handles missing source files gracefully."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/missing.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/missing.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0  # Should not crash
+
+    out, _ = capsys.readouterr()
+    # Should mention the symbol even without source
+    assert "foo" in out
+    # Should indicate source is unavailable
+    assert "unavailable" in out.lower() or "not found" in out.lower() or "[source" in out.lower()
+
+
+def test_cmd_explain_verbose_queried_symbol_exceeds_budget(tmp_path: Path, capsys) -> None:
+    """Queried symbol is always shown even if it exceeds token budget."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    # Create a longer source that exceeds tiny budget
+    main_py.write_text(
+        """\
+def large_function():
+    # This is a longer function that exceeds the tiny budget
+    x = 1
+    y = 2
+    z = 3
+    a = 4
+    b = 5
+    return x + y + z + a + b
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-9:large_function:function",
+                "name": "large_function",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 9, "start_col": 0, "end_col": 26},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "large_function"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = 5  # Very tiny budget, smaller than the symbol itself
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should still show the queried symbol even over budget
+    assert "def large_function():" in out
+    assert "return x + y + z + a + b" in out
+
+
+def test_cmd_explain_verbose_self_recursion(tmp_path: Path, capsys) -> None:
+    """Self-recursive function source is not duplicated."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-4:factorial:function",
+                "name": "factorial",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 4, "start_col": 0, "end_col": 30},
+            },
+        ],
+        "edges": [
+            # Self-recursive call
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-4:factorial:function",
+                "dst": "python:src/main.py:1-4:factorial:function",
+                "type": "calls",
+                "line": 4,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "factorial"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show factorial source only once (not duplicated as caller and callee)
+    factorial_count = out.count("def factorial(n):")
+    assert factorial_count == 1, f"factorial source shown {factorial_count} times, expected 1"
+
+
+def test_cmd_explain_verbose_module_level_callee(tmp_path: Path, capsys) -> None:
+    """Module-level callee shows only the single call line."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def main():
+    initialize()
+    return 0
+
+initialize()
+"""
+    )
+
+    # File node representing module-level code
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-3:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 12},
+            },
+            {
+                "id": "python:src/main.py:1-1:file:file",
+                "name": "file",
+                "kind": "file",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 1, "start_col": 0, "end_col": 0},
+            },
+        ],
+        "edges": [
+            # main calls initialize (external, not shown)
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-3:main:function",
+                "dst": "python:src/main.py:1-1:file:file",
+                "type": "calls",
+                "line": 5,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.verbose = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show the module-level line
+    assert "initialize()" in out
