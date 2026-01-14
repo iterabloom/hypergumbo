@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from hypergumbo.schema import SCHEMA_VERSION
-from hypergumbo.cli import cmd_explain, main
+from hypergumbo.cli import cmd_explain, main, _extract_path_from_symbol_id
 
 
 class FakeArgs:
@@ -400,9 +400,9 @@ def test_cmd_explain_formats_file_level_callers(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_formats_missing_file_level_callers(tmp_path: Path, capsys) -> None:
-    """Edge referencing file-level symbol NOT in nodes still shows '<module level>'."""
+    """Edge referencing file-level symbol NOT in nodes shows path from ID."""
     # This tests the case where an edge references a symbol that's not in the
-    # nodes list but ends with ":file:file" - the fallback ID detection path.
+    # nodes list but ends with ":file:file" - we extract the path from the ID.
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -441,5 +441,34 @@ def test_cmd_explain_formats_missing_file_level_callers(tmp_path: Path, capsys) 
     out, _ = capsys.readouterr()
     # Should show "<module level>" via fallback ID detection
     assert "<module level>" in out
+    # Should show the path extracted from the symbol ID
+    assert "tests/test_bar.py" in out
     # Should NOT show the raw symbol ID format
     assert ":file:file" not in out
+
+
+def test_extract_path_from_symbol_id() -> None:
+    """Test path extraction from symbol IDs."""
+    # Standard case
+    assert _extract_path_from_symbol_id(
+        "python:/home/user/project/src/main.py:1-10:foo:function"
+    ) == "/home/user/project/src/main.py"
+
+    # File-level symbol
+    assert _extract_path_from_symbol_id(
+        "python:tests/test_foo.py:1-1:file:file"
+    ) == "tests/test_foo.py"
+
+    # Windows-style path (with drive letter containing colon)
+    assert _extract_path_from_symbol_id(
+        "python:C:/Users/dev/project/main.py:5-20:bar:function"
+    ) == "C:/Users/dev/project/main.py"
+
+    # Empty string
+    assert _extract_path_from_symbol_id("") == ""
+
+    # Invalid format (no colon)
+    assert _extract_path_from_symbol_id("invalid") == ""
+
+    # Invalid format (no line range pattern)
+    assert _extract_path_from_symbol_id("python:path/only") == ""

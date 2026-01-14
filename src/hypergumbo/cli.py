@@ -439,6 +439,39 @@ def _format_symbol_display_name(node: Dict[str, Any] | None, fallback_id: str = 
     return name if name else fallback_id
 
 
+def _extract_path_from_symbol_id(symbol_id: str) -> str:
+    """Extract the file path from a symbol ID.
+
+    Symbol ID format: {lang}:{path}:{start}-{end}:{kind}:{name}
+    Example: python:/home/user/project/src/main.py:1-10:foo:function
+
+    Args:
+        symbol_id: The full symbol ID string.
+
+    Returns:
+        The file path extracted from the ID, or empty string if parsing fails.
+    """
+    if not symbol_id:
+        return ""
+
+    # Split on first colon to separate language from rest
+    parts = symbol_id.split(":", 1)
+    if len(parts) < 2:
+        return ""
+
+    rest = parts[1]  # Everything after "lang:"
+
+    # The path ends before the line range (e.g., ":1-10:")
+    # Find the pattern ":digits-digits:" from the end
+    import re
+    match = re.search(r":(\d+-\d+):[^:]+:[^:]+$", rest)
+    if match:
+        # Everything before the match is the path
+        return rest[: match.start()]
+
+    return ""
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -860,7 +893,12 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 src_id = edge.get("src", "")
                 src_node = nodes_by_id.get(src_id)
                 src_name = _format_symbol_display_name(src_node, src_id)
-                src_path = src_node.get("path", "") if src_node else ""
+                # Extract path from node, or fall back to parsing the symbol ID
+                src_path = (
+                    src_node.get("path", "")
+                    if src_node
+                    else _extract_path_from_symbol_id(src_id)
+                )
                 src_line = edge.get("line", 0)
                 callers.append((src_name, src_path, src_line))
 
@@ -871,7 +909,12 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 dst_id = edge.get("dst", "")
                 dst_node = nodes_by_id.get(dst_id)
                 dst_name = _format_symbol_display_name(dst_node, dst_id)
-                dst_path = dst_node.get("path", "") if dst_node else ""
+                # Extract path from node, or fall back to parsing the symbol ID
+                dst_path = (
+                    dst_node.get("path", "")
+                    if dst_node
+                    else _extract_path_from_symbol_id(dst_id)
+                )
                 edge_line = edge.get("line", 0)
                 callees.append((dst_name, dst_path, edge_line))
 
