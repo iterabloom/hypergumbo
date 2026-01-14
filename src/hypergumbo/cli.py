@@ -925,7 +925,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
     # Get flags
     exclude_tests = getattr(args, "exclude_tests", False)
-    verbose = getattr(args, "verbose", False)
+    with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
 
     # Find matching symbols (case-insensitive exact match on name)
@@ -976,12 +976,12 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     sc_info += f" ({reason})"
                 print(f"  Supply chain: {sc_info}")
 
-        # Track sources shown for deduplication in verbose mode
+        # Track sources shown for deduplication in with_source mode
         sources_shown: set[str] = set()
         tokens_used = 0
 
-        # In verbose mode, show source for queried symbol first
-        if verbose:
+        # In with_source mode, show source for queried symbol first
+        if with_source:
             symbol_source = _extract_source_lines(repo_root, path, start_line, end_line)
             if symbol_source:
                 source_tokens = _estimate_tokens(symbol_source)
@@ -1067,8 +1067,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
         else:
             print("  Calls: (none)")
 
-        # In verbose mode, show source for callers and callees
-        if verbose:
+        # In with_source mode, show source for callers and callees
+        if with_source:
             # Prepare source items for callers and callees (combined for budgeting)
             # We show them in order: high in-degree first, callers before callees at same level
             source_items: list[tuple[int, str, str, str, int, int, Optional[Dict[str, Any]], bool]] = []
@@ -2183,10 +2183,9 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
         help="Exclude callers/callees from test files",
     )
     p_explain.add_argument(
-        "-v",
-        "--verbose",
+        "--with-source",
         action="store_true",
-        dest="verbose",
+        dest="with_source",
         help="Show source code for symbol, callers, and callees",
     )
     p_explain.add_argument(
@@ -2195,7 +2194,7 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
         type=int,
         default=None,
         dest="tokens",
-        help="Token budget for verbose output (omits low-priority sources when exceeded)",
+        help="Token budget for --with-source (omits low-priority sources when exceeded)",
     )
     p_explain.set_defaults(func=cmd_explain)
 

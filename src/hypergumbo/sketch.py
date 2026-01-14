@@ -54,6 +54,62 @@ from .selection.token_budget import (
 )
 
 
+# Files to exclude from Additional Files section (low-value or boilerplate)
+# These are excluded in addition to DEFAULT_EXCLUDES
+ADDITIONAL_FILES_EXCLUDES = [
+    # License/legal boilerplate
+    "LICENSE",
+    "LICENSE.*",
+    "LICENCE",
+    "LICENCE.*",
+    "COPYING",
+    "COPYING.*",
+    "COPYRIGHT",
+    "COPYRIGHT.*",
+    "PATENTS",
+    "NOTICE",
+    "NOTICE.*",
+    # Hypergumbo output artifacts (fnmatch patterns)
+    "hypergumbo.results.json",
+    "hypergumbo.results.*.json",
+    ".hypergumbo_cache",
+    # Git/repo metadata
+    ".gitignore",
+    ".gitattributes",
+    ".gitmodules",
+    ".mailmap",
+    "CODEOWNERS",
+    ".editorconfig",
+    # IDE/editor config
+    ".vscode",
+    ".idea",
+    "*.sublime-*",
+    # Minified files (bloat, unreadable)
+    "*.min.js",
+    "*.min.css",
+    "*.bundle.js",
+    "*.bundle.css",
+    # Source maps
+    "*.map",
+    # Compiled/binary artifacts
+    "*.pyc",
+    "*.pyo",
+    "*.o",
+    "*.obj",
+    "*.class",
+    "*.dll",
+    "*.so",
+    "*.dylib",
+    # Generated documentation cruft
+    ".nojekyll",
+    ".buildinfo",
+    # Coverage reports
+    "coverage-report.txt",
+    ".coverage",
+    "coverage.xml",
+]
+
+
 class ConfigExtractionMode(Enum):
     """Mode for extracting config file content.
 
@@ -2500,6 +2556,8 @@ def _format_additional_files(
         Markdown formatted section for additional files.
     """
     # Import embedding functions lazily to avoid circular imports
+    from fnmatch import fnmatch
+
     from .sketch_embeddings import (
         embed_file_for_semantic_ranking,
         compute_5w1h_similarity,
@@ -2507,23 +2565,35 @@ def _format_additional_files(
         _has_sentence_transformers,
     )
 
+    # Combine exclusion patterns
+    all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
+
+    def _is_excluded(filepath: Path) -> bool:
+        """Check if file should be excluded from Additional Files."""
+        rel_path = filepath.relative_to(repo_root)
+        filename = filepath.name
+
+        # Exclude hidden files/directories
+        if any(p.startswith(".") for p in rel_path.parts):
+            return True
+
+        # Check each path part and filename against exclusion patterns
+        for pattern in all_excludes:
+            # Check filename match (e.g., "LICENSE", "*.min.js")
+            if fnmatch(filename, pattern):
+                return True
+            # Check path parts match (e.g., "node_modules", ".vscode")
+            for part in rel_path.parts:
+                if fnmatch(part, pattern):
+                    return True
+
+        return False
+
     # Collect all non-excluded files
     all_files: list[Path] = []
     for f in repo_root.rglob("*"):
-        if f.is_file():
-            # Check exclusions
-            excluded = False
-            for part in f.relative_to(repo_root).parts:
-                for pattern in DEFAULT_EXCLUDES:
-                    if part == pattern or (
-                        "*" in pattern and part.endswith(pattern.lstrip("*"))
-                    ):
-                        excluded = True
-                        break
-                if excluded:
-                    break
-            if not excluded and not any(p.startswith(".") for p in f.parts):
-                all_files.append(f)
+        if f.is_file() and not _is_excluded(f):
+            all_files.append(f)
 
     if not all_files:
         return ""
@@ -4240,10 +4310,16 @@ def generate_sketch(
             for src_file in ordered_files:
                 try:
                     content = src_file.read_text(errors="replace")
+
+                    # Skip files with fewer than 5 lines of code
+                    line_count = len(content.splitlines())
+                    if line_count < 5:
+                        continue
+
                     file_tokens = estimate_tokens(content)
 
                     if source_tokens_used + file_tokens > source_budget:
-                        # Stop if this file would exceed budget
+                        # Skip if this file would exceed budget
                         continue
 
                     rel_path = src_file.relative_to(repo_root)

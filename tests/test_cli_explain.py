@@ -740,12 +740,12 @@ def test_cmd_explain_sorts_by_in_degree(tmp_path: Path, capsys) -> None:
 
 
 # =============================================================================
-# Tests for explain --verbose mode
+# Tests for explain --with-source mode
 # =============================================================================
 
 
-def test_cmd_explain_verbose_shows_source(tmp_path: Path, capsys) -> None:
-    """--verbose shows source code for queried symbol."""
+def test_cmd_explain_with_source_shows_source(tmp_path: Path, capsys) -> None:
+    """--with-source shows source code for queried symbol."""
     # Create actual source file
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -779,7 +779,7 @@ def foo():
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -794,8 +794,8 @@ def foo():
     assert 'return 42' in out
 
 
-def test_cmd_explain_verbose_shows_caller_source(tmp_path: Path, capsys) -> None:
-    """--verbose shows source code for callers."""
+def test_cmd_explain_with_source_shows_caller_source(tmp_path: Path, capsys) -> None:
+    """--with-source shows source code for callers."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
     main_py = src_dir / "main.py"
@@ -847,7 +847,7 @@ def foo():
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -861,7 +861,7 @@ def foo():
     assert 'result = foo()' in out
 
 
-def test_cmd_explain_verbose_module_level_shows_single_line(tmp_path: Path, capsys) -> None:
+def test_cmd_explain_with_source_module_level_shows_single_line(tmp_path: Path, capsys) -> None:
     """Module-level calls show only the single line of the call, not entire file."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -928,7 +928,7 @@ def test_foo():
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -944,7 +944,7 @@ def test_foo():
     assert "def test_foo" not in out
 
 
-def test_cmd_explain_verbose_token_budget_omits_low_priority(tmp_path: Path, capsys) -> None:
+def test_cmd_explain_with_source_token_budget_omits_low_priority(tmp_path: Path, capsys) -> None:
     """--tokens budget causes omission of low-priority sources (bottom-up by in-degree)."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -1031,7 +1031,7 @@ def caller_unimportant():
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = 40  # Small budget: only fits foo + one caller
     args.exclude_tests = False
 
@@ -1049,8 +1049,8 @@ def caller_unimportant():
     assert "omitted" in out.lower()
 
 
-def test_cmd_explain_verbose_shows_callee_source(tmp_path: Path, capsys) -> None:
-    """--verbose shows source code for callees (what the symbol calls)."""
+def test_cmd_explain_with_source_shows_callee_source(tmp_path: Path, capsys) -> None:
+    """--with-source shows source code for callees (what the symbol calls)."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
     main_py = src_dir / "main.py"
@@ -1102,7 +1102,7 @@ def helper():
     args.symbol = "main"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -1116,8 +1116,8 @@ def helper():
     assert 'return 42' in out
 
 
-def test_cmd_explain_verbose_deduplicates_source(tmp_path: Path, capsys) -> None:
-    """--verbose deduplicates source when same symbol is both caller and callee."""
+def test_cmd_explain_with_source_deduplicates_source(tmp_path: Path, capsys) -> None:
+    """--with-source deduplicates source when same symbol is both caller and callee."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
     main_py = src_dir / "main.py"
@@ -1179,7 +1179,7 @@ def bar():
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -1194,8 +1194,8 @@ def bar():
     assert bar_count == 1, f"bar source shown {bar_count} times, expected 1 (deduplicated)"
 
 
-def test_cmd_explain_verbose_missing_source_file(tmp_path: Path, capsys) -> None:
-    """--verbose handles missing source files gracefully."""
+def test_cmd_explain_with_source_missing_source_file(tmp_path: Path, capsys) -> None:
+    """--with-source handles missing source files gracefully."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -1217,7 +1217,7 @@ def test_cmd_explain_verbose_missing_source_file(tmp_path: Path, capsys) -> None
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -1232,7 +1232,7 @@ def test_cmd_explain_verbose_missing_source_file(tmp_path: Path, capsys) -> None
     assert "unavailable" in out.lower() or "not found" in out.lower() or "[source" in out.lower()
 
 
-def test_cmd_explain_verbose_queried_symbol_exceeds_budget(tmp_path: Path, capsys) -> None:
+def test_cmd_explain_with_source_queried_symbol_exceeds_budget(tmp_path: Path, capsys) -> None:
     """Queried symbol is always shown even if it exceeds token budget."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -1272,7 +1272,7 @@ def large_function():
     args.symbol = "large_function"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = 5  # Very tiny budget, smaller than the symbol itself
     args.exclude_tests = False
 
@@ -1286,7 +1286,7 @@ def large_function():
     assert "return x + y + z + a + b" in out
 
 
-def test_cmd_explain_verbose_self_recursion(tmp_path: Path, capsys) -> None:
+def test_cmd_explain_with_source_self_recursion(tmp_path: Path, capsys) -> None:
     """Self-recursive function source is not duplicated."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -1330,7 +1330,7 @@ def factorial(n):
     args.symbol = "factorial"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 
@@ -1344,7 +1344,7 @@ def factorial(n):
     assert factorial_count == 1, f"factorial source shown {factorial_count} times, expected 1"
 
 
-def test_cmd_explain_verbose_module_level_callee(tmp_path: Path, capsys) -> None:
+def test_cmd_explain_with_source_module_level_callee(tmp_path: Path, capsys) -> None:
     """Module-level callee shows only the single call line."""
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -1398,7 +1398,7 @@ initialize()
     args.symbol = "main"
     args.path = str(tmp_path)
     args.input = None
-    args.verbose = True
+    args.with_source = True
     args.tokens = None
     args.exclude_tests = False
 

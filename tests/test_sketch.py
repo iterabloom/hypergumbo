@@ -1042,6 +1042,71 @@ class TestFormatAdditionalFiles:
         assert "node_modules" not in result
         assert "`index.js`" in result
 
+    def test_excludes_license_and_legal_files(self, tmp_path: Path) -> None:
+        """Excludes license and legal boilerplate files."""
+        # Create various license files
+        (tmp_path / "LICENSE").write_text("MIT License")
+        (tmp_path / "LICENSE.md").write_text("# MIT License")
+        (tmp_path / "COPYING").write_text("GPL License")
+        (tmp_path / "NOTICE").write_text("Apache Notice")
+        # Create a valid file to show output isn't empty
+        (tmp_path / "README.md").write_text("# Project")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert "LICENSE" not in result
+        assert "COPYING" not in result
+        assert "NOTICE" not in result
+        assert "`README.md`" in result
+
+    def test_excludes_hypergumbo_artifacts(self, tmp_path: Path) -> None:
+        """Excludes hypergumbo output artifacts."""
+        # Create hypergumbo artifacts
+        (tmp_path / "hypergumbo.results.json").write_text('{"nodes": []}')
+        (tmp_path / "hypergumbo.results.4k.json").write_text('{"nodes": []}')
+        # Create a valid file
+        (tmp_path / "README.md").write_text("# Project")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert "hypergumbo.results" not in result
+        assert "`README.md`" in result
+
+    def test_excludes_gitignore_and_editorconfig(self, tmp_path: Path) -> None:
+        """Excludes git and editor config files."""
+        (tmp_path / ".gitignore").write_text("*.pyc")
+        (tmp_path / ".editorconfig").write_text("[*]\nindent_style = space")
+        (tmp_path / "CODEOWNERS").write_text("* @owner")
+        (tmp_path / "README.md").write_text("# Project")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        assert ".gitignore" not in result
+        assert ".editorconfig" not in result
+        assert "CODEOWNERS" not in result
+        assert "`README.md`" in result
+
     def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty directory."""
         result = _format_additional_files(
@@ -4016,11 +4081,14 @@ class TestSketchWithSource:
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         main_py = src_dir / "main.py"
+        # File must have at least 5 lines to be included (5 LOC minimum)
         main_py.write_text(
             """\
 def main():
+    x = 1
+    y = 2
     print("hello world")
-    return 0
+    return x + y
 """
         )
 
@@ -4100,8 +4168,15 @@ def func_c():
         src_dir = tmp_path / "src"
         src_dir.mkdir()
 
-        # Create a small file (fits in budget)
-        (src_dir / "small.py").write_text("x = 1\n")
+        # Create a small file with at least 5 lines (fits in budget)
+        small_content = """\
+def small_func():
+    x = 1
+    y = 2
+    z = 3
+    return x + y + z
+"""
+        (src_dir / "small.py").write_text(small_content)
 
         # Create a large file (won't fit)
         large_content = "def big():\n" + "    pass\n" * 500
@@ -4112,9 +4187,35 @@ def func_c():
 
         # Should have source content (small file fits)
         assert "## Source Content" in sketch
-        assert "x = 1" in sketch
+        assert "def small_func():" in sketch
         # Large file should be skipped
         assert "def big():" not in sketch
+
+    def test_with_source_skips_short_files(self, tmp_path: Path) -> None:
+        """--with-source skips files with fewer than 5 lines of code."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Short file (4 lines) - should be skipped
+        (src_dir / "short.py").write_text("def short():\n    x = 1\n    return x\n")
+
+        # Long enough file (5 lines) - should be included
+        long_content = """\
+def long_enough():
+    a = 1
+    b = 2
+    c = 3
+    return a + b + c
+"""
+        (src_dir / "long.py").write_text(long_content)
+
+        sketch = generate_sketch(tmp_path, max_tokens=2000, with_source=True)
+
+        # Should have source content with the long file
+        assert "## Source Content" in sketch
+        assert "def long_enough():" in sketch
+        # Short file should be skipped
+        assert "def short():" not in sketch
 
     def test_with_source_disabled_by_default(self, tmp_path: Path) -> None:
         """Without --with-source, no Source Content section appears."""
