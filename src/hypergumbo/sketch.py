@@ -164,6 +164,51 @@ class SketchProgress:  # pragma: no cover
         import time
         self._phase_times[phase_name] = time.time()
 
+    def update_item_progress(self, label: str, current: int, total: int) -> None:
+        """Update progress for item-level operations within a phase.
+
+        Args:
+            label: Description of items being processed (e.g., "Embedding files").
+            current: Current item number (1-indexed).
+            total: Total number of items.
+        """
+        if not self._enabled:
+            return
+
+        import time
+
+        # Calculate overall progress based on current phase
+        phase_progress = 0.0
+        next_progress = 1.0
+        for idx, (_name, _display, progress) in enumerate(self.PHASES):
+            if idx == self._current_phase_idx:
+                phase_progress = progress
+                if idx + 1 < len(self.PHASES):
+                    next_progress = self.PHASES[idx + 1][2]
+                break
+
+        # Interpolate within the phase
+        item_fraction = current / total if total > 0 else 1.0
+        phase_span = next_progress - phase_progress
+        overall_progress = phase_progress + (item_fraction * phase_span * 0.9)
+        pct = int(overall_progress * 100)
+
+        # Calculate ETA
+        elapsed = time.time() - self._start_time
+        if overall_progress > 0:
+            estimated_total = elapsed / overall_progress
+            remaining = estimated_total - elapsed
+            if remaining > 0:
+                eta_str = f" ETA {remaining:.0f}s"
+            else:
+                eta_str = ""
+        else:
+            eta_str = ""
+
+        # Write progress line
+        self._stream.write(f"\r[{pct:3d}%] {label}: {current}/{total}{eta_str}    ")
+        self._stream.flush()
+
     def finish(self) -> None:
         """Mark progress as complete and show final status."""
         if not self._enabled:
@@ -2430,7 +2475,8 @@ def _format_additional_files(
     symbols: list[Symbol],
     in_degree: dict[str, int],
     max_files: int = 200,
-    semantic_top_n: int = 3,
+    semantic_top_n: int = 10,
+    progress_callback: "callable | None" = None,
 ) -> str:
     """Format additional files (non-source) as a Markdown section.
 
@@ -2447,6 +2493,8 @@ def _format_additional_files(
         in_degree: Raw in-degree counts for symbols.
         max_files: Maximum files to show.
         semantic_top_n: Number of files to pick by semantic similarity.
+        progress_callback: Optional callback for progress updates.
+            Called with (current, total) for each embedding computed.
 
     Returns:
         Markdown formatted section for additional files.
@@ -2501,7 +2549,12 @@ def _format_additional_files(
 
         # Score all candidates by 5W1H similarity
         file_scores: list[tuple[Path, float]] = []
-        for f in candidate_files:
+        total_files = len(candidate_files)
+        for idx, f in enumerate(candidate_files, 1):
+            # Report progress for embedding computation
+            if progress_callback:
+                progress_callback(idx, total_files)
+
             embedding = embed_file_for_semantic_ranking(f, cache_dir)
             if embedding is not None:
                 score = compute_5w1h_similarity(embedding)
@@ -4141,13 +4194,18 @@ def generate_sketch(
         budget_for_files = remaining_tokens - 10
         max_additional_files = max(1, budget_for_files // tokens_per_file)
 
+        # Create progress callback for embedding telemetry
+        def embedding_progress(current: int, total: int) -> None:
+            prog.update_item_progress("Embedding files", current, total)
+
         additional_files_section = _format_additional_files(
             repo_root,
             source_files=source_files,
             symbols=symbols,
             in_degree=raw_in_degree,
             max_files=max_additional_files,
-            semantic_top_n=3,
+            semantic_top_n=10,
+            progress_callback=embedding_progress,
         )
         if additional_files_section:
             sections.append(additional_files_section)
