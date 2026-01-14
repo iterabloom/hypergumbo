@@ -1312,6 +1312,7 @@ def _extract_config_embedding(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
+    progress_callback: "callable | None" = None,
 ) -> list[str]:
     """Extract config metadata using dual-probe stratified embedding selection.
 
@@ -1383,6 +1384,7 @@ def _extract_config_embedding(
     # Structure: {source: [(sim, center_idx, chunk_text, file_lines), ...]}
     file_candidates: dict[str, list[tuple[float, int, str, list[str]]]] = {}
     processed_files = 0
+    total_files = min(len(config_content), max_config_files)
 
     for source, content in config_content:
         if processed_files >= max_config_files:  # pragma: no cover
@@ -1476,6 +1478,8 @@ def _extract_config_embedding(
             file_candidates[source] = above_threshold
 
         processed_files += 1
+        if progress_callback:
+            progress_callback(processed_files, total_files)
 
     if not file_candidates:
         return []  # pragma: no cover
@@ -1621,6 +1625,7 @@ def _extract_config_hybrid(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
+    progress_callback: "callable | None" = None,
 ) -> list[str]:
     """Extract config using hybrid approach: heuristics first, then embeddings.
 
@@ -1635,6 +1640,7 @@ def _extract_config_hybrid(
         max_config_files: Maximum config files to process (embedding mode).
         fleximax_lines: Base sample size for log-scaled line sampling.
         max_chunk_chars: Maximum characters per chunk for embedding.
+        progress_callback: Optional callback for progress updates (current, total).
 
     Returns:
         List of extracted metadata lines.
@@ -1663,6 +1669,7 @@ def _extract_config_hybrid(
             max_config_files=max_config_files,
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
+            progress_callback=progress_callback,
         )
     except Exception:  # pragma: no cover
         # If embedding fails, just return heuristic results
@@ -1699,6 +1706,7 @@ def _extract_config_info(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
+    progress_callback: "callable | None" = None,
 ) -> str:
     """Extract key metadata from config files via extractive summarization.
 
@@ -1717,6 +1725,7 @@ def _extract_config_info(
         max_config_files: Maximum config files to process (embedding mode).
         fleximax_lines: Base sample size for log-scaled line sampling.
         max_chunk_chars: Maximum characters per chunk for embedding.
+        progress_callback: Optional callback for progress updates (current, total).
 
     Returns:
         Extracted config metadata as a formatted string, or empty string
@@ -1731,6 +1740,7 @@ def _extract_config_info(
             max_config_files=max_config_files,
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
+            progress_callback=progress_callback,
         )
     elif mode == ConfigExtractionMode.HYBRID:
         lines = _extract_config_hybrid(
@@ -1739,6 +1749,7 @@ def _extract_config_info(
             max_config_files=max_config_files,
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
+            progress_callback=progress_callback,
         )
     else:  # HEURISTIC (default)
         lines = _extract_config_heuristic(repo_root)
@@ -4034,12 +4045,18 @@ def generate_sketch(
     prog.start_phase("config")
     t_config = time.time()
     _log(f"Extracting config ({config_extraction_mode.value})...")
+
+    # Create progress callback for config extraction telemetry
+    def config_progress(current: int, total: int) -> None:
+        prog.update_item_progress("Embedding config files", current, total)
+
     config_info = _extract_config_info(
         repo_root,
         mode=config_extraction_mode,
         max_config_files=max_config_files,
         fleximax_lines=fleximax_lines,
         max_chunk_chars=max_chunk_chars,
+        progress_callback=config_progress,
     )
     _log(f"Config extracted in {time.time() - t_config:.1f}s")
     prog.complete_phase("config")

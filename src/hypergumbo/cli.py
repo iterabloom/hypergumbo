@@ -1790,8 +1790,9 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     )
     p_sketch.add_argument(
         "--progress",
-        action="store_true",
-        help="Show progress indicator with ETA to stderr",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
     )
     p_sketch.add_argument(
         "--readme-debug",

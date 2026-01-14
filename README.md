@@ -89,7 +89,7 @@ Useful flags:
 ```bash
 hypergumbo . -x                # exclude test files (faster)
 hypergumbo . --with-source     # append full source code
-hypergumbo . --progress        # show ETA during generation
+hypergumbo . --no-progress     # hide progress indicator (on by default)
 hypergumbo --help --all        # comprehensive help for all commands
 ```
 

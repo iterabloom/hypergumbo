@@ -386,7 +386,7 @@ hypergumbo test-coverage /path/to/project
 
 - Use `-x` to exclude test files (faster, less noise)
 - Use `--first-party-only` to skip vendored code
-- Use `--progress` to see ETA on large codebases
+- Progress indicator with ETA is shown by default (use `--no-progress` to hide)
 - Run `hypergumbo run` once, then query the JSON for specific edges
 
 ### Fast Sketches with Cached Results
