@@ -149,6 +149,7 @@ pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 - [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LINKERS.md) — All 15 cross-language linkers
 - [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/hypergumbo-spec.md) — Detailed specification
 - [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/CITATIONS.md) — Paper citations for embedding models
+- [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/CACHE.md) — Caching architecture
 - [SECURITY.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/SECURITY.md) — Vulnerability reporting
 
 ## License
