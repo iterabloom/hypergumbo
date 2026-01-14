@@ -1703,20 +1703,245 @@ _MODERNBERT_TRUNCATE_DIM = 256
 _ADDITIONAL_FILES_PROBE_EMBEDDINGS: "np.ndarray | None" = None
 
 
-def _get_cache_dir(repo_root: Path) -> Path:
-    """Get or create the embedding cache directory.
+def _find_git_executable() -> str:
+    """Find the full path to git executable.
 
-    Creates .hypergumbo_cache/ in the repo root for storing file embeddings.
-    This directory should be gitignored.
+    Returns:
+        Full path to git, or "git" if not found (will fail gracefully).
+    """
+    import shutil
+    return shutil.which("git") or "git"
+
+
+def _run_git_command(
+    args: list[str], cwd: Path, timeout: int = 5
+) -> tuple[int, str, str]:
+    """Run a git command and return (returncode, stdout, stderr).
+
+    Args:
+        args: Git command arguments (without 'git' prefix).
+        cwd: Working directory for the command.
+        timeout: Timeout in seconds.
+
+    Returns:
+        Tuple of (return_code, stdout, stderr).
+    """
+    import subprocess  # nosec B404 - required for git commands
+
+    git_path = _find_git_executable()
+    try:
+        result = subprocess.run(  # noqa: S603  # nosec B603 - git_path from shutil.which
+            [git_path, *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except Exception:  # pragma: no cover
+        return 1, "", ""
+
+
+def _get_repo_fingerprint(repo_root: Path) -> str:
+    """Generate a stable fingerprint for a repository.
+
+    For git repositories, uses the remote origin URL and first commit SHA to create
+    a stable identifier that doesn't change when files are modified. This allows
+    the cache to be shared across checkouts of the same repo.
+
+    For non-git directories, falls back to hashing the absolute path.
 
     Args:
         repo_root: Repository root path.
 
     Returns:
-        Path to the cache directory.
+        A 16-character hex fingerprint string.
     """
-    cache_dir = repo_root / ".hypergumbo_cache"
-    cache_dir.mkdir(exist_ok=True)
+    import hashlib
+
+    # Check if this is a git repo
+    git_dir = repo_root / ".git"
+    if git_dir.exists():
+        fingerprint_parts = []
+
+        # Get remote origin URL (stable across clones)
+        returncode, stdout, _ = _run_git_command(
+            ["config", "--get", "remote.origin.url"], cwd=repo_root
+        )
+        if returncode == 0 and stdout.strip():
+            fingerprint_parts.append(stdout.strip())
+
+        # Get first commit SHA (stable identifier for the repo)
+        returncode, stdout, _ = _run_git_command(
+            ["rev-list", "--max-parents=0", "HEAD"], cwd=repo_root
+        )
+        if returncode == 0 and stdout.strip():
+            # Use first commit if multiple roots
+            first_commit = stdout.strip().split("\n")[0]
+            fingerprint_parts.append(first_commit)
+
+        if fingerprint_parts:
+            combined = ":".join(fingerprint_parts)
+            return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+    # Fallback: hash the absolute path
+    abs_path = str(repo_root.resolve())
+    return hashlib.sha256(abs_path.encode()).hexdigest()[:16]
+
+
+def _get_repo_state_hash(repo_root: Path) -> str:
+    """Generate a hash of the current repo state including uncommitted changes.
+
+    For git repos: HEAD SHA + hash of diff output + untracked source files
+    For non-git: hash of (filepath, size, mtime) tuples for all source files
+
+    This is fast because it doesn't read file contents for unchanged files.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        A 16-character hex state hash string.
+    """
+    import hashlib
+
+    # Check if this is a git repo
+    git_dir = repo_root / ".git"
+    if git_dir.exists():
+        state_parts = []
+
+        # Get current HEAD SHA
+        returncode, stdout, _ = _run_git_command(["rev-parse", "HEAD"], cwd=repo_root)
+        if returncode == 0 and stdout.strip():
+            state_parts.append(stdout.strip())
+
+        # Get diff of tracked files (staged + unstaged changes)
+        returncode, stdout, _ = _run_git_command(
+            ["diff", "HEAD"], cwd=repo_root, timeout=30
+        )
+        if returncode == 0:
+            # Hash the diff output
+            diff_hash = hashlib.sha256(stdout.encode()).hexdigest()[:8]
+            state_parts.append(f"diff:{diff_hash}")
+
+        # Get untracked source files (sorted for determinism)
+        returncode, stdout, _ = _run_git_command(
+            ["ls-files", "--others", "--exclude-standard"], cwd=repo_root, timeout=30
+        )
+        if returncode == 0 and stdout.strip():
+            # Include mtime of untracked files for change detection
+            untracked_info = []
+            for line in sorted(stdout.strip().split("\n")):
+                file_path = repo_root / line
+                if file_path.exists() and file_path.is_file():
+                    try:
+                        stat = file_path.stat()
+                        untracked_info.append(f"{line}:{stat.st_size}:{stat.st_mtime}")
+                    except OSError:  # pragma: no cover
+                        pass
+            if untracked_info:
+                untracked_hash = hashlib.sha256(
+                    "\n".join(untracked_info).encode()
+                ).hexdigest()[:8]
+                state_parts.append(f"untracked:{untracked_hash}")
+
+        if state_parts:
+            combined = ":".join(state_parts)
+            return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+    # Non-git fallback: hash (path, size, mtime) for all source files
+    # This is slower but works for any directory
+    file_info = []
+    source_extensions = {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs", ".rb",
+        ".c", ".cpp", ".h", ".hpp", ".cs", ".php", ".swift", ".kt", ".scala",
+    }
+    for f in sorted(repo_root.rglob("*")):
+        if f.is_file() and f.suffix in source_extensions:
+            # Skip common non-source directories
+            rel_parts = f.relative_to(repo_root).parts
+            if any(p.startswith(".") or p in ("node_modules", "venv", "__pycache__")
+                   for p in rel_parts):
+                continue
+            try:
+                stat = f.stat()
+                rel_path = str(f.relative_to(repo_root))
+                file_info.append(f"{rel_path}:{stat.st_size}:{stat.st_mtime}")
+            except OSError:  # pragma: no cover
+                pass
+
+    if file_info:
+        combined = "\n".join(file_info)
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+    # Empty directory fallback
+    return hashlib.sha256(str(repo_root.resolve()).encode()).hexdigest()[:16]
+
+
+def _get_xdg_cache_base() -> Path:
+    """Get the XDG cache base directory for hypergumbo.
+
+    Returns ~/.cache/hypergumbo/ following XDG Base Directory Specification.
+    Uses XDG_CACHE_HOME if set, otherwise defaults to ~/.cache.
+
+    Returns:
+        Path to the hypergumbo cache base directory.
+    """
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache:
+        base = Path(xdg_cache)
+    else:
+        base = Path.home() / ".cache"
+
+    return base / "hypergumbo"
+
+
+def _get_cache_dir(repo_root: Path) -> Path:
+    """Get or create the embedding cache directory for a repository.
+
+    Cache structure:
+        ~/.cache/hypergumbo/<fingerprint>/embeddings/
+
+    Embeddings are shared across all repo states since they're keyed by
+    file content hash. Only the results are state-specific.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        Path to the embeddings cache directory.
+    """
+    fingerprint = _get_repo_fingerprint(repo_root)
+    cache_base = _get_xdg_cache_base()
+    cache_dir = cache_base / fingerprint / "embeddings"
+
+    # Create the full path including parent directories
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _get_results_cache_dir(repo_root: Path) -> Path:
+    """Get or create the results cache directory for current repo state.
+
+    Cache structure:
+        ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/
+
+    Results are cached per-state because they depend on the entire repo
+    contents. The state hash changes when any file is modified.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        Path to the results cache directory for current state.
+    """
+    fingerprint = _get_repo_fingerprint(repo_root)
+    state_hash = _get_repo_state_hash(repo_root)
+    cache_base = _get_xdg_cache_base()
+    cache_dir = cache_base / fingerprint / "results" / state_hash
+
+    # Create the full path including parent directories
+    cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
 

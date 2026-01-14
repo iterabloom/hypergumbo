@@ -4228,3 +4228,189 @@ def long_enough():
         # Should NOT have Source Content section
         assert "## Source Content" not in sketch
 
+
+class TestRepoFingerprint:
+    """Tests for repository fingerprinting and XDG cache location."""
+
+    def _init_git_repo(self, path: Path) -> None:
+        """Initialize a git repo with a commit for testing."""
+        from hypergumbo.sketch_embeddings import _run_git_command
+
+        _run_git_command(["init"], cwd=path)
+        _run_git_command(["config", "user.email", "test@test.com"], cwd=path)
+        _run_git_command(["config", "user.name", "Test"], cwd=path)
+        (path / "test.txt").write_text("test")
+        _run_git_command(["add", "."], cwd=path)
+        _run_git_command(["commit", "-m", "Initial"], cwd=path)
+
+    def test_fingerprint_git_repo(self, tmp_path: Path) -> None:
+        """Git repos use remote URL + first commit for fingerprint."""
+        from hypergumbo.sketch_embeddings import _get_repo_fingerprint
+
+        # Create a git repo with a commit
+        self._init_git_repo(tmp_path)
+
+        fingerprint = _get_repo_fingerprint(tmp_path)
+
+        # Should return a 16-character hex string
+        assert len(fingerprint) == 16
+        assert all(c in "0123456789abcdef" for c in fingerprint)
+
+        # Same repo should give same fingerprint
+        fingerprint2 = _get_repo_fingerprint(tmp_path)
+        assert fingerprint == fingerprint2
+
+    def test_fingerprint_non_git_dir(self, tmp_path: Path) -> None:
+        """Non-git directories use path hash for fingerprint."""
+        from hypergumbo.sketch_embeddings import _get_repo_fingerprint
+
+        fingerprint = _get_repo_fingerprint(tmp_path)
+
+        # Should return a 16-character hex string
+        assert len(fingerprint) == 16
+        assert all(c in "0123456789abcdef" for c in fingerprint)
+
+        # Same path should give same fingerprint
+        fingerprint2 = _get_repo_fingerprint(tmp_path)
+        assert fingerprint == fingerprint2
+
+    def test_fingerprint_different_dirs_differ(self, tmp_path: Path) -> None:
+        """Different directories have different fingerprints."""
+        from hypergumbo.sketch_embeddings import _get_repo_fingerprint
+
+        dir1 = tmp_path / "dir1"
+        dir2 = tmp_path / "dir2"
+        dir1.mkdir()
+        dir2.mkdir()
+
+        fingerprint1 = _get_repo_fingerprint(dir1)
+        fingerprint2 = _get_repo_fingerprint(dir2)
+
+        assert fingerprint1 != fingerprint2
+
+    def test_xdg_cache_base_default(self, tmp_path: Path, monkeypatch) -> None:
+        """XDG cache base defaults to ~/.cache/hypergumbo."""
+        from hypergumbo.sketch_embeddings import _get_xdg_cache_base
+
+        # Clear XDG_CACHE_HOME to test default
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+
+        cache_base = _get_xdg_cache_base()
+
+        assert cache_base == Path.home() / ".cache" / "hypergumbo"
+
+    def test_xdg_cache_base_respects_env(self, tmp_path: Path, monkeypatch) -> None:
+        """XDG cache base respects XDG_CACHE_HOME environment variable."""
+        from hypergumbo.sketch_embeddings import _get_xdg_cache_base
+
+        custom_cache = tmp_path / "custom_cache"
+        monkeypatch.setenv("XDG_CACHE_HOME", str(custom_cache))
+
+        cache_base = _get_xdg_cache_base()
+
+        assert cache_base == custom_cache / "hypergumbo"
+
+    def test_get_cache_dir_creates_directory(self, tmp_path: Path, monkeypatch) -> None:
+        """Cache directory is created under XDG cache location."""
+        from hypergumbo.sketch_embeddings import _get_cache_dir
+
+        # Use tmp_path as XDG_CACHE_HOME to avoid polluting real cache
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
+
+        cache_dir = _get_cache_dir(tmp_path / "my_repo")
+
+        # Cache dir should be created
+        assert cache_dir.exists()
+        assert cache_dir.is_dir()
+
+        # Should be under XDG cache location with embeddings subfolder
+        assert str(cache_dir).startswith(str(tmp_path / "xdg_cache" / "hypergumbo"))
+        assert cache_dir.name == "embeddings"
+
+    def test_get_cache_dir_stable_for_same_repo(self, tmp_path: Path, monkeypatch) -> None:
+        """Same repo always gets same cache directory."""
+        from hypergumbo.sketch_embeddings import _get_cache_dir
+
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
+        repo = tmp_path / "my_repo"
+        repo.mkdir()
+
+        cache_dir1 = _get_cache_dir(repo)
+        cache_dir2 = _get_cache_dir(repo)
+
+        assert cache_dir1 == cache_dir2
+
+    def test_state_hash_changes_with_file_modifications(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """State hash changes when files are modified."""
+        from hypergumbo.sketch_embeddings import _get_repo_state_hash
+
+        self._init_git_repo(tmp_path)
+
+        # Get initial state hash
+        hash1 = _get_repo_state_hash(tmp_path)
+
+        # Modify a file
+        (tmp_path / "test.txt").write_text("modified content")
+
+        # State hash should change
+        hash2 = _get_repo_state_hash(tmp_path)
+        assert hash1 != hash2
+
+    def test_state_hash_stable_without_changes(self, tmp_path: Path) -> None:
+        """State hash is stable when no changes are made."""
+        from hypergumbo.sketch_embeddings import _get_repo_state_hash
+
+        self._init_git_repo(tmp_path)
+
+        hash1 = _get_repo_state_hash(tmp_path)
+        hash2 = _get_repo_state_hash(tmp_path)
+
+        assert hash1 == hash2
+
+    def test_state_hash_non_git_uses_mtime(self, tmp_path: Path) -> None:
+        """Non-git directories use file mtime for state hash."""
+        import time
+        from hypergumbo.sketch_embeddings import _get_repo_state_hash
+
+        # Create a Python file (source file)
+        (tmp_path / "main.py").write_text("print('hello')")
+
+        hash1 = _get_repo_state_hash(tmp_path)
+
+        # Wait a bit and modify the file (to ensure mtime changes)
+        time.sleep(0.1)
+        (tmp_path / "main.py").write_text("print('modified')")
+
+        hash2 = _get_repo_state_hash(tmp_path)
+
+        # Hash should change due to mtime change
+        assert hash1 != hash2
+
+    def test_results_cache_dir_per_state(self, tmp_path: Path, monkeypatch) -> None:
+        """Results cache directory changes with repo state."""
+        from hypergumbo.sketch_embeddings import (
+            _get_results_cache_dir,
+            _get_repo_fingerprint,
+        )
+
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
+        self._init_git_repo(tmp_path)
+
+        # Get results cache for initial state
+        cache1 = _get_results_cache_dir(tmp_path)
+        assert cache1.exists()
+
+        # Modify a file
+        (tmp_path / "test.txt").write_text("modified")
+
+        # Results cache should be different directory
+        cache2 = _get_results_cache_dir(tmp_path)
+        assert cache1 != cache2
+
+        # But both should be under the same repo fingerprint
+        fingerprint = _get_repo_fingerprint(tmp_path)
+        assert fingerprint in str(cache1)
+        assert fingerprint in str(cache2)
+

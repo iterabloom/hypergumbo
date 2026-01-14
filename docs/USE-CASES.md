@@ -2,15 +2,41 @@
 
 Practical workflows for using hypergumbo with LLMs and in everyday development.
 
+## Getting Started
+
+Hypergumbo has two main modes:
+
+1. **Sketch mode** (`hypergumbo .`) — Quick Markdown overview for LLM context
+2. **Analysis mode** (`hypergumbo run .`) — Full analysis enabling query commands
+
+For most workflows, run both:
+
+```bash
+# Quick overview (paste into LLM chat)
+hypergumbo /path/to/project
+
+# Full analysis (enables slice, explain, routes, search, symbols, test-coverage)
+hypergumbo run /path/to/project
+```
+
+The `run` command generates `hypergumbo.results.json` which is required by most query commands. Run it once per project (or after significant changes).
+
+---
+
 ## Quick Reference
+
+**Core Commands:**
 
 | Goal | Command |
 |------|---------|
 | Get codebase overview | `hypergumbo .`* |
-| Concise summary for chat | `hypergumbo . -t 1000` |
-| Detailed context for coding | `hypergumbo . -t 4000` |
+| Full analysis (run first!) | `hypergumbo run .` |
 | Fast sketch from cached results | `hypergumbo sketch --input hypergumbo.results.json` |
-| Full analysis (for query commands) | `hypergumbo run .` |
+
+**Query Commands** (require `hypergumbo run` first):
+
+| Goal | Command |
+|------|---------|
 | Find what calls a function | `hypergumbo slice --entry "myFunction" --reverse` |
 | Trace from an entry point | `hypergumbo slice --entry "handleRequest"` |
 | Understand a specific symbol | `hypergumbo explain "processPayment"` |
@@ -19,6 +45,14 @@ Practical workflows for using hypergumbo with LLMs and in everyday development.
 | Browse symbol connectivity | `hypergumbo symbols` |
 | Non-test symbols only | `hypergumbo symbols -x` |
 | Static test coverage | `hypergumbo test-coverage` |
+
+**Budget Options:**
+
+| Goal | Command |
+|------|---------|
+| Concise summary for chat | `hypergumbo . -t 1000` |
+| Detailed context for coding | `hypergumbo . -t 4000` |
+| Include source code | `hypergumbo . -t 8000 --with-source` |
 
 *\* `hypergumbo`, `hypergumbo .`, and `hypergumbo sketch .` are all equivalent. The `sketch` command is the default when no subcommand is specified.*
 

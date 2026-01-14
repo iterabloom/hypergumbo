@@ -148,6 +148,7 @@ pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 - [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LANGUAGES.md) — All 67 supported languages
 - [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LINKERS.md) — All 15 cross-language linkers
 - [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/hypergumbo-spec.md) — Detailed specification
+- [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/CITATIONS.md) — Paper citations for embedding models
 - [SECURITY.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/SECURITY.md) — Vulnerability reporting
 
 ## License
