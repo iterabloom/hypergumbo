@@ -55,6 +55,13 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
 * If no subcommand is given, assumes sketch mode.
 * `-t N` limits output to approximately N tokens.
+* `--with-source` appends full source file contents after the sketch (ordered by symbol importance density, skips files under 5 LOC)
+
+🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens]`**
+Shows detailed info about a symbol (function, class, etc.) and its callers/callees.
+* `--with-source` shows source code for the symbol, callers, and callees
+* `-t N` limits source output to approximately N tokens
+* Module-level callers show only the single call line
 
 🟩 **`hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
 Creates `.hypergumbo/` containing:

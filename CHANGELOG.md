@@ -10,6 +10,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **`explain --with-source` flag:** Shows source code for queried symbol, its callers, and callees.
+  Module-level calls show only the single call line. Supports `-t/--tokens` to limit output.
+  (Renamed from `--verbose` for consistency with `sketch --with-source`.)
+- **`sketch --with-source` flag:** Appends full source file contents after the regular sketch,
+  ordered by symbol importance density. Respects token budget, skips files under 5 LOC.
 - **Common Lisp analyzer:** Full support for `.lisp`, `.lsp`, `.cl`, and `.asd` files. Detects
   functions (defun/defmacro/defmethod/defgeneric), classes (defclass/defstruct), variables
   (defvar/defparameter/defconstant), and packages (defpackage). Handles both lowercase and
@@ -49,6 +54,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   that were created, making it easy to see where all outputs were written.
 
 ### Changed
+- **Additional Files excludes boilerplate:** License files (LICENSE, COPYING, NOTICE), hypergumbo
+  artifacts (hypergumbo.results.json), and config files (.gitignore, .editorconfig, CODEOWNERS) are
+  now excluded from the Additional Files section. Improves signal-to-noise ratio.
 - **CI skips expensive jobs for docs-only PRs:** Lint, audit, and pytest jobs now skip when only
   markdown files change, saving ~6 minutes of CI time.
 - **pytest-xdist for parallel tests:** Added pytest-xdist dependency. Run `pytest -n auto` for
