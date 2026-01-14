@@ -2574,7 +2574,7 @@ def _format_additional_files(
     from fnmatch import fnmatch
 
     from .sketch_embeddings import (
-        embed_file_for_semantic_ranking,
+        batch_embed_files,
         compute_5w1h_similarity,
         _get_cache_dir,
         _has_sentence_transformers,
@@ -2632,15 +2632,17 @@ def _format_additional_files(
     if semantic_top_n > 0 and _has_sentence_transformers():
         cache_dir = _get_cache_dir(repo_root)
 
-        # Score all candidates by 5W1H similarity
-        file_scores: list[tuple[Path, float]] = []
-        total_files = len(candidate_files)
-        for idx, f in enumerate(candidate_files, 1):
-            # Report progress for embedding computation
-            if progress_callback:
-                progress_callback(idx, total_files)
+        # Batch embed all candidates (~5-10x faster than one-by-one)
+        embeddings = batch_embed_files(
+            candidate_files,
+            cache_dir=cache_dir,
+            progress_callback=progress_callback,
+        )
 
-            embedding = embed_file_for_semantic_ranking(f, cache_dir)
+        # Score by 5W1H similarity
+        file_scores: list[tuple[Path, float]] = []
+        for f in candidate_files:
+            embedding = embeddings.get(f)
             if embedding is not None:
                 score = compute_5w1h_similarity(embedding)
                 file_scores.append((f, score))

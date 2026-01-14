@@ -2010,7 +2010,7 @@ def _save_cached_embedding(
 def _extract_file_samples(
     file_path: Path,
     num_samples: int = 3,
-    sample_size: int = 800,
+    sample_size: int = 400,
 ) -> str:
     """Extract random non-overlapping substrings from first third of file.
 
@@ -2168,6 +2168,76 @@ def embed_file_for_semantic_ranking(
         _save_cached_embedding(cache_dir, file_hash, embedding)
 
     return embedding
+
+
+def batch_embed_files(
+    file_paths: list[Path],
+    cache_dir: Path | None = None,
+    batch_size: int = 64,
+    progress_callback: "callable | None" = None,
+) -> dict[Path, "np.ndarray | None"]:
+    """Batch embed multiple files efficiently.
+
+    This is ~5-10x faster than calling embed_file_for_semantic_ranking()
+    repeatedly because SentenceTransformers is optimized for batch encoding.
+
+    Args:
+        file_paths: List of file paths to embed.
+        cache_dir: Optional cache directory for embeddings.
+        batch_size: Number of files to encode per batch (default 64).
+        progress_callback: Optional callback(current, total) for progress.
+
+    Returns:
+        Dict mapping file paths to embeddings (or None for unreadable files).
+    """
+    if not _has_sentence_transformers():
+        return dict.fromkeys(file_paths, None)
+
+    results: dict[Path, "np.ndarray | None"] = {}
+    uncached: list[tuple[Path, str, str]] = []  # (path, hash, sample)
+
+    # Phase 1: Check cache, extract samples for uncached files
+    for f in file_paths:
+        file_hash = _compute_file_hash(f)
+
+        # Check cache first
+        if cache_dir and file_hash:
+            cached = _load_cached_embedding(cache_dir, file_hash)
+            if cached is not None:
+                results[f] = cached
+                continue
+
+        # Extract sample for uncached file
+        sample = _extract_file_samples(f)
+        if sample:
+            uncached.append((f, file_hash, sample))
+        else:
+            results[f] = None
+
+    # Phase 2: Batch encode uncached files
+    if uncached:
+        model = _load_modernbert_model()
+        total_uncached = len(uncached)
+
+        for i in range(0, total_uncached, batch_size):
+            batch = uncached[i:i + batch_size]
+            texts = [sample for _, _, sample in batch]
+
+            # Batch encode
+            embeddings = model.encode(texts, convert_to_numpy=True)
+
+            # Store results and cache
+            for (f, file_hash, _), emb in zip(batch, embeddings, strict=True):
+                results[f] = emb
+                if cache_dir and file_hash:
+                    _save_cached_embedding(cache_dir, file_hash, emb)
+
+            # Report progress
+            if progress_callback:
+                done = min(i + batch_size, total_uncached)
+                progress_callback(done, total_uncached)
+
+    return results
 
 
 def compute_5w1h_similarity(

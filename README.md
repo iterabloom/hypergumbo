@@ -39,33 +39,7 @@ hypergumbo . -t 4000   # good balance for most LLMs
 hypergumbo . -t 8000   # detailed with many symbols
 ```
 
-## How It Works
-
-Hypergumbo builds understanding through a pipeline:
-
-```
-┌─────────┐    ┌──────────┐    ┌─────────┐    ┌──────────┐    ┌────────┐
-│ Profile │ →  │ Analyze  │ →  │  Link   │ →  │ Enrich   │ →  │ Output │
-└─────────┘    └──────────┘    └─────────┘    └──────────┘    └────────┘
-```
-
-1. **Profile**: Scan the repo for languages, file counts, LOC
-2. **Analyze**: Run language-specific analyzers to extract symbols and edges
-3. **Link**: Connect symbols across language boundaries (JS fetch → Python route)
-4. **Enrich**: Detect frameworks via YAML pattern matching
-5. **Output**: Generate Markdown sketch or JSON behavior map
-
-### The Internal Representation
-
-All analyzers produce the same IR types:
-
-- **Symbol**: A code element (function, class, method) with name, location, and stable ID
-- **Edge**: A relationship between symbols (calls, imports, extends, implements)
-- **Span**: Source location (file, line, column)
-
-This uniform IR is what allows 67 language analyzers and 15 cross-language linkers to work together coherently.
-
-### Two Outputs
+## Two Outputs
 
 **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected).
 
@@ -100,6 +74,32 @@ hypergumbo sketch --input hypergumbo.results.json -t 4000  # fast re-sketch
 ```
 
 See `hypergumbo --help` for all options.
+
+## How It Works
+
+Hypergumbo builds understanding through a pipeline:
+
+```
+┌─────────┐    ┌──────────┐    ┌─────────┐    ┌──────────┐    ┌────────┐
+│ Profile │ →  │ Analyze  │ →  │  Link   │ →  │ Enrich   │ →  │ Output │
+└─────────┘    └──────────┘    └─────────┘    └──────────┘    └────────┘
+```
+
+1. **Profile**: Scan the repo for languages, file counts, LOC
+2. **Analyze**: Run language-specific analyzers to extract symbols and edges
+3. **Link**: Connect symbols across language boundaries (JS fetch → Python route)
+4. **Enrich**: Detect frameworks via YAML pattern matching
+5. **Output**: Generate Markdown sketch or JSON behavior map
+
+### The Internal Representation
+
+All analyzers produce the same IR types:
+
+- **Symbol**: A code element (function, class, method) with name, location, and stable ID
+- **Edge**: A relationship between symbols (calls, imports, extends, implements)
+- **Span**: Source location (file, line, column)
+
+This uniform IR is what allows 67 language analyzers and 15 cross-language linkers to work together coherently.
 
 ## What It Understands
 
