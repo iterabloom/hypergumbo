@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import os
 import warnings
-from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -44,7 +43,7 @@ from .ranking import (
     compute_transitive_test_coverage,
     compute_raw_in_degree,
     compute_symbol_importance_density,
-    compute_symbol_mention_centrality,
+    compute_symbol_mention_centrality_batch,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -138,7 +137,8 @@ class SketchProgress:  # pragma: no cover
         ("vocabulary", "Extracting vocabulary", 0.55),
         ("analysis", "Running static analysis", 0.75),
         ("symbols", "Ranking symbols", 0.85),
-        ("embedding", "Ranking additional files", 0.95),  # Embedding phase
+        ("embedding", "Embedding additional files", 0.90),
+        ("centrality", "Computing symbol centrality", 0.95),
         ("format", "Formatting output", 1.0),
     ]
 
@@ -151,6 +151,7 @@ class SketchProgress:  # pragma: no cover
         "analysis": "Loading cached analysis",
         "symbols": "Using cached symbols",
         "embedding": "Using cached embeddings",
+        "centrality": "Using cached centrality",
     }
 
     def __init__(self, output_stream=None):
@@ -2562,6 +2563,7 @@ def _format_additional_files(
     max_files: int = 200,
     semantic_top_n: int = 10,
     progress_callback: "callable | None" = None,
+    centrality_progress_callback: "callable | None" = None,
 ) -> str:
     """Format additional files (non-source) as a Markdown section.
 
@@ -2578,8 +2580,10 @@ def _format_additional_files(
         in_degree: Raw in-degree counts for symbols.
         max_files: Maximum files to show.
         semantic_top_n: Number of files to pick by semantic similarity.
-        progress_callback: Optional callback for progress updates.
+        progress_callback: Optional callback for embedding progress updates.
             Called with (current, total) for each embedding computed.
+        centrality_progress_callback: Optional callback for centrality progress.
+            Called with (current, total) for each file scored.
 
     Returns:
         Markdown formatted section for additional files.
@@ -2679,22 +2683,23 @@ def _format_additional_files(
         semantic_files = [f for f, _ in file_scores[:semantic_top_n]]
         remaining_files = [f for f, _ in file_scores[semantic_top_n:]]
 
-    # Phase 2: Symbol mention centrality for remaining files (parallelized)
-    def _compute_mention_score(f: Path) -> tuple[Path, float]:
-        score = compute_symbol_mention_centrality(
-            f, symbols, in_degree, min_in_degree=2, max_file_size=100 * 1024
-        )
-        return (f, score)
-
-    # Use ThreadPoolExecutor for parallel I/O + regex matching
-    # Limit workers to avoid overwhelming the filesystem
-    max_workers = min(8, len(remaining_files)) if remaining_files else 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        mention_scores = list(executor.map(_compute_mention_score, remaining_files))
+    # Phase 2: Symbol mention centrality for remaining files
+    # Uses ripgrep when available for ~10x speedup, falls back to Python regex
+    centrality_scores = compute_symbol_mention_centrality_batch(
+        files=remaining_files,
+        symbols=symbols,
+        in_degree=in_degree,
+        min_in_degree=2,
+        max_file_size=100 * 1024,
+        progress_callback=centrality_progress_callback,
+    )
 
     # Sort remaining by mention centrality descending
-    mention_scores.sort(key=lambda x: x[1], reverse=True)
-    centrality_files = [f for f, _ in mention_scores]
+    centrality_files = sorted(
+        remaining_files,
+        key=lambda f: centrality_scores.get(f, 0.0),
+        reverse=True,
+    )
 
     # Combine: semantic top N first, then centrality-ordered
     ordered_files = semantic_files + centrality_files
@@ -4014,6 +4019,14 @@ def generate_sketch(
         def embedding_progress(current: int, total: int) -> None:
             prog.update_item_progress("Embedding files", current, total)
 
+        # Create progress callback for centrality computation
+        def centrality_progress(current: int, total: int) -> None:  # pragma: no cover
+            # Complete embedding phase when starting centrality
+            if current == 0:
+                prog.complete_phase("embedding")
+                prog.start_phase("centrality")
+            prog.update_item_progress("Computing centrality", current, total)
+
         additional_files_section = _format_additional_files(
             repo_root,
             source_files=source_files,
@@ -4022,11 +4035,13 @@ def generate_sketch(
             max_files=max_additional_files,
             semantic_top_n=10,
             progress_callback=embedding_progress,
+            centrality_progress_callback=centrality_progress,
         )
         if additional_files_section:
             sections.append(additional_files_section)
 
-    prog.complete_phase("embedding")
+    prog.complete_phase("embedding")  # In case centrality was skipped
+    prog.complete_phase("centrality")  # Complete centrality if it ran
     prog.start_phase("format")
 
     # Section 8: Source Content (if with_source is True and we have budget)

@@ -64,6 +64,21 @@ This works on most development machines where PyTorch wheels are available (Linu
 
 **Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
 
+### Optional: ripgrep for faster sketch generation
+
+Hypergumbo uses [ripgrep](https://github.com/BurntSushi/ripgrep) when available to accelerate symbol centrality computation during sketch generation. If ripgrep is not installed, it falls back to Python's regex with ThreadPoolExecutor (still parallelized, just slower).
+
+```bash
+# Ubuntu/Debian
+sudo apt install ripgrep
+
+# macOS
+brew install ripgrep
+
+# Verify installation
+rg --version
+```
+
 ---
 
 ## auto-pr Documentation

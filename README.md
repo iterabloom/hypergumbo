@@ -138,6 +138,16 @@ pip install -e .[dev]
 pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 ```
 
+**Optional: Install ripgrep for faster analysis.** Hypergumbo uses ripgrep (if available) to accelerate symbol centrality computation during sketch generation. Without it, falls back to Python's regex (still parallelized).
+
+```bash
+# Ubuntu/Debian
+sudo apt install ripgrep
+
+# macOS
+brew install ripgrep
+```
+
 100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
 
 ## Links

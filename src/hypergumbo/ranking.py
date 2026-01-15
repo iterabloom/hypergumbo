@@ -507,6 +507,243 @@ def compute_symbol_importance_density(
     return density_scores
 
 
+# Cache for ripgrep availability check
+_RIPGREP_AVAILABLE: bool | None = None
+
+
+def _is_ripgrep_available() -> bool:
+    """Check if ripgrep (rg) is available on the system.
+
+    Result is cached for performance.
+    """
+    global _RIPGREP_AVAILABLE
+    if _RIPGREP_AVAILABLE is None:
+        import shutil
+        _RIPGREP_AVAILABLE = shutil.which("rg") is not None
+    return _RIPGREP_AVAILABLE
+
+
+def compute_symbol_mention_centrality_batch(
+    files: List[Path],
+    symbols: List[Symbol],
+    in_degree: Dict[str, int],
+    min_in_degree: int = 2,
+    max_file_size: int = 100 * 1024,
+    progress_callback: "callable | None" = None,
+) -> Dict[Path, float]:
+    """Compute symbol mention centrality for multiple files efficiently.
+
+    Uses ripgrep when available for much faster searching (~10x speedup).
+    Falls back to Python regex when ripgrep is not installed.
+
+    Args:
+        files: List of file paths to scan.
+        symbols: List of symbols to search for.
+        in_degree: Raw in-degree counts for each symbol.
+        min_in_degree: Only match symbols with at least this many callers.
+        max_file_size: Skip files larger than this (bytes). Default 100KB.
+        progress_callback: Optional callback(current, total) for progress.
+
+    Returns:
+        Dict mapping file paths to their centrality scores.
+    """
+    if not files:
+        return {}
+
+    # Filter symbols by in-degree threshold and dedupe names
+    eligible_symbols = [
+        s for s in symbols
+        if in_degree.get(s.id, 0) >= min_in_degree
+    ]
+
+    # Build name -> max in-degree map (same name can have multiple symbols)
+    name_to_in_degree: Dict[str, int] = {}
+    for s in eligible_symbols:
+        current = name_to_in_degree.get(s.name, 0)
+        s_in_degree = in_degree.get(s.id, 0)
+        if s_in_degree > current:
+            name_to_in_degree[s.name] = s_in_degree
+
+    if not name_to_in_degree:
+        # No eligible symbols, return zeros
+        return dict.fromkeys(files, 0.0)
+
+    # Try ripgrep for batch search
+    if _is_ripgrep_available() and len(files) > 5:
+        result = _compute_centrality_with_ripgrep(
+            files, name_to_in_degree, max_file_size, progress_callback
+        )
+        if result is not None:
+            return result
+
+    # Fallback: Python regex (parallelized)
+    return _compute_centrality_with_python(
+        files, name_to_in_degree, max_file_size, progress_callback
+    )
+
+
+def _compute_centrality_with_ripgrep(
+    files: List[Path],
+    name_to_in_degree: Dict[str, int],
+    max_file_size: int,
+    progress_callback: "callable | None",
+) -> Dict[Path, float] | None:
+    """Use ripgrep for fast batch symbol search.
+
+    Returns None if ripgrep fails (falls back to Python).
+    """
+    import subprocess  # nosec B404 - ripgrep is a trusted binary
+    import json
+
+    # Build alternation pattern: \b(name1|name2|...)\b
+    # Escape special regex chars in names
+    escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
+    if len(escaped_names) > 500:  # pragma: no cover
+        # Too many patterns for command line, split into chunks
+        # For very large symbol sets, fall back to Python
+        return None
+
+    pattern = r"\b(" + "|".join(escaped_names) + r")\b"
+
+    # Filter files by size first (cheaper than letting rg read them)
+    valid_files = []
+    file_sizes = {}
+    for f in files:
+        try:
+            size = f.stat().st_size
+            if size <= max_file_size:
+                valid_files.append(f)
+                file_sizes[f] = size
+        except OSError:  # pragma: no cover - rare I/O error
+            pass
+
+    if not valid_files:  # pragma: no cover - all files filtered
+        return dict.fromkeys(files, 0.0)
+
+    if progress_callback:
+        progress_callback(0, len(valid_files))
+
+    # Run ripgrep with JSON output for structured parsing
+    # -o outputs only matches, --json gives structured output
+    try:
+        cmd = [
+            "rg",
+            "--json",  # Structured JSON output
+            "-w",  # Word boundaries (equivalent to \b)
+            "--no-filename",  # We track files separately
+            pattern,
+        ] + [str(f) for f in valid_files]
+
+        result = subprocess.run(  # noqa: S603  # nosec B603 - trusted cmd
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,  # 1 minute timeout
+        )
+
+        # ripgrep returns 0 on match, 1 on no match, 2 on error
+        if result.returncode == 2:  # pragma: no cover - ripgrep error
+            return None  # Fall back to Python
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):  # pragma: no cover
+        return None  # Fall back to Python
+
+    # Parse JSON output to count matches per file
+    file_matches: Dict[Path, set[str]] = {f: set() for f in valid_files}
+
+    for line in result.stdout.splitlines():
+        if not line.strip():  # pragma: no cover - empty lines in output
+            continue
+        try:
+            data = json.loads(line)
+            if data.get("type") == "match":
+                match_data = data.get("data", {})
+                path_data = match_data.get("path", {})
+                file_path_str = path_data.get("text", "")
+                submatches = match_data.get("submatches", [])
+
+                if file_path_str:
+                    file_path = Path(file_path_str)
+                    for submatch in submatches:
+                        match_text = submatch.get("match", {}).get("text", "")
+                        if match_text and file_path in file_matches:
+                            file_matches[file_path].add(match_text)
+        except json.JSONDecodeError:  # pragma: no cover - malformed JSON
+            continue  # Skip malformed lines
+
+    # Calculate scores
+    scores: Dict[Path, float] = {}
+    processed = 0
+    for f in files:
+        if f in file_matches:
+            matched = file_matches[f]
+            total = sum(name_to_in_degree.get(name, 0) for name in matched)
+            size = file_sizes.get(f, 1)
+            scores[f] = total / size if size > 0 else 0.0
+        else:
+            scores[f] = 0.0
+
+        processed += 1
+        if progress_callback and processed % 50 == 0:  # pragma: no cover - batched progress
+            progress_callback(processed, len(files))
+
+    if progress_callback:
+        progress_callback(len(files), len(files))
+
+    return scores
+
+
+def _compute_centrality_with_python(
+    files: List[Path],
+    name_to_in_degree: Dict[str, int],
+    max_file_size: int,
+    progress_callback: "callable | None",
+) -> Dict[Path, float]:
+    """Compute centrality using Python regex (fallback path)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _compute_one(f: Path) -> tuple[Path, float]:
+        try:
+            file_size = f.stat().st_size
+            if file_size > max_file_size:
+                return (f, 0.0)
+            content = f.read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            return (f, 0.0)
+
+        if not content:  # pragma: no cover - empty file
+            return (f, 0.0)
+
+        total_in_degree = 0
+        matched_names: set[str] = set()
+
+        for name in name_to_in_degree:
+            if name not in matched_names:
+                pattern = r'\b' + re.escape(name) + r'\b'
+                if re.search(pattern, content):
+                    total_in_degree += name_to_in_degree[name]
+                    matched_names.add(name)
+
+        score = total_in_degree / len(content) if content else 0.0
+        return (f, score)
+
+    scores: Dict[Path, float] = {}
+
+    if progress_callback:
+        progress_callback(0, len(files))
+
+    max_workers = min(8, len(files)) if files else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_compute_one, f): f for f in files}
+        for i, future in enumerate(as_completed(futures)):
+            path, score = future.result()
+            scores[path] = score
+            if progress_callback:
+                progress_callback(i + 1, len(files))
+
+    return scores
+
+
 def compute_symbol_mention_centrality(
     file_path: Path,
     symbols: List[Symbol],

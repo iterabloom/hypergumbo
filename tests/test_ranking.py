@@ -22,6 +22,9 @@ from hypergumbo.ranking import (
     compute_file_loc,
     compute_symbol_importance_density,
     compute_symbol_mention_centrality,
+    compute_symbol_mention_centrality_batch,
+    _is_ripgrep_available,
+    _compute_centrality_with_python,
 )
 
 
@@ -813,3 +816,262 @@ class TestComputeSymbolMentionCentrality:
         foo = make_symbol("foo")
         result = compute_symbol_mention_centrality(f, [foo], {foo.id: 5})
         assert result == 0.0
+
+
+class TestComputeSymbolMentionCentralityBatch:
+    """Tests for compute_symbol_mention_centrality_batch function."""
+
+    def test_empty_files(self):
+        """Returns empty dict for empty file list."""
+        result = compute_symbol_mention_centrality_batch([], [], {})
+        assert result == {}
+
+    def test_empty_symbols(self, tmp_path):
+        """Returns zeros when no symbols provided."""
+        f = tmp_path / "readme.md"
+        f.write_text("Hello world")
+
+        result = compute_symbol_mention_centrality_batch([f], [], {})
+        assert result[f] == 0.0
+
+    def test_no_eligible_symbols(self, tmp_path):
+        """Returns zeros when no symbols meet in-degree threshold."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo function")
+
+        foo = make_symbol("foo")
+        # in_degree of 1 is below default threshold of 2
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo], {foo.id: 1}, min_in_degree=2
+        )
+        assert result[f] == 0.0
+
+    def test_matches_single_file(self, tmp_path):
+        """Computes centrality for single file with matches."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo and bar together")
+
+        foo = make_symbol("foo")
+        bar = make_symbol("bar")
+        in_degree = {foo.id: 3, bar.id: 5}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo, bar], in_degree, min_in_degree=2
+        )
+
+        # (3 + 5) / 24 chars
+        assert result[f] == pytest.approx(8 / 24)
+
+    def test_matches_multiple_files(self, tmp_path):
+        """Computes centrality for multiple files."""
+        f1 = tmp_path / "readme.md"
+        f1.write_text("Use foo")
+
+        f2 = tmp_path / "config.yaml"
+        f2.write_text("Use bar")
+
+        f3 = tmp_path / "notes.txt"
+        f3.write_text("No symbols here")
+
+        foo = make_symbol("foo")
+        bar = make_symbol("bar")
+        in_degree = {foo.id: 3, bar.id: 5}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f1, f2, f3], [foo, bar], in_degree, min_in_degree=2
+        )
+
+        assert result[f1] == pytest.approx(3 / 7)  # "Use foo" is 7 chars
+        assert result[f2] == pytest.approx(5 / 7)  # "Use bar" is 7 chars
+        assert result[f3] == 0.0
+
+    def test_max_file_size_filter(self, tmp_path):
+        """Skips files exceeding max size."""
+        f = tmp_path / "large.md"
+        f.write_text("x" * 1000 + " foo " + "y" * 1000)
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        # Set max_file_size below actual file size
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo], in_degree, min_in_degree=2, max_file_size=100
+        )
+
+        assert result[f] == 0.0
+
+    def test_progress_callback(self, tmp_path):
+        """Progress callback is called during processing."""
+        f1 = tmp_path / "a.md"
+        f1.write_text("Use foo")
+        f2 = tmp_path / "b.md"
+        f2.write_text("Use bar")
+
+        foo = make_symbol("foo")
+        bar = make_symbol("bar")
+        in_degree = {foo.id: 3, bar.id: 5}
+
+        progress_calls = []
+
+        def callback(current, total):
+            progress_calls.append((current, total))
+
+        compute_symbol_mention_centrality_batch(
+            [f1, f2], [foo, bar], in_degree, min_in_degree=2,
+            progress_callback=callback
+        )
+
+        # Should have been called (exact count depends on implementation)
+        assert len(progress_calls) > 0
+        # Last call should have current == total
+        assert progress_calls[-1][0] == progress_calls[-1][1]
+
+    def test_nonexistent_file_returns_zero(self, tmp_path):
+        """Nonexistent files get zero score."""
+        f = tmp_path / "does_not_exist.md"
+        foo = make_symbol("foo")
+
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo], {foo.id: 5}, min_in_degree=2
+        )
+
+        assert result[f] == 0.0
+
+    def test_many_files_uses_batch_optimization(self, tmp_path):
+        """With more than 5 files, uses optimized batch processing."""
+        # Create 10 files to trigger batch optimization path
+        files = []
+        for i in range(10):
+            f = tmp_path / f"file{i}.md"
+            if i % 2 == 0:
+                f.write_text("This file mentions foo symbol")
+            else:
+                f.write_text("This file has no symbols")
+            files.append(f)
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_mention_centrality_batch(
+            files, [foo], in_degree, min_in_degree=2
+        )
+
+        # Should have computed scores for all files
+        assert len(result) == 10
+        # Even-numbered files should have non-zero scores
+        for i in range(0, 10, 2):
+            assert result[files[i]] > 0
+        # Odd-numbered files should have zero scores
+        for i in range(1, 10, 2):
+            assert result[files[i]] == 0.0
+
+    def test_many_files_with_progress_callback(self, tmp_path):
+        """Progress callback called during batch processing."""
+        # Create 10 files to trigger batch optimization path
+        files = []
+        for i in range(10):
+            f = tmp_path / f"file{i}.md"
+            f.write_text(f"This file mentions foo symbol {i}")
+            files.append(f)
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        progress_calls = []
+        def callback(current, total):
+            progress_calls.append((current, total))
+
+        compute_symbol_mention_centrality_batch(
+            files, [foo], in_degree, min_in_degree=2,
+            progress_callback=callback
+        )
+
+        # Progress callback should have been called
+        assert len(progress_calls) >= 2
+        # First call should be (0, n)
+        assert progress_calls[0][0] == 0
+        # Last call should be (n, n)
+        assert progress_calls[-1][0] == progress_calls[-1][1]
+
+    def test_mixed_file_sizes_some_filtered(self, tmp_path):
+        """Files exceeding max_size get zero score but are still in results."""
+        # Create 10 files, some large
+        files = []
+        for i in range(10):
+            f = tmp_path / f"file{i}.md"
+            if i < 5:
+                f.write_text("small file with foo")  # Small
+            else:
+                f.write_text("x" * 1000 + " foo " + "y" * 1000)  # Large
+            files.append(f)
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_mention_centrality_batch(
+            files, [foo], in_degree, min_in_degree=2,
+            max_file_size=100  # Small max size
+        )
+
+        # All files should be in results
+        assert len(result) == 10
+        # Small files (0-4) should have scores
+        for i in range(5):
+            assert result[files[i]] > 0
+        # Large files (5-9) should have zero
+        for i in range(5, 10):
+            assert result[files[i]] == 0.0
+
+
+class TestIsRipgrepAvailable:
+    """Tests for _is_ripgrep_available function."""
+
+    def test_returns_boolean(self):
+        """Function returns a boolean."""
+        result = _is_ripgrep_available()
+        assert isinstance(result, bool)
+
+    def test_result_is_cached(self):
+        """Result is consistent (cached)."""
+        first = _is_ripgrep_available()
+        second = _is_ripgrep_available()
+        assert first == second
+
+
+class TestComputeCentralityWithPython:
+    """Tests for _compute_centrality_with_python fallback."""
+
+    def test_basic_computation(self, tmp_path):
+        """Computes centrality using Python regex."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo function")
+
+        name_to_in_degree = {"foo": 5}
+
+        result = _compute_centrality_with_python(
+            [f], name_to_in_degree, max_file_size=100 * 1024,
+            progress_callback=None
+        )
+
+        assert result[f] == pytest.approx(5 / 16)  # "Use foo function" is 16 chars
+
+    def test_empty_files(self):
+        """Returns empty dict for no files."""
+        result = _compute_centrality_with_python(
+            [], {"foo": 5}, max_file_size=100 * 1024,
+            progress_callback=None
+        )
+        assert result == {}
+
+    def test_progress_callback_called(self, tmp_path):
+        """Progress callback is invoked."""
+        f = tmp_path / "test.md"
+        f.write_text("hello foo")
+
+        calls = []
+        result = _compute_centrality_with_python(
+            [f], {"foo": 5}, max_file_size=100 * 1024,
+            progress_callback=lambda c, t: calls.append((c, t))
+        )
+
+        assert len(calls) >= 2  # At least start (0, 1) and end (1, 1)
