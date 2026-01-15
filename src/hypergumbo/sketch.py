@@ -142,7 +142,8 @@ class SketchProgress:  # pragma: no cover
         ("config", "Extracting config", 0.45),  # Config is often slowest
         ("vocabulary", "Extracting vocabulary", 0.55),
         ("analysis", "Running static analysis", 0.75),
-        ("symbols", "Ranking symbols", 0.90),
+        ("symbols", "Ranking symbols", 0.85),
+        ("embedding", "Ranking additional files", 0.95),  # Embedding phase
         ("format", "Formatting output", 1.0),
     ]
 
@@ -3913,7 +3914,7 @@ def generate_sketch(
 
     # Section 7: Additional files (if we still have budget after everything else)
     # These are files NOT in source_files, ordered by hybrid semantic + centrality
-    prog.start_phase("format")
+    prog.start_phase("embedding")
     if remaining_tokens > 50:
         budget_for_files = remaining_tokens - 10
         max_additional_files = max(1, budget_for_files // tokens_per_file)
@@ -3933,6 +3934,9 @@ def generate_sketch(
         )
         if additional_files_section:
             sections.append(additional_files_section)
+
+    prog.complete_phase("embedding")
+    prog.start_phase("format")
 
     # Section 8: Source Content (if with_source is True and we have budget)
     if with_source and source_files and max_tokens is not None:

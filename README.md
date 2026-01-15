@@ -2,14 +2,12 @@
 
 A local-first CLI that generates behavior maps from source code. Helps developers and LLMs quickly understand any codebase.
 
-**Requires Python 3.10+**
-
 ```bash
 pip install hypergumbo
 hypergumbo .
 ```
 
-**Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/INTEL_MAC.md) for a Docker-based workaround.
+**Requires Python 3.10+. Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/INTEL_MAC.md) for a Docker-based workaround.
 
 Output:
 ```markdown
@@ -75,6 +73,12 @@ hypergumbo sketch --input hypergumbo.results.json -t 4000  # fast re-sketch
 
 See `hypergumbo --help` for all options.
 
+## What It Understands
+
+- **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LANGUAGES.md))
+- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LINKERS.md))
+- **37 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
+
 ## How It Works
 
 Hypergumbo builds understanding through a pipeline:
@@ -100,12 +104,6 @@ All analyzers produce the same IR types:
 - **Span**: Source location (file, line, column)
 
 This uniform IR is what allows 67 language analyzers and 15 cross-language linkers to work together coherently.
-
-## What It Understands
-
-- **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LANGUAGES.md))
-- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/LINKERS.md))
-- **37 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
 
 ## Architecture
 

@@ -817,9 +817,10 @@ def extract_config_embedding(
     normalized_question_patterns = _get_bigpic_probe_embeddings()
     _vlog(f"Probe embeddings ({len(ANSWER_PATTERNS)}+{len(BIG_PICTURE_QUESTIONS)}) decoded in {_time.time() - _t_probes:.3f}s")
 
-    # === PASS 1: Score all files, collect top candidates from each ===
-    # Structure: {source: [(sim, center_idx, chunk_text, file_lines), ...]}
-    file_candidates: dict[str, list[tuple[float, int, str, list[str], np.ndarray]]] = {}
+    # === PASS 1a: Collect chunks from all files ===
+    # Structure: list of (source, center_idx, chunk_text, file_lines)
+    all_chunks: list[tuple[str, int, str, list[str]]] = []
+    file_chunk_ranges: dict[str, tuple[int, int]] = {}  # source -> (start_idx, end_idx)
     processed_files = 0
 
     for source, content in config_content:
@@ -849,71 +850,79 @@ def extract_config_embedding(
             sampled_indices.append(non_empty[i][0])  # Get original line index
 
         # Build context chunks for each sampled line
-        chunks: list[tuple[int, str]] = []  # (center_idx, chunk_text)
+        start_idx = len(all_chunks)
         for center_idx in sampled_indices:
             chunk = _build_context_chunk(file_lines, center_idx, max_chunk_chars)
             if chunk:  # Skip empty chunks
-                chunks.append((center_idx, chunk))
+                all_chunks.append((source, center_idx, chunk, file_lines))
 
-        if not chunks:
-            continue
+        end_idx = len(all_chunks)
+        if end_idx > start_idx:
+            file_chunk_ranges[source] = (start_idx, end_idx)
+            processed_files += 1
 
-        # Embed chunks
-        chunk_texts = [chunk for _, chunk in chunks]
-        _t0 = _time.time()
-        chunk_embeddings = model.encode(chunk_texts, convert_to_numpy=True)
-        _vlog(f"  Encoded {len(chunk_texts)} chunks in {_time.time() - _t0:.1f}s")
+    if not all_chunks:
+        return []
 
-        # Normalize chunks and compute similarity to all probes
-        _t1 = _time.time()
-        chunk_norms = np.linalg.norm(chunk_embeddings, axis=1, keepdims=True)
-        normalized_chunks = chunk_embeddings / (chunk_norms + 1e-8)
-        # Shape: (num_chunks, num_answer_patterns)
-        answer_sim_matrix = np.dot(normalized_chunks, normalized_answer_patterns.T)
-        # Shape: (num_chunks, num_question_patterns)
-        question_sim_matrix = np.dot(normalized_chunks, normalized_question_patterns.T)
-        # Combine into single matrix: (num_chunks, num_all_probes)
-        combined_sim_matrix = np.concatenate(
-            [answer_sim_matrix, question_sim_matrix], axis=1
-        )
-        # Top-k mean: require k probes to "agree" rather than one spurious match
-        # This softens max-pooling sensitivity while preserving signal
-        top_k = 3
-        num_probes = combined_sim_matrix.shape[1]
-        if num_probes >= top_k:
-            # Partition to get top-k values (more efficient than full sort)
-            top_k_values = np.partition(combined_sim_matrix, -top_k, axis=1)[:, -top_k:]
-            similarities = np.mean(top_k_values, axis=1)
-        else:
-            # Fallback if fewer probes than k (shouldn't happen in practice)
-            similarities = np.mean(combined_sim_matrix, axis=1)
+    # === PASS 1b: Batch encode all chunks at once ===
+    chunk_texts = [chunk for _, _, chunk, _ in all_chunks]
+    _t0 = _time.time()
+    all_embeddings = model.encode(chunk_texts, convert_to_numpy=True)
+    _vlog(f"Batch encoded {len(chunk_texts)} chunks in {_time.time() - _t0:.1f}s")
 
-        # Apply penalty for LICENSE/COPYING files - their verbose content is
-        # semantically similar to many probes but has low information density.
-        # ANSWER_PATTERNS already captures compact 'license = "MIT"' declarations.
+    # Normalize all embeddings
+    _t1 = _time.time()
+    all_norms = np.linalg.norm(all_embeddings, axis=1, keepdims=True)
+    all_normalized = all_embeddings / (all_norms + 1e-8)
+
+    # Compute similarity to all probes for all chunks at once
+    # Shape: (num_all_chunks, num_answer_patterns)
+    answer_sim_matrix = np.dot(all_normalized, normalized_answer_patterns.T)
+    # Shape: (num_all_chunks, num_question_patterns)
+    question_sim_matrix = np.dot(all_normalized, normalized_question_patterns.T)
+    # Combine into single matrix: (num_all_chunks, num_all_probes)
+    combined_sim_matrix = np.concatenate(
+        [answer_sim_matrix, question_sim_matrix], axis=1
+    )
+
+    # Top-k mean: require k probes to "agree" rather than one spurious match
+    top_k = 3
+    num_probes = combined_sim_matrix.shape[1]
+    if num_probes >= top_k:
+        top_k_values = np.partition(combined_sim_matrix, -top_k, axis=1)[:, -top_k:]
+        all_similarities = np.mean(top_k_values, axis=1)
+    else:
+        all_similarities = np.mean(combined_sim_matrix, axis=1)
+    _vlog(f"Similarity computation in {(_time.time() - _t1)*1000:.1f}ms")
+
+    # === PASS 1c: Build candidates per file ===
+    file_candidates: dict[str, list[tuple[float, int, str, list[str], np.ndarray]]] = {}
+
+    for source, (start_idx, end_idx) in file_chunk_ranges.items():
+        # Get this file's chunks and their similarities
+        file_similarities = all_similarities[start_idx:end_idx].copy()
+
+        # Apply penalty for LICENSE/COPYING files
         source_lower = source.lower()
         if "license" in source_lower or "copying" in source_lower:
-            license_penalty = 0.5  # Reduce similarity scores by 50%
-            similarities = similarities * license_penalty
+            license_penalty = 0.5
+            file_similarities = file_similarities * license_penalty
             _vlog(f"  Applied LICENSE penalty ({license_penalty}x) to {source}")
 
-        _vlog(f"  Dot products/similarity in {(_time.time() - _t1)*1000:.1f}ms")
+        # Collect chunks above threshold
+        above_threshold = []
+        for i, global_idx in enumerate(range(start_idx, end_idx)):
+            sim = float(file_similarities[i])
+            if sim >= similarity_threshold:
+                _, center_idx, chunk_text, file_lines = all_chunks[global_idx]
+                above_threshold.append(
+                    (sim, center_idx, chunk_text, file_lines, all_normalized[global_idx])
+                )
 
-        # Collect chunks above threshold, sorted by similarity
-        # Store center_idx, chunk_text, file_lines, AND embedding for diversity computation
-        above_threshold = [
-            (float(sim), center_idx, chunk_text, file_lines, normalized_chunks[i])
-            for i, ((center_idx, chunk_text), sim) in enumerate(
-                zip(chunks, similarities, strict=True)
-            )
-            if sim >= similarity_threshold
-        ]
         above_threshold.sort(reverse=True, key=lambda x: x[0])
 
         if above_threshold:
             file_candidates[source] = above_threshold
-
-        processed_files += 1
 
     if not file_candidates:
         return []
