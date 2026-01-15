@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -2661,13 +2662,18 @@ def _format_additional_files(
         semantic_files = [f for f, _ in file_scores[:semantic_top_n]]
         remaining_files = [f for f, _ in file_scores[semantic_top_n:]]
 
-    # Phase 2: Symbol mention centrality for remaining files
-    mention_scores: list[tuple[Path, float]] = []
-    for f in remaining_files:
+    # Phase 2: Symbol mention centrality for remaining files (parallelized)
+    def _compute_mention_score(f: Path) -> tuple[Path, float]:
         score = compute_symbol_mention_centrality(
             f, symbols, in_degree, min_in_degree=2, max_file_size=100 * 1024
         )
-        mention_scores.append((f, score))
+        return (f, score)
+
+    # Use ThreadPoolExecutor for parallel I/O + regex matching
+    # Limit workers to avoid overwhelming the filesystem
+    max_workers = min(8, len(remaining_files)) if remaining_files else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        mention_scores = list(executor.map(_compute_mention_score, remaining_files))
 
     # Sort remaining by mention centrality descending
     mention_scores.sort(key=lambda x: x[1], reverse=True)
