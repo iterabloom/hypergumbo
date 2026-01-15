@@ -70,7 +70,7 @@ class TestFrameworksFlagIntegration:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="none")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="none", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
 
@@ -90,7 +90,7 @@ class TestFrameworksFlagIntegration:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="celery")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="celery", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
 
@@ -104,7 +104,7 @@ class TestFrameworksFlagIntegration:
         (tmp_path / "requirements.txt").write_text("flask\n")
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="all")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="all", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
 
@@ -119,7 +119,7 @@ class TestFrameworksFlagIntegration:
         (tmp_path / "pyproject.toml").write_text('dependencies = ["fastapi"]\n')
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)  # No frameworks arg
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)  # No frameworks arg
 
         data = json.loads(out_path.read_text())
 
@@ -137,7 +137,7 @@ class TestFrameworksFlagIntegration:
         (tmp_path / "app.py").write_text("print('hello')\n")
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="fastapi")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="fastapi", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
 
@@ -156,7 +156,7 @@ class TestFrameworkModeInOutput:
         (tmp_path / "app.py").write_text("x = 1\n")
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="none")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="none", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         assert data["profile"]["framework_mode"] == "none"
@@ -166,7 +166,7 @@ class TestFrameworkModeInOutput:
         (tmp_path / "app.py").write_text("x = 1\n")
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="all")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="all", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         assert data["profile"]["framework_mode"] == "all"
@@ -176,7 +176,7 @@ class TestFrameworkModeInOutput:
         (tmp_path / "app.py").write_text("x = 1\n")
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="fastapi,flask")
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, frameworks="fastapi,flask", include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         assert data["profile"]["framework_mode"] == "explicit"
@@ -187,7 +187,7 @@ class TestFrameworkModeInOutput:
         (tmp_path / "app.py").write_text("x = 1\n")
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         assert data["profile"]["framework_mode"] == "auto"

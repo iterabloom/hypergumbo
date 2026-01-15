@@ -2057,7 +2057,11 @@ class TestCLISketch:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert len(captured.out) < 500  # Should be truncated
+        # Split output into sketch content and summary
+        # The summary starts with "[hypergumbo sketch]"
+        parts = captured.out.split("[hypergumbo sketch]")
+        sketch_content = parts[0]
+        assert len(sketch_content) < 500  # Sketch should be truncated
 
     def test_sketch_explicit_command(self, tmp_path: Path, capsys) -> None:
         """Sketch works with explicit 'sketch' command."""
@@ -4116,6 +4120,158 @@ class TestCachedResults:
         # Frameworks from cached profile should appear
         assert "django" in sketch.lower() or "Django" in sketch
         assert "celery" in sketch.lower() or "Celery" in sketch
+
+    def test_uses_cached_sketch_precomputed_config(self, tmp_path: Path) -> None:
+        """Sketch uses config_info from sketch_precomputed when available."""
+        # Create a minimal repo with a config file
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myproject"\n')
+
+        # Cached results with sketch_precomputed containing config_info
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 10}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+            "sketch_precomputed": {
+                "config_info": 'name = "cached_project_name"\nversion = "1.2.3"',
+                "vocabulary": ["token", "semantic", "embedding"],
+                "readme_description": "A cached project description from README.",
+            },
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=1000, cached_results=cached_results)
+
+        # Should use cached config instead of re-extracting
+        assert "cached_project_name" in sketch
+        assert "1.2.3" in sketch
+        # Should NOT extract fresh (would show "myproject" from pyproject.toml)
+
+    def test_uses_cached_sketch_precomputed_vocabulary(self, tmp_path: Path) -> None:
+        """Sketch uses vocabulary from sketch_precomputed when available."""
+        (tmp_path / "main.py").write_text("def hello(): pass\n")
+
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 10}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+            "sketch_precomputed": {
+                "config_info": "",
+                "vocabulary": ["cached_term_alpha", "cached_term_beta", "cached_term_gamma"],
+                "readme_description": None,
+            },
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=1000, cached_results=cached_results)
+
+        # Should use cached vocabulary
+        assert "cached_term_alpha" in sketch
+        assert "cached_term_beta" in sketch
+        assert "cached_term_gamma" in sketch
+
+    def test_uses_cached_sketch_precomputed_readme(self, tmp_path: Path) -> None:
+        """Sketch uses readme_description from sketch_precomputed when available."""
+        # Create README with different content than cached
+        (tmp_path / "README.md").write_text("# Fresh\n\nFresh description from README.\n")
+
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 10}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+            "sketch_precomputed": {
+                "config_info": "",
+                "vocabulary": [],
+                "readme_description": "Cached README description here.",
+            },
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=1000, cached_results=cached_results)
+
+        # Should use cached README description
+        assert "Cached README description" in sketch
+        # Should NOT use fresh description
+        assert "Fresh description" not in sketch
+
+    def test_extracts_fresh_when_no_sketch_precomputed(self, tmp_path: Path) -> None:
+        """Sketch extracts fresh data when sketch_precomputed is missing."""
+        # Create repo with README
+        (tmp_path / "README.md").write_text("# Project\n\nFresh README content.\n")
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "fresh_project"\n')
+
+        # Cached results WITHOUT sketch_precomputed
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 10}},
+                "frameworks": [],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+            # No sketch_precomputed key
+        }
+
+        sketch = generate_sketch(tmp_path, max_tokens=1000, cached_results=cached_results)
+
+        # Should extract fresh data
+        assert "Fresh README content" in sketch
+        assert "fresh_project" in sketch
+
+    def test_auto_discovers_cached_results_from_cache_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sketch auto-discovers cached results from ~/.cache/hypergumbo/."""
+        import json
+
+        # Create a minimal repo
+        (tmp_path / "main.py").write_text("def hello(): pass\n")
+
+        # Create a mock cache directory with pre-computed results
+        mock_cache = tmp_path / "mock_cache"
+        mock_cache.mkdir(parents=True)
+
+        cached_results = {
+            "profile": {
+                "languages": {"python": {"files": 1, "loc": 10}},
+                "frameworks": ["auto_discovered_framework"],
+                "framework_mode": "auto",
+            },
+            "nodes": [],
+            "edges": [],
+            "sketch_precomputed": {
+                "config_info": 'name = "auto_discovered_project"',
+                "vocabulary": ["autodiscovered"],
+                "readme_description": "Auto-discovered README description.",
+            },
+        }
+        cached_path = mock_cache / "hypergumbo.results.json"
+        cached_path.write_text(json.dumps(cached_results))
+
+        # Mock _get_results_cache_dir in sketch_embeddings module
+        # (this is where it gets imported from in generate_sketch)
+        import hypergumbo.sketch_embeddings as sketch_embeddings_module
+        monkeypatch.setattr(
+            sketch_embeddings_module,
+            "_get_results_cache_dir",
+            lambda repo_root: mock_cache,
+        )
+
+        # Generate sketch without passing cached_results - should auto-discover
+        sketch = generate_sketch(tmp_path, max_tokens=1000)
+
+        # Should use auto-discovered cached results
+        assert "auto_discovered_framework" in sketch.lower() or "Auto_discovered_framework" in sketch
+        assert "auto_discovered_project" in sketch
+        assert "Auto-discovered README description" in sketch
 
 
 class TestSketchWithSource:

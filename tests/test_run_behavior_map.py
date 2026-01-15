@@ -10,7 +10,7 @@ def test_run_behavior_map_writes_behavior_map_json(tmp_path):
 
     out_path = tmp_path / "hypergumbo.results.json"
 
-    run_behavior_map(repo_root=repo_root, out_path=out_path)
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
 
     assert out_path.is_file()
 
@@ -40,7 +40,7 @@ def test_run_behavior_map_classifies_supply_chain_tiers(tmp_path):
     (repo_root / "utils.py").write_text("def helper(): pass\n")
 
     out_path = tmp_path / "hypergumbo.results.json"
-    run_behavior_map(repo_root=repo_root, out_path=out_path)
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -77,7 +77,7 @@ def test_run_behavior_map_includes_supply_chain_summary(tmp_path):
     (repo_root / "utils.py").write_text("def helper(): pass\n")
 
     out_path = tmp_path / "hypergumbo.results.json"
-    run_behavior_map(repo_root=repo_root, out_path=out_path)
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -121,6 +121,7 @@ def test_run_behavior_map_compact_mode(tmp_path):
         compact=True,
         coverage=0.8,
         budgets="none",  # Disable tiers for this test
+        include_sketch_precomputed=False,
     )
 
     data = json.loads(out_path.read_text())
@@ -155,7 +156,7 @@ def test_run_behavior_map_default_tiered_output(tmp_path):
     (src_dir / "app.py").write_text("def main(): pass\n")
 
     out_path = tmp_path / "hypergumbo.results.json"
-    run_behavior_map(repo_root=repo_root, out_path=out_path)
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
 
     # Main file should exist
     assert out_path.is_file()
@@ -198,6 +199,7 @@ def test_run_behavior_map_custom_budgets(tmp_path):
         repo_root=repo_root,
         out_path=out_path,
         budgets="2k,8k",  # Custom budgets
+        include_sketch_precomputed=False,
     )
 
     # Custom budget files should be generated
@@ -236,6 +238,7 @@ def test_run_behavior_map_budgets_none(tmp_path):
         repo_root=repo_root,
         out_path=out_path,
         budgets="none",  # Disable budget output
+        include_sketch_precomputed=False,
     )
 
     # Main file should exist
@@ -265,6 +268,7 @@ def test_run_behavior_map_budgets_default_keyword(tmp_path):
         repo_root=repo_root,
         out_path=out_path,
         budgets="default",  # Explicit default
+        include_sketch_precomputed=False,
     )
 
     # Default budget files should be generated
@@ -292,6 +296,7 @@ def test_run_behavior_map_budgets_invalid_spec_skipped(tmp_path):
         repo_root=repo_root,
         out_path=out_path,
         budgets="4k,invalid_budget,16k",  # Invalid spec in the middle
+        include_sketch_precomputed=False,
     )
 
     # Main file should exist

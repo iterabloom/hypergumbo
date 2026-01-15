@@ -33,12 +33,26 @@ def _load_embedding_model():
     The sentence-transformers library logs a warning when creating a new model
     wrapper for models it doesn't recognize. This is expected for UnixCoder
     and not useful to users.
-    """
-    from sentence_transformers import SentenceTransformer
 
-    # Suppress "No sentence-transformers model found" warning
+    The warning is suppressed by setting log level BEFORE importing/loading,
+    and by capturing any stdout output during initialization.
+    """
+    # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-    return SentenceTransformer(_EMBEDDING_MODEL)
+    logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
+
+    from sentence_transformers import SentenceTransformer
+    import sys
+    import io
+
+    # Capture any stdout during model loading (library prints to stdout)
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        model = SentenceTransformer(_EMBEDDING_MODEL)
+    finally:
+        sys.stdout = old_stdout
+    return model
 
 # Probe patterns for embedding-based config extraction
 # These are embedded and compared against config file content
@@ -1272,13 +1286,25 @@ def _load_modernbert_model():
     Returns:
         SentenceTransformer model configured for 256-dim output.
     """
-    from sentence_transformers import SentenceTransformer
-
+    # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-    return SentenceTransformer(
-        _MODERNBERT_MODEL_NAME,
-        truncate_dim=_MODERNBERT_TRUNCATE_DIM
-    )
+    logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
+
+    from sentence_transformers import SentenceTransformer
+    import sys
+    import io
+
+    # Capture any stdout during model loading (library prints to stdout)
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        model = SentenceTransformer(
+            _MODERNBERT_MODEL_NAME,
+            truncate_dim=_MODERNBERT_TRUNCATE_DIM
+        )
+    finally:
+        sys.stdout = old_stdout
+    return model
 
 
 def _get_additional_files_probe_embeddings() -> "np.ndarray":

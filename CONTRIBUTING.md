@@ -36,6 +36,34 @@ If you prefer manual control without installing CLI tools like `tea`:
 ## Canonical forge
 Codeberg is the source of truth for issues/PRs. GitHub is a mirror.
 
+## Testing
+
+### Running Tests Locally
+
+```bash
+# Fast parallel run with coverage
+pytest -n auto --cov=src --cov-fail-under=100
+
+# Sequential run (for debugging)
+pytest --cov=src --cov-fail-under=100
+```
+
+### Embedding Tests and sentence-transformers
+
+Some tests require `sentence-transformers` (which depends on PyTorch) for testing embedding-based features like `sketch_precomputed`.
+
+**CI behavior:** CI does **not** attempt to install sentence-transformers. It only checks if it's already available. If not installed, embedding-dependent tests are skipped. This keeps CI fast and avoids flaky installs on resource-constrained runners.
+
+**Local development:** To run embedding tests locally, install sentence-transformers:
+
+```bash
+pip install sentence-transformers
+```
+
+This works on most development machines where PyTorch wheels are available (Linux x86_64, macOS, Windows).
+
+**Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
+
 ---
 
 ## auto-pr Documentation

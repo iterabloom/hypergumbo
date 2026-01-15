@@ -21,7 +21,7 @@ def test_run_detects_python_function(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -47,7 +47,7 @@ def test_run_skips_syntax_error_files(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
@@ -67,7 +67,7 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
@@ -83,7 +83,7 @@ def test_run_detects_python_class(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -111,7 +111,7 @@ def test_run_detects_call_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -144,7 +144,7 @@ def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -183,7 +183,7 @@ def test_run_detects_import_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -214,7 +214,7 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -326,7 +326,7 @@ def test_run_detects_relative_import_calls(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -362,7 +362,7 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -390,7 +390,7 @@ def test_run_detects_class_instantiation(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -422,7 +422,7 @@ def test_run_detects_cross_file_instantiation(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -448,7 +448,7 @@ def test_method_symbols_include_class_prefix(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -483,7 +483,7 @@ def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -516,7 +516,7 @@ def test_fastapi_post_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -544,7 +544,7 @@ def test_fastapi_router_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -589,7 +589,7 @@ def test_fastapi_all_http_method_decorators(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -625,7 +625,7 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -651,7 +651,7 @@ def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -685,7 +685,7 @@ def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -871,7 +871,7 @@ def test_drf_api_view_decorator_single_method_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -901,7 +901,7 @@ def test_drf_api_view_decorator_multiple_methods_metadata(tmp_path: Path) -> Non
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -928,7 +928,7 @@ def test_drf_api_view_all_methods_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -957,7 +957,7 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -983,7 +983,7 @@ def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1009,7 +1009,7 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1034,7 +1034,7 @@ def test_django_re_path_urlpattern(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1058,7 +1058,7 @@ def test_django_url_legacy_urlpattern(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1081,7 +1081,7 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1140,7 +1140,7 @@ def test_reexport_call_edges_resolved(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1217,7 +1217,7 @@ def test_reexport_with_alias_resolved(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1288,7 +1288,7 @@ def test_src_layout_reexport_resolution(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1350,7 +1350,7 @@ def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1599,7 +1599,7 @@ def branchy(x, y):
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
@@ -1626,7 +1626,7 @@ def longer():
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
@@ -1652,7 +1652,7 @@ def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1689,7 +1689,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1705,7 +1705,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1721,7 +1721,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1737,7 +1737,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1753,7 +1753,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1770,7 +1770,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1787,7 +1787,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1803,7 +1803,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1820,7 +1820,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1838,7 +1838,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1858,7 +1858,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1876,7 +1876,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1897,7 +1897,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1920,7 +1920,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1941,7 +1941,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1956,7 +1956,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1973,7 +1973,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1988,7 +1988,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -2004,7 +2004,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -2033,7 +2033,7 @@ class TestModuleQualifiedCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Find call edges
@@ -2069,7 +2069,7 @@ class TestModuleQualifiedCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Find instantiates edges
@@ -2104,7 +2104,7 @@ class TestModuleQualifiedCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Find call edges
@@ -2143,7 +2143,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have both instantiates and calls edges
@@ -2189,7 +2189,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Verify instantiates edge
@@ -2232,7 +2232,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have a call edge for get_client()
@@ -2268,7 +2268,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have a <module> pseudo-node
@@ -2299,7 +2299,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have instantiates edge
@@ -2328,7 +2328,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have no calls edges (method call can't be resolved)
@@ -2346,7 +2346,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have no edges (neither instantiates nor calls)
@@ -2376,7 +2376,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2406,7 +2406,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2434,7 +2434,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2460,7 +2460,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2482,7 +2482,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2508,7 +2508,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2528,7 +2528,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2547,7 +2547,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2569,7 +2569,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2588,7 +2588,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2616,7 +2616,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
@@ -2639,7 +2639,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2661,7 +2661,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2683,7 +2683,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2708,7 +2708,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2733,7 +2733,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2755,7 +2755,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2774,7 +2774,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2791,7 +2791,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2815,7 +2815,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2838,7 +2838,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2858,7 +2858,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2877,7 +2877,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2899,7 +2899,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
@@ -2919,7 +2919,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]

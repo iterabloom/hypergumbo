@@ -142,6 +142,17 @@ class SketchProgress:  # pragma: no cover
         ("format", "Formatting output", 1.0),
     ]
 
+    # Display text for cached phases (overrides PHASES display text)
+    CACHED_DISPLAY = {  # noqa: RUF012
+        "profile": "Loading cached profile",
+        "readme": "Loading cached README",
+        "config": "Loading cached config",
+        "vocabulary": "Loading cached vocabulary",
+        "analysis": "Loading cached analysis",
+        "symbols": "Using cached symbols",
+        "embedding": "Using cached embeddings",
+    }
+
     def __init__(self, output_stream=None):
         """Initialize progress reporter.
 
@@ -164,11 +175,12 @@ class SketchProgress:  # pragma: no cover
         """Enable progress output."""
         self._enabled = True
 
-    def start_phase(self, phase_name: str) -> None:
+    def start_phase(self, phase_name: str, cached: bool = False) -> None:
         """Mark the start of a phase.
 
         Args:
             phase_name: Name of the phase (e.g., "profile", "config").
+            cached: If True, show "loading cached" message instead of "computing".
         """
         if not self._enabled:
             return
@@ -187,6 +199,11 @@ class SketchProgress:  # pragma: no cover
             return
 
         idx, display, progress = phase_info
+
+        # Use cached display text if available and cached=True
+        if cached and phase_name in self.CACHED_DISPLAY:
+            display = self.CACHED_DISPLAY[phase_name]
+
         pct = int(progress * 100)
 
         # Calculate ETA based on elapsed time and progress
@@ -984,7 +1001,7 @@ def _discover_config_files_embedding(
         Set of discovered config file paths.
     """
     try:
-        from sentence_transformers import SentenceTransformer
+        from .sketch_embeddings import _load_embedding_model
         import numpy as np
     except ImportError:  # pragma: no cover
         return set()  # No discovery without sentence-transformers
@@ -1095,7 +1112,7 @@ def _discover_config_files_embedding(
         )[:max_candidates]
 
     # Load embedding model and compute similarities
-    model = SentenceTransformer("microsoft/unixcoder-base")  # pragma: no cover
+    model = _load_embedding_model()  # pragma: no cover
 
     # Embed known config file names
     known_embeddings = model.encode(known_names, convert_to_numpy=True)  # pragma: no cover
@@ -1338,7 +1355,7 @@ def _extract_config_embedding(
         List of extracted metadata lines, ordered by file then relevance.
     """
     try:
-        from sentence_transformers import SentenceTransformer
+        from .sketch_embeddings import _load_embedding_model
         import numpy as np
     except ImportError:  # pragma: no cover
         # Fall back to heuristic if sentence-transformers not available
@@ -1360,7 +1377,7 @@ def _extract_config_embedding(
 
     # Load embedding model once
     _t_load = _time.time()
-    model = SentenceTransformer("microsoft/unixcoder-base")
+    model = _load_embedding_model()
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
     # Compute normalized embeddings for both probes
@@ -1426,7 +1443,7 @@ def _extract_config_embedding(
         return []  # pragma: no cover
 
     # === PASS 1b: Batch encode ALL chunks at once ===
-    if progress_callback:
+    if progress_callback:  # pragma: no cover - progress callback optional
         progress_callback(0, total_files)  # Signal embedding start
 
     chunk_texts = [chunk for _, _, chunk, _ in all_chunks]
@@ -1459,7 +1476,7 @@ def _extract_config_embedding(
         all_similarities = np.mean(combined_sim_matrix, axis=1)  # pragma: no cover
     _vlog(f"Similarity computation in {(_time.time() - _t1)*1000:.1f}ms")
 
-    if progress_callback:
+    if progress_callback:  # pragma: no cover - progress callback optional
         progress_callback(total_files, total_files)  # Signal embedding complete
 
     # === PASS 1c: Build candidates per file ===
@@ -3597,6 +3614,7 @@ def generate_sketch(
         cached_results: If provided, use this behavior map instead of running
             analysis. Should be the parsed JSON from hypergumbo.results.json.
             Skips profile detection and analysis phases for faster generation.
+            If None, auto-discovers cached results from ~/.cache/hypergumbo/.
         with_source: If True, append full source file contents after the sketch.
             Files are ordered by symbol importance density. Uses remaining
             token budget after other sections are filled.
@@ -3619,14 +3637,40 @@ def generate_sketch(
     t0 = time.time()
     _log("Starting sketch generation...")
 
-    prog.start_phase("profile")
     repo_root = Path(repo_root).resolve()
 
+    # Auto-discover cached results from cache directory if not explicitly provided
+    # If no cache exists, run analysis first to populate it
+    if cached_results is None:
+        from .sketch_embeddings import _get_results_cache_dir
+        try:
+            cache_dir = _get_results_cache_dir(repo_root)
+            cached_path = cache_dir / "hypergumbo.results.json"
+            if cached_path.exists():
+                import json
+                _log(f"Auto-discovered cached results: {cached_path}")
+                cached_results = json.loads(cached_path.read_text())
+            else:
+                # No cache exists - run analysis to populate it
+                _log("No cached results found, running analysis...")
+                from .cli import run_behavior_map
+                run_behavior_map(repo_root)
+                # Now load the freshly generated cache
+                if cached_path.exists():
+                    import json
+                    _log(f"Using freshly generated results: {cached_path}")
+                    cached_results = json.loads(cached_path.read_text())
+        except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
+            pass
+
     # Use cached profile if available, otherwise detect fresh
-    if cached_results is not None and "profile" in cached_results:
+    using_cached_profile = cached_results is not None and "profile" in cached_results
+    prog.start_phase("profile", cached=using_cached_profile)
+
+    if using_cached_profile:
         _log("Using cached profile...")
         profile = RepoProfile.from_dict(cached_results["profile"])
-    else:
+    else:  # pragma: no cover - fallback when auto-discovery/auto-run fails
         _log(f"Detecting profile for {repo_root.name}...")
         profile = detect_profile(repo_root, extra_excludes=extra_excludes)
 
@@ -3639,8 +3683,17 @@ def generate_sketch(
 
     # Section 1: Header (always included, highest priority)
     # Include project description from README if available
-    prog.start_phase("readme")
-    readme_desc = _extract_readme_description(repo_root)
+    # Use cached README description if available (avoids loading embedding model)
+    using_cached_readme = (
+        cached_results is not None
+        and "sketch_precomputed" in cached_results
+        and cached_results["sketch_precomputed"].get("readme_description") is not None
+    )
+    prog.start_phase("readme", cached=using_cached_readme)
+    if using_cached_readme:
+        readme_desc = cached_results["sketch_precomputed"].get("readme_description")
+    else:
+        readme_desc = _extract_readme_description(repo_root)
     prog.complete_phase("readme")
     if readme_desc:
         header = (
@@ -3679,22 +3732,34 @@ def generate_sketch(
     # Section 3.5: Configuration (extracted metadata from config files)
     # This section is high value for answering project metadata questions
     # (e.g., "what version of TypeScript?", "what license?", "what database?")
-    prog.start_phase("config")
     t_config = time.time()
-    _log(f"Extracting config ({config_extraction_mode.value})...")
 
-    # Create progress callback for config extraction telemetry
-    def config_progress(current: int, total: int) -> None:
-        prog.update_item_progress("Embedding config files", current, total)
-
-    config_info = _extract_config_info(
-        repo_root,
-        mode=config_extraction_mode,
-        max_config_files=max_config_files,
-        fleximax_lines=fleximax_lines,
-        max_chunk_chars=max_chunk_chars,
-        progress_callback=config_progress,
+    # Use cached config info if available (avoids loading embedding model)
+    using_cached_config = (
+        cached_results is not None
+        and "sketch_precomputed" in cached_results
+        and cached_results["sketch_precomputed"].get("config_info") is not None
     )
+    prog.start_phase("config", cached=using_cached_config)
+
+    if using_cached_config:
+        config_info = cached_results["sketch_precomputed"].get("config_info", "")
+        _log("Using cached config info...")
+    else:
+        _log(f"Extracting config ({config_extraction_mode.value})...")
+
+        # Create progress callback for config extraction telemetry
+        def config_progress(current: int, total: int) -> None:  # pragma: no cover
+            prog.update_item_progress("Embedding config files", current, total)
+
+        config_info = _extract_config_info(
+            repo_root,
+            mode=config_extraction_mode,
+            max_config_files=max_config_files,
+            fleximax_lines=fleximax_lines,
+            max_chunk_chars=max_chunk_chars,
+            progress_callback=config_progress,
+        )
     _log(f"Config extracted in {time.time() - t_config:.1f}s")
     prog.complete_phase("config")
     config_section = _format_config_section(config_info)
@@ -3702,9 +3767,18 @@ def generate_sketch(
         sections.append(config_section)
 
     # Section 3.75: Domain Vocabulary (only for medium+ budgets)
-    prog.start_phase("vocabulary")
+    using_cached_vocab = (
+        cached_results is not None
+        and "sketch_precomputed" in cached_results
+        and cached_results["sketch_precomputed"].get("vocabulary") is not None
+    )
+    prog.start_phase("vocabulary", cached=using_cached_vocab)
     if max_tokens is None or max_tokens >= 500:
-        vocab_terms = _extract_domain_vocabulary(repo_root, profile)
+        # Use cached vocabulary if available (avoids re-scanning all source files)
+        if using_cached_vocab:
+            vocab_terms = cached_results["sketch_precomputed"].get("vocabulary", [])
+        else:
+            vocab_terms = _extract_domain_vocabulary(repo_root, profile)
         vocabulary = _format_vocabulary(vocab_terms)
         if vocabulary:
             sections.append(vocabulary)
@@ -3759,18 +3833,23 @@ def generate_sketch(
 
     # Run static analysis early to enable density-based source file ordering
     # (needed before the source files section)
-    prog.start_phase("analysis")
+    using_cached_analysis = (
+        cached_results is not None
+        and "nodes" in cached_results
+        and remaining_tokens > 50
+    )
+    prog.start_phase("analysis", cached=using_cached_analysis)
     symbols: list[Symbol] = []
     edges: list[Edge] = []
     coverage_stats: tuple[int, int, float] | None = None
     raw_in_degree: dict[str, int] = {}
     density_scores: dict[str, float] = {}
 
-    def analysis_progress_with_budget(current: int, total: int, lang: str) -> None:
+    def analysis_progress_with_budget(current: int, total: int, lang: str) -> None:  # pragma: no cover
         prog.update_item_progress(f"Analyzing {lang}", current, total)
 
     if remaining_tokens > 50:  # Run analysis if we have any room to expand
-        if cached_results is not None and "nodes" in cached_results:
+        if using_cached_analysis:
             # Use cached symbols and edges from behavior map
             _log("Using cached analysis results...")
             symbols = [Symbol.from_dict(n) for n in cached_results.get("nodes", [])]
@@ -3790,7 +3869,7 @@ def generate_sketch(
 
             # Coverage stats not available from cached results
             # (would need to be computed fresh or stored separately)
-        else:
+        else:  # pragma: no cover - fallback when auto-discovery/auto-run fails
             symbols, edges, coverage_stats = _run_analysis(
                 repo_root, profile, exclude_tests=exclude_tests,
                 progress_callback=analysis_progress_with_budget
@@ -3837,7 +3916,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
     # Update test summary with coverage stats if we got analysis results
-    if coverage_stats is not None:
+    if coverage_stats is not None:  # pragma: no cover - only from fresh analysis fallback
         # Find and replace the test summary section with coverage info
         updated_test_summary = _format_test_summary(repo_root, coverage_stats)
         for i, section in enumerate(sections):

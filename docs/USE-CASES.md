@@ -19,7 +19,7 @@ hypergumbo /path/to/project
 hypergumbo run /path/to/project
 ```
 
-The `run` command generates `hypergumbo.results.json` which is required by most query commands. Run it once per project (or after significant changes).
+The `run` command generates results in `~/.cache/hypergumbo/` (or `hypergumbo.results.json` with `-o`). These results are required by most query commands and auto-discovered by `sketch`.
 
 ---
 
@@ -31,7 +31,7 @@ The `run` command generates `hypergumbo.results.json` which is required by most 
 |------|---------|
 | Get codebase overview | `hypergumbo .`* |
 | Full analysis (run first!) | `hypergumbo run .` |
-| Fast sketch from cached results | `hypergumbo sketch --input hypergumbo.results.json` |
+| Fast sketch from cache | `hypergumbo sketch` (auto-discovers cached results) |
 
 **Query Commands** (require `hypergumbo run` first):
 
@@ -423,24 +423,30 @@ hypergumbo test-coverage /path/to/project
 - Progress indicator with ETA is shown by default (use `--no-progress` to hide)
 - Run `hypergumbo run` once, then query the JSON for specific edges
 
-### Fast Sketches with Cached Results
+### Automatic Caching
 
-For large codebases where analysis is slow, you can generate sketches from a cached results file:
+Hypergumbo automatically caches results in `~/.cache/hypergumbo/`. When you run `hypergumbo sketch`:
+
+1. **No cache exists**: Automatically runs `hypergumbo run` first, then generates sketch
+2. **Cache exists**: Uses cached results for instant sketch generation
+3. **Files changed**: Cache auto-invalidates (new state hash), analysis re-runs
 
 ```bash
-# Run full analysis once (slow but comprehensive)
+# First run: analyzes and caches, then generates sketch
+hypergumbo . -t 4000
+
+# Later runs: uses cache, instant sketch generation
+hypergumbo . -t 8000
+hypergumbo . -t 16000 -x
+
+# Force fresh analysis (bypasses auto-discovery)
 hypergumbo run .
 
-# Generate sketches instantly with different token budgets
-hypergumbo sketch --input hypergumbo.results.json -t 4000
-hypergumbo sketch --input hypergumbo.results.json -t 8000
-hypergumbo sketch --input hypergumbo.results.json -t 16000
-
-# Combine with -x to exclude test symbols
-hypergumbo sketch --input hypergumbo.results.json -t 4000 -x
+# Use a specific results file instead of cache
+hypergumbo sketch --input my-results.json -t 4000
 ```
 
-This skips the analysis phase entirely, using the cached profile and symbols from the results file. Hypergumbo will warn if the results file is stale (source files modified since generation).
+The cache is stored per repository state, so checking out different branches uses separate cached results. See [docs/CACHE.md](CACHE.md) for architecture details.
 
 ### Output Formats
 

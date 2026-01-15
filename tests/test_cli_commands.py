@@ -2014,9 +2014,12 @@ def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Should show output summary message
-    assert "[hypergumbo sketch] Generated 0 artifact(s)" in out
+    # Should show output summary message with generated artifacts
+    assert "[hypergumbo sketch] Generated" in out
+    assert "artifact(s)" in out
     assert "Output: stdout" in out
+    # Should show path to cached results
+    assert "hypergumbo.results.json" in out
 
 
 def test_cmd_sketch_input_file_not_found(tmp_path: Path, capsys) -> None:

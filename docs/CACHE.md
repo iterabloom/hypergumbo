@@ -96,6 +96,19 @@ rm -rf ~/.cache/hypergumbo/<fingerprint>/
 rm -rf ~/.cache/hypergumbo/
 ```
 
-## Staleness Warnings
+## Auto-Discovery
 
-When using `hypergumbo sketch --input hypergumbo.results.json`, hypergumbo checks if source files have been modified since the results file was generated. If so, a warning is displayed indicating the results may be stale.
+When running `hypergumbo sketch` without `--input`, hypergumbo:
+
+1. Computes the repo fingerprint and state hash
+2. Checks `~/.cache/hypergumbo/<fingerprint>/results/<state>/hypergumbo.results.json`
+3. If found, uses the cached results for instant sketch generation
+4. If not found, automatically runs `hypergumbo run` to populate the cache first
+
+This means you can simply run `hypergumbo .` and get the benefits of caching without manual cache management.
+
+## Staleness and Manual Input
+
+When using `hypergumbo sketch --input <file>` with a manually-specified results file, hypergumbo checks if source files have been modified since the results file was generated. If so, a warning is displayed indicating the results may be stale.
+
+The auto-discovered cache doesn't need staleness warnings because the state hash inherently captures file modifications—a changed file produces a different state hash, resulting in a cache miss that triggers fresh analysis.

@@ -129,6 +129,7 @@ def _print_output_summary(
     artifacts: list[Path] | None = None,
     stdout_output: bool = False,
     file: Any = None,
+    embeddings_dir: Path | None = None,
 ) -> None:
     """Print consistent output summary at end of command execution.
 
@@ -140,6 +141,7 @@ def _print_output_summary(
         stdout_output: If True, indicate output went to stdout
         file: Output file (default: sys.stdout). Use sys.stderr for JSON output
             modes to avoid breaking JSON parsing.
+        embeddings_dir: If provided, show where embeddings are cached.
     """
     if file is None:
         file = sys.stdout
@@ -153,6 +155,8 @@ def _print_output_summary(
             print(f"  {artifact_path.resolve()}", file=file)
     if stdout_output:
         print("  Output: stdout", file=file)
+    if embeddings_dir:
+        print(f"  Embeddings cached: {embeddings_dir.resolve()}", file=file)
 
 
 def cmd_sketch(args: argparse.Namespace) -> int:
@@ -253,6 +257,13 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         else:
             print("README Extraction Debug: No README found", file=sys.stderr)
 
+    # Get cache directory for artifact discovery
+    from .sketch_embeddings import _get_results_cache_dir
+    try:
+        cache_dir = _get_results_cache_dir(repo_root)
+    except Exception:  # pragma: no cover - cache discovery errors
+        cache_dir = None
+
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
@@ -271,8 +282,32 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     )
     print(sketch)
 
+    # Gather artifacts that were generated
+    artifacts: list[Path] = []
+    embeddings_dir: Path | None = None
+
+    if cache_dir is not None:
+        try:
+            # Find all results files in cache (both new and existing)
+            results_after = set(cache_dir.glob("hypergumbo.results*.json"))
+            for f in sorted(results_after):
+                artifacts.append(f)
+
+            # Check for embeddings directory
+            fingerprint_dir = cache_dir.parent.parent  # Go from results/<hash> to fingerprint
+            embed_dir = fingerprint_dir / "embeddings"
+            if embed_dir.exists() and any(embed_dir.iterdir()):
+                embeddings_dir = embed_dir
+        except Exception:  # pragma: no cover - cache inspection errors
+            pass
+
     # Output summary (always to stdout at the end)
-    _print_output_summary("sketch", stdout_output=True)
+    _print_output_summary(
+        "sketch",
+        artifacts=artifacts if artifacts else None,
+        stdout_output=True,
+        embeddings_dir=embeddings_dir,
+    )
 
     return 0
 
@@ -370,7 +405,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_run(args: argparse.Namespace) -> int:
     # The positional argument for `run` is called `path` in the parser below.
     repo_root = Path(args.path).resolve()
-    out_path = Path(args.out)
+    out_path = Path(args.out) if args.out else None
     max_tier = getattr(args, "max_tier", None)
     max_files = getattr(args, "max_files", None)
     compact = getattr(args, "compact", False)
@@ -1709,15 +1744,15 @@ For help on ALL commands:   hypergumbo --help --all"""
     # hypergumbo [path] [-t tokens] (default sketch mode)
     sketch_epilog = """\
 Examples:
-  hypergumbo sketch .                   # Current directory, auto budget
+  hypergumbo sketch .                   # Auto-runs analysis if needed
   hypergumbo sketch ~/project -t 4000   # 4000-token limit
   hypergumbo sketch . -t 1000 -x        # Brief overview, no tests
   hypergumbo . -t 8000                  # Shorthand (sketch is default)
 
-Using cached results (faster for large codebases):
-  hypergumbo run .                      # Generate results file once
-  hypergumbo sketch --input hypergumbo.results.json -t 4000
-  hypergumbo sketch --input hypergumbo.results.json -t 8000
+Caching:
+  Results are cached in ~/.cache/hypergumbo/<repo>/<state>/
+  First run analyzes the repo; subsequent runs are instant.
+  Cache auto-invalidates when source files change.
 
 Token budget guidelines:
   1000    Structure only (files, folders)
@@ -1863,21 +1898,20 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     # hypergumbo run
     run_epilog = """\
 Examples:
-  hypergumbo run .                      # Full analysis → hypergumbo.results.json
-  hypergumbo run . --out analysis.json  # Custom output file
+  hypergumbo run .                      # Full analysis → cached in ~/.cache/hypergumbo/
+  hypergumbo run . --out analysis.json  # Custom output file (in cwd)
   hypergumbo run . --compact            # LLM-friendly: top symbols + summary
   hypergumbo run . --first-party-only   # Exclude vendored/external code
 
 After running, use search/explain/slice to query the results:
+  hypergumbo sketch .                   # Auto-discovers cached results
   hypergumbo search "parse"             # Find symbols containing "parse"
   hypergumbo explain "main"             # Show callers/callees of main
   hypergumbo slice --entry main         # Extract subgraph from main()
 
-Output files:
-  - hypergumbo.results.json             # Full behavior map
-  - hypergumbo.results.4k.json          # Tiered outputs (auto-generated)
-  - hypergumbo.results.16k.json
-  - hypergumbo.results.64k.json"""
+Cache location:
+  ~/.cache/hypergumbo/<repo-fingerprint>/results/<state-hash>/
+  Results are cached per repo state and auto-invalidated when files change."""
 
     p_run = sub.add_parser(
         "run",
@@ -1893,8 +1927,8 @@ Output files:
     )
     p_run.add_argument(
         "--out",
-        default="hypergumbo.results.json",
-        help="Output JSON path (default: hypergumbo.results.json)",
+        default=None,
+        help="Output JSON path (default: ~/.cache/hypergumbo/<repo>/<state>/)",
     )
     p_run.add_argument(
         "--max-tier",
@@ -2438,7 +2472,7 @@ def _compute_supply_chain_summary(
 
 def run_behavior_map(
     repo_root: Path,
-    out_path: Path,
+    out_path: Path | None = None,
     max_tier: int | None = None,
     max_files: int | None = None,
     compact: bool = False,
@@ -2446,13 +2480,15 @@ def run_behavior_map(
     budgets: str | None = None,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
+    include_sketch_precomputed: bool = True,
 ) -> list[Path]:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
 
     Args:
         repo_root: Root directory of the repository
-        out_path: Path to write the behavior map JSON
+        out_path: Path to write the behavior map JSON. If None, defaults to
+            ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/hypergumbo.results.json
         max_tier: Optional maximum supply chain tier (1-4). Symbols with
             tier > max_tier are filtered out. None means no filtering.
         max_files: Optional maximum files per language analyzer. Limits
@@ -2471,11 +2507,21 @@ def run_behavior_map(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
+        include_sketch_precomputed: If True (default), pre-extract config_info,
+            vocabulary, and readme_description for fast sketch generation.
+            Set False to skip this (avoids loading embedding model).
 
     Returns:
         List of file paths for all generated artifacts (main output + tier files).
     """
     _log_memory("start")
+
+    # Default to cache directory if no explicit output path provided
+    if out_path is None:
+        from .sketch_embeddings import _get_results_cache_dir
+        cache_dir = _get_results_cache_dir(repo_root)
+        out_path = cache_dir / "hypergumbo.results.json"
+
     generated_files: list[Path] = []
     behavior_map = new_behavior_map()
 
@@ -2591,6 +2637,36 @@ def run_behavior_map(
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
         all_symbols, derived_paths=[]
     )
+
+    # Pre-extract sketch data (config, vocabulary, readme)
+    # This avoids needing to load the embedding model later in sketch mode
+    from .sketch import (
+        _extract_config_info, _extract_domain_vocabulary, _extract_readme_description,
+        ConfigExtractionMode,
+    )
+    # Pre-extract sketch data (config, vocabulary, readme) if requested
+    # This avoids reloading the embedding model when generating sketches later
+    if include_sketch_precomputed:
+        sketch_precomputed: dict[str, str | list[str] | None] = {}
+
+        # Extract config info using HYBRID mode (best quality, uses embeddings)
+        try:
+            sketch_precomputed["config_info"] = _extract_config_info(
+                repo_root, mode=ConfigExtractionMode.HYBRID
+            )
+        except Exception:  # pragma: no cover - graceful degradation
+            sketch_precomputed["config_info"] = ""
+
+        # Extract domain vocabulary
+        sketch_precomputed["vocabulary"] = _extract_domain_vocabulary(repo_root, profile)
+
+        # Extract README description (uses embedding model)
+        try:
+            sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
+        except Exception:  # pragma: no cover - graceful degradation
+            sketch_precomputed["readme_description"] = None
+
+        behavior_map["sketch_precomputed"] = sketch_precomputed
 
     # Record skipped files from analysis runs
     for run in analysis_runs:

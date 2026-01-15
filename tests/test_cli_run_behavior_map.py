@@ -3,22 +3,37 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from hypergumbo.schema import SCHEMA_VERSION
 
 
+def _has_sentence_transformers() -> bool:
+    """Check if sentence-transformers is installed."""
+    try:
+        import sentence_transformers
+        del sentence_transformers
+        return True
+    except ImportError:
+        return False
+
+
 def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
-    # Project root is the repo root (two levels up from this test file)
-    project_root = Path(__file__).resolve().parents[1]
+    """Test that CLI run command creates a valid behavior map."""
+    # Create a small demo project instead of analyzing the full hypergumbo repo
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.py").write_text("def main():\n    print('hello')\n")
+    (src_dir / "utils.py").write_text("def helper(x: int) -> str:\n    return str(x)\n")
+    (tmp_path / "README.md").write_text("# Demo Project\n\nA small test project.\n")
 
     out_path = tmp_path / "hypergumbo.results.json"
 
     result = subprocess.run(
         [
             sys.executable, "-m", "hypergumbo", "run",
-            str(project_root), "--out", str(out_path),
-            "--max-files", "5",  # Limit files per analyzer for faster test
+            str(tmp_path), "--out", str(out_path),
         ],
-        cwd=project_root,
         capture_output=True,
         text=True,
     )
@@ -31,6 +46,9 @@ def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["view"] == "behavior_map"
+    # Verify basic structure
+    assert "profile" in data
+    assert "python" in data["profile"]["languages"]
 
 
 def test_cli_run_with_max_files(tmp_path: Path) -> None:
@@ -74,7 +92,7 @@ def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
 
     # Run with budgets disabled (only main output)
     out_path = tmp_path / "results.json"
-    generated = run_behavior_map(tmp_path, out_path, budgets="none")
+    generated = run_behavior_map(tmp_path, out_path, budgets="none", include_sketch_precomputed=False)
 
     assert len(generated) == 1
     assert generated[0] == out_path
@@ -90,7 +108,7 @@ def test_run_behavior_map_returns_budget_files(tmp_path: Path) -> None:
 
     # Run with custom budgets
     out_path = tmp_path / "results.json"
-    generated = run_behavior_map(tmp_path, out_path, budgets="4k,16k")
+    generated = run_behavior_map(tmp_path, out_path, budgets="4k,16k", include_sketch_precomputed=False)
 
     # Should have 3 files: 2 budget files + main output
     assert len(generated) == 3
@@ -152,3 +170,45 @@ def test_cli_run_prints_budget_files_in_summary(tmp_path: Path) -> None:
     assert "results.4k.json" in result.stdout
     assert "results.16k.json" in result.stdout
     assert str(out_path) in result.stdout
+
+
+@pytest.mark.skipif(
+    not _has_sentence_transformers(),
+    reason="sentence-transformers not installed"
+)
+def test_run_behavior_map_stores_sketch_precomputed(tmp_path: Path) -> None:
+    """Test that run_behavior_map stores sketch_precomputed data.
+
+    This test requires sentence-transformers because it tests the HYBRID
+    config extraction mode which uses embeddings.
+    """
+    from hypergumbo.cli import run_behavior_map
+
+    # Create a mini project with config file and README
+    (tmp_path / "main.py").write_text("def hello(): pass\n")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "testproj"\n')
+    (tmp_path / "README.md").write_text("# Test\n\nThis is a test project.\n")
+
+    out_path = tmp_path / "results.json"
+    run_behavior_map(tmp_path, out_path, budgets="none")
+
+    data = json.loads(out_path.read_text())
+
+    # Check that sketch_precomputed is stored
+    assert "sketch_precomputed" in data
+    precomputed = data["sketch_precomputed"]
+
+    # Check config_info (should have project name)
+    assert "config_info" in precomputed
+    assert "testproj" in precomputed["config_info"]
+
+    # Check vocabulary (should be a list)
+    assert "vocabulary" in precomputed
+    assert isinstance(precomputed["vocabulary"], list)
+
+    # Check readme_description (should have extracted text)
+    assert "readme_description" in precomputed
+    # May be None or a string (embedding vs heuristic fallback)
+    assert precomputed["readme_description"] is None or isinstance(
+        precomputed["readme_description"], str
+    )

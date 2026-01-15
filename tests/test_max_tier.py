@@ -103,7 +103,7 @@ module.exports = { chunk };
     def test_no_max_tier_includes_all(self, mixed_tier_repo: Path, tmp_path: Path):
         """Without --max-tier, all tiers are included."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path)
+        run_behavior_map(mixed_tier_repo, out_path, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         nodes = data["nodes"]
@@ -115,7 +115,7 @@ module.exports = { chunk };
     def test_max_tier_1_only_first_party(self, mixed_tier_repo: Path, tmp_path: Path):
         """--max-tier 1 includes only first-party code."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=1)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         nodes = data["nodes"]
@@ -134,7 +134,7 @@ module.exports = { chunk };
     ):
         """--max-tier 2 includes first-party and internal deps (examples)."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=2)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=2, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         nodes = data["nodes"]
@@ -147,7 +147,7 @@ module.exports = { chunk };
     def test_max_tier_3_excludes_derived(self, mixed_tier_repo: Path, tmp_path: Path):
         """--max-tier 3 excludes derived artifacts (tier 4)."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=3)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=3, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         nodes = data["nodes"]
@@ -160,7 +160,7 @@ module.exports = { chunk };
     def test_filtered_edges_removed(self, mixed_tier_repo: Path, tmp_path: Path):
         """Edges referencing filtered nodes should be removed."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=1)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         nodes = data["nodes"]
@@ -180,7 +180,7 @@ module.exports = { chunk };
     ):
         """Metrics should be computed after filtering."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=1)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         metrics = data["metrics"]
@@ -194,7 +194,7 @@ module.exports = { chunk };
     ):
         """Supply chain summary should reflect filtered data."""
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=1)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         summary = data["supply_chain_summary"]
@@ -229,7 +229,7 @@ def main():
 """)
 
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=1)
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         edges = data["edges"]
@@ -253,7 +253,7 @@ class TestMaxTierLimitsReporting:
         (src / "app.py").write_text("def main(): pass")
 
         out_path = tmp_path / "results.json"
-        run_behavior_map(tmp_path, out_path, max_tier=1)
+        run_behavior_map(tmp_path, out_path, max_tier=1, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         limits = data.get("limits", {})

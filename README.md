@@ -65,11 +65,12 @@ hypergumbo . --no-progress     # hide progress indicator (on by default)
 hypergumbo --help --all        # comprehensive help for all commands
 ```
 
-For large codebases, generate results once and re-sketch quickly:
+Results are automatically cached in `~/.cache/hypergumbo/`. Just run:
 ```bash
-hypergumbo run .                                    # generate once
-hypergumbo sketch --input hypergumbo.results.json -t 4000  # fast re-sketch
+hypergumbo .    # auto-runs analysis if no cache exists, then generates sketch
 ```
+
+The cache auto-invalidates when source files change. See [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/main/docs/CACHE.md) for details.
 
 See `hypergumbo --help` for all options.
 
