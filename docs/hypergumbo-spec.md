@@ -2251,5 +2251,5 @@ Languages and DSLs identified as gaps from industry analysis.
 
 | Format | Reason |
 |--------|--------|
-| **Markdown/RST** | Documentation, not code |
-| **Plain text specs** | Not executable code |
+| **Markdown/RST** | Intellectual exhaustion |
+| **Plain text specs** | Intellectual exhaustion |

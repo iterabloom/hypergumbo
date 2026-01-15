@@ -1,7 +1,7 @@
 # 4. File Taxonomy: Tier and Role Classification
 
 Date: 2025-01-14
-Status: Proposed
+Status: Accepted
 
 ## Context
 

@@ -986,9 +986,9 @@ class TestFormatAdditionalFiles:
 
     def test_respects_max_files(self, tmp_path: Path) -> None:
         """Limits output to max_files."""
-        # Create many files
+        # Create many config/doc files (ADR-0004: only CONFIG/DOCUMENTATION roles)
         for i in range(10):
-            (tmp_path / f"file_{i}.txt").write_text(f"content {i}")
+            (tmp_path / f"doc_{i}.md").write_text(f"# Doc {i}")
 
         # Create source file
         src = tmp_path / "main.py"
@@ -1008,8 +1008,8 @@ class TestFormatAdditionalFiles:
 
     def test_excludes_hidden_files(self, tmp_path: Path) -> None:
         """Excludes hidden files from additional files."""
-        (tmp_path / ".hidden").write_text("secret")
-        (tmp_path / "visible.txt").write_text("public")
+        (tmp_path / ".hidden.md").write_text("# secret")
+        (tmp_path / "visible.md").write_text("# public")
         src = tmp_path / "main.py"
         src.write_text("pass")
 
@@ -1021,14 +1021,15 @@ class TestFormatAdditionalFiles:
         )
 
         assert ".hidden" not in result
-        assert "`visible.txt`" in result
+        assert "`visible.md`" in result
 
     def test_excludes_node_modules(self, tmp_path: Path) -> None:
         """Excludes node_modules directory from additional files."""
         nm = tmp_path / "node_modules"
         nm.mkdir()
         (nm / "package.json").write_text("{}")
-        (tmp_path / "index.js").write_text("console.log('hi')")
+        # Use a config file instead of .js (ANALYZABLE files are not Additional Files)
+        (tmp_path / "config.yaml").write_text("key: value")
         src = tmp_path / "main.py"
         src.write_text("pass")
 
@@ -1040,7 +1041,7 @@ class TestFormatAdditionalFiles:
         )
 
         assert "node_modules" not in result
-        assert "`index.js`" in result
+        assert "`config.yaml`" in result
 
     def test_excludes_license_and_legal_files(self, tmp_path: Path) -> None:
         """Excludes license and legal boilerplate files."""
@@ -1166,10 +1167,11 @@ class TestFormatAdditionalFiles:
         The line is marked with pragma:no cover for CI coverage.
         """
         # Create an empty file - embedding will return None
-        empty_file = tmp_path / "empty.txt"
+        # Use .md extension for DOCUMENTATION role (ADR-0004)
+        empty_file = tmp_path / "empty.md"
         empty_file.write_text("")
         # Create a file with content
-        content_file = tmp_path / "content.txt"
+        content_file = tmp_path / "content.md"
         content_file.write_text("This file has content for embedding")
         # Create source file (excluded from additional files)
         src = tmp_path / "main.py"
@@ -1186,8 +1188,8 @@ class TestFormatAdditionalFiles:
 
         # Both files should be in output
         assert "## Additional Files" in result
-        assert "empty.txt" in result
-        assert "content.txt" in result
+        assert "empty.md" in result
+        assert "content.md" in result
 
     def test_semantic_ranking_fallback_when_embedding_none(
         self, tmp_path: Path
@@ -1199,9 +1201,9 @@ class TestFormatAdditionalFiles:
         """
         from unittest.mock import patch
 
-        # Create files
+        # Create files with recognized roles (ADR-0004)
         (tmp_path / "readme.md").write_text("# Project documentation")
-        (tmp_path / "notes.txt").write_text("Some notes")
+        (tmp_path / "notes.md").write_text("# Some notes")
         src = tmp_path / "main.py"
         src.write_text("pass")
 
@@ -1231,7 +1233,7 @@ class TestFormatAdditionalFiles:
         # Files should still appear (with 0.0 score)
         assert "## Additional Files" in result
         assert "readme.md" in result
-        assert "notes.txt" in result
+        assert "notes.md" in result
 
     def test_semantic_ranking_with_mock_embeddings(self, tmp_path: Path) -> None:
         """Tests semantic ranking with mocked embeddings.
@@ -1240,9 +1242,9 @@ class TestFormatAdditionalFiles:
         """
         from unittest.mock import patch, MagicMock
 
-        # Create files
+        # Create files with recognized roles (ADR-0004)
         (tmp_path / "readme.md").write_text("# Project documentation")
-        (tmp_path / "notes.txt").write_text("Some notes")
+        (tmp_path / "notes.md").write_text("# Some notes")
         src = tmp_path / "main.py"
         src.write_text("pass")
 

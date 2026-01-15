@@ -53,12 +53,15 @@ from .selection.token_budget import (
     estimate_tokens,
     truncate_to_tokens,
 )
+from .taxonomy import SOURCE_EXTENSIONS, is_additional_file_candidate
 
 
-# Files to exclude from Additional Files section (low-value or boilerplate)
-# These are excluded in addition to DEFAULT_EXCLUDES
+# Boilerplate patterns to exclude from Additional Files section (ADR-0004 Phase 4)
+# Binary files are now filtered by is_additional_file_candidate() which excludes
+# files without CONFIG or DOCUMENTATION role. This list catches low-value boilerplate
+# that would otherwise pass the role check.
 ADDITIONAL_FILES_EXCLUDES = [
-    # License/legal boilerplate
+    # License/legal boilerplate (has DOCUMENTATION role but low value)
     "LICENSE",
     "LICENSE.*",
     "LICENCE",
@@ -70,18 +73,18 @@ ADDITIONAL_FILES_EXCLUDES = [
     "PATENTS",
     "NOTICE",
     "NOTICE.*",
-    # Hypergumbo output artifacts (fnmatch patterns)
+    # Hypergumbo output artifacts
     "hypergumbo.results.json",
     "hypergumbo.results.*.json",
     ".hypergumbo_cache",
-    # Git/repo metadata
+    # Git/repo metadata (has CONFIG role but low value)
     ".gitignore",
     ".gitattributes",
     ".gitmodules",
     ".mailmap",
     "CODEOWNERS",
     ".editorconfig",
-    # IDE/editor config
+    # IDE/editor config (has CONFIG role but low value)
     ".vscode",
     ".idea",
     "*.sublime-*",
@@ -90,17 +93,8 @@ ADDITIONAL_FILES_EXCLUDES = [
     "*.min.css",
     "*.bundle.js",
     "*.bundle.css",
-    # Source maps
+    # Source maps (generated, not useful context)
     "*.map",
-    # Compiled/binary artifacts
-    "*.pyc",
-    "*.pyo",
-    "*.o",
-    "*.obj",
-    "*.class",
-    "*.dll",
-    "*.so",
-    "*.dylib",
     # Generated documentation cruft
     ".nojekyll",
     ".buildinfo",
@@ -108,60 +102,6 @@ ADDITIONAL_FILES_EXCLUDES = [
     "coverage-report.txt",
     ".coverage",
     "coverage.xml",
-    # Image files (binary, not meaningful to embed)
-    "*.png",
-    "*.jpg",
-    "*.jpeg",
-    "*.gif",
-    "*.svg",
-    "*.ico",
-    "*.webp",
-    "*.bmp",
-    "*.tiff",
-    "*.tif",
-    "*.psd",
-    # Audio/video files
-    "*.mp3",
-    "*.wav",
-    "*.ogg",
-    "*.flac",
-    "*.m4a",
-    "*.aac",
-    "*.mp4",
-    "*.webm",
-    "*.avi",
-    "*.mov",
-    "*.mkv",
-    # Font files
-    "*.ttf",
-    "*.woff",
-    "*.woff2",
-    "*.eot",
-    "*.otf",
-    # Archive files
-    "*.zip",
-    "*.tar",
-    "*.gz",
-    "*.tgz",
-    "*.rar",
-    "*.7z",
-    "*.bz2",
-    "*.xz",
-    # Binary data files
-    "*.bin",
-    "*.dat",
-    "*.npy",
-    "*.npz",
-    "*.pkl",
-    "*.pickle",
-    # Document files (binary formats)
-    "*.pdf",
-    "*.doc",
-    "*.docx",
-    "*.xls",
-    "*.xlsx",
-    "*.ppt",
-    "*.pptx",
 ]
 
 
@@ -1931,7 +1871,7 @@ def _count_test_loc(
         (test_loc, test_files) tuple.
     """
     from .discovery import find_files, DEFAULT_EXCLUDES
-    from .profile import LANGUAGE_EXTENSIONS
+    from .taxonomy import LANGUAGE_EXTENSIONS
 
     # Combine default and extra excludes (same as detect_profile)
     excludes = list(DEFAULT_EXCLUDES)
@@ -2468,19 +2408,7 @@ def _format_vocabulary(terms: list[str]) -> str:
     return "\n".join(lines)
 
 
-# Source file extensions by language
-SOURCE_EXTENSIONS = {
-    "python": ["*.py"],
-    "javascript": ["*.js", "*.jsx", "*.mjs"],
-    "typescript": ["*.ts", "*.tsx"],
-    "go": ["*.go"],
-    "rust": ["*.rs"],
-    "java": ["*.java"],
-    "c": ["*.c", "*.h"],
-    "cpp": ["*.cpp", "*.cc", "*.hpp", "*.hh"],
-    "ruby": ["*.rb"],
-    "php": ["*.php"],
-}
+# SOURCE_EXTENSIONS is imported from taxonomy module (ADR-0004 Phase 3)
 
 # Common source directories
 SOURCE_DIRS = {"src", "lib", "app", "pkg", "cmd", "internal", "core", "source"}
@@ -2639,7 +2567,12 @@ def _format_additional_files(
     all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
 
     def _is_excluded(filepath: Path) -> bool:
-        """Check if file should be excluded from Additional Files."""
+        """Check if file should be excluded from Additional Files.
+
+        Uses two-layer filtering (ADR-0004 Phase 4):
+        1. Role-based: Only CONFIG or DOCUMENTATION files are candidates
+        2. Pattern-based: Exclude low-value boilerplate patterns
+        """
         rel_path = filepath.relative_to(repo_root)
         filename = filepath.name
 
@@ -2647,7 +2580,13 @@ def _format_additional_files(
         if any(p.startswith(".") for p in rel_path.parts):
             return True
 
-        # Check each path part and filename against exclusion patterns
+        # ADR-0004 Phase 4: Role-based filtering
+        # Only CONFIG or DOCUMENTATION files are candidates for Additional Files.
+        # This excludes binary files, data files, and unknown file types.
+        if not is_additional_file_candidate(filepath):
+            return True
+
+        # Pattern-based filtering for low-value boilerplate
         for pattern in all_excludes:
             # Check filename match (e.g., "LICENSE", "*.min.js")
             if fnmatch(filename, pattern):
@@ -2678,7 +2617,7 @@ def _format_additional_files(
     ]
 
     if not candidate_files:
-        return ""
+        return ""  # pragma: no cover - defensive, all candidates were source files
 
     # Phase 1: Semantic ranking for top N (if embeddings available)
     semantic_files: list[Path] = []

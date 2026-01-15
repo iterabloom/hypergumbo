@@ -10,6 +10,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **ADR-0004: File Taxonomy (Tier + Role):** Two-dimensional file classification system implemented.
+  The taxonomy module provides a single source of truth for file type information:
+  - `FileRole` enum: ANALYZABLE, CONFIG, DOCUMENTATION, DATA
+  - `LanguageSpec` dataclass with 75+ languages
+  - `is_code()`, `is_analyzable()`, `is_additional_file_candidate()` helpers
+  - JSON disambiguation (config vs data) using filename patterns and size heuristics
+  - Replaces scattered constants (LANGUAGE_EXTENSIONS, SOURCE_EXTENSIONS) with unified registry
+  - Reduces ADDITIONAL_FILES_EXCLUDES from 100+ patterns to ~30 boilerplate patterns
 - **`explain --with-source` flag:** Shows source code for queried symbol, its callers, and callees.
   Module-level calls show only the single call line. Supports `-t/--tokens` to limit output.
   (Renamed from `--verbose` for consistency with `sketch --with-source`.)
