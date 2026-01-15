@@ -1107,6 +1107,43 @@ class TestFormatAdditionalFiles:
         assert "CODEOWNERS" not in result
         assert "`README.md`" in result
 
+    def test_excludes_binary_files(self, tmp_path: Path) -> None:
+        """Excludes binary files that cannot be meaningfully embedded."""
+        # Create various binary files (images, audio, video, fonts, archives)
+        (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        (tmp_path / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+        (tmp_path / "icon.svg").write_text("<svg></svg>")
+        (tmp_path / "audio.mp3").write_bytes(b"ID3\x04\x00\x00")
+        (tmp_path / "video.mp4").write_bytes(b"\x00\x00\x00\x1cftyp")
+        (tmp_path / "font.ttf").write_bytes(b"\x00\x01\x00\x00")
+        (tmp_path / "archive.zip").write_bytes(b"PK\x03\x04")
+        (tmp_path / "data.npy").write_bytes(b"\x93NUMPY")
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4")
+        # Create a valid text file to show output isn't empty
+        (tmp_path / "README.md").write_text("# Project")
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+        )
+
+        # Binary files should be excluded
+        assert "image.png" not in result
+        assert "photo.jpg" not in result
+        assert "icon.svg" not in result
+        assert "audio.mp3" not in result
+        assert "video.mp4" not in result
+        assert "font.ttf" not in result
+        assert "archive.zip" not in result
+        assert "data.npy" not in result
+        assert "doc.pdf" not in result
+        # Text file should still be included
+        assert "`README.md`" in result
+
     def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty directory."""
         result = _format_additional_files(
