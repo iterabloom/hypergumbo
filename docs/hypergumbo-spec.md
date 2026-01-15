@@ -526,6 +526,8 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
 }
 ```
 
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§8.6 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+
 ### nodes[] — definitions, files, endpoints
 
 **Node fields:**
@@ -1340,6 +1342,45 @@ Supply chain configuration can be customized in `capsule_plan.json`:
   }
 }
 ```
+
+### File Role Classification (Proposed)
+
+Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the full design proposal.
+
+| Role | Description | Examples |
+|------|-------------|----------|
+| `ANALYZABLE` | Has symbols to extract | Python, JavaScript, Go |
+| `CONFIG` | Parameterizes behavior | package.json, pyproject.toml, YAML configs |
+| `DOCUMENTATION` | Human-readable instructions | Markdown, RST |
+| `DATA` | Raw information, not instructions | JSON datasets, CSV fixtures |
+
+**What counts as "code" for LOC purposes:**
+
+```
+CODE = ANALYZABLE + CONFIG + DOCUMENTATION
+```
+
+This treats documentation as code (the instructions happen to be in natural language) while excluding pure data files. A 34K-line JSON pricing dataset is not "code" even though it's text.
+
+**Disambiguation for ambiguous extensions:**
+
+JSON files require filename-level classification:
+- `package.json`, `tsconfig.json` → CONFIG
+- `**/fixtures/*.json`, `*_data.json` → DATA
+- Large files (>100KB) → likely DATA
+- Default → CONFIG (conservative)
+
+**Composed decisions:**
+
+Tier and Role compose for analysis decisions:
+
+| Decision | Tier constraint | Role constraint |
+|----------|----------------|-----------------|
+| Count in LOC | Tiers 1-2 | CODE roles |
+| Extract symbols | analysis_tiers | ANALYZABLE only |
+| Additional Files | Tiers 1-2 | CONFIG + DOCUMENTATION |
+
+**Status:** 🟪 Proposed (ADR-0004). Current implementation uses scattered constants (`LANGUAGE_EXTENSIONS`, `SOURCE_EXTENSIONS`, etc.) that would be unified under this taxonomy.
 
 ## 8.7) Entrypoint Detection
 
