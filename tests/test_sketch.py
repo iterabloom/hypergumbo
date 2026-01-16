@@ -1276,6 +1276,38 @@ class TestFormatAdditionalFiles:
 
         assert "## Additional Files" in result
 
+    def test_uses_cached_centrality_scores(self, tmp_path: Path) -> None:
+        """Uses pre-computed centrality scores from cached results."""
+        # Create files with different expected centrality
+        high_score = tmp_path / "high_centrality.md"
+        high_score.write_text("# High centrality doc")
+        low_score = tmp_path / "low_centrality.md"
+        low_score.write_text("# Low centrality doc")
+        src = tmp_path / "main.py"
+        src.write_text("def foo(): pass")
+
+        # Provide pre-computed centrality scores (relative path strings to float)
+        cached_scores = {
+            "high_centrality.md": 100.0,
+            "low_centrality.md": 1.0,
+        }
+
+        result = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            semantic_top_n=0,  # Disable semantic ranking to use only centrality
+            cached_centrality_scores=cached_scores,
+        )
+
+        # High centrality file should appear before low centrality file
+        lines = result.split("\n")
+        file_lines = [line for line in lines if line.startswith("- `")]
+        assert len(file_lines) >= 2
+        assert "`high_centrality.md`" in file_lines[0]
+        assert "`low_centrality.md`" in file_lines[1]
+
 
 class TestRunAnalysis:
     """Tests for running static analysis."""

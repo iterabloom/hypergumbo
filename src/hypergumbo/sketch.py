@@ -2564,6 +2564,7 @@ def _format_additional_files(
     semantic_top_n: int = 10,
     progress_callback: "callable | None" = None,
     centrality_progress_callback: "callable | None" = None,
+    cached_centrality_scores: dict[str, float] | None = None,
 ) -> str:
     """Format additional files (non-source) as a Markdown section.
 
@@ -2584,6 +2585,9 @@ def _format_additional_files(
             Called with (current, total) for each embedding computed.
         centrality_progress_callback: Optional callback for centrality progress.
             Called with (current, total) for each file scored.
+        cached_centrality_scores: Optional pre-computed centrality scores from
+            run_behavior_map(). Maps relative path strings to scores. When
+            provided, skips the expensive centrality computation in Phase 2.
 
     Returns:
         Markdown formatted section for additional files.
@@ -2684,15 +2688,24 @@ def _format_additional_files(
         remaining_files = [f for f, _ in file_scores[semantic_top_n:]]
 
     # Phase 2: Symbol mention centrality for remaining files
-    # Uses ripgrep when available for ~10x speedup, falls back to Python regex
-    centrality_scores = compute_symbol_mention_centrality_batch(
-        files=remaining_files,
-        symbols=symbols,
-        in_degree=in_degree,
-        min_in_degree=2,
-        max_file_size=100 * 1024,
-        progress_callback=centrality_progress_callback,
-    )
+    # Use cached scores when available (from run_behavior_map precomputation),
+    # otherwise compute using ripgrep (fast) or Python regex (fallback)
+    if cached_centrality_scores is not None:
+        # Use cached scores - map relative path strings to Path objects
+        centrality_scores: dict[Path, float] = {}
+        for f in remaining_files:
+            rel_str = str(f.relative_to(repo_root))
+            centrality_scores[f] = cached_centrality_scores.get(rel_str, 0.0)
+    else:
+        # Compute fresh - uses ripgrep when available for ~10x speedup
+        centrality_scores = compute_symbol_mention_centrality_batch(
+            files=remaining_files,
+            symbols=symbols,
+            in_degree=in_degree,
+            min_in_degree=2,
+            max_file_size=100 * 1024,
+            progress_callback=centrality_progress_callback,
+        )
 
     # Sort remaining by mention centrality descending
     centrality_files = sorted(
@@ -3860,6 +3873,10 @@ def generate_sketch(
             symbols = [Symbol.from_dict(n) for n in cached_results.get("nodes", [])]
             edges = [Edge.from_dict(e) for e in cached_results.get("edges", [])]
 
+            # Compute coverage stats from cached symbols/edges BEFORE filtering
+            # (coverage needs test symbols to compute transitively tested functions)
+            coverage_stats = _estimate_test_coverage(symbols, edges)
+
             # Apply exclude_tests filter if requested
             if exclude_tests:
                 # Filter out test symbols
@@ -3871,9 +3888,6 @@ def generate_sketch(
                     e for e in edges
                     if e.src in remaining_ids and e.dst in remaining_ids
                 ]
-
-            # Coverage stats not available from cached results
-            # (would need to be computed fresh or stored separately)
         else:  # pragma: no cover - fallback when auto-discovery/auto-run fails
             symbols, edges, coverage_stats = _run_analysis(
                 repo_root, profile, exclude_tests=exclude_tests,
@@ -3921,7 +3935,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
     # Update test summary with coverage stats if we got analysis results
-    if coverage_stats is not None:  # pragma: no cover - only from fresh analysis fallback
+    if coverage_stats is not None:
         # Find and replace the test summary section with coverage info
         updated_test_summary = _format_test_summary(repo_root, coverage_stats)
         for i, section in enumerate(sections):
@@ -4027,6 +4041,15 @@ def generate_sketch(
                 prog.start_phase("centrality")
             prog.update_item_progress("Computing centrality", current, total)
 
+        # Use cached centrality scores if available (from run_behavior_map)
+        cached_centrality = None
+        if (
+            cached_results is not None
+            and "sketch_precomputed" in cached_results
+            and cached_results["sketch_precomputed"].get("centrality_scores") is not None
+        ):
+            cached_centrality = cached_results["sketch_precomputed"].get("centrality_scores")
+
         additional_files_section = _format_additional_files(
             repo_root,
             source_files=source_files,
@@ -4036,6 +4059,7 @@ def generate_sketch(
             semantic_top_n=10,
             progress_callback=embedding_progress,
             centrality_progress_callback=centrality_progress,
+            cached_centrality_scores=cached_centrality,
         )
         if additional_files_section:
             sections.append(additional_files_section)

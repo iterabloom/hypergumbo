@@ -74,7 +74,10 @@ from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
-from .ranking import rank_symbols, _is_test_path, compute_transitive_test_coverage
+from .ranking import (
+    rank_symbols, _is_test_path, compute_transitive_test_coverage,
+    compute_symbol_mention_centrality_batch, compute_raw_in_degree,
+)
 from .compact import (
     format_compact_behavior_map,
     format_tiered_behavior_map,
@@ -2665,6 +2668,76 @@ def run_behavior_map(
             sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["readme_description"] = None
+
+        # Pre-compute centrality scores for Additional Files section
+        # This avoids expensive ripgrep/regex operations during sketch generation
+        from fnmatch import fnmatch
+        from .discovery import DEFAULT_EXCLUDES
+        from .sketch import ADDITIONAL_FILES_EXCLUDES
+        from .taxonomy import is_additional_file_candidate
+
+        # Extract source file paths from analyzed symbols
+        source_paths: set[str] = set()
+        for sym in all_symbols:
+            if sym.path:
+                source_paths.add(sym.path)
+
+        # Collect candidate non-source files (same logic as _format_additional_files)
+        all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
+        candidate_files: list[Path] = []
+
+        for f in repo_root.rglob("*"):
+            if not f.is_file():
+                continue
+            rel_path = f.relative_to(repo_root)
+            rel_str = str(rel_path)
+
+            # Skip source files
+            if rel_str in source_paths:
+                continue
+
+            # Skip hidden files/directories
+            if any(p.startswith(".") for p in rel_path.parts):
+                continue  # pragma: no cover - tested in _format_additional_files
+
+            # Role-based filtering (ADR-0004 Phase 4)
+            if not is_additional_file_candidate(f):
+                continue
+
+            # Pattern-based filtering for boilerplate (same logic as _format_additional_files)
+            is_excluded = False
+            for pattern in all_excludes:
+                if fnmatch(f.name, pattern):
+                    is_excluded = True  # pragma: no cover - tested in sketch tests
+                    break  # pragma: no cover
+                for part in rel_path.parts:
+                    if fnmatch(part, pattern):
+                        is_excluded = True  # pragma: no cover - tested in sketch tests
+                        break  # pragma: no cover
+                if is_excluded:  # pragma: no cover
+                    break
+            if is_excluded:
+                continue  # pragma: no cover
+
+            candidate_files.append(f)
+
+        # Compute centrality scores for all candidates
+        if candidate_files and all_symbols:
+            raw_in_degree = compute_raw_in_degree(all_symbols, all_edges)
+            centrality_scores = compute_symbol_mention_centrality_batch(
+                files=candidate_files,
+                symbols=all_symbols,
+                in_degree=raw_in_degree,
+                min_in_degree=2,
+                max_file_size=100 * 1024,
+            )
+            # Store as relative path strings for JSON serialization
+            sketch_precomputed["centrality_scores"] = {
+                str(f.relative_to(repo_root)): score
+                for f, score in centrality_scores.items()
+            }
+        else:  # pragma: no cover - defensive: no candidates or no symbols
+            sketch_precomputed["centrality_scores"] = {}
 
         behavior_map["sketch_precomputed"] = sketch_precomputed
 
