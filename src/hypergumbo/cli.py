@@ -133,6 +133,7 @@ def _print_output_summary(
     stdout_output: bool = False,
     file: Any = None,
     embeddings_dir: Path | None = None,
+    cached_artifacts: set[Path] | None = None,
 ) -> None:
     """Print consistent output summary at end of command execution.
 
@@ -145,17 +146,39 @@ def _print_output_summary(
         file: Output file (default: sys.stdout). Use sys.stderr for JSON output
             modes to avoid breaking JSON parsing.
         embeddings_dir: If provided, show where embeddings are cached.
+        cached_artifacts: Set of artifact paths that were pre-existing (not freshly
+            generated). These will be marked with "[cached]" in the output.
     """
     if file is None:
         file = sys.stdout
 
-    artifact_count = len(artifacts) if artifacts else 0
-    print(f"\n[hypergumbo {command}] Generated {artifact_count} artifact(s)", file=file)
+    cached_set = cached_artifacts or set()
+    generated_count = 0
+    cached_count = 0
 
     if artifacts:
         for artifact_path in artifacts:
+            if artifact_path in cached_set:
+                cached_count += 1
+            else:
+                generated_count += 1
+
+    # Build summary line
+    parts = []
+    if generated_count > 0:
+        parts.append(f"Generated {generated_count}")
+    if cached_count > 0:
+        parts.append(f"Using {cached_count} cached")
+    if not parts:
+        parts.append("Generated 0 artifact(s)")
+
+    print(f"\n[hypergumbo {command}] {', '.join(parts)}", file=file)
+
+    if artifacts:
+        for artifact_path in artifacts:
+            prefix = "[cached] " if artifact_path in cached_set else ""
             # Show full absolute path for clarity
-            print(f"  {artifact_path.resolve()}", file=file)
+            print(f"  {prefix}{artifact_path.resolve()}", file=file)
     if stdout_output:
         print("  Output: stdout", file=file)
     if embeddings_dir:
@@ -307,6 +330,15 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     except Exception:  # pragma: no cover - cache discovery errors
         cache_dir = None
 
+    # Snapshot existing results files BEFORE generating sketch
+    # Any results files that existed before are "cached" (reused, not freshly generated)
+    pre_existing_results: set[Path] = set()
+    if cache_dir is not None:
+        try:
+            pre_existing_results = set(cache_dir.glob("hypergumbo.results*.json"))
+        except Exception:  # pragma: no cover - cache discovery errors
+            pass
+
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
@@ -363,11 +395,13 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             pass
 
     # Output summary (always to stdout at the end)
+    # Mark results files that existed before sketch generation as cached
     _print_output_summary(
         "sketch",
         artifacts=artifacts if artifacts else None,
         stdout_output=True,
         embeddings_dir=embeddings_dir,
+        cached_artifacts=pre_existing_results,
     )
 
     return 0

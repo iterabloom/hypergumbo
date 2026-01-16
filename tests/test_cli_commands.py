@@ -12,6 +12,7 @@ from hypergumbo.cli import (
     cmd_sketch,
     main,
     _find_git_root,
+    _print_output_summary,
 )
 
 
@@ -1991,6 +1992,57 @@ def test_cmd_sketch_readme_debug_no_readme(tmp_path: Path, capsys) -> None:
     assert "No README found" in err
 
 
+def test_print_output_summary_with_cached_artifacts(tmp_path: Path, capsys) -> None:
+    """Test that output summary shows cached vs generated artifacts."""
+    import io
+
+    # Create some test files
+    cached_file = tmp_path / "cached.json"
+    cached_file.write_text("{}")
+    new_file = tmp_path / "new.json"
+    new_file.write_text("{}")
+
+    # Test with both cached and generated artifacts
+    output = io.StringIO()
+    _print_output_summary(
+        "test",
+        artifacts=[cached_file, new_file],
+        cached_artifacts={cached_file},
+        file=output,
+    )
+
+    result = output.getvalue()
+    # Should show both generated and cached counts
+    assert "[hypergumbo test]" in result
+    assert "Generated 1" in result
+    assert "Using 1 cached" in result
+    # Should show [cached] prefix for cached file
+    assert "[cached]" in result
+    assert "cached.json" in result
+    assert "new.json" in result
+
+
+def test_print_output_summary_all_cached(tmp_path: Path) -> None:
+    """Test output summary when all artifacts are cached."""
+    import io
+
+    cached_file = tmp_path / "cached.json"
+    cached_file.write_text("{}")
+
+    output = io.StringIO()
+    _print_output_summary(
+        "test",
+        artifacts=[cached_file],
+        cached_artifacts={cached_file},
+        file=output,
+    )
+
+    result = output.getvalue()
+    # Should show only cached count (no "Generated")
+    assert "Using 1 cached" in result
+    assert "[cached]" in result
+
+
 def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     """Test that sketch prints output summary to stdout."""
     (tmp_path / "main.py").write_text("def main(): pass\n")
@@ -2014,9 +2066,9 @@ def test_cmd_sketch_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Should show output summary message with generated artifacts
-    assert "[hypergumbo sketch] Generated" in out
-    assert "artifact(s)" in out
+    # Should show output summary message (format: "Generated N" or "Using N cached")
+    assert "[hypergumbo sketch]" in out
+    assert "Generated" in out
     assert "Output: stdout" in out
     # Should show path to cached results
     assert "hypergumbo.results.json" in out

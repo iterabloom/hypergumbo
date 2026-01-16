@@ -1886,6 +1886,35 @@ def _format_config_section(config_info: str) -> str:
     return "\n".join(lines)
 
 
+def _format_file_content_block(rel_path: str, content: str) -> list[str]:
+    """Format file content with visible START/END markers.
+
+    Creates clear visual delineation of file boundaries for easier parsing.
+
+    Args:
+        rel_path: Relative path to the file.
+        content: The file content.
+
+    Returns:
+        List of lines including START marker, code block, and END marker.
+    """
+    # Build visually distinctive markers
+    # Pad to ~60 chars total for visual balance
+    start_marker = f"------------------- START of {rel_path} "
+    start_marker += "-" * max(0, 60 - len(start_marker))
+    end_marker = f"------------------- END of {rel_path} "
+    end_marker += "-" * max(0, 60 - len(end_marker))
+
+    return [
+        start_marker,
+        "```",
+        content.rstrip(),
+        "```",
+        end_marker,
+        "",  # Blank line for separation
+    ]
+
+
 def _count_test_loc(
     repo_root: Path,
     profile: RepoProfile,
@@ -4499,11 +4528,9 @@ def generate_sketch(
                         continue
 
                     rel_path = src_file.relative_to(repo_root)
-                    source_content_lines.append(f"### {rel_path}")
-                    source_content_lines.append("```")
-                    source_content_lines.append(content.rstrip())
-                    source_content_lines.append("```")
-                    source_content_lines.append("")
+                    source_content_lines.extend(
+                        _format_file_content_block(str(rel_path), content)
+                    )
 
                     source_tokens_used += file_tokens
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
@@ -4542,11 +4569,9 @@ def generate_sketch(
                         continue
 
                     rel_path = add_file.relative_to(repo_root)
-                    additional_content_lines.append(f"### {rel_path}")
-                    additional_content_lines.append("```")
-                    additional_content_lines.append(content.rstrip())
-                    additional_content_lines.append("```")
-                    additional_content_lines.append("")
+                    additional_content_lines.extend(
+                        _format_file_content_block(str(rel_path), content)
+                    )
 
                     additional_tokens_used += file_tokens
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
