@@ -1716,7 +1716,7 @@ def _extract_config_hybrid(
     combined = heuristic_lines.copy()
     if embedding_lines:
         combined.append("")  # Separator
-        combined.append("# Additional context (semantic)")
+        combined.append("--- Additional context (semantic) ---")
         for line in embedding_lines:
             # Skip if line content is already covered by heuristics
             line_lower = line.lower()
