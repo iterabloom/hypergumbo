@@ -142,18 +142,18 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 ```
 /path/to/repo/
 ├── config.yaml
-├── src/
+├── src
 │   ├── main.py
 │   └── [and 42 other items]
-├── tests/
-│   ├── integration/
+├── tests
+│   ├── integration
 │   │   ├── test_api.py
 │   │   └── [and 12 other items]
 │   └── [and 8 other items]
 └── [and 5 other items]
 ```
 
-- Files that caused a root directory to be included are shown explicitly
+- Every expanded branch terminates at least one visible file (the "important file" that caused inclusion)
 - Sibling counts shown as `[and N other items]`
 - Nested structure revealed along the path to important files
 - Hidden directories (`.github/`, etc.) included if they contain important files
@@ -251,38 +251,58 @@ A 16k-token sketch of litellm (~1M LOC, 4678 files) produces:
 **Structure section (tree format):**
 ```
 /home/user/litellm/
-├── Makefile
-├── ci_cd/
+├── AGENTS.md
+├── ci_cd
 │   ├── check_files_match.py
 │   └── [and 7 other items]
-├── cookbook/
+├── cookbook
 │   ├── veo_video_generation.py
 │   └── [and 48 other items]
-├── db_scripts/
+├── db_scripts
 │   ├── create_views.py
-│   └── [and 2 other items]
-├── docs/
-│   └── my-website/
-│       └── [and 14 other items]
-├── enterprise/
-│   └── [and 10 other items]
-├── litellm/
-│   ├── proxy/
+│   ├── migrate_keys.py
+│   └── update_unassigned_teams.py
+├── deploy
+│   ├── charts
+│   │   └── litellm-helm
+│   │       ├── tests
+│   │       │   ├── masterkey-secret_tests.yaml
+│   │       │   └── [and 6 other items]
+│   │       └── [and 7 other items]
+│   └── [and 3 other items]
+├── docs
+│   └── my-website
+│       ├── docs
+│       │   ├── projects
+│       │   │   ├── PDL.md
+│       │   │   └── [and 28 other items]
+│       │   └── [and 91 other items]
+│       └── [and 13 other items]
+├── enterprise
+│   ├── __init__.py
+│   └── [and 9 other items]
+├── litellm
+│   ├── proxy
 │   │   ├── proxy_cli.py
 │   │   └── [and 75 other items]
 │   └── [and 54 other items]
-├── tests/
-│   ├── test_litellm/
-│   │   ├── proxy/
-│   │   │   ├── management_endpoints/
+├── Makefile
+├── scripts
+│   ├── benchmark_proxy_vs_provider.py
+│   └── [and 2 other items]
+├── tests
+│   ├── test_litellm
+│   │   ├── proxy
+│   │   │   ├── management_endpoints
 │   │   │   │   ├── test_team_endpoints.py
 │   │   │   │   └── [and 19 other items]
 │   │   │   └── [and 46 other items]
 │   │   └── [and 52 other items]
 │   └── [and 64 other items]
-├── ui/
-│   └── litellm-dashboard/
-│       └── [and 17 other items]
+├── ui
+│   └── litellm-dashboard
+│       ├── README.md
+│       └── [and 16 other items]
 └── [and 34 other items]
 ```
 
