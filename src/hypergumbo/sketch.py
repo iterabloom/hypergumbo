@@ -2186,6 +2186,138 @@ def _format_structure_tree(
     return "\n".join(lines)
 
 
+def _collect_important_files(
+    repo_root: Path,
+    source_files: list[str],
+    entrypoints: "list[Entrypoint]",
+    datamodels: "list[DataModel]",
+    symbols: list[Symbol],
+    centrality: dict[str, float],
+    max_root_dirs: int = 10,
+) -> list[str]:
+    """Collect important files for the Structure tree per ADR-0005.
+
+    Samples files from various sources in priority order until we have
+    enough root-level directories represented:
+
+    1. Configuration files (2+ files)
+    2. Test files (1+ file, highest LOC)
+    3. Entry point files (1+ file, highest confidence)
+    4. Source files (3+ files, top centrality density)
+    5. Additional important files
+
+    Args:
+        repo_root: Repository root path.
+        source_files: List of source file paths (relative).
+        entrypoints: Detected entry points.
+        datamodels: Detected data models.
+        symbols: All symbols for lookup.
+        centrality: Symbol centrality scores.
+        max_root_dirs: Target number of root directories.
+
+    Returns:
+        List of relative file paths to show in the tree.
+    """
+    important_files: list[str] = []
+    seen_root_dirs: set[str] = set()
+
+    def get_root_dir(path: str) -> str:
+        """Get the root-level directory or filename."""
+        parts = Path(path).parts
+        return parts[0] if parts else ""
+
+    def add_file(path: str) -> bool:
+        """Add a file if it contributes a new root directory or we need more files."""
+        root = get_root_dir(path)
+        if not root:  # pragma: no cover
+            return False  # Empty paths filtered by callers
+        if root not in seen_root_dirs and len(seen_root_dirs) >= max_root_dirs:
+            return False  # Would exceed max root dirs
+        if path not in important_files:
+            important_files.append(path)
+            seen_root_dirs.add(root)
+            return True
+        return False
+
+    # 1. Configuration files (look for common config file patterns)
+    config_patterns = [
+        "pyproject.toml", "package.json", "Cargo.toml", "go.mod",
+        "pom.xml", "build.gradle", "composer.json", "Gemfile",
+        "requirements.txt", "setup.py", "setup.cfg",
+        "tsconfig.json", "webpack.config.js", "vite.config.ts",
+        ".env.example", "docker-compose.yml", "Dockerfile",
+    ]
+    for pattern in config_patterns:
+        config_path = repo_root / pattern
+        if config_path.exists():
+            add_file(pattern)
+        if len(important_files) >= 2:  # 2+ config files
+            break
+
+    # 2. Test files (find highest-LOC test file)
+    test_files = []
+    for f in source_files:
+        f_str = str(f)
+        f_name = Path(f).name.lower()
+        if "/test" in f_str.lower() or "test_" in f_name or "_test." in f_name or "/spec" in f_str.lower():
+            test_files.append(f_str)
+    if test_files:
+        # Sort by file size as proxy for LOC
+        def get_file_size(f: str) -> int:
+            try:
+                return (repo_root / f).stat().st_size
+            except OSError:  # pragma: no cover
+                return 0
+        test_files.sort(key=get_file_size, reverse=True)
+        add_file(test_files[0])
+
+    # 3. Entry point files (highest confidence)
+    symbol_by_id = {s.id: s for s in symbols}
+    if entrypoints:
+        sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+        for ep in sorted_eps[:3]:  # Top 3 entry points
+            sym = symbol_by_id.get(ep.symbol_id)
+            if sym and sym.path:
+                rel_path = sym.path
+                if rel_path.startswith(str(repo_root)):
+                    rel_path = rel_path[len(str(repo_root)) + 1:]
+                add_file(rel_path)
+
+    # 4. Source files (top centrality density)
+    # Get files with highest average symbol centrality
+    file_centrality: dict[str, float] = {}
+    file_counts: dict[str, int] = {}
+    for sym in symbols:
+        if sym.path:
+            rel_path = sym.path
+            if rel_path.startswith(str(repo_root)):
+                rel_path = rel_path[len(str(repo_root)) + 1:]
+            score = centrality.get(sym.id, 0.0)
+            file_centrality[rel_path] = file_centrality.get(rel_path, 0.0) + score
+            file_counts[rel_path] = file_counts.get(rel_path, 0) + 1
+
+    # Sort by total centrality (density * count approximation)
+    sorted_files = sorted(
+        file_centrality.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    for path, _ in sorted_files[:5]:  # Top 5 by centrality
+        add_file(path)
+
+    # 5. Data model files
+    if datamodels:
+        for dm in datamodels[:3]:  # Top 3 data models
+            sym = symbol_by_id.get(dm.symbol_id)
+            if sym and sym.path:
+                rel_path = sym.path
+                if rel_path.startswith(str(repo_root)):
+                    rel_path = rel_path[len(str(repo_root)) + 1:]
+                add_file(rel_path)
+
+    return important_files
+
+
 def _format_frameworks(profile: RepoProfile) -> str:
     """Format detected frameworks."""
     if not profile.frameworks:
@@ -4075,6 +4207,7 @@ def generate_sketch(
             )
 
         # Compute raw in-degree and density scores for source file ordering
+        raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
             by_file: dict[str, list[Symbol]] = {}
@@ -4131,6 +4264,7 @@ def generate_sketch(
 
     # Section 5: Data Models (if we have analysis results and budget)
     # ADR-0005: Data Models come after Entry Points, before Source Files
+    datamodels: list = []  # Initialize for structure tree update
     if remaining_tokens > 50 and symbols:
         datamodels = detect_datamodels(symbols, edges)
         if datamodels:
@@ -4148,6 +4282,27 @@ def generate_sketch(
             current_sketch = "\n\n".join(sections)
             current_tokens = estimate_tokens(current_sketch)
             remaining_tokens = max_tokens - current_tokens
+
+    # Update Structure section with tree format (ADR-0005)
+    # Now that we have analysis results, we can build a tree from important files
+    if symbols and raw_in_degree:
+        important_files = _collect_important_files(
+            repo_root=repo_root,
+            source_files=source_files,
+            entrypoints=entrypoints,
+            datamodels=datamodels,
+            symbols=symbols,
+            centrality=raw_in_degree,  # Use in-degree as centrality proxy
+        )
+        if important_files:
+            updated_structure = _format_structure_tree(
+                repo_root, important_files, extra_excludes=extra_excludes
+            )
+            # Find and replace the Structure section
+            for i, section in enumerate(sections):
+                if section.startswith("## Structure"):
+                    sections[i] = updated_structure
+                    break
 
     # Section 6: Source files (if we have budget >= 50 tokens remaining)
     # Files are now ordered by symbol importance density when scores available

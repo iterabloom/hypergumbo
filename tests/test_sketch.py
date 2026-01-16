@@ -17,6 +17,7 @@ from hypergumbo.sketch import (
     _format_symbols,
     _format_structure,
     _format_structure_tree,
+    _collect_important_files,
     _extract_python_docstrings,
     _extract_domain_vocabulary,
     _format_vocabulary,
@@ -2613,6 +2614,259 @@ class TestFormatStructureTree:
 
         assert "src" in result
         assert "main.py" in result
+
+
+class TestCollectImportantFiles:
+    """Tests for important file collection for structure tree."""
+
+    def test_collects_config_files(self, tmp_path: Path) -> None:
+        """Collects configuration files first."""
+        (tmp_path / "pyproject.toml").write_text("[project]")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=["src/main.py"],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[],
+            centrality={},
+        )
+
+        assert "pyproject.toml" in result
+
+    def test_collects_test_files(self, tmp_path: Path) -> None:
+        """Collects test files by highest size."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_small.py").write_text("def test_a(): pass")
+        (tmp_path / "tests" / "test_large.py").write_text("def test_b(): pass\n" * 100)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=["tests/test_small.py", "tests/test_large.py", "src/main.py"],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[],
+            centrality={},
+        )
+
+        # Should include the larger test file
+        assert "tests/test_large.py" in result
+
+    def test_collects_entrypoint_files(self, tmp_path: Path) -> None:
+        """Collects files containing entry points."""
+        (tmp_path / "api").mkdir()
+        (tmp_path / "api" / "routes.py").write_text("@app.get('/') ...")
+
+        symbol = Symbol(
+            id="api:routes:get_root",
+            name="get_root",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "api" / "routes.py"),
+            span=Span(1, 1, 1, 10),
+        )
+        entrypoint = Entrypoint(
+            symbol_id="api:routes:get_root",
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.9,
+            label="GET /",
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[entrypoint],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={},
+        )
+
+        assert "api/routes.py" in result
+
+    def test_collects_high_centrality_files(self, tmp_path: Path) -> None:
+        """Collects files with high symbol centrality."""
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "models.py").write_text("class User: pass")
+
+        symbol = Symbol(
+            id="core:models:User",
+            name="User",
+            kind="class",
+            language="python",
+            path=str(tmp_path / "core" / "models.py"),
+            span=Span(1, 1, 1, 20),
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={"core:models:User": 0.8},
+        )
+
+        assert "core/models.py" in result
+
+    def test_collects_datamodel_files(self, tmp_path: Path) -> None:
+        """Collects files containing data models."""
+        (tmp_path / "models").mkdir()
+        (tmp_path / "models" / "user.py").write_text("class UserModel: pass")
+
+        symbol = Symbol(
+            id="models:user:UserModel",
+            name="UserModel",
+            kind="class",
+            language="python",
+            path=str(tmp_path / "models" / "user.py"),
+            span=Span(1, 1, 1, 25),
+        )
+        datamodel = DataModel(
+            symbol_id="models:user:UserModel",
+            kind=DataModelKind.DOMAIN_MODEL,
+            confidence=0.7,
+            label="Domain model",
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[datamodel],
+            symbols=[symbol],
+            centrality={},
+        )
+
+        assert "models/user.py" in result
+
+    def test_respects_max_root_dirs(self, tmp_path: Path) -> None:
+        """Respects max_root_dirs limit."""
+        # Create many directories
+        for i in range(15):
+            (tmp_path / f"dir{i:02d}").mkdir()
+            (tmp_path / f"dir{i:02d}" / "file.py").write_text("content")
+
+        symbols = [
+            Symbol(
+                id=f"dir{i:02d}:file:func",
+                name="func",
+                kind="function",
+                language="python",
+                path=str(tmp_path / f"dir{i:02d}" / "file.py"),
+                span=Span(1, 1, 1, 10),
+            )
+            for i in range(15)
+        ]
+        centrality = {s.id: 0.5 for s in symbols}
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=symbols,
+            centrality=centrality,
+            max_root_dirs=5,
+        )
+
+        # Should not have more than 5 unique root directories
+        root_dirs = {Path(f).parts[0] for f in result if f}
+        assert len(root_dirs) <= 5
+
+    def test_handles_empty_inputs(self, tmp_path: Path) -> None:
+        """Handles empty inputs gracefully."""
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[],
+            centrality={},
+        )
+
+        assert result == []
+
+    def test_stops_after_two_config_files(self, tmp_path: Path) -> None:
+        """Stops collecting config files after 2 are found."""
+        (tmp_path / "pyproject.toml").write_text("[project]")
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "Cargo.toml").write_text("[package]")
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[],
+            centrality={},
+        )
+
+        # Should have exactly 2 config files
+        config_count = sum(1 for f in result if f in ["pyproject.toml", "package.json", "Cargo.toml"])
+        assert config_count == 2
+
+    def test_skips_files_exceeding_max_root_dirs(self, tmp_path: Path) -> None:
+        """Skips files that would add more root directories than allowed."""
+        # Create directories with source files
+        for i in range(5):
+            d = tmp_path / f"project{i}"
+            d.mkdir()
+            (d / "main.py").write_text("print('hello')")
+
+        # Create symbols in those directories
+        symbols = [
+            Symbol(
+                id=f"project{i}:main:func",
+                name="func",
+                kind="function",
+                language="python",
+                path=str(tmp_path / f"project{i}" / "main.py"),
+                span=Span(1, 1, 1, 10),
+            )
+            for i in range(5)
+        ]
+        centrality = {s.id: 0.5 for s in symbols}
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=symbols,
+            centrality=centrality,
+            max_root_dirs=3,
+        )
+
+        # Should not have more than 3 unique root directories
+        root_dirs = {Path(f).parts[0] for f in result if f}
+        assert len(root_dirs) <= 3
+
+    def test_handles_empty_path_in_symbols(self, tmp_path: Path) -> None:
+        """Handles symbols with empty paths gracefully."""
+        symbol = Symbol(
+            id="root:file",
+            name="func",
+            kind="function",
+            language="python",
+            path="",  # Empty path
+            span=Span(1, 1, 1, 10),
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={"root:file": 0.5},
+        )
+
+        # Should handle gracefully (empty path is skipped)
+        assert "" not in result
 
 
 class TestExtractPythonDocstrings:
