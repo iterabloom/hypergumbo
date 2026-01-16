@@ -71,7 +71,7 @@ from .metrics import compute_metrics
 from .profile import detect_profile
 from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
-from .sketch import generate_sketch, ConfigExtractionMode
+from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
@@ -339,6 +339,9 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         except Exception:  # pragma: no cover - cache discovery errors
             pass
 
+    # Track stats for representativeness table (only when budget specified)
+    stats = SketchStats() if max_tokens else None
+
     sketch = generate_sketch(
         repo_root,
         max_tokens=max_tokens,
@@ -354,8 +357,32 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         progress=show_progress,
         cached_results=cached_results,
         with_source=with_source,
+        stats_out=stats,
     )
     print(sketch)
+
+    # Generate double-budget sketch for comparison and display representativeness table
+    if max_tokens and stats is not None:
+        stats_2x = SketchStats()
+        # Generate 2x budget sketch (discards output, just for stats)
+        _ = generate_sketch(
+            repo_root,
+            max_tokens=max_tokens * 2,
+            exclude_tests=exclude_tests,
+            first_party_priority=first_party_priority,
+            extra_excludes=extra_excludes,
+            config_extraction_mode=config_mode,
+            verbose=False,  # Suppress verbose for 2x run
+            max_config_files=max_config_files,
+            fleximax_lines=fleximax_lines,
+            max_chunk_chars=max_chunk_chars,
+            language_proportional=language_proportional,
+            progress=False,  # Suppress progress for 2x run
+            cached_results=cached_results,
+            with_source=with_source,
+            stats_out=stats_2x,
+        )
+        display_representativeness_table(stats, stats_2x)
 
     # Cache the sketch to a file with descriptive name
     sketch_cache_path: Path | None = None

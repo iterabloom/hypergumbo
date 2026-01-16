@@ -55,6 +55,145 @@ from .selection.token_budget import (
     truncate_to_tokens,
 )
 from .taxonomy import SOURCE_EXTENSIONS, is_additional_file_candidate
+from dataclasses import dataclass
+
+
+@dataclass
+class SketchStats:
+    """Statistics about sketch representativeness.
+
+    Tracks what fraction of the codebase's "importance" is captured in each
+    sketch section, using two metrics:
+    - Symbol mass: (summed in-degree for symbols) / (total repo in-degree) * 100
+    - Confidence mass: (summed confidence) / (total confidence) * 100 (for framework concepts)
+    """
+
+    # Token budget used
+    token_budget: int = 0
+
+    # Total repo metrics (denominators)
+    total_in_degree: int = 0
+    total_entrypoint_confidence: float = 0.0
+    total_datamodel_confidence: float = 0.0
+
+    # Section metrics (numerators) - in-degree sums
+    key_symbols_in_degree: int = 0
+    source_files_in_degree: int = 0
+    additional_files_in_degree: int = 0
+    source_files_content_in_degree: int = 0
+    additional_files_content_in_degree: int = 0
+
+    # Section metrics (numerators) - confidence sums
+    entrypoints_confidence: float = 0.0
+    datamodels_confidence: float = 0.0
+
+    # Flags for which sections are present
+    has_key_symbols: bool = False
+    has_source_files: bool = False
+    has_additional_files: bool = False
+    has_source_files_content: bool = False
+    has_additional_files_content: bool = False
+    has_entrypoints: bool = False
+    has_datamodels: bool = False
+
+    def symbol_mass(self, in_degree_sum: int) -> float:
+        """Compute symbol mass percentage."""
+        if self.total_in_degree == 0:
+            return 0.0
+        return (in_degree_sum / self.total_in_degree) * 100
+
+    def confidence_mass(self, confidence_sum: float, total: float) -> float:
+        """Compute confidence mass percentage."""
+        if total == 0:
+            return 0.0
+        return (confidence_sum / total) * 100
+
+
+def display_representativeness_table(
+    stats: SketchStats,
+    stats_2x: SketchStats,
+    console: Optional["Console"] = None,  # noqa: F821 - Console imported lazily
+) -> None:
+    """Display a Rich table showing sketch representativeness.
+
+    Shows what fraction of the codebase's "importance" is captured in each
+    sketch section, comparing the requested budget vs. double budget.
+
+    Args:
+        stats: Stats from sketch at requested token budget.
+        stats_2x: Stats from sketch at double the token budget.
+        console: Optional Rich console to use. If None, creates one.
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    if console is None:
+        console = Console(stderr=True)
+
+    # Create the table
+    table = Table(
+        title="How Representative Is This Sketch?",
+        show_header=True,
+        header_style="bold",
+    )
+    table.add_column("Section", style="cyan")
+    table.add_column(f"{stats.token_budget:,}t", justify="right")
+    table.add_column(f"{stats_2x.token_budget:,}t", justify="right", style="dim")
+    table.add_column("Metric", style="dim")
+
+    def fmt_pct(val: float) -> str:
+        """Format percentage with appropriate precision."""
+        if val == 0:
+            return "-"
+        if val >= 10:
+            return f"{val:.0f}%"
+        return f"{val:.1f}%"
+
+    # Entry Points (confidence mass)
+    if stats.has_entrypoints or stats_2x.has_entrypoints:
+        pct1 = stats.confidence_mass(stats.entrypoints_confidence, stats.total_entrypoint_confidence)
+        pct2 = stats_2x.confidence_mass(stats_2x.entrypoints_confidence, stats_2x.total_entrypoint_confidence)
+        table.add_row("Entry Points", fmt_pct(pct1), fmt_pct(pct2), "confidence mass")
+
+    # Data Models (confidence mass)
+    if stats.has_datamodels or stats_2x.has_datamodels:
+        pct1 = stats.confidence_mass(stats.datamodels_confidence, stats.total_datamodel_confidence)
+        pct2 = stats_2x.confidence_mass(stats_2x.datamodels_confidence, stats_2x.total_datamodel_confidence)
+        table.add_row("Data Models", fmt_pct(pct1), fmt_pct(pct2), "confidence mass")
+
+    # Source Files (symbol mass)
+    if stats.has_source_files or stats_2x.has_source_files:
+        pct1 = stats.symbol_mass(stats.source_files_in_degree)
+        pct2 = stats_2x.symbol_mass(stats_2x.source_files_in_degree)
+        table.add_row("Source Files", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+
+    # Key Symbols (symbol mass)
+    if stats.has_key_symbols or stats_2x.has_key_symbols:
+        pct1 = stats.symbol_mass(stats.key_symbols_in_degree)
+        pct2 = stats_2x.symbol_mass(stats_2x.key_symbols_in_degree)
+        table.add_row("Key Symbols", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+
+    # Additional Files (symbol mass)
+    if stats.has_additional_files or stats_2x.has_additional_files:
+        pct1 = stats.symbol_mass(stats.additional_files_in_degree)
+        pct2 = stats_2x.symbol_mass(stats_2x.additional_files_in_degree)
+        table.add_row("Additional Files", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+
+    # Source Files Content (symbol mass) - only if --with-source was used
+    if stats.has_source_files_content or stats_2x.has_source_files_content:
+        pct1 = stats.symbol_mass(stats.source_files_content_in_degree)
+        pct2 = stats_2x.symbol_mass(stats_2x.source_files_content_in_degree)
+        table.add_row("Source Files Content", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+
+    # Additional Files Content (symbol mass) - only if --with-source was used
+    if stats.has_additional_files_content or stats_2x.has_additional_files_content:
+        pct1 = stats.symbol_mass(stats.additional_files_content_in_degree)
+        pct2 = stats_2x.symbol_mass(stats_2x.additional_files_content_in_degree)
+        table.add_row("Additional Files Content", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+
+    # Only display if there's at least one row
+    if table.row_count > 0:
+        console.print(table)
 
 
 # Boilerplate patterns to exclude from Additional Files section (ADR-0004 Phase 4)
@@ -3791,6 +3930,7 @@ def _format_symbols(
     signatures: dict[str, str] | None = None,
     language_proportional: bool = True,
     exclude_tests: bool = False,
+    selected_symbols_out: list[Symbol] | None = None,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
@@ -3818,6 +3958,8 @@ def _format_symbols(
         docstrings: Optional dict mapping symbol IDs to docstring summaries.
         signatures: Optional dict mapping symbol IDs to function signatures.
         language_proportional: If True, use language-stratified selection.
+        selected_symbols_out: If provided, populated with the selected Symbol objects
+            for stats tracking. The list is cleared and filled with symbols.
     """
     if docstrings is None:
         docstrings = {}
@@ -3936,6 +4078,11 @@ def _format_symbols(
 
     if not selected:  # pragma: no cover
         return ""
+
+    # Populate selected_symbols_out for stats tracking if provided
+    if selected_symbols_out is not None:
+        selected_symbols_out.clear()
+        selected_symbols_out.extend(sym for _, sym in selected)
 
     # Group selected symbols by file for rendering
     selected_by_file: dict[str, list[Symbol]] = {}
@@ -4074,6 +4221,7 @@ def generate_sketch(
     progress: bool = False,
     cached_results: Optional[dict] = None,
     with_source: bool = False,
+    stats_out: Optional[SketchStats] = None,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -4120,6 +4268,10 @@ def generate_sketch(
         with_source: If True, append full source file contents after the sketch.
             Files are ordered by symbol importance density. Uses remaining
             token budget after other sections are filled.
+        stats_out: If provided, a SketchStats object to populate with
+            representativeness metrics. Tracks what fraction of the codebase's
+            "importance" is captured in each section. Used for the "How
+            Representative Is This Sketch?" table.
 
     Returns:
         Markdown-formatted sketch string.
@@ -4416,6 +4568,13 @@ def generate_sketch(
             )
             if ep_section:
                 sections.append(ep_section)
+                # Track stats: compute confidence sum of selected entrypoints
+                if stats_out is not None:
+                    sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+                    stats_out.entrypoints_confidence = sum(
+                        ep.confidence for ep in sorted_eps[:max_eps]
+                    )
+                    stats_out.has_entrypoints = True
 
             # Recalculate remaining budget
             current_sketch = "\n\n".join(sections)
@@ -4438,11 +4597,28 @@ def generate_sketch(
             )
             if dm_section:
                 sections.append(dm_section)
+                # Track stats: compute confidence sum of selected datamodels
+                if stats_out is not None:
+                    sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
+                    stats_out.datamodels_confidence = sum(
+                        dm.confidence for dm in sorted_models[:max_models]
+                    )
+                    stats_out.has_datamodels = True
 
             # Recalculate remaining budget
             current_sketch = "\n\n".join(sections)
             current_tokens = estimate_tokens(current_sketch)
             remaining_tokens = max_tokens - current_tokens
+
+    # Compute stats totals if tracking is enabled
+    # This is done after entrypoints and datamodels are detected so we have all data
+    if stats_out is not None:
+        stats_out.token_budget = max_tokens or 0
+        # Total in-degree across all symbols
+        stats_out.total_in_degree = sum(raw_in_degree.values())
+        # Total confidence for framework concepts
+        stats_out.total_entrypoint_confidence = sum(ep.confidence for ep in entrypoints)
+        stats_out.total_datamodel_confidence = sum(dm.confidence for dm in datamodels)
 
     # Update Structure section with tree format (ADR-0005)
     # Now that we have analysis results, we can build a tree from important files
@@ -4490,6 +4666,24 @@ def generate_sketch(
         )
         if source_section:
             sections.append(source_section)
+            # Track stats: compute in-degree sum for symbols in selected source files
+            if stats_out is not None and raw_in_degree:
+                # Replicate sorting logic to determine which files were selected
+                if density_scores:
+                    sorted_files = sorted(
+                        source_files,
+                        key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
+                        reverse=True,
+                    )
+                else:
+                    sorted_files = source_files
+                selected_files = {str(f) for f in sorted_files[:max_source_files]}
+                # Sum in-degree for symbols in selected files
+                stats_out.source_files_in_degree = sum(
+                    raw_in_degree.get(s.id, 0)
+                    for s in symbols if s.path and str(repo_root / s.path) in selected_files
+                )
+                stats_out.has_source_files = True
 
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
@@ -4527,6 +4721,9 @@ def generate_sketch(
         # Get signatures from Symbol.signature field (now includes all languages)
         signatures = {s.id: s.signature for s in symbols if s.signature}
 
+        # Track selected symbols for stats
+        selected_key_symbols: list[Symbol] = [] if stats_out is not None else None  # type: ignore
+
         symbols_section = _format_symbols(
             symbols,
             edges,
@@ -4538,9 +4735,16 @@ def generate_sketch(
             signatures=signatures,
             language_proportional=language_proportional,
             exclude_tests=exclude_tests,
+            selected_symbols_out=selected_key_symbols,
         )
         if symbols_section:
             sections.append(symbols_section)
+            # Track stats: compute in-degree sum of selected key symbols
+            if stats_out is not None and selected_key_symbols:
+                stats_out.key_symbols_in_degree = sum(
+                    raw_in_degree.get(s.id, 0) for s in selected_key_symbols
+                )
+                stats_out.has_key_symbols = True
 
             # Recalculate remaining budget
             current_sketch = "\n\n".join(sections)
@@ -4598,6 +4802,14 @@ def generate_sketch(
         )
         if additional_files_section:
             sections.append(additional_files_section)
+            # Track stats: compute in-degree sum for symbols in selected additional files
+            if stats_out is not None and raw_in_degree and additional_files_selected:
+                selected_add_files = {str(f) for f in additional_files_selected}
+                stats_out.additional_files_in_degree = sum(
+                    raw_in_degree.get(s.id, 0)
+                    for s in symbols if s.path and str(repo_root / s.path) in selected_add_files
+                )
+                stats_out.has_additional_files = True
 
     prog.complete_phase("embedding")  # In case centrality was skipped
     prog.complete_phase("centrality")  # Complete centrality if it ran
@@ -4628,6 +4840,9 @@ def generate_sketch(
             # ADR-0005: allocate 70% of remaining for Source Files Content section
             source_budget = (remaining_tokens * 70) // 100
 
+            # Track files with content shown for stats
+            source_content_files_added: list[Path] = []
+
             for src_file in ordered_files:
                 try:
                     content = src_file.read_text(errors="replace")
@@ -4648,6 +4863,7 @@ def generate_sketch(
                     source_content_lines.extend(
                         _format_file_content_block(str(rel_path), content)
                     )
+                    source_content_files_added.append(src_file)
 
                     source_tokens_used += file_tokens
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
@@ -4655,6 +4871,14 @@ def generate_sketch(
 
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))
+                # Track stats: compute in-degree sum for symbols in files with content shown
+                if stats_out is not None and raw_in_degree and source_content_files_added:
+                    content_files = {str(f) for f in source_content_files_added}
+                    stats_out.source_files_content_in_degree = sum(
+                        raw_in_degree.get(s.id, 0)
+                        for s in symbols if s.path and str(repo_root / s.path) in content_files
+                    )
+                    stats_out.has_source_files_content = True
 
     # Section 10: Additional Files Content (if with_source and we have additional files)
     # ADR-0005: Shows actual code for semantic/centrality-picked additional files
@@ -4670,6 +4894,9 @@ def generate_sketch(
             additional_tokens_used = 0
             # ADR-0005: allocate 100% of remaining minus 50 for reserve
             additional_budget = remaining_tokens - 50
+
+            # Track files with content shown for stats
+            additional_content_files_added: list[Path] = []
 
             for add_file in additional_files_selected:
                 try:
@@ -4690,6 +4917,7 @@ def generate_sketch(
                     additional_content_lines.extend(
                         _format_file_content_block(str(rel_path), content)
                     )
+                    additional_content_files_added.append(add_file)
 
                     additional_tokens_used += file_tokens
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
@@ -4697,6 +4925,14 @@ def generate_sketch(
 
             if len(additional_content_lines) > 2:  # More than just header
                 sections.append("\n".join(additional_content_lines))
+                # Track stats: compute in-degree sum for symbols in files with content shown
+                if stats_out is not None and raw_in_degree and additional_content_files_added:
+                    content_files = {str(f) for f in additional_content_files_added}
+                    stats_out.additional_files_content_in_degree = sum(
+                        raw_in_degree.get(s.id, 0)
+                        for s in symbols if s.path and str(repo_root / s.path) in content_files
+                    )
+                    stats_out.has_additional_files_content = True
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)

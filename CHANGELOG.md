@@ -13,6 +13,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`-x/--exclude-tests` flag for sketch:** Exclude test files from all sketch sections (symbols,
   source files, LOC counts). Shows `[IGNORING TESTS]` markers on section headers. The test LOC
   counter reveals if any test files slip through the filter.
+- **"How Representative Is This Sketch?" table:** When using a token budget, displays a Rich table
+  showing what fraction of the codebase's importance is captured in each section. Compares the
+  requested budget against a double-budget sketch. Shows confidence mass for framework concepts
+  (Entry Points, Data Models) and symbol mass for file-based sections (Key Symbols, Source Files,
+  Additional Files).
 
 ### Fixed
 - **Sketch file content truncation:** Files in Source Files Content and Additional Files Content
