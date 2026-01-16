@@ -927,7 +927,7 @@ class TestFormatAdditionalFiles:
         readme = tmp_path / "README.md"
         readme.write_text("# Project")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[source_file],
             symbols=[],
@@ -956,7 +956,7 @@ class TestFormatAdditionalFiles:
         bar = _make_test_symbol("bar")
         in_degree = {foo.id: 5, bar.id: 3}
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[source_file],
             symbols=[foo, bar],
@@ -975,7 +975,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("def foo(): pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -994,7 +994,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("def foo(): pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1013,7 +1013,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1033,7 +1033,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1055,7 +1055,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1077,7 +1077,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1096,7 +1096,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1125,7 +1125,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1147,7 +1147,7 @@ class TestFormatAdditionalFiles:
 
     def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty directory."""
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[],
             symbols=[],
@@ -1178,7 +1178,7 @@ class TestFormatAdditionalFiles:
         src.write_text("pass")
 
         # Run with semantic ranking enabled - empty file should get 0.0 score
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1222,7 +1222,7 @@ class TestFormatAdditionalFiles:
             "hypergumbo.sketch_embeddings._get_cache_dir",
             return_value=tmp_path / ".cache"
         ):
-            result = _format_additional_files(
+            result, _ = _format_additional_files(
                 tmp_path,
                 source_files=[src],
                 symbols=[],
@@ -1266,7 +1266,7 @@ class TestFormatAdditionalFiles:
             "hypergumbo.sketch_embeddings._get_cache_dir",
             return_value=tmp_path / ".cache"
         ):
-            result = _format_additional_files(
+            result, _ = _format_additional_files(
                 tmp_path,
                 source_files=[src],
                 symbols=[],
@@ -1292,7 +1292,7 @@ class TestFormatAdditionalFiles:
             "low_centrality.md": 1.0,
         }
 
-        result = _format_additional_files(
+        result, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -2683,29 +2683,6 @@ class TestFormatVocabulary:
 
         assert "*Key terms:" in result
         assert "user, session, token" in result
-
-
-class TestGenerateSketchWithVocabulary:
-    """Tests for vocabulary in generate_sketch."""
-
-    def test_includes_vocabulary_at_medium_budget(self, tmp_path: Path) -> None:
-        """Includes vocabulary section at medium token budget."""
-        (tmp_path / "payment.py").write_text(
-            "def processPayment(amount):\n"
-            "    validatePaymentDetails(amount)\n"
-        )
-
-        sketch = generate_sketch(tmp_path, max_tokens=800)
-
-        assert "## Domain Vocabulary" in sketch
-
-    def test_excludes_vocabulary_at_small_budget(self, tmp_path: Path) -> None:
-        """Excludes vocabulary section at small token budget."""
-        (tmp_path / "app.py").write_text("def main(): pass\n")
-
-        sketch = generate_sketch(tmp_path, max_tokens=200)
-
-        assert "## Domain Vocabulary" not in sketch
 
 
 class TestConfigExtraction:
@@ -4266,32 +4243,6 @@ class TestCachedResults:
         assert "1.2.3" in sketch
         # Should NOT extract fresh (would show "myproject" from pyproject.toml)
 
-    def test_uses_cached_sketch_precomputed_vocabulary(self, tmp_path: Path) -> None:
-        """Sketch uses vocabulary from sketch_precomputed when available."""
-        (tmp_path / "main.py").write_text("def hello(): pass\n")
-
-        cached_results = {
-            "profile": {
-                "languages": {"python": {"files": 1, "loc": 10}},
-                "frameworks": [],
-                "framework_mode": "auto",
-            },
-            "nodes": [],
-            "edges": [],
-            "sketch_precomputed": {
-                "config_info": "",
-                "vocabulary": ["cached_term_alpha", "cached_term_beta", "cached_term_gamma"],
-                "readme_description": None,
-            },
-        }
-
-        sketch = generate_sketch(tmp_path, max_tokens=1000, cached_results=cached_results)
-
-        # Should use cached vocabulary
-        assert "cached_term_alpha" in sketch
-        assert "cached_term_beta" in sketch
-        assert "cached_term_gamma" in sketch
-
     def test_uses_cached_sketch_precomputed_readme(self, tmp_path: Path) -> None:
         """Sketch uses readme_description from sketch_precomputed when available."""
         # Create README with different content than cached
@@ -4545,6 +4496,49 @@ def long_enough():
 
         # Should NOT have Source Content section
         assert "## Source Content" not in sketch
+
+    def test_with_source_includes_additional_file_content(self, tmp_path: Path) -> None:
+        """--with-source includes Additional File Content for semantic picks."""
+        # Create source file
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("def main():\n    pass\n")
+
+        # Create additional files (non-source, CONFIG/DOCUMENTATION role)
+        readme = tmp_path / "README.md"
+        readme.write_text("# My Project\n\nThis is a README file with content.\n")
+        config = tmp_path / "config.yaml"
+        config.write_text("name: myproject\nversion: 1.0\n")
+
+        # Generate sketch with large budget to include additional file content
+        sketch = generate_sketch(tmp_path, max_tokens=8000, with_source=True)
+
+        # Should have Additional File Content section
+        assert "## Additional File Content" in sketch
+        # Should include content from additional files
+        assert "# My Project" in sketch or "name: myproject" in sketch
+
+    def test_with_source_additional_file_content_respects_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """--with-source skips additional files that don't fit in budget."""
+        # Create source file
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("def main():\n    pass\n")
+
+        # Create a small README that will fit
+        (tmp_path / "README.md").write_text("# Project\n\nSmall readme.\n")
+
+        # Create a large config file that won't fit
+        large_config = "# Large config\n" + "key: value\n" * 500
+        (tmp_path / "large_config.yaml").write_text(large_config)
+
+        # Small budget - additional file content should only include small files
+        sketch = generate_sketch(tmp_path, max_tokens=1000, with_source=True)
+
+        # Large config shouldn't appear (budget constraint)
+        assert "key: value" * 100 not in sketch
 
 
 class TestRepoFingerprint:

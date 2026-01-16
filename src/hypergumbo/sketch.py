@@ -134,9 +134,8 @@ class SketchProgress:  # pragma: no cover
         ("frameworks", "Detecting frameworks", 0.20),
         ("tests", "Analyzing tests", 0.25),
         ("config", "Extracting config", 0.45),  # Config is often slowest
-        ("vocabulary", "Extracting vocabulary", 0.55),
-        ("analysis", "Running static analysis", 0.75),
-        ("symbols", "Ranking symbols", 0.85),
+        ("analysis", "Running static analysis", 0.70),
+        ("symbols", "Ranking symbols", 0.80),
         ("embedding", "Embedding additional files", 0.90),
         ("centrality", "Computing symbol centrality", 0.95),
         ("format", "Formatting output", 1.0),
@@ -147,7 +146,6 @@ class SketchProgress:  # pragma: no cover
         "profile": "Loading cached profile",
         "readme": "Loading cached README",
         "config": "Loading cached config",
-        "vocabulary": "Loading cached vocabulary",
         "analysis": "Loading cached analysis",
         "symbols": "Using cached symbols",
         "embedding": "Using cached embeddings",
@@ -2565,7 +2563,7 @@ def _format_additional_files(
     progress_callback: "callable | None" = None,
     centrality_progress_callback: "callable | None" = None,
     cached_centrality_scores: dict[str, float] | None = None,
-) -> str:
+) -> tuple[str, list[Path]]:
     """Format additional files (non-source) as a Markdown section.
 
     Uses a hybrid ordering approach:
@@ -2590,7 +2588,8 @@ def _format_additional_files(
             provided, skips the expensive centrality computation in Phase 2.
 
     Returns:
-        Markdown formatted section for additional files.
+        Tuple of (Markdown formatted section, list of selected file paths).
+        The list allows the caller to include file content for --with-source mode.
     """
     # Import embedding functions lazily to avoid circular imports
     from fnmatch import fnmatch
@@ -2644,7 +2643,7 @@ def _format_additional_files(
             all_files.append(f)
 
     if not all_files:
-        return ""
+        return "", []
 
     # Create set of source file paths for exclusion
     source_set = {str(f.relative_to(repo_root)) for f in source_files}
@@ -2656,7 +2655,7 @@ def _format_additional_files(
     ]
 
     if not candidate_files:
-        return ""  # pragma: no cover - defensive, all candidates were source files
+        return "", []  # pragma: no cover - defensive, all candidates were source files
 
     # Phase 1: Semantic ranking for top N (if embeddings available)
     semantic_files: list[Path] = []
@@ -2720,14 +2719,15 @@ def _format_additional_files(
     # Format output
     lines = ["## Additional Files", ""]
 
-    for f in ordered_files[:max_files]:
+    selected_files = ordered_files[:max_files]
+    for f in selected_files:
         rel_path = f.relative_to(repo_root)
         lines.append(f"- `{rel_path}`")
 
     if len(ordered_files) > max_files:
         lines.append(f"- ... and {len(ordered_files) - max_files} more files")
 
-    return "\n".join(lines)
+    return "\n".join(lines), selected_files
 
 
 # Test file patterns by language/framework
@@ -3598,16 +3598,21 @@ def generate_sketch(
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
-    The sketch progressively includes content to fill the token budget:
-    1. Header with language breakdown and LOC (always included)
-    2. Directory structure
-    3. Detected frameworks
-    4. Configuration metadata (extracted from package.json, go.mod, etc.)
-    5. Domain vocabulary
-    6. Source files (for medium budgets)
-    7. Entry points from static analysis (for larger budgets)
-    8. Key symbols from static analysis (for large budgets)
-    9. All files (for very large budgets)
+    The sketch progressively includes content to fill the token budget
+    (see ADR-0005 for full details):
+    1. Header with title, description (always included)
+    2. Overview: language breakdown, file counts, LOC (always included)
+    3. Structure: top-level directory layout
+    4. Frameworks: detected frameworks/libraries
+    5. Tests: test file count, frameworks, coverage estimate
+    6. Configuration: config file excerpts (heuristic + semantic)
+    7. Entry Points: CLI commands, HTTP routes
+    8. Data Models: ORM models, entities, core data structures
+    9. Source Files: file listing by importance
+    10. Key Symbols: functions, classes, types with centrality
+    11. Additional Files: semantic + centrality ranked
+    12. Source Content: actual code (--with-source only)
+    13. Additional File Content: code for semantic picks (--with-source only)
 
     Args:
         repo_root: Path to the repository root.
@@ -3784,23 +3789,8 @@ def generate_sketch(
     if config_section:
         sections.append(config_section)
 
-    # Section 3.75: Domain Vocabulary (only for medium+ budgets)
-    using_cached_vocab = (
-        cached_results is not None
-        and "sketch_precomputed" in cached_results
-        and cached_results["sketch_precomputed"].get("vocabulary") is not None
-    )
-    prog.start_phase("vocabulary", cached=using_cached_vocab)
-    if max_tokens is None or max_tokens >= 500:
-        # Use cached vocabulary if available (avoids re-scanning all source files)
-        if using_cached_vocab:
-            vocab_terms = cached_results["sketch_precomputed"].get("vocabulary", [])
-        else:
-            vocab_terms = _extract_domain_vocabulary(repo_root, profile)
-        vocabulary = _format_vocabulary(vocab_terms)
-        if vocabulary:
-            sections.append(vocabulary)
-    prog.complete_phase("vocabulary")
+    # NOTE: Domain Vocabulary section removed per ADR-0005
+    # TF-IDF terms were too generic to provide value
 
     # Combine base sections
     base_sketch = "\n\n".join(sections)
@@ -3907,16 +3897,60 @@ def generate_sketch(
 
     prog.complete_phase("analysis")
 
-    # Section 4: Source files (if we have budget >= 50 tokens remaining)
+    # Update test summary with coverage stats if we got analysis results
+    if coverage_stats is not None:
+        # Find and replace the test summary section with coverage info
+        updated_test_summary = _format_test_summary(repo_root, coverage_stats)
+        for i, section in enumerate(sections):
+            if section.startswith("## Tests"):
+                sections[i] = updated_test_summary
+                break
+
+    # Section 4: Entry points (if we have analysis results and budget)
+    # ADR-0005: Entry Points come before Source Files as high-signal section
+    # Track entrypoint files for B4: preserve in Key Symbols
+    entrypoint_files: set[str] = set()
+    entrypoints: list[Entrypoint] = []
+
+    if remaining_tokens > 50 and symbols:
+        entrypoints = detect_entrypoints(symbols, edges)
+        if entrypoints:  # pragma: no cover - requires framework patterns to detect entrypoints
+            # Build symbol lookup for extracting file paths
+            symbol_by_id = {s.id: s for s in symbols}
+
+            # Extract file paths from entrypoints (B4)
+            for ep in entrypoints:
+                sym = symbol_by_id.get(ep.symbol_id)
+                if sym:
+                    entrypoint_files.add(sym.path)
+
+            # Entry points are high value, give them 33% of remaining (ADR-0005)
+            budget_for_eps = remaining_tokens // 3
+            max_eps = max(5, budget_for_eps // tokens_per_symbol)
+
+            ep_section = _format_entrypoints(
+                entrypoints, symbols, repo_root, max_entries=max_eps
+            )
+            if ep_section:
+                sections.append(ep_section)
+
+            # Recalculate remaining budget
+            current_sketch = "\n\n".join(sections)
+            current_tokens = estimate_tokens(current_sketch)
+            remaining_tokens = max_tokens - current_tokens
+
+    # Section 5: Source files (if we have budget >= 50 tokens remaining)
     # Files are now ordered by symbol importance density when scores available
     if remaining_tokens > 50 and source_files:
-        # Use up to half of remaining budget for source files at small budgets
-        # Scale down the fraction as budget grows (files are less important)
-        # Reserve space for Entry Points and Key Symbols sections
-        if remaining_tokens < 300:
+        # ADR-0005: --with-source mode reduces file listing budget to prioritize code
+        if with_source:
+            # With source: shrink file listings to 15% to leave room for actual code
+            budget_for_files = (remaining_tokens * 15) // 100  # 15% of remaining
+        elif remaining_tokens < 300:
+            # Default mode, small budgets: use 66% for file listings
             budget_for_files = (remaining_tokens * 2) // 3  # 66% at small budgets
         else:
-            # At larger budgets, limit files to 25% to leave room for analysis
+            # Default mode, larger budgets: limit files to 25% for analysis
             budget_for_files = remaining_tokens // 4  # 25% at larger budgets
         max_source_files = max(5, budget_for_files // tokens_per_file)
 
@@ -3934,47 +3968,6 @@ def generate_sketch(
         current_tokens = estimate_tokens(current_sketch)
         remaining_tokens = max_tokens - current_tokens
 
-    # Update test summary with coverage stats if we got analysis results
-    if coverage_stats is not None:
-        # Find and replace the test summary section with coverage info
-        updated_test_summary = _format_test_summary(repo_root, coverage_stats)
-        for i, section in enumerate(sections):
-            if section.startswith("## Tests"):
-                sections[i] = updated_test_summary
-                break
-
-    # Section 5: Entry points (if we have analysis results and budget)
-    # Track entrypoint files for B4: preserve in Key Symbols
-    entrypoint_files: set[str] = set()
-    entrypoints: list[Entrypoint] = []
-
-    if remaining_tokens > 50 and symbols:
-        entrypoints = detect_entrypoints(symbols, edges)
-        if entrypoints:  # pragma: no cover - requires framework patterns to detect entrypoints
-            # Build symbol lookup for extracting file paths
-            symbol_by_id = {s.id: s for s in symbols}
-
-            # Extract file paths from entrypoints (B4)
-            for ep in entrypoints:
-                sym = symbol_by_id.get(ep.symbol_id)
-                if sym:
-                    entrypoint_files.add(sym.path)
-
-            # Entry points are high value, give them space
-            budget_for_eps = remaining_tokens // 3
-            max_eps = max(5, budget_for_eps // tokens_per_symbol)
-
-            ep_section = _format_entrypoints(
-                entrypoints, symbols, repo_root, max_entries=max_eps
-            )
-            if ep_section:
-                sections.append(ep_section)
-
-            # Recalculate remaining budget
-            current_sketch = "\n\n".join(sections)
-            current_tokens = estimate_tokens(current_sketch)
-            remaining_tokens = max_tokens - current_tokens
-
     # Section 6: Key symbols
     # IMPORTANT: Minimum Key Symbols guarantee
     # Always include at least MIN_KEY_SYMBOLS symbols when analysis produces results.
@@ -3987,8 +3980,13 @@ def generate_sketch(
 
     if symbols:
         # Calculate symbol budget based on remaining tokens
-        if remaining_tokens > 200:
-            # Normal case: use most of remaining budget for symbols
+        # ADR-0005: --with-source mode reduces Key Symbols budget to prioritize code
+        if with_source and remaining_tokens > 200:
+            # With source: shrink to 30% to leave room for actual code
+            budget_for_symbols = (remaining_tokens * 30) // 100  # 30% of remaining
+            max_symbols = max(MIN_KEY_SYMBOLS, budget_for_symbols // tokens_per_symbol)
+        elif remaining_tokens > 200:
+            # Default mode: use most of remaining budget for symbols
             budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
             max_symbols = max(10, budget_for_symbols // tokens_per_symbol)
         else:
@@ -4025,8 +4023,15 @@ def generate_sketch(
     # Section 7: Additional files (if we still have budget after everything else)
     # These are files NOT in source_files, ordered by hybrid semantic + centrality
     prog.start_phase("embedding")
+    additional_files_selected: list[Path] = []  # Track for Additional File Content section
     if remaining_tokens > 50:
-        budget_for_files = remaining_tokens - 10
+        # ADR-0005: --with-source mode reduces Additional Files budget
+        if with_source:
+            # With source: shrink to 10% to leave room for actual code
+            budget_for_files = (remaining_tokens * 10) // 100  # 10% of remaining
+        else:
+            # Default mode: use most of remaining budget minus small reserve
+            budget_for_files = remaining_tokens - 10
         max_additional_files = max(1, budget_for_files // tokens_per_file)
 
         # Create progress callback for embedding telemetry
@@ -4050,7 +4055,7 @@ def generate_sketch(
         ):
             cached_centrality = cached_results["sketch_precomputed"].get("centrality_scores")
 
-        additional_files_section = _format_additional_files(
+        additional_files_section, additional_files_selected = _format_additional_files(
             repo_root,
             source_files=source_files,
             symbols=symbols,
@@ -4069,6 +4074,7 @@ def generate_sketch(
     prog.start_phase("format")
 
     # Section 8: Source Content (if with_source is True and we have budget)
+    # ADR-0005: Source Content gets 70% of remaining budget, all-or-nothing per file
     if with_source and source_files and max_tokens is not None:
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
@@ -4089,7 +4095,8 @@ def generate_sketch(
                 )
 
             source_tokens_used = 0
-            source_budget = remaining_tokens - 50  # Reserve some tokens for headers
+            # ADR-0005: allocate 70% of remaining for Source Content section
+            source_budget = (remaining_tokens * 70) // 100
 
             for src_file in ordered_files:
                 try:
@@ -4102,8 +4109,8 @@ def generate_sketch(
 
                     file_tokens = estimate_tokens(content)
 
+                    # ADR-0005: All-or-nothing per file - skip if file doesn't fit
                     if source_tokens_used + file_tokens > source_budget:
-                        # Skip if this file would exceed budget
                         continue
 
                     rel_path = src_file.relative_to(repo_root)
@@ -4119,6 +4126,49 @@ def generate_sketch(
 
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))
+
+    # Section 9: Additional File Content (if with_source and we have additional files)
+    # ADR-0005: Shows actual code for semantic/centrality-picked additional files
+    if with_source and additional_files_selected and max_tokens is not None:
+        # Recalculate remaining budget
+        current_sketch = "\n\n".join(sections)
+        current_tokens = estimate_tokens(current_sketch)
+        remaining_tokens = max_tokens - current_tokens
+
+        if remaining_tokens > 50:  # Need some space for content
+            additional_content_lines = ["## Additional File Content", ""]
+
+            additional_tokens_used = 0
+            # ADR-0005: allocate 100% of remaining minus 50 for reserve
+            additional_budget = remaining_tokens - 50
+
+            for add_file in additional_files_selected:
+                try:
+                    content = add_file.read_text(errors="replace")
+
+                    # Skip empty files
+                    if not content.strip():  # pragma: no cover - defensive
+                        continue
+
+                    file_tokens = estimate_tokens(content)
+
+                    # ADR-0005: All-or-nothing per file - skip if file doesn't fit
+                    if additional_tokens_used + file_tokens > additional_budget:
+                        continue
+
+                    rel_path = add_file.relative_to(repo_root)
+                    additional_content_lines.append(f"### {rel_path}")
+                    additional_content_lines.append("```")
+                    additional_content_lines.append(content.rstrip())
+                    additional_content_lines.append("```")
+                    additional_content_lines.append("")
+
+                    additional_tokens_used += file_tokens
+                except (OSError, IOError):  # pragma: no cover - rare I/O errors
+                    continue
+
+            if len(additional_content_lines) > 2:  # More than just header
+                sections.append("\n".join(additional_content_lines))
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)

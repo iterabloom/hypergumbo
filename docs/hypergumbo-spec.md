@@ -783,35 +783,54 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
 
 ### sketch — Human/LLM-readable summary
 
-Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces.
+Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
 
-**Contents (in priority order for truncation):**
-1. 🟩 Header: repo name, language breakdown, LOC estimate (always included)
-2. 🟩 Entry points: detected routes, CLI mains, etc.
-3. 🟩 Structure: top-level directory overview
-4. 🟩 Build: detected build system (CMake, npm, etc.)
-5. 🟩 Dependencies: key frameworks
+**Section order (in priority for truncation):**
 
-**Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections.
+| # | Section | Purpose |
+|---|---------|---------|
+| 1 | 🟩 Header | Title, description |
+| 2 | 🟩 Overview | Language breakdown, file counts, LOC |
+| 3 | 🟩 Structure | Tree built from important files |
+| 4 | 🟩 Frameworks | Detected frameworks/libraries |
+| 5 | 🟩 Tests | Test file count, frameworks, coverage estimate |
+| 6 | 🟩 Configuration | Config file excerpts (heuristic + semantic) |
+| 7 | 🟩 Entry Points | CLI commands, HTTP routes |
+| 8 | ⬜ Data Models | ORM models, entities, core data structures |
+| 9 | 🟩 Source Files | File listing by importance density |
+| 10 | 🟩 Key Symbols | Functions, classes, types with centrality |
+| 11 | 🟩 Additional Files | Semantic + centrality ranked |
+| 12 | 🟩 Source Content | Actual code (--with-source only) |
+| 13 | ⬜ Additional File Content | Code for semantic picks (--with-source only) |
+
+**Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections. With `--with-source`, budget shifts from file listings to actual source code.
 
 **Example:**
 ```markdown
 # minetest-wasm
 
 ## Overview
-C++ (82%), Lua (12%), CMake (6%) · 847 files · ~120k LOC
-
-## Entry Points
-- `src/main.cpp:main()` — Application entry
-- `src/client/client.cpp:Client::Client()` — Client initialization
+C++ (82%), Lua (12%), CMake (6%)
+847 files (712 non-test + 135 test)
+~120,000 LOC (~105,000 non-test + ~15,000 test)
 
 ## Structure
-- `src/` — Core source
-- `builtin/` — Lua built-ins
-- `games/` — Game content
+/path/to/minetest-wasm/
+├── CMakeLists.txt
+├── src
+│   ├── main.cpp
+│   └── [and 234 other items]
+├── builtin
+│   └── [and 45 other items]
+└── [and 12 other items]
 
-## Build
-CMake, Emscripten
+## Frameworks
+- cmake
+- lua
+
+## Entry Points
+- `main` (Cli main) — src/main.cpp
+- `Client::Client` (Constructor) — src/client/client.cpp
 ```
 
 ## 7) Slicing behavior (MVP)
