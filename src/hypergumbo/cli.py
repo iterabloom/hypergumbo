@@ -474,6 +474,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
+    show_progress = getattr(args, "progress", True)
 
     generated_files = run_behavior_map(
         repo_root=repo_root,
@@ -485,6 +486,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         budgets=budgets,
         extra_excludes=extra_excludes,
         frameworks=frameworks,
+        progress=show_progress,
     )
 
     # Output summary (always at the end)
@@ -2059,6 +2061,12 @@ Cache location:
              "or comma-separated list (e.g., 'fastapi,celery'). "
              "Default: auto-detect based on detected languages.",
     )
+    p_run.add_argument(
+        "--progress",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -2542,6 +2550,7 @@ def run_behavior_map(
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
     include_sketch_precomputed: bool = True,
+    progress: bool = True,
 ) -> list[Path]:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -2571,10 +2580,39 @@ def run_behavior_map(
         include_sketch_precomputed: If True (default), pre-extract config_info,
             vocabulary, and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).
+        progress: If True, show progress indicator with ETA to stderr.
 
     Returns:
         List of file paths for all generated artifacts (main output + tier files).
     """
+    import sys
+    import time
+
+    # Progress tracking
+    start_time = time.time()
+
+    def show_progress(phase: str, pct: int) -> None:  # pragma: no cover
+        """Display progress to stderr."""
+        if not progress:
+            return
+        elapsed = time.time() - start_time
+        if pct > 0:
+            estimated_total = elapsed / (pct / 100)
+            remaining = estimated_total - elapsed
+            eta_str = f" ETA {remaining:.0f}s" if remaining > 0 else ""
+        else:
+            eta_str = ""
+        sys.stderr.write(f"\r[{pct:3d}%] {phase}...{eta_str}    ")
+        sys.stderr.flush()
+
+    def complete_progress() -> None:  # pragma: no cover
+        """Show completion message."""
+        if not progress:
+            return
+        elapsed = time.time() - start_time
+        sys.stderr.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
+        sys.stderr.flush()
+
     _log_memory("start")
 
     # Default to cache directory if no explicit output path provided
@@ -2587,6 +2625,7 @@ def run_behavior_map(
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
+    show_progress("Detecting profile", 5)
     profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks)
     behavior_map["profile"] = profile.to_dict()
 
@@ -2595,6 +2634,7 @@ def run_behavior_map(
 
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
+    show_progress("Running analyzers", 10)
     (
         analysis_runs,
         all_symbols,
@@ -2609,10 +2649,12 @@ def run_behavior_map(
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
     # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
+    show_progress("Enriching symbols", 50)
     detected_frameworks = set(profile.frameworks)
     enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
 
     # Run cross-language linkers
+    show_progress("Running linkers", 55)
     #
     # Linkers are being migrated to a registry pattern (like analyzers).
     # New linkers should use @register_linker decorator in linkers/registry.py.
@@ -2639,6 +2681,7 @@ def run_behavior_map(
     _log_memory("after linkers")
 
     # Apply supply chain classification to all symbols
+    show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots)
 
     # Apply max_tier filtering if specified
@@ -2671,6 +2714,7 @@ def run_behavior_map(
         limits.max_tier_applied = max_tier
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
+    show_progress("Ranking symbols", 65)
     ranked = rank_symbols(all_symbols, all_edges, first_party_priority=True)
     ranked_symbols = [r.symbol for r in ranked]
     del ranked  # Free RankedSymbol wrappers
@@ -2686,9 +2730,11 @@ def run_behavior_map(
     del all_usage_contexts  # Free UsageContext objects
 
     # Compute metrics from analyzed nodes and edges
+    show_progress("Computing metrics", 70)
     behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
+    show_progress("Detecting entrypoints", 75)
     entrypoints = detect_entrypoints(all_symbols, all_edges)
     behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
     del entrypoints  # Free Entrypoint objects
@@ -2708,6 +2754,7 @@ def run_behavior_map(
     # Pre-extract sketch data (config, vocabulary, readme) if requested
     # This avoids reloading the embedding model when generating sketches later
     if include_sketch_precomputed:
+        show_progress("Pre-computing sketch data", 80)
         sketch_precomputed: dict[str, str | list[str] | None] = {}
 
         # Extract config info using HYBRID mode (best quality, uses embeddings)
@@ -2851,11 +2898,13 @@ def run_behavior_map(
     gc.collect()
     _log_memory("after cleanup")
 
+    show_progress("Writing output", 95)
     with open(out_path, "w") as f:
         json.dump(behavior_map, f, indent=2)
     generated_files.append(out_path)
     _log_memory("after write")
 
+    complete_progress()
     return generated_files
 
 
