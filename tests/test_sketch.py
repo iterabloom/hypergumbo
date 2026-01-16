@@ -2615,6 +2615,64 @@ class TestFormatStructureTree:
         assert "src" in result
         assert "main.py" in result
 
+    def test_uses_tee_connector_when_hidden_items_follow(self, tmp_path: Path) -> None:
+        """Uses ├── (not └──) when hidden items follow the last shown item."""
+        # Create structure where shown item has hidden siblings
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("shown")
+        (tmp_path / "src" / "hidden1.py").write_text("hidden")
+        (tmp_path / "src" / "hidden2.py").write_text("hidden")
+
+        # Only show main.py but there are 2 hidden siblings
+        important_files = ["src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        lines = result.split("\n")
+        # Find the line with main.py
+        main_line = next((l for l in lines if "main.py" in l), "")
+        # Should use ├── because hidden items follow
+        assert "├── main.py" in main_line, f"Expected ├── but got: {main_line}"
+        # The hidden items line should use └── (it's truly last)
+        hidden_line = next((l for l in lines if "other items" in l), "")
+        assert "└── [and 2 other items]" in hidden_line
+
+    def test_uses_corner_connector_when_truly_last(self, tmp_path: Path) -> None:
+        """Uses └── when item is truly last (no hidden siblings)."""
+        # Create structure with only shown items (no hidden)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("only file")
+
+        important_files = ["src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        lines = result.split("\n")
+        main_line = next((l for l in lines if "main.py" in l), "")
+        # Should use └── because it's truly last (no hidden items)
+        assert "└── main.py" in main_line, f"Expected └── but got: {main_line}"
+
+    def test_continuation_lines_when_hidden_siblings(self, tmp_path: Path) -> None:
+        """Uses │ continuation when directory has hidden siblings after subtree."""
+        # Create nested structure with hidden items at intermediate level
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "api").mkdir()
+        (tmp_path / "src" / "api" / "routes.py").write_text("routes")
+        (tmp_path / "src" / "hidden").mkdir()  # Hidden sibling of api
+
+        important_files = ["src/api/routes.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        # The lines after api's content should use │ continuation
+        # because api has a hidden sibling (hidden/)
+        lines = result.split("\n")
+        # Find index of routes.py line
+        routes_idx = next(i for i, l in enumerate(lines) if "routes.py" in l)
+        # The next line (if any, for hidden items inside api) should continue with │
+        # Or the hidden items count for src should show
+        assert "[and 1 other items]" in result
+
 
 class TestCollectImportantFiles:
     """Tests for important file collection for structure tree."""

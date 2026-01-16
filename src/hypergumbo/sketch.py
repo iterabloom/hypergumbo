@@ -2135,7 +2135,7 @@ def _format_structure_tree(
             pass
         return count
 
-    def render_tree(node: dict, path: Path, prefix: str = "", is_last: bool = True) -> list[str]:
+    def render_tree(node: dict, path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
         lines: list[str] = []
 
@@ -2146,25 +2146,36 @@ def _format_structure_tree(
         # Sort: directories first, then alphabetically
         shown_children.sort(key=lambda c: (c["is_file"], c["name"]))
 
-        for i, child in enumerate(shown_children):
-            is_last_child = i == len(shown_children) - 1
-            connector = "└── " if is_last_child else "├── "
-            child_prefix = prefix + ("    " if is_last_child else "│   ")
+        # Count hidden items at THIS level (siblings of shown_children)
+        total_at_level = count_items(path) if path.is_dir() else 0
+        hidden_at_level = max(0, total_at_level - len(shown_children))
 
+        for i, child in enumerate(shown_children):
             child_path = path / child["name"]
+            is_last_shown = i == len(shown_children) - 1
+
+            # Child uses └── only if it's last shown AND no hidden siblings follow
+            is_truly_last = is_last_shown and hidden_at_level == 0
+            connector = "└── " if is_truly_last else "├── "
+
+            # Prefix for this child's subtree: use │ if more items follow at this level
+            has_more_siblings = not is_truly_last
+            child_prefix = prefix + ("│   " if has_more_siblings else "    ")
+
             lines.append(f"{prefix}{connector}{child['name']}")
 
             # If directory with shown children, recurse
             if not child["is_file"] and child["children"]:
-                lines.extend(render_tree(child, child_path, child_prefix, is_last_child))
+                lines.extend(render_tree(child, child_path, child_prefix))
 
-                # Count siblings not shown
-                total_items = count_items(child_path)
-                shown_count = len([c for c in child["children"].values() if c["shown"]])
-                hidden_count = total_items - shown_count
+                # Count hidden items inside this child directory
+                child_total = count_items(child_path) if child_path.is_dir() else 0
+                child_shown = len([c for c in child["children"].values() if c["shown"]])
+                child_hidden = max(0, child_total - child_shown)
 
-                if hidden_count > 0:
-                    lines.append(f"{child_prefix}└── [and {hidden_count} other items]")
+                if child_hidden > 0:
+                    # "and N other items" is always the last item in this directory
+                    lines.append(f"{child_prefix}└── [and {child_hidden} other items]")
 
         return lines
 
