@@ -813,6 +813,29 @@ class TestCollectSourceFiles:
         files = _collect_source_files(tmp_path, profile)
         assert files == []
 
+    def test_exclude_tests_filters_test_files_in_source_dirs(
+        self, tmp_path: Path
+    ) -> None:
+        """exclude_tests=True filters test files from src/ directories."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "core.py").write_text("def main(): pass")
+        (src / "test_core.py").write_text("def test_main(): pass")  # Test file in src/
+
+        profile = detect_profile(tmp_path)
+
+        # Without exclude_tests, both files are collected
+        files = _collect_source_files(tmp_path, profile, exclude_tests=False)
+        names = {f.name for f in files}
+        assert "core.py" in names
+        assert "test_core.py" in names
+
+        # With exclude_tests, test file is filtered out
+        files = _collect_source_files(tmp_path, profile, exclude_tests=True)
+        names = {f.name for f in files}
+        assert "core.py" in names
+        assert "test_core.py" not in names
+
 
 class TestFormatSourceFiles:
     """Tests for source file formatting."""

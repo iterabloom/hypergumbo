@@ -1960,6 +1960,8 @@ def _format_language_stats(
     profile: RepoProfile,
     repo_root: Optional[Path] = None,
     extra_excludes: Optional[List[str]] = None,
+    exclude_tests: bool = False,
+    filtered_source_files: Optional[List[Path]] = None,
 ) -> str:
     """Format language statistics as a multi-line summary.
 
@@ -1967,6 +1969,9 @@ def _format_language_stats(
         profile: Repository profile with language statistics.
         repo_root: If provided, compute and show test LOC separately.
         extra_excludes: Additional exclude patterns for test LOC counting.
+        exclude_tests: If True, add [IGNORING TESTS] marker to output.
+        filtered_source_files: When exclude_tests=True, the list of source files
+            after filtering. Used to verify no test files slipped through.
 
     Returns:
         Formatted statistics (multi-line if test files detected).
@@ -1994,11 +1999,40 @@ def _format_language_stats(
 
     lang_line = ", ".join(parts)
     total_files = sum(lang.files for lang in profile.languages.values())
+    ignore_marker = " [IGNORING TESTS]" if exclude_tests else ""
 
     # Compute test LOC if repo_root provided
     if repo_root is not None:
-        test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
-        if test_loc > 0:
+        # When exclude_tests=True with filtered files, count test files that slipped through
+        # (Should be 0 if filtering works correctly)
+        if exclude_tests and filtered_source_files is not None:
+            test_files = 0
+            test_loc = 0
+            for f in filtered_source_files:
+                rel_path = str(f.relative_to(repo_root)) if repo_root else str(f)
+                if _is_test_path(rel_path):  # pragma: no cover - only if filter fails
+                    test_files += 1
+                    try:
+                        content = f.read_text(encoding="utf-8", errors="ignore")
+                        test_loc += len([ln for ln in content.splitlines() if ln.strip()])
+                    except (OSError, IOError):
+                        pass
+            # Adjust totals based on filtered files
+            total_files = len(filtered_source_files)
+            total_loc = 0
+            for f in filtered_source_files:
+                try:
+                    content = f.read_text(encoding="utf-8", errors="ignore")
+                    total_loc += len([ln for ln in content.splitlines() if ln.strip()])
+                except (OSError, IOError):  # pragma: no cover
+                    pass
+        else:
+            test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
+
+        # Show breakdown when tests exist OR when exclude_tests is active
+        # (When exclude_tests=True, test_loc should be ~0 if filtering works;
+        # if it's non-zero, that indicates test detection isn't catching all test files)
+        if test_loc > 0 or exclude_tests:
             non_test_loc = total_loc - test_loc
             non_test_files = total_files - test_files
 
@@ -2010,17 +2044,17 @@ def _format_language_stats(
             files_line = (
                 f"{total_files:,} files    "
                 f"({non_test_files:>{files_width},} non-test + "
-                f"{test_files:>{files_width},} test)"
+                f"{test_files:>{files_width},} test){ignore_marker}"
             )
             loc_line = (
                 f"~{total_loc:,} LOC "
                 f"(~{non_test_loc:>{loc_width - 1},} non-test + "
-                f"~{test_loc:>{loc_width - 1},} test)"
+                f"~{test_loc:>{loc_width - 1},} test){ignore_marker}"
             )
 
             return f"{lang_line}\n{files_line}\n{loc_line}"
 
-    return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC"
+    return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"
 
 
 def _format_structure(
@@ -2767,8 +2801,21 @@ def _format_vocabulary(terms: list[str]) -> str:
 SOURCE_DIRS = {"src", "lib", "app", "pkg", "cmd", "internal", "core", "source"}
 
 
-def _collect_source_files(repo_root: Path, profile: RepoProfile) -> list[Path]:
-    """Collect source files, prioritizing source directories."""
+def _collect_source_files(
+    repo_root: Path,
+    profile: RepoProfile,
+    exclude_tests: bool = False,
+) -> list[Path]:
+    """Collect source files, prioritizing source directories.
+
+    Args:
+        repo_root: Repository root path.
+        profile: Detected repository profile.
+        exclude_tests: If True, exclude test files from the collection.
+
+    Returns:
+        List of source file paths.
+    """
     files: list[Path] = []
     seen: set[Path] = set()
 
@@ -2788,12 +2835,18 @@ def _collect_source_files(repo_root: Path, profile: RepoProfile) -> list[Path]:
         if src_path.is_dir():
             for f in find_files(src_path, patterns):
                 if f not in seen:
+                    rel_path = str(f.relative_to(repo_root))
+                    if exclude_tests and _is_test_path(rel_path):
+                        continue
                     files.append(f)
                     seen.add(f)
 
     # Then collect remaining files from root
     for f in find_files(repo_root, patterns):
         if f not in seen:
+            rel_path = str(f.relative_to(repo_root))
+            if exclude_tests and _is_test_path(rel_path):
+                continue
             files.append(f)
             seen.add(f)
 
@@ -3275,16 +3328,22 @@ def _estimate_test_coverage(
 def _format_test_summary(
     repo_root: Path,
     coverage_stats: tuple[int, int, float] | None = None,
+    exclude_tests: bool = False,
 ) -> str:
     """Format test summary as a Markdown section.
 
     Args:
         repo_root: Path to the repository root.
         coverage_stats: Optional (tested, total, pct) from static analysis.
+        exclude_tests: If True, show that tests are being ignored.
 
     Returns:
         Markdown section string, or empty string if no tests.
     """
+    # When exclude_tests=True, show that tests are excluded
+    if exclude_tests:
+        return "## Tests\n\n0 tests (excluded via -x flag)"
+
     summary, frameworks = _detect_test_summary(repo_root)
     if not summary:
         return ""
@@ -4072,6 +4131,9 @@ def generate_sketch(
     prog.complete_phase("profile")
     repo_name = _get_repo_name(repo_root)
 
+    # Collect source files early (needed for accurate LOC counts when exclude_tests=True)
+    source_files = _collect_source_files(repo_root, profile, exclude_tests=exclude_tests)
+
     # Build base sections (always included)
     sections = []
 
@@ -4093,12 +4155,12 @@ def generate_sketch(
         header = (
             f"# {repo_name}\n\n"
             f"{readme_desc}\n\n"
-            f"## Overview\n{_format_language_stats(profile, repo_root, extra_excludes)}"
+            f"## Overview\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
         )
     else:
         header = (
             f"# {repo_name}\n\n## Overview\n"
-            f"{_format_language_stats(profile, repo_root, extra_excludes)}"
+            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
         )
     sections.append(header)
 
@@ -4118,7 +4180,7 @@ def generate_sketch(
 
     # Section 3.25: Tests (static summary - count and frameworks)
     prog.start_phase("tests")
-    test_summary_section = _format_test_summary(repo_root)
+    test_summary_section = _format_test_summary(repo_root, exclude_tests=exclude_tests)
     prog.complete_phase("tests")
     if test_summary_section:
         sections.append(test_summary_section)
@@ -4180,8 +4242,8 @@ def generate_sketch(
         )
         prog.complete_phase("analysis")
 
-        # Update test summary with coverage stats
-        if coverage_stats is not None:
+        # Update test summary with coverage stats (only if not excluding tests)
+        if coverage_stats is not None and not exclude_tests:
             updated_test_summary = _format_test_summary(repo_root, coverage_stats)
             for i, section in enumerate(sections):
                 if section.startswith("## Tests"):
@@ -4198,8 +4260,7 @@ def generate_sketch(
     # We have room to expand - calculate remaining budget
     remaining_tokens = max_tokens - base_tokens
 
-    # Collect source files for expansion
-    source_files = _collect_source_files(repo_root, profile)
+    # source_files already collected early (at start of function) for accurate LOC counts
 
     # Estimate tokens per file item
     # Typical line: "- `path/to/long/filename.py`" is ~50 chars = ~12 tokens
@@ -4269,8 +4330,8 @@ def generate_sketch(
 
     prog.complete_phase("analysis")
 
-    # Update test summary with coverage stats if we got analysis results
-    if coverage_stats is not None:
+    # Update test summary with coverage stats if we got analysis results (only if not excluding tests)
+    if coverage_stats is not None and not exclude_tests:
         # Find and replace the test summary section with coverage info
         updated_test_summary = _format_test_summary(repo_root, coverage_stats)
         for i, section in enumerate(sections):
@@ -4582,6 +4643,23 @@ def generate_sketch(
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)
+
+    # Add [IGNORING TESTS] marker to all section headers when exclude_tests=True
+    if exclude_tests:
+        import re
+        # Match "## SectionName" where section name is alphabetic words with spaces
+        # This avoids matching bash comments like "## --->" inside code blocks
+        full_sketch = re.sub(
+            r'^(## [A-Za-z][A-Za-z ]+)$',
+            r'\1 [IGNORING TESTS]',
+            full_sketch,
+            flags=re.MULTILINE,
+        )
+        # Clean up any double markers from Overview (which already has it in LOC lines)
+        full_sketch = full_sketch.replace(
+            "[IGNORING TESTS] [IGNORING TESTS]",
+            "[IGNORING TESTS]"
+        )
 
     # Final truncation to ensure we don't exceed budget
     prog.finish()
