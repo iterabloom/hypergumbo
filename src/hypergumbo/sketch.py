@@ -2045,6 +2045,147 @@ def _format_structure(
     return "\n".join(lines)
 
 
+def _format_structure_tree(
+    repo_root: Path,
+    important_files: list[str],
+    max_root_dirs: int = 10,
+    extra_excludes: Optional[List[str]] = None,
+) -> str:
+    """Format directory structure as a tree built from important files.
+
+    ADR-0005 specifies that the Structure section should show a tree-like
+    visualization with paths to important files, revealing directory
+    organization along the way.
+
+    Args:
+        repo_root: Path to the repository root.
+        important_files: List of important file paths (relative to repo_root).
+        max_root_dirs: Maximum number of root-level directories to show.
+        extra_excludes: Additional patterns to exclude from item counts.
+
+    Returns:
+        Markdown formatted tree structure.
+
+    Example output:
+        ## Structure
+        ```
+        myproject/
+        ├── config.yaml
+        ├── src
+        │   ├── main.py
+        │   └── [and 42 other items]
+        └── tests
+            └── test_main.py
+        ```
+    """
+    from fnmatch import fnmatch
+
+    if not important_files:
+        # Fall back to simple directory listing
+        return _format_structure(repo_root, extra_excludes)
+
+    # Combine default and extra excludes for counting
+    excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:
+        excludes.extend(extra_excludes)
+
+    # Build a tree from paths
+    # Tree node: {"name": str, "children": dict, "is_file": bool, "shown": bool}
+    def make_node(name: str, is_file: bool = False) -> dict:
+        return {"name": name, "children": {}, "is_file": is_file, "shown": False}
+
+    root = make_node(repo_root.name)
+
+    # Track which root directories we've seen
+    seen_root_dirs: set[str] = set()
+
+    # Add important files to the tree, respecting max_root_dirs
+    for file_path in important_files:
+        parts = Path(file_path).parts
+        if not parts:
+            continue
+
+        # Check if this file adds a new root-level directory
+        first_part = parts[0]
+        if len(seen_root_dirs) >= max_root_dirs and first_part not in seen_root_dirs:
+            continue  # Skip files that would add more root dirs than allowed
+
+        seen_root_dirs.add(first_part)
+
+        # Add path to tree
+        node = root
+        for i, part in enumerate(parts):
+            is_file = i == len(parts) - 1
+            if part not in node["children"]:
+                node["children"][part] = make_node(part, is_file)
+            node["children"][part]["shown"] = True
+            node = node["children"][part]
+
+    def count_items(path: Path) -> int:
+        """Count items in a directory, excluding patterns."""
+        if not path.is_dir():  # pragma: no cover
+            return 0
+        count = 0
+        try:
+            for item in path.iterdir():
+                if any(fnmatch(item.name, pat) for pat in excludes):
+                    continue
+                count += 1
+        except OSError:  # pragma: no cover
+            pass
+        return count
+
+    def render_tree(node: dict, path: Path, prefix: str = "", is_last: bool = True) -> list[str]:
+        """Render tree node and its children."""
+        lines: list[str] = []
+
+        # Get children sorted: directories first, then files
+        children = list(node["children"].values())
+        shown_children = [c for c in children if c["shown"]]
+
+        # Sort: directories first, then alphabetically
+        shown_children.sort(key=lambda c: (c["is_file"], c["name"]))
+
+        for i, child in enumerate(shown_children):
+            is_last_child = i == len(shown_children) - 1
+            connector = "└── " if is_last_child else "├── "
+            child_prefix = prefix + ("    " if is_last_child else "│   ")
+
+            child_path = path / child["name"]
+            lines.append(f"{prefix}{connector}{child['name']}")
+
+            # If directory with shown children, recurse
+            if not child["is_file"] and child["children"]:
+                lines.extend(render_tree(child, child_path, child_prefix, is_last_child))
+
+                # Count siblings not shown
+                total_items = count_items(child_path)
+                shown_count = len([c for c in child["children"].values() if c["shown"]])
+                hidden_count = total_items - shown_count
+
+                if hidden_count > 0:
+                    lines.append(f"{child_prefix}└── [and {hidden_count} other items]")
+
+        return lines
+
+    # Render the tree
+    tree_lines = render_tree(root, repo_root)
+
+    # Count hidden root-level directories
+    total_root_items = count_items(repo_root)
+    hidden_root = total_root_items - len(seen_root_dirs)
+
+    if hidden_root > 0:
+        tree_lines.append(f"└── [and {hidden_root} other items]")
+
+    # Build the output
+    lines = ["## Structure", "", "```", f"{repo_root.name}/"]
+    lines.extend(tree_lines)
+    lines.append("```")
+
+    return "\n".join(lines)
+
+
 def _format_frameworks(profile: RepoProfile) -> str:
     """Format detected frameworks."""
     if not profile.frameworks:

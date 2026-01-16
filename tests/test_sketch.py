@@ -16,6 +16,7 @@ from hypergumbo.sketch import (
     _format_datamodels,
     _format_symbols,
     _format_structure,
+    _format_structure_tree,
     _extract_python_docstrings,
     _extract_domain_vocabulary,
     _format_vocabulary,
@@ -2462,6 +2463,156 @@ class TestFormatStructure:
 
         structure = _format_structure(tmp_path)
         assert "- `docs/` — Documentation" in structure
+
+
+class TestFormatStructureTree:
+    """Tests for tree-based structure formatting (ADR-0005)."""
+
+    def test_renders_tree_format(self, tmp_path: Path) -> None:
+        """Renders tree with box-drawing characters."""
+        # Create directory structure
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_main.py").write_text("test")
+
+        important_files = ["src/main.py", "tests/test_main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        assert "## Structure" in result
+        assert "├── " in result or "└── " in result
+        assert "src" in result
+        assert "main.py" in result
+        assert "tests" in result
+
+    def test_shows_hidden_item_counts(self, tmp_path: Path) -> None:
+        """Shows sibling counts as [and N other items]."""
+        # Create structure with more files than shown
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("main")
+        (tmp_path / "src" / "utils.py").write_text("utils")
+        (tmp_path / "src" / "helpers.py").write_text("helpers")
+        (tmp_path / "src" / "config.py").write_text("config")
+
+        # Only show main.py as important
+        important_files = ["src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        # Should show count of hidden items
+        assert "[and 3 other items]" in result
+
+    def test_respects_max_root_dirs(self, tmp_path: Path) -> None:
+        """Limits number of root-level directories shown."""
+        # Create many directories
+        for i in range(15):
+            (tmp_path / f"dir{i:02d}").mkdir()
+            (tmp_path / f"dir{i:02d}" / "file.py").write_text("content")
+
+        # Try to show files from all directories
+        important_files = [f"dir{i:02d}/file.py" for i in range(15)]
+
+        result = _format_structure_tree(tmp_path, important_files, max_root_dirs=5)
+
+        # Should show count of hidden root items
+        assert "[and" in result and "other items]" in result
+
+    def test_falls_back_to_simple_format_when_no_files(self, tmp_path: Path) -> None:
+        """Falls back to simple directory listing when no files provided."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "tests").mkdir()
+
+        result = _format_structure_tree(tmp_path, [])
+
+        # Should use the simple format (bullet list)
+        assert "- `src/`" in result
+
+    def test_renders_nested_structure(self, tmp_path: Path) -> None:
+        """Renders nested directory paths correctly."""
+        # Create nested structure
+        (tmp_path / "src" / "api" / "routes").mkdir(parents=True)
+        (tmp_path / "src" / "api" / "routes" / "users.py").write_text("routes")
+
+        important_files = ["src/api/routes/users.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        assert "src" in result
+        assert "api" in result
+        assert "routes" in result
+        assert "users.py" in result
+
+    def test_sorts_directories_before_files(self, tmp_path: Path) -> None:
+        """Directories are listed before files at same level."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "subdir").mkdir()
+        (tmp_path / "src" / "subdir" / "nested.py").write_text("nested")
+        (tmp_path / "src" / "main.py").write_text("main")
+        (tmp_path / "config.yaml").write_text("config")
+
+        important_files = ["src/main.py", "src/subdir/nested.py", "config.yaml"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        # Check that result contains expected items
+        assert "src" in result
+        assert "config.yaml" in result
+        assert "main.py" in result
+
+    def test_handles_root_level_files(self, tmp_path: Path) -> None:
+        """Handles files at the repository root level."""
+        (tmp_path / "config.yaml").write_text("config")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("main")
+
+        important_files = ["config.yaml", "src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        assert "config.yaml" in result
+        assert "src" in result
+
+    def test_excludes_patterns_from_counts(self, tmp_path: Path) -> None:
+        """Excludes patterns (like __pycache__) from sibling counts."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("main")
+        (tmp_path / "src" / "__pycache__").mkdir()  # Should be excluded
+
+        important_files = ["src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        # __pycache__ should not be counted
+        assert "__pycache__" not in result
+
+    def test_extra_excludes_parameter(self, tmp_path: Path) -> None:
+        """Extra excludes are used for sibling counts."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("main")
+        (tmp_path / "src" / "generated").mkdir()
+        (tmp_path / "src" / "utils.py").write_text("utils")
+
+        important_files = ["src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files, extra_excludes=["generated"])
+
+        # generated should be excluded from count
+        assert "generated" not in result
+        # Only utils.py should be counted as hidden
+        assert "[and 1 other items]" in result
+
+    def test_skips_empty_paths(self, tmp_path: Path) -> None:
+        """Skips empty paths in important_files."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("main")
+
+        important_files = ["", "src/main.py"]
+
+        result = _format_structure_tree(tmp_path, important_files)
+
+        assert "src" in result
+        assert "main.py" in result
 
 
 class TestExtractPythonDocstrings:
