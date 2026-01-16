@@ -1931,6 +1931,28 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     ]
 
 
+def _estimate_file_block_tokens(rel_path: str, content: str) -> int:
+    """Estimate tokens for a complete file content block including markers.
+
+    This provides accurate token estimation for budget calculations,
+    accounting for START/END markers and code fences, not just content.
+
+    Args:
+        rel_path: Relative path to the file.
+        content: The file content.
+
+    Returns:
+        Estimated token count for the full formatted block.
+    """
+    # Markers are ~60 chars each, plus code fences (~6 chars), plus newlines
+    # Total overhead: ~130 chars + path length * 2
+    marker_overhead = 130 + len(rel_path) * 2
+    content_chars = len(content.rstrip())
+    total_chars = marker_overhead + content_chars
+    # Use same estimation as estimate_tokens (4 chars per token)
+    return total_chars // 4
+
+
 def _count_test_loc(
     repo_root: Path,
     profile: RepoProfile,
@@ -4615,13 +4637,14 @@ def generate_sketch(
                     if line_count < 5:
                         continue
 
-                    file_tokens = estimate_tokens(content)
+                    rel_path = src_file.relative_to(repo_root)
+                    # Estimate full block size including markers, not just content
+                    file_tokens = _estimate_file_block_tokens(str(rel_path), content)
 
                     # ADR-0005: All-or-nothing per file - skip if file doesn't fit
                     if source_tokens_used + file_tokens > source_budget:
                         continue
 
-                    rel_path = src_file.relative_to(repo_root)
                     source_content_lines.extend(
                         _format_file_content_block(str(rel_path), content)
                     )
@@ -4656,13 +4679,14 @@ def generate_sketch(
                     if not content.strip():  # pragma: no cover - defensive
                         continue
 
-                    file_tokens = estimate_tokens(content)
+                    rel_path = add_file.relative_to(repo_root)
+                    # Estimate full block size including markers, not just content
+                    file_tokens = _estimate_file_block_tokens(str(rel_path), content)
 
                     # ADR-0005: All-or-nothing per file - skip if file doesn't fit
                     if additional_tokens_used + file_tokens > additional_budget:
                         continue
 
-                    rel_path = add_file.relative_to(repo_root)
                     additional_content_lines.extend(
                         _format_file_content_block(str(rel_path), content)
                     )
@@ -4679,4 +4703,10 @@ def generate_sketch(
 
     # Final truncation to ensure we don't exceed budget
     prog.finish()
-    return truncate_to_tokens(full_sketch, max_tokens)
+    result = truncate_to_tokens(full_sketch, max_tokens)
+
+    # Ensure output ends with a newline (standard for text files)
+    if not result.endswith("\n"):
+        result += "\n"
+
+    return result
