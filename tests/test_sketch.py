@@ -2119,6 +2119,91 @@ class TestCLISketch:
         captured = capsys.readouterr()
         assert "## Overview" in captured.out
 
+    def test_sketch_caches_to_file(self, tmp_path: Path, capsys) -> None:
+        """Sketch is cached to a file in the cache directory."""
+        from hypergumbo.cli import main
+        from hypergumbo.sketch_embeddings import _get_results_cache_dir
+
+        (tmp_path / "app.py").write_text("def main():\n    pass\n")
+
+        result = main([str(tmp_path), "-t", "4000"])
+
+        assert result == 0
+
+        # Check that sketch was cached
+        cache_dir = _get_results_cache_dir(tmp_path)
+        sketch_file = cache_dir / "sketch.4000.md"
+        assert sketch_file.exists()
+
+        # Cached sketch should not include the summary line
+        cached_content = sketch_file.read_text()
+        assert "## Overview" in cached_content
+        assert "[hypergumbo sketch]" not in cached_content
+
+    def test_sketch_cache_filename_with_flags(self, tmp_path: Path, capsys) -> None:
+        """Sketch cache filename includes non-default flags."""
+        from hypergumbo.cli import main
+        from hypergumbo.sketch_embeddings import _get_results_cache_dir
+
+        (tmp_path / "app.py").write_text("def main():\n    pass\n")
+
+        result = main([str(tmp_path), "-t", "4000", "-x"])
+
+        assert result == 0
+
+        # Check that sketch was cached with correct filename
+        cache_dir = _get_results_cache_dir(tmp_path)
+        sketch_file = cache_dir / "sketch.4000.notests.md"
+        assert sketch_file.exists()
+
+
+class TestGenerateSketchFilename:
+    """Tests for _generate_sketch_filename helper."""
+
+    def test_no_budget(self) -> None:
+        """Returns 'sketch.md' when no budget specified."""
+        from hypergumbo.cli import _generate_sketch_filename
+
+        result = _generate_sketch_filename()
+        assert result == "sketch.md"
+
+    def test_with_budget(self) -> None:
+        """Includes token budget in filename."""
+        from hypergumbo.cli import _generate_sketch_filename
+
+        result = _generate_sketch_filename(tokens=4000)
+        assert result == "sketch.4000.md"
+
+    def test_with_exclude_tests(self) -> None:
+        """Includes 'notests' suffix when exclude_tests=True."""
+        from hypergumbo.cli import _generate_sketch_filename
+
+        result = _generate_sketch_filename(tokens=8000, exclude_tests=True)
+        assert result == "sketch.8000.notests.md"
+
+    def test_with_source(self) -> None:
+        """Includes 'withsource' suffix when with_source=True."""
+        from hypergumbo.cli import _generate_sketch_filename
+
+        result = _generate_sketch_filename(tokens=16000, with_source=True)
+        assert result == "sketch.16000.withsource.md"
+
+    def test_all_flags(self) -> None:
+        """Includes all flags in filename."""
+        from hypergumbo.cli import _generate_sketch_filename
+
+        result = _generate_sketch_filename(
+            tokens=4000, exclude_tests=True, with_source=True
+        )
+        assert result == "sketch.4000.notests.withsource.md"
+
+    def test_no_budget_with_flags(self) -> None:
+        """Handles flags without budget."""
+        from hypergumbo.cli import _generate_sketch_filename
+
+        result = _generate_sketch_filename(exclude_tests=True)
+        assert result == "sketch.notests.md"
+
 
 class TestExcludeTests:
     """Tests for --exclude-tests functionality."""

@@ -162,6 +162,46 @@ def _print_output_summary(
         print(f"  Embeddings cached: {embeddings_dir.resolve()}", file=file)
 
 
+def _generate_sketch_filename(
+    tokens: int | None = None,
+    exclude_tests: bool = False,
+    with_source: bool = False,
+) -> str:
+    """Generate a descriptive filename for cached sketch.
+
+    The filename encodes the token budget and non-default flags so users
+    can easily find the right cached sketch.
+
+    Examples:
+        - sketch.md (no budget)
+        - sketch.4000.md (4000 token budget)
+        - sketch.16000.md (16000 token budget)
+        - sketch.4000.notests.md (4000 tokens, exclude_tests=True)
+        - sketch.4000.withsource.md (4000 tokens, with_source=True)
+        - sketch.4000.notests.withsource.md (both flags)
+
+    Args:
+        tokens: Token budget (None for no budget).
+        exclude_tests: Whether test files were excluded.
+        with_source: Whether source content was included.
+
+    Returns:
+        Filename like "sketch.4000.notests.md"
+    """
+    parts = ["sketch"]
+
+    if tokens is not None:
+        parts.append(str(tokens))
+
+    if exclude_tests:
+        parts.append("notests")
+
+    if with_source:
+        parts.append("withsource")
+
+    return ".".join(parts) + ".md"
+
+
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -285,6 +325,20 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     )
     print(sketch)
 
+    # Cache the sketch to a file with descriptive name
+    sketch_cache_path: Path | None = None
+    if cache_dir is not None:
+        try:
+            sketch_filename = _generate_sketch_filename(
+                tokens=max_tokens,
+                exclude_tests=exclude_tests,
+                with_source=with_source,
+            )
+            sketch_cache_path = cache_dir / sketch_filename
+            sketch_cache_path.write_text(sketch)
+        except Exception:  # pragma: no cover - cache write errors shouldn't break sketch
+            sketch_cache_path = None
+
     # Gather artifacts that were generated
     artifacts: list[Path] = []
     embeddings_dir: Path | None = None
@@ -295,6 +349,10 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             results_after = set(cache_dir.glob("hypergumbo.results*.json"))
             for f in sorted(results_after):
                 artifacts.append(f)
+
+            # Add cached sketch file to artifacts
+            if sketch_cache_path is not None and sketch_cache_path.exists():
+                artifacts.append(sketch_cache_path)
 
             # Check for embeddings directory
             fingerprint_dir = cache_dir.parent.parent  # Go from results/<hash> to fingerprint
