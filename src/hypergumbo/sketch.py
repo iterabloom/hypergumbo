@@ -626,6 +626,21 @@ INTERESTING_DEPS = frozenset({
 LICENSE_FILES = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"]
 
 
+def _section_header(title: str, exclude_tests: bool = False) -> str:
+    """Generate a section header with optional [IGNORING TESTS] marker.
+
+    Args:
+        title: The section title (e.g., "Overview", "Structure").
+        exclude_tests: If True, append [IGNORING TESTS] marker.
+
+    Returns:
+        Formatted section header like "## Overview" or "## Overview [IGNORING TESTS]"
+    """
+    if exclude_tests:
+        return f"## {title} [IGNORING TESTS]"
+    return f"## {title}"
+
+
 def _extract_config_heuristic(repo_root: Path) -> list[str]:
     """Extract config metadata using heuristic pattern matching.
 
@@ -1866,11 +1881,12 @@ def _extract_config_info(
     return "\n".join(result_parts)  # pragma: no cover - embedding output only
 
 
-def _format_config_section(config_info: str) -> str:
+def _format_config_section(config_info: str, exclude_tests: bool = False) -> str:
     """Format config info as a Markdown section.
 
     Args:
         config_info: Extracted config information string.
+        exclude_tests: If True, add [IGNORING TESTS] marker to header.
 
     Returns:
         Markdown-formatted configuration section.
@@ -1878,7 +1894,7 @@ def _format_config_section(config_info: str) -> str:
     if not config_info:
         return ""
 
-    lines = ["## Configuration", ""]
+    lines = [_section_header("Configuration", exclude_tests), ""]
     lines.append("```")
     lines.append(config_info)
     lines.append("```")
@@ -2058,7 +2074,9 @@ def _format_language_stats(
 
 
 def _format_structure(
-    repo_root: Path, extra_excludes: Optional[List[str]] = None
+    repo_root: Path,
+    extra_excludes: Optional[List[str]] = None,
+    exclude_tests: bool = False,
 ) -> str:
     """Format top-level directory structure.
 
@@ -2068,7 +2086,7 @@ def _format_structure(
     """
     from fnmatch import fnmatch
 
-    lines = ["## Structure", ""]
+    lines = [_section_header("Structure", exclude_tests), ""]
 
     # Combine default and extra excludes
     excludes = list(DEFAULT_EXCLUDES)
@@ -2113,6 +2131,7 @@ def _format_structure_tree(
     important_files: list[str],
     max_root_dirs: int = 10,
     extra_excludes: Optional[List[str]] = None,
+    exclude_tests: bool = False,
 ) -> str:
     """Format directory structure as a tree built from important files.
 
@@ -2253,7 +2272,7 @@ def _format_structure_tree(
         tree_lines.append(f"└── [and {hidden_root} other items]")
 
     # Build the output
-    lines = ["## Structure", "", "```", f"{repo_root.name}/"]
+    lines = [_section_header("Structure", exclude_tests), "", "```", f"{repo_root.name}/"]
     lines.extend(tree_lines)
     lines.append("```")
 
@@ -2401,12 +2420,12 @@ def _collect_important_files(
     return important_files
 
 
-def _format_frameworks(profile: RepoProfile) -> str:
+def _format_frameworks(profile: RepoProfile, exclude_tests: bool = False) -> str:
     """Format detected frameworks."""
     if not profile.frameworks:
         return ""
 
-    lines = ["## Frameworks", ""]
+    lines = [_section_header("Frameworks", exclude_tests), ""]
     for framework in sorted(profile.frameworks):
         lines.append(f"- {framework}")
 
@@ -2777,11 +2796,12 @@ def _extract_domain_vocabulary(
     return [word for word, _ in word_counts.most_common(max_terms)]
 
 
-def _format_vocabulary(terms: list[str]) -> str:
+def _format_vocabulary(terms: list[str], exclude_tests: bool = False) -> str:
     """Format domain vocabulary as a Markdown section.
 
     Args:
         terms: List of domain-specific terms.
+        exclude_tests: If True, add [IGNORING TESTS] marker to header.
 
     Returns:
         Markdown-formatted vocabulary section.
@@ -2789,7 +2809,7 @@ def _format_vocabulary(terms: list[str]) -> str:
     if not terms:
         return ""
 
-    lines = ["## Domain Vocabulary", ""]
+    lines = [_section_header("Domain Vocabulary", exclude_tests), ""]
     lines.append(f"*Key terms: {', '.join(terms)}*")
 
     return "\n".join(lines)
@@ -2858,6 +2878,7 @@ def _format_source_files(
     files: list[Path],
     max_files: int = 50,
     density_scores: dict[str, float] | None = None,
+    exclude_tests: bool = False,
 ) -> str:
     """Format source files as a Markdown section.
 
@@ -2876,7 +2897,7 @@ def _format_source_files(
             reverse=True,
         )
 
-    lines = ["## Source Files", ""]
+    lines = [_section_header("Source Files", exclude_tests), ""]
 
     for f in files[:max_files]:
         rel_path = f.relative_to(repo_root)
@@ -2891,6 +2912,7 @@ def _format_source_files(
 def _format_all_files(
     repo_root: Path,
     max_files: int = 200,
+    exclude_tests: bool = False,
 ) -> str:
     """Format all files (non-excluded) as a Markdown section."""
     # Collect all non-excluded files
@@ -2917,7 +2939,7 @@ def _format_all_files(
     # Sort by path
     files.sort(key=lambda p: str(p.relative_to(repo_root)))
 
-    lines = ["## All Files", ""]
+    lines = [_section_header("All Files", exclude_tests), ""]
 
     for f in files[:max_files]:
         rel_path = f.relative_to(repo_root)
@@ -2939,6 +2961,7 @@ def _format_additional_files(
     progress_callback: "callable | None" = None,
     centrality_progress_callback: "callable | None" = None,
     cached_centrality_scores: dict[str, float] | None = None,
+    exclude_tests: bool = False,
 ) -> tuple[str, list[Path]]:
     """Format additional files (non-source) as a Markdown section.
 
@@ -3093,7 +3116,7 @@ def _format_additional_files(
     ordered_files = semantic_files + centrality_files
 
     # Format output
-    lines = ["## Additional Files", ""]
+    lines = [_section_header("Additional Files", exclude_tests), ""]
 
     selected_files = ordered_files[:max_files]
     for f in selected_files:
@@ -3342,7 +3365,7 @@ def _format_test_summary(
     """
     # When exclude_tests=True, show that tests are excluded
     if exclude_tests:
-        return "## Tests\n\n0 tests (excluded via -x flag)"
+        return f"{_section_header('Tests', exclude_tests)}\n\n0 tests (excluded via -x flag)"
 
     summary, frameworks = _detect_test_summary(repo_root)
     if not summary:
@@ -3355,7 +3378,7 @@ def _format_test_summary(
         coverage_hint = _get_coverage_hint(frameworks)
         coverage_line = f"*Coverage requires execution; see {coverage_hint}*"
 
-    return f"## Tests\n\n{summary}\n\n{coverage_line}"
+    return f"{_section_header('Tests', exclude_tests)}\n\n{summary}\n\n{coverage_line}"
 
 
 # Language analyzer registry: (languages_set, module_name, function_name, display_name)
@@ -3501,6 +3524,7 @@ def _format_entrypoints(
     symbols: list[Symbol],
     repo_root: Path,
     max_entries: int = 20,
+    exclude_tests: bool = False,
 ) -> str:
     """Format detected entry points as a Markdown section."""
     if not entrypoints:
@@ -3512,7 +3536,7 @@ def _format_entrypoints(
     # Sort by confidence (highest first)
     sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
 
-    lines = ["## Entry Points", ""]
+    lines = [_section_header("Entry Points", exclude_tests), ""]
 
     for ep in sorted_eps[:max_entries]:
         sym = symbol_by_id.get(ep.symbol_id)
@@ -3535,6 +3559,7 @@ def _format_datamodels(
     symbols: list[Symbol],
     repo_root: Path,
     max_entries: int = 30,
+    exclude_tests: bool = False,
 ) -> str:
     """Format detected data models as a Markdown section.
 
@@ -3543,6 +3568,7 @@ def _format_datamodels(
         symbols: All symbols for path lookup.
         repo_root: Repository root for relative paths.
         max_entries: Maximum number of models to show.
+        exclude_tests: If True, add [IGNORING TESTS] marker to header.
 
     Returns:
         Markdown formatted section for data models.
@@ -3556,7 +3582,7 @@ def _format_datamodels(
     # Sort by confidence (highest first) - already sorted but ensure
     sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
 
-    lines = ["## Data Models", ""]
+    lines = [_section_header("Data Models", exclude_tests), ""]
 
     for model in sorted_models[:max_entries]:
         sym = symbol_by_id.get(model.symbol_id)
@@ -3742,6 +3768,7 @@ def _format_symbols(
     docstrings: dict[str, str] | None = None,
     signatures: dict[str, str] | None = None,
     language_proportional: bool = True,
+    exclude_tests: bool = False,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
@@ -3903,7 +3930,7 @@ def _format_symbols(
     max_centrality = max(centrality.values()) if centrality else 1.0
     star_threshold = max_centrality * 0.5
 
-    lines = ["## Key Symbols", ""]
+    lines = [_section_header("Key Symbols", exclude_tests), ""]
     lines.append("*★ = centrality ≥ 50% of max*")
     lines.append("")
 
@@ -4155,25 +4182,25 @@ def generate_sketch(
         header = (
             f"# {repo_name}\n\n"
             f"{readme_desc}\n\n"
-            f"## Overview\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
+            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
         )
     else:
         header = (
-            f"# {repo_name}\n\n## Overview\n"
+            f"# {repo_name}\n\n{_section_header('Overview', exclude_tests)}\n"
             f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
         )
     sections.append(header)
 
     # Section 2: Structure
     prog.start_phase("structure")
-    structure = _format_structure(repo_root, extra_excludes=extra_excludes)
+    structure = _format_structure(repo_root, extra_excludes=extra_excludes, exclude_tests=exclude_tests)
     prog.complete_phase("structure")
     if structure:
         sections.append(structure)
 
     # Section 3: Frameworks
     prog.start_phase("frameworks")
-    frameworks = _format_frameworks(profile)
+    frameworks = _format_frameworks(profile, exclude_tests=exclude_tests)
     prog.complete_phase("frameworks")
     if frameworks:
         sections.append(frameworks)
@@ -4218,7 +4245,7 @@ def generate_sketch(
         )
     _log(f"Config extracted in {time.time() - t_config:.1f}s")
     prog.complete_phase("config")
-    config_section = _format_config_section(config_info)
+    config_section = _format_config_section(config_info, exclude_tests=exclude_tests)
     if config_section:
         sections.append(config_section)
 
@@ -4362,7 +4389,8 @@ def generate_sketch(
             max_eps = max(5, budget_for_eps // tokens_per_symbol)
 
             ep_section = _format_entrypoints(
-                entrypoints, symbols, repo_root, max_entries=max_eps
+                entrypoints, symbols, repo_root, max_entries=max_eps,
+                exclude_tests=exclude_tests
             )
             if ep_section:
                 sections.append(ep_section)
@@ -4383,7 +4411,8 @@ def generate_sketch(
             max_models = max(3, budget_for_models // 20)  # ~20 tokens per model line
 
             dm_section = _format_datamodels(
-                datamodels, symbols, repo_root, max_entries=max_models
+                datamodels, symbols, repo_root, max_entries=max_models,
+                exclude_tests=exclude_tests
             )
             if dm_section:
                 sections.append(dm_section)
@@ -4406,7 +4435,8 @@ def generate_sketch(
         )
         if important_files:
             updated_structure = _format_structure_tree(
-                repo_root, important_files, extra_excludes=extra_excludes
+                repo_root, important_files, extra_excludes=extra_excludes,
+                exclude_tests=exclude_tests
             )
             # Find and replace the Structure section
             for i, section in enumerate(sections):
@@ -4434,6 +4464,7 @@ def generate_sketch(
             source_files,
             max_files=max_source_files,
             density_scores=density_scores if density_scores else None,
+            exclude_tests=exclude_tests,
         )
         if source_section:
             sections.append(source_section)
@@ -4484,6 +4515,7 @@ def generate_sketch(
             docstrings=docstrings,
             signatures=signatures,
             language_proportional=language_proportional,
+            exclude_tests=exclude_tests,
         )
         if symbols_section:
             sections.append(symbols_section)
@@ -4540,6 +4572,7 @@ def generate_sketch(
             progress_callback=embedding_progress,
             centrality_progress_callback=centrality_progress,
             cached_centrality_scores=cached_centrality,
+            exclude_tests=exclude_tests,
         )
         if additional_files_section:
             sections.append(additional_files_section)
@@ -4557,7 +4590,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
         if remaining_tokens > 100:  # Need meaningful space for source content
-            source_content_lines = ["## Source Content", ""]
+            source_content_lines = [_section_header("Source Content", exclude_tests), ""]
 
             # Order source files by density if available
             ordered_files = source_files
@@ -4609,7 +4642,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
         if remaining_tokens > 50:  # Need some space for content
-            additional_content_lines = ["## Additional File Content", ""]
+            additional_content_lines = [_section_header("Additional File Content", exclude_tests), ""]
 
             additional_tokens_used = 0
             # ADR-0005: allocate 100% of remaining minus 50 for reserve
@@ -4643,23 +4676,6 @@ def generate_sketch(
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)
-
-    # Add [IGNORING TESTS] marker to all section headers when exclude_tests=True
-    if exclude_tests:
-        import re
-        # Match "## SectionName" where section name is alphabetic words with spaces
-        # This avoids matching bash comments like "## --->" inside code blocks
-        full_sketch = re.sub(
-            r'^(## [A-Za-z][A-Za-z ]+)$',
-            r'\1 [IGNORING TESTS]',
-            full_sketch,
-            flags=re.MULTILINE,
-        )
-        # Clean up any double markers from Overview (which already has it in LOC lines)
-        full_sketch = full_sketch.replace(
-            "[IGNORING TESTS] [IGNORING TESTS]",
-            "[IGNORING TESTS]"
-        )
 
     # Final truncation to ensure we don't exceed budget
     prog.finish()
