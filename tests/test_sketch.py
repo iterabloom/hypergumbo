@@ -2868,6 +2868,71 @@ class TestCollectImportantFiles:
         # Should handle gracefully (empty path is skipped)
         assert "" not in result
 
+    def test_converts_absolute_paths_to_relative(self, tmp_path: Path) -> None:
+        """Converts absolute paths from symbols to relative paths."""
+        # Create the actual file so it exists
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("def main(): pass")
+
+        # Symbol with absolute path
+        symbol = Symbol(
+            id="root:main",
+            name="main",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "src" / "app.py"),  # Absolute path
+            span=Span(1, 1, 1, 10),
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={"root:main": 0.5},
+        )
+
+        # Should contain relative path, not absolute
+        assert len(result) >= 1
+        for path in result:
+            assert not Path(path).is_absolute(), f"Path should be relative: {path}"
+            assert "/" not in path or not path.startswith("/")
+        # Check the actual path is correct
+        assert "src/app.py" in result
+
+    def test_skips_paths_outside_repo_root(self, tmp_path: Path) -> None:
+        """Skips absolute paths that are not under repo_root."""
+        # Symbol with path outside repo_root
+        symbol = Symbol(
+            id="root:external",
+            name="external",
+            kind="function",
+            language="python",
+            path="/completely/different/path/file.py",  # Not under tmp_path
+            span=Span(1, 1, 1, 10),
+        )
+        # Use entrypoint to trigger add_file directly (covers line 2245)
+        entrypoint = Entrypoint(
+            symbol_id="root:external",
+            kind=EntrypointKind.CLI_MAIN,
+            confidence=0.9,
+            label="external",
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[entrypoint],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={},
+        )
+
+        # Should be empty since the path is outside repo_root
+        assert "/completely" not in str(result)
+        assert len(result) == 0
+
 
 class TestExtractPythonDocstrings:
     """Tests for Python docstring extraction."""

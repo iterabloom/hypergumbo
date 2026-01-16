@@ -2220,6 +2220,18 @@ def _collect_important_files(
     """
     important_files: list[str] = []
     seen_root_dirs: set[str] = set()
+    resolved_root = repo_root.resolve()
+
+    def to_relative(path: str) -> str:
+        """Convert a path to relative, handling both absolute and relative inputs."""
+        p = Path(path)
+        if p.is_absolute():
+            try:
+                return str(p.relative_to(resolved_root))
+            except ValueError:
+                # Path is not under repo_root, skip it
+                return ""
+        return path
 
     def get_root_dir(path: str) -> str:
         """Get the root-level directory or filename."""
@@ -2228,6 +2240,9 @@ def _collect_important_files(
 
     def add_file(path: str) -> bool:
         """Add a file if it contributes a new root directory or we need more files."""
+        path = to_relative(path)
+        if not path:
+            return False  # Path not under repo_root or empty
         root = get_root_dir(path)
         if not root:  # pragma: no cover
             return False  # Empty paths filtered by callers
@@ -2278,10 +2293,7 @@ def _collect_important_files(
         for ep in sorted_eps[:3]:  # Top 3 entry points
             sym = symbol_by_id.get(ep.symbol_id)
             if sym and sym.path:
-                rel_path = sym.path
-                if rel_path.startswith(str(repo_root)):
-                    rel_path = rel_path[len(str(repo_root)) + 1:]
-                add_file(rel_path)
+                add_file(sym.path)  # add_file handles path conversion
 
     # 4. Source files (top centrality density)
     # Get files with highest average symbol centrality
@@ -2289,9 +2301,9 @@ def _collect_important_files(
     file_counts: dict[str, int] = {}
     for sym in symbols:
         if sym.path:
-            rel_path = sym.path
-            if rel_path.startswith(str(repo_root)):
-                rel_path = rel_path[len(str(repo_root)) + 1:]
+            rel_path = to_relative(sym.path)
+            if not rel_path:
+                continue  # Skip paths not under repo_root
             score = centrality.get(sym.id, 0.0)
             file_centrality[rel_path] = file_centrality.get(rel_path, 0.0) + score
             file_counts[rel_path] = file_counts.get(rel_path, 0) + 1
@@ -2310,10 +2322,7 @@ def _collect_important_files(
         for dm in datamodels[:3]:  # Top 3 data models
             sym = symbol_by_id.get(dm.symbol_id)
             if sym and sym.path:
-                rel_path = sym.path
-                if rel_path.startswith(str(repo_root)):
-                    rel_path = rel_path[len(str(repo_root)) + 1:]
-                add_file(rel_path)
+                add_file(sym.path)  # add_file handles path conversion
 
     return important_files
 
