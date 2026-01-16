@@ -10,6 +10,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **`-x/--exclude-tests` flag for sketch:** Exclude test files from all sketch sections (symbols,
+  source files, LOC counts). Shows `[IGNORING TESTS]` markers on section headers. The test LOC
+  counter reveals if any test files slip through the filter.
+
+### Fixed
+- **Sketch file content truncation:** Files in Source Files Content and Additional Files Content
+  sections are now budgeted accurately, including START/END markers and code fences (~130 chars
+  overhead per file). Previously files could be truncated mid-content.
+- **Sketch files now end with newline:** Standard text file convention.
+
+### Changed
+- **Section header renames for clarity:**
+  - "Source Content" → "Source Files Content"
+  - "Additional File Content" → "Additional Files Content"
+
+### Added (continued)
 - **ADR-0004: File Taxonomy (Tier + Role):** Two-dimensional file classification system implemented.
   The taxonomy module provides a single source of truth for file type information:
   - `FileRole` enum: ANALYZABLE, CONFIG, DOCUMENTATION, DATA

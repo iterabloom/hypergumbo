@@ -5030,7 +5030,7 @@ def main():
         # Should include the actual source code
         assert 'print("hello world")' in sketch
         # Should have a section header for source content
-        assert "## Source Content" in sketch
+        assert "## Source Files Content" in sketch
 
     def test_with_source_respects_token_budget(self, tmp_path: Path) -> None:
         """--with-source respects token budget (may omit files)."""
@@ -5053,7 +5053,7 @@ def main():
 
         # Tiny budget may not have source content (too small for source section)
         # Large budget should have source content
-        assert "## Source Content" in large_sketch
+        assert "## Source Files Content" in large_sketch
         # At least some source code should appear with large budget
         assert "def function_" in large_sketch
 
@@ -5086,7 +5086,7 @@ def func_c():
         sketch = generate_sketch(tmp_path, max_tokens=4000, with_source=True)
 
         # important.py should appear before simple.py in source content
-        assert "## Source Content" in sketch
+        assert "## Source Files Content" in sketch
         # The important file's functions should appear
         assert "def func_a():" in sketch or "def func_b():" in sketch
 
@@ -5113,7 +5113,7 @@ def small_func():
         sketch = generate_sketch(tmp_path, max_tokens=800, with_source=True)
 
         # Should have source content (small file fits)
-        assert "## Source Content" in sketch
+        assert "## Source Files Content" in sketch
         assert "def small_func():" in sketch
         # Large file should be skipped
         assert "def big():" not in sketch
@@ -5139,24 +5139,24 @@ def long_enough():
         sketch = generate_sketch(tmp_path, max_tokens=2000, with_source=True)
 
         # Should have source content with the long file
-        assert "## Source Content" in sketch
+        assert "## Source Files Content" in sketch
         assert "def long_enough():" in sketch
         # Short file should be skipped
         assert "def short():" not in sketch
 
     def test_with_source_disabled_by_default(self, tmp_path: Path) -> None:
-        """Without --with-source, no Source Content section appears."""
+        """Without --with-source, no Source Files Content section appears."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "main.py").write_text("def main():\n    pass\n")
 
         sketch = generate_sketch(tmp_path, max_tokens=2000)
 
-        # Should NOT have Source Content section
-        assert "## Source Content" not in sketch
+        # Should NOT have Source Files Content section
+        assert "## Source Files Content" not in sketch
 
     def test_with_source_includes_additional_file_content(self, tmp_path: Path) -> None:
-        """--with-source includes Additional File Content for semantic picks."""
+        """--with-source includes Additional Files Content for semantic picks."""
         # Create source file
         src_dir = tmp_path / "src"
         src_dir.mkdir()
@@ -5171,8 +5171,8 @@ def long_enough():
         # Generate sketch with large budget to include additional file content
         sketch = generate_sketch(tmp_path, max_tokens=8000, with_source=True)
 
-        # Should have Additional File Content section
-        assert "## Additional File Content" in sketch
+        # Should have Additional Files Content section
+        assert "## Additional Files Content" in sketch
         # Should include content from additional files
         assert "# My Project" in sketch or "name: myproject" in sketch
 

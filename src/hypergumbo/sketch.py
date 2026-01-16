@@ -4090,8 +4090,8 @@ def generate_sketch(
     9. Source Files: file listing by importance
     10. Key Symbols: functions, classes, types with centrality
     11. Additional Files: semantic + centrality ranked
-    12. Source Content: actual code (--with-source only)
-    13. Additional File Content: code for semantic picks (--with-source only)
+    12. Source Files Content: actual code (--with-source only)
+    13. Additional Files Content: code for semantic picks (--with-source only)
 
     Args:
         repo_root: Path to the repository root.
@@ -4552,7 +4552,7 @@ def generate_sketch(
     # Section 8: Additional files (if we still have budget after everything else)
     # These are files NOT in source_files, ordered by hybrid semantic + centrality
     prog.start_phase("embedding")
-    additional_files_selected: list[Path] = []  # Track for Additional File Content section
+    additional_files_selected: list[Path] = []  # Track for Additional Files Content section
     if remaining_tokens > 50:
         # ADR-0005: --with-source mode reduces Additional Files budget
         if with_source:
@@ -4603,8 +4603,8 @@ def generate_sketch(
     prog.complete_phase("centrality")  # Complete centrality if it ran
     prog.start_phase("format")
 
-    # Section 9: Source Content (if with_source is True and we have budget)
-    # ADR-0005: Source Content gets 70% of remaining budget, all-or-nothing per file
+    # Section 9: Source Files Content (if with_source is True and we have budget)
+    # ADR-0005: Source Files Content gets 70% of remaining budget, all-or-nothing per file
     if with_source and source_files and max_tokens is not None:
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
@@ -4612,7 +4612,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
         if remaining_tokens > 100:  # Need meaningful space for source content
-            source_content_lines = [_section_header("Source Content", exclude_tests), ""]
+            source_content_lines = [_section_header("Source Files Content", exclude_tests), ""]
 
             # Order source files by density if available
             ordered_files = source_files
@@ -4625,7 +4625,7 @@ def generate_sketch(
                 )
 
             source_tokens_used = 0
-            # ADR-0005: allocate 70% of remaining for Source Content section
+            # ADR-0005: allocate 70% of remaining for Source Files Content section
             source_budget = (remaining_tokens * 70) // 100
 
             for src_file in ordered_files:
@@ -4656,7 +4656,7 @@ def generate_sketch(
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))
 
-    # Section 10: Additional File Content (if with_source and we have additional files)
+    # Section 10: Additional Files Content (if with_source and we have additional files)
     # ADR-0005: Shows actual code for semantic/centrality-picked additional files
     if with_source and additional_files_selected and max_tokens is not None:
         # Recalculate remaining budget
@@ -4665,7 +4665,7 @@ def generate_sketch(
         remaining_tokens = max_tokens - current_tokens
 
         if remaining_tokens > 50:  # Need some space for content
-            additional_content_lines = [_section_header("Additional File Content", exclude_tests), ""]
+            additional_content_lines = [_section_header("Additional Files Content", exclude_tests), ""]
 
             additional_tokens_used = 0
             # ADR-0005: allocate 100% of remaining minus 50 for reserve
