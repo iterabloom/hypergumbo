@@ -29,11 +29,12 @@ Sections appear in this order, each conditional on remaining budget:
 | 5 | Tests | 30 tokens | Test file count, frameworks, coverage estimate |
 | 6 | Configuration | 50 tokens | Config file excerpts (heuristic + semantic) |
 | 7 | Entry Points | 50 tokens | CLI commands, HTTP routes |
-| 8 | Source Files | 50 tokens | File listing by importance |
-| 9 | Key Symbols | 200 tokens* | Functions, classes, types with centrality |
-| 10 | Additional Files | 50 tokens | Semantic + centrality ranked |
-| 11 | Source Content | 100 tokens | Actual code (--with-source only) |
-| 12 | Additional File Content | 50 tokens | Code for semantic picks (--with-source only) |
+| 8 | Data Models | 50 tokens | ORM models, entities, core data structures |
+| 9 | Source Files | 50 tokens | File listing by importance |
+| 10 | Key Symbols | 200 tokens* | Functions, classes, types with centrality |
+| 11 | Additional Files | 50 tokens | Semantic + centrality ranked |
+| 12 | Source Content | 100 tokens | Actual code (--with-source only) |
+| 13 | Additional File Content | 50 tokens | Code for semantic picks (--with-source only) |
 
 *Key Symbols has a minimum guarantee of 5 symbols regardless of budget.
 
@@ -54,6 +55,7 @@ Each section consumes a fraction of **remaining** tokens (not total budget). Thi
 | Tests | Fixed: summary line only |
 | Configuration | Heuristic lines + semantic embedding (HYBRID mode default) |
 | Entry Points | 33% of remaining |
+| Data Models | 20% of remaining |
 | Source Files | 66% of remaining (if <300 left) or 25% (larger budgets) |
 | Key Symbols | 80% of remaining |
 | Additional Files | 100% of remaining minus 10 |
@@ -70,6 +72,7 @@ When `--with-source` is set, budget shifts dramatically from file listings to ac
 | Tests | Fixed: summary line only | — |
 | Configuration | Heuristic lines + semantic embedding | — |
 | Entry Points | 33% of remaining | High signal, keep as-is |
+| Data Models | 20% of remaining | High signal for domain understanding |
 | Source Files (list) | **15%** of remaining | Shrink: paths are low-value |
 | Key Symbols | **30%** of remaining | Shrink: actual code is better |
 | Additional Files (list) | **10%** of remaining | Shrink: paths are low-value |
@@ -87,6 +90,7 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Frameworks | Detection order (alphabetical in output) |
 | Configuration | Heuristic priority, then semantic similarity to query |
 | Entry Points | Confidence score (descending)* |
+| Data Models | Centrality (most-referenced models first) |
 | Source Files | Symbol importance density = Σ(in-degrees) / LOC |
 | Key Symbols | Two-phase: coverage-first, then centrality × tier weight |
 | Additional Files | Hybrid: semantic similarity + file mention centrality |
@@ -94,6 +98,11 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Additional File Content | Same as Additional Files (top semantic+centrality first) |
 
 *Entry Point confidence reflects detection reliability. Current detectors use decorator/annotation patterns (0.95). Future work may add manifest-based detection (0.99) and naming-convention heuristics (0.70-0.85).
+
+**Data Models** are framework-afforded concepts like Entry Points. Detection identifies ORM models, entities, and core data structures via:
+- Framework decorators: `@dataclass`, `@Entity`, Django `models.Model`, SQLAlchemy `Base`, Pydantic `BaseModel`
+- Naming conventions: classes ending in `Model`, `Entity`, `Schema`
+- Type annotations: classes used as return types or parameters across multiple functions
 
 ### Cutoff Logic
 
@@ -107,6 +116,7 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 |---------|-----------------|---------|-----------------|-------|
 | Structure | — | — | 10 root dirs | Tree expands until N root dirs shown |
 | Entry Points | ~25 | 5 | 20 | Shows CLI commands + HTTP routes |
+| Data Models | ~20 | 3 | 30 | ORM models, entities, core data structures |
 | Source Files | ~15 | 5 | 50 | Paths only; shrinks with --with-source |
 | Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
 | Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
