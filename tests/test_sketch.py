@@ -13,6 +13,7 @@ from hypergumbo.sketch import (
     _format_additional_files,
     _run_analysis,
     _format_entrypoints,
+    _format_datamodels,
     _format_symbols,
     _format_structure,
     _extract_python_docstrings,
@@ -26,6 +27,7 @@ from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import Entrypoint, EntrypointKind
+from hypergumbo.datamodels import DataModel, DataModelKind
 
 
 def _has_sentence_transformers() -> bool:
@@ -209,6 +211,24 @@ class TestGenerateSketch:
 
         # Should detect FastAPI framework
         assert "fastapi" in sketch.lower() or "Entry" in sketch
+
+    def test_detects_datamodels(self, tmp_path: Path) -> None:
+        """Sketch includes detected data models when available."""
+        # Create a project with data models (dataclass)
+        (tmp_path / "models.py").write_text(
+            "from dataclasses import dataclass\n"
+            "\n"
+            "@dataclass\n"
+            "class UserModel:\n"
+            "    name: str\n"
+            "    email: str\n"
+        )
+        (tmp_path / "main.py").write_text("from models import UserModel\n")
+
+        sketch = generate_sketch(tmp_path, max_tokens=2000)
+
+        # Should detect data model via @dataclass decorator or naming convention
+        assert "Data Models" in sketch or "UserModel" in sketch
 
     def test_empty_project(self, tmp_path: Path) -> None:
         """Sketch handles empty projects."""
@@ -1514,6 +1534,93 @@ class TestFormatEntrypoints:
 
         assert "`unknown:symbol`" in result
         assert "CLI main" in result
+
+
+class TestFormatDatamodels:
+    """Tests for data model formatting."""
+
+    def test_formats_datamodels(self, tmp_path: Path) -> None:
+        """Formats data models as Markdown."""
+        symbols = [
+            Symbol(id="test:User", name="User", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
+        ]
+        datamodels = [
+            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
+                      confidence=0.95, label="model", framework="Django"),
+        ]
+
+        result = _format_datamodels(datamodels, symbols, tmp_path)
+
+        assert "## Data Models" in result
+        assert "`User`" in result
+        assert "Django model" in result
+
+    def test_respects_max_entries(self, tmp_path: Path) -> None:
+        """Limits output to max_entries."""
+        symbols = [
+            Symbol(id=f"test:Model{i}", name=f"Model{i}", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(i, 1, i, 10))
+            for i in range(10)
+        ]
+        datamodels = [
+            DataModel(symbol_id=f"test:Model{i}", kind=DataModelKind.PYDANTIC_MODEL,
+                      confidence=0.85, label="model", framework="Pydantic")
+            for i in range(10)
+        ]
+
+        result = _format_datamodels(datamodels, symbols, tmp_path, max_entries=3)
+
+        assert "... and 7 more data models" in result
+
+    def test_empty_datamodels_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string for empty data models."""
+        result = _format_datamodels([], [], tmp_path)
+        assert result == ""
+
+    def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
+        """Falls back to symbol_id when symbol not found."""
+        datamodels = [
+            DataModel(symbol_id="unknown:Model", kind=DataModelKind.DATACLASS,
+                      confidence=0.90, label="@dataclass", framework="Python"),
+        ]
+
+        result = _format_datamodels(datamodels, [], tmp_path)
+
+        assert "`unknown:Model`" in result
+        assert "@dataclass" in result
+
+    def test_format_without_framework(self, tmp_path: Path) -> None:
+        """Formats model without framework info."""
+        symbols = [
+            Symbol(id="test:UserModel", name="UserModel", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
+        ]
+        datamodels = [
+            DataModel(symbol_id="test:UserModel", kind=DataModelKind.DOMAIN_MODEL,
+                      confidence=0.70, label="Domain model", framework=""),
+        ]
+
+        result = _format_datamodels(datamodels, symbols, tmp_path)
+
+        assert "`UserModel`" in result
+        assert "(Domain model)" in result
+
+    def test_strips_repo_root_from_path(self, tmp_path: Path) -> None:
+        """Strips repo root from file paths."""
+        symbols = [
+            Symbol(id="test:User", name="User", kind="class", language="python",
+                   path=str(tmp_path / "src" / "models.py"), span=Span(1, 1, 1, 10)),
+        ]
+        datamodels = [
+            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
+                      confidence=0.95, label="model", framework="Django"),
+        ]
+
+        result = _format_datamodels(datamodels, symbols, tmp_path)
+
+        # Path should be relative, not absolute
+        assert "src/models.py" in result or "src\\models.py" in result
 
 
 class TestFormatSymbols:

@@ -35,6 +35,7 @@ from .discovery import find_files, is_excluded, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge
 from .entrypoints import detect_entrypoints, Entrypoint
+from .datamodels import detect_datamodels, DataModel
 from .ranking import (
     compute_centrality,
     apply_tier_weights,
@@ -3148,6 +3149,54 @@ def _format_entrypoints(
     return "\n".join(lines)
 
 
+def _format_datamodels(
+    datamodels: "list[DataModel]",
+    symbols: list[Symbol],
+    repo_root: Path,
+    max_entries: int = 30,
+) -> str:
+    """Format detected data models as a Markdown section.
+
+    Args:
+        datamodels: List of detected data models.
+        symbols: All symbols for path lookup.
+        repo_root: Repository root for relative paths.
+        max_entries: Maximum number of models to show.
+
+    Returns:
+        Markdown formatted section for data models.
+    """
+    if not datamodels:
+        return ""
+
+    # Build symbol lookup for path info
+    symbol_by_id = {s.id: s for s in symbols}
+
+    # Sort by confidence (highest first) - already sorted but ensure
+    sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
+
+    lines = ["## Data Models", ""]
+
+    for model in sorted_models[:max_entries]:
+        sym = symbol_by_id.get(model.symbol_id)
+        if sym:
+            rel_path = sym.path
+            if rel_path.startswith(str(repo_root)):
+                rel_path = rel_path[len(str(repo_root)) + 1:]
+            # Include framework if known
+            if model.framework:
+                lines.append(f"- `{sym.name}` ({model.framework} {model.label}) — `{rel_path}`")
+            else:
+                lines.append(f"- `{sym.name}` ({model.label}) — `{rel_path}`")
+        else:
+            lines.append(f"- `{model.symbol_id}` ({model.label})")
+
+    if len(datamodels) > max_entries:
+        lines.append(f"- ... and {len(datamodels) - max_entries} more data models")
+
+    return "\n".join(lines)
+
+
 def _select_symbols_two_phase(
     by_file: dict[str, list[Symbol]],
     centrality: dict[str, float],
@@ -3939,7 +3988,27 @@ def generate_sketch(
             current_tokens = estimate_tokens(current_sketch)
             remaining_tokens = max_tokens - current_tokens
 
-    # Section 5: Source files (if we have budget >= 50 tokens remaining)
+    # Section 5: Data Models (if we have analysis results and budget)
+    # ADR-0005: Data Models come after Entry Points, before Source Files
+    if remaining_tokens > 50 and symbols:
+        datamodels = detect_datamodels(symbols, edges)
+        if datamodels:
+            # Data Models get 20% of remaining budget (ADR-0005)
+            budget_for_models = (remaining_tokens * 20) // 100
+            max_models = max(3, budget_for_models // 20)  # ~20 tokens per model line
+
+            dm_section = _format_datamodels(
+                datamodels, symbols, repo_root, max_entries=max_models
+            )
+            if dm_section:
+                sections.append(dm_section)
+
+            # Recalculate remaining budget
+            current_sketch = "\n\n".join(sections)
+            current_tokens = estimate_tokens(current_sketch)
+            remaining_tokens = max_tokens - current_tokens
+
+    # Section 6: Source files (if we have budget >= 50 tokens remaining)
     # Files are now ordered by symbol importance density when scores available
     if remaining_tokens > 50 and source_files:
         # ADR-0005: --with-source mode reduces file listing budget to prioritize code
@@ -3968,7 +4037,7 @@ def generate_sketch(
         current_tokens = estimate_tokens(current_sketch)
         remaining_tokens = max_tokens - current_tokens
 
-    # Section 6: Key symbols
+    # Section 7: Key symbols
     # IMPORTANT: Minimum Key Symbols guarantee
     # Always include at least MIN_KEY_SYMBOLS symbols when analysis produces results.
     # This addresses the issue where some projects (qwix, marlin, guacamole-client)
@@ -4020,7 +4089,7 @@ def generate_sketch(
 
     prog.complete_phase("symbols")
 
-    # Section 7: Additional files (if we still have budget after everything else)
+    # Section 8: Additional files (if we still have budget after everything else)
     # These are files NOT in source_files, ordered by hybrid semantic + centrality
     prog.start_phase("embedding")
     additional_files_selected: list[Path] = []  # Track for Additional File Content section
@@ -4073,7 +4142,7 @@ def generate_sketch(
     prog.complete_phase("centrality")  # Complete centrality if it ran
     prog.start_phase("format")
 
-    # Section 8: Source Content (if with_source is True and we have budget)
+    # Section 9: Source Content (if with_source is True and we have budget)
     # ADR-0005: Source Content gets 70% of remaining budget, all-or-nothing per file
     if with_source and source_files and max_tokens is not None:
         # Recalculate remaining budget
@@ -4127,7 +4196,7 @@ def generate_sketch(
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))
 
-    # Section 9: Additional File Content (if with_source and we have additional files)
+    # Section 10: Additional File Content (if with_source and we have additional files)
     # ADR-0005: Shows actual code for semantic/centrality-picked additional files
     if with_source and additional_files_selected and max_tokens is not None:
         # Recalculate remaining budget
