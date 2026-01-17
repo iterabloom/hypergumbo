@@ -177,7 +177,7 @@ jobs:
 
           # Configure git
           git config user.name "CI Bot"
-          git config user.email "ci@iterabloom.org"
+          git config user.email "ci@iterabloom.com"
 
           # Fetch badges branch or create orphan
           git fetch origin badges:badges 2>/dev/null || true
