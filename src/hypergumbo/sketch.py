@@ -2266,6 +2266,74 @@ def _format_structure(
     return "\n".join(lines)
 
 
+def _format_structure_tree_toplevel(
+    repo_root: Path,
+    excludes: list[str],
+    exclude_tests: bool = False,
+) -> str:
+    """Format top-level directory structure in tree format.
+
+    Used when there are no important files to show (e.g., all source files
+    are tests and -x was used). Shows just the top-level directories with
+    item counts, using the tree format for consistency.
+
+    Args:
+        repo_root: Path to the repository root.
+        excludes: Patterns to exclude from directory listing.
+        exclude_tests: Whether tests are being excluded.
+
+    Returns:
+        Markdown formatted tree structure.
+    """
+    from fnmatch import fnmatch
+
+    lines = [_section_header("Structure", exclude_tests), "", "```"]
+    lines.append(f"{repo_root.name}/")
+
+    # Get top-level directories, filtering out excluded ones
+    dirs = []
+    for d in repo_root.iterdir():
+        if not d.is_dir():
+            continue
+        excluded = any(fnmatch(d.name, pattern) for pattern in excludes)
+        if not excluded:
+            dirs.append(d.name)
+
+    dirs = sorted(dirs)
+    if not dirs:
+        lines.append("└── (empty)")
+        lines.append("```")
+        return "\n".join(lines)
+
+    # Count items in each directory
+    def count_items(dir_path: Path) -> int:
+        count = 0
+        try:
+            for item in dir_path.iterdir():
+                if not any(fnmatch(item.name, p) for p in excludes):
+                    count += 1
+        except PermissionError:  # pragma: no cover
+            pass
+        return count
+
+    # Show directories with counts
+    for i, d in enumerate(dirs[:10]):
+        is_last = (i == len(dirs[:10]) - 1) and len(dirs) <= 10
+        prefix = "└── " if is_last else "├── "
+        dir_path = repo_root / d
+        item_count = count_items(dir_path)
+        if item_count > 0:
+            lines.append(f"{prefix}{d}/ ({item_count} items)")
+        else:
+            lines.append(f"{prefix}{d}/")
+
+    if len(dirs) > 10:
+        lines.append(f"└── [and {len(dirs) - 10} other directories]")
+
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def _format_structure_tree(
     repo_root: Path,
     important_files: list[str],
@@ -2302,14 +2370,15 @@ def _format_structure_tree(
     """
     from fnmatch import fnmatch
 
-    if not important_files:
-        # Fall back to simple directory listing
-        return _format_structure(repo_root, extra_excludes)
-
     # Combine default and extra excludes for counting
     excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
         excludes.extend(extra_excludes)
+
+    # If no important files, show top-level directories in tree format
+    # (Don't fall back to deprecated bullet-list format)
+    if not important_files:
+        return _format_structure_tree_toplevel(repo_root, excludes, exclude_tests)
 
     # Build a tree from paths
     # Tree node: {"name": str, "children": dict, "is_file": bool, "shown": bool}
@@ -4614,6 +4683,8 @@ def generate_sketch(
 
     # Update Structure section with tree format (ADR-0005)
     # Now that we have analysis results, we can build a tree from important files
+    # Always update to tree format for consistency (even if no important files)
+    important_files: list[str] = []
     if symbols and raw_in_degree:
         important_files = _collect_important_files(
             repo_root=repo_root,
@@ -4623,16 +4694,17 @@ def generate_sketch(
             symbols=symbols,
             centrality=raw_in_degree,  # Use in-degree as centrality proxy
         )
-        if important_files:
-            updated_structure = _format_structure_tree(
-                repo_root, important_files, extra_excludes=extra_excludes,
-                exclude_tests=exclude_tests
-            )
-            # Find and replace the Structure section
-            for i, section in enumerate(sections):
-                if section.startswith("## Structure"):
-                    sections[i] = updated_structure
-                    break
+
+    # Always use tree format - _format_structure_tree handles empty important_files
+    updated_structure = _format_structure_tree(
+        repo_root, important_files, extra_excludes=extra_excludes,
+        exclude_tests=exclude_tests
+    )
+    # Find and replace the Structure section
+    for i, section in enumerate(sections):
+        if section.startswith("## Structure"):
+            sections[i] = updated_structure
+            break
 
     # Section 6: Source files (if we have budget >= 50 tokens remaining)
     # Files are now ordered by symbol importance density when scores available
@@ -4658,24 +4730,25 @@ def generate_sketch(
         )
         if source_section:
             sections.append(source_section)
-            # Track stats: compute in-degree sum for symbols in selected source files
-            if stats_out is not None and raw_in_degree:
-                # Replicate sorting logic to determine which files were selected
-                if density_scores:
-                    sorted_files = sorted(
-                        source_files,
-                        key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
-                        reverse=True,
-                    )
-                else:  # pragma: no cover - defensive, density_scores usually exists
-                    sorted_files = source_files
-                selected_files = {str(f) for f in sorted_files[:max_source_files]}
-                # Sum in-degree for symbols in selected files
-                stats_out.source_files_in_degree = sum(
-                    raw_in_degree.get(s.id, 0)
-                    for s in symbols if s.path and str(repo_root / s.path) in selected_files
-                )
+            # Track stats: mark section as present, compute in-degree if available
+            if stats_out is not None:
                 stats_out.has_source_files = True
+                if raw_in_degree:
+                    # Replicate sorting logic to determine which files were selected
+                    if density_scores:
+                        sorted_files = sorted(
+                            source_files,
+                            key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
+                            reverse=True,
+                        )
+                    else:  # pragma: no cover - defensive, density_scores usually exists
+                        sorted_files = source_files
+                    selected_files = {str(f) for f in sorted_files[:max_source_files]}
+                    # Sum in-degree for symbols in selected files
+                    stats_out.source_files_in_degree = sum(
+                        raw_in_degree.get(s.id, 0)
+                        for s in symbols if s.path and str(repo_root / s.path) in selected_files
+                    )
 
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
@@ -4731,12 +4804,13 @@ def generate_sketch(
         )
         if symbols_section:
             sections.append(symbols_section)
-            # Track stats: compute in-degree sum of selected key symbols
-            if stats_out is not None and selected_key_symbols:
-                stats_out.key_symbols_in_degree = sum(
-                    raw_in_degree.get(s.id, 0) for s in selected_key_symbols
-                )
+            # Track stats: mark section as present, compute in-degree if available
+            if stats_out is not None:
                 stats_out.has_key_symbols = True
+                if selected_key_symbols and raw_in_degree:
+                    stats_out.key_symbols_in_degree = sum(
+                        raw_in_degree.get(s.id, 0) for s in selected_key_symbols
+                    )
 
             # Recalculate remaining budget
             current_sketch = "\n\n".join(sections)
@@ -4794,14 +4868,15 @@ def generate_sketch(
         )
         if additional_files_section:
             sections.append(additional_files_section)
-            # Track stats: compute in-degree sum for symbols in selected additional files
-            if stats_out is not None and raw_in_degree and additional_files_selected:
-                selected_add_files = {str(f) for f in additional_files_selected}
-                stats_out.additional_files_in_degree = sum(
-                    raw_in_degree.get(s.id, 0)
-                    for s in symbols if s.path and str(repo_root / s.path) in selected_add_files
-                )
+            # Track stats: mark section as present, compute in-degree if available
+            if stats_out is not None:
                 stats_out.has_additional_files = True
+                if raw_in_degree and additional_files_selected:
+                    selected_add_files = {str(f) for f in additional_files_selected}
+                    stats_out.additional_files_in_degree = sum(
+                        raw_in_degree.get(s.id, 0)
+                        for s in symbols if s.path and str(repo_root / s.path) in selected_add_files
+                    )
 
     prog.complete_phase("embedding")  # In case centrality was skipped
     prog.complete_phase("centrality")  # Complete centrality if it ran
@@ -4863,14 +4938,15 @@ def generate_sketch(
 
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))
-                # Track stats: compute in-degree sum for symbols in files with content shown
-                if stats_out is not None and raw_in_degree and source_content_files_added:
-                    content_files = {str(f) for f in source_content_files_added}
-                    stats_out.source_files_content_in_degree = sum(
-                        raw_in_degree.get(s.id, 0)
-                        for s in symbols if s.path and str(repo_root / s.path) in content_files
-                    )
+                # Track stats: mark section as present, compute in-degree if available
+                if stats_out is not None:
                     stats_out.has_source_files_content = True
+                    if raw_in_degree and source_content_files_added:
+                        content_files = {str(f) for f in source_content_files_added}
+                        stats_out.source_files_content_in_degree = sum(
+                            raw_in_degree.get(s.id, 0)
+                            for s in symbols if s.path and str(repo_root / s.path) in content_files
+                        )
 
     # Section 10: Additional Files Content (if with_source and we have additional files)
     # ADR-0005: Shows actual code for semantic/centrality-picked additional files
@@ -4917,14 +4993,15 @@ def generate_sketch(
 
             if len(additional_content_lines) > 2:  # More than just header
                 sections.append("\n".join(additional_content_lines))
-                # Track stats: compute in-degree sum for symbols in files with content shown
-                if stats_out is not None and raw_in_degree and additional_content_files_added:
-                    content_files = {str(f) for f in additional_content_files_added}
-                    stats_out.additional_files_content_in_degree = sum(
-                        raw_in_degree.get(s.id, 0)
-                        for s in symbols if s.path and str(repo_root / s.path) in content_files
-                    )
+                # Track stats: mark section as present, compute in-degree if available
+                if stats_out is not None:
                     stats_out.has_additional_files_content = True
+                    if raw_in_degree and additional_content_files_added:
+                        content_files = {str(f) for f in additional_content_files_added}
+                        stats_out.additional_files_content_in_degree = sum(
+                            raw_in_degree.get(s.id, 0)
+                            for s in symbols if s.path and str(repo_root / s.path) in content_files
+                        )
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)

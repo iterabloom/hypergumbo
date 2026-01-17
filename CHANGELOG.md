@@ -36,6 +36,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Added `tests.py` and `*_spec.rb` to test detection:** The `is_test_path` function now
   recognizes Python's single-file test module (`tests.py`) and Ruby RSpec files (`*_spec.rb`)
   as test files.
+- **Structure section uses tree format with `-x` flag:** When all source files are tests and
+  `-x` excludes them, the Structure section now uses the modern tree format (with `├──` and
+  `└──` characters) instead of falling back to the deprecated bullet-list format.
+- **Representativeness table shows with `-x` flag:** The "How Representative Is This Sketch?"
+  table now appears when using `-x/--exclude-tests`, showing coverage for Additional Files
+  sections. Previously the table was hidden when all source symbols were excluded.
 
 ### Changed
 - **Section header renames for clarity:**

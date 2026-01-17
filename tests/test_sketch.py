@@ -18,6 +18,7 @@ from hypergumbo.sketch import (
     _format_symbols,
     _format_structure,
     _format_structure_tree,
+    _format_structure_tree_toplevel,
     _collect_important_files,
     _extract_python_docstrings,
     _extract_domain_vocabulary,
@@ -3061,15 +3062,17 @@ class TestFormatStructureTree:
         # Should show count of hidden root items
         assert "[and" in result and "other items]" in result
 
-    def test_falls_back_to_simple_format_when_no_files(self, tmp_path: Path) -> None:
-        """Falls back to simple directory listing when no files provided."""
+    def test_uses_tree_format_when_no_files(self, tmp_path: Path) -> None:
+        """Uses tree format even when no files provided (shows top-level dirs)."""
         (tmp_path / "src").mkdir()
         (tmp_path / "tests").mkdir()
 
         result = _format_structure_tree(tmp_path, [])
 
-        # Should use the simple format (bullet list)
-        assert "- `src/`" in result
+        # Should use tree format consistently (not deprecated bullet format)
+        assert "```" in result  # Tree format uses code block
+        assert "src/" in result
+        assert "tests/" in result
 
     def test_renders_nested_structure(self, tmp_path: Path) -> None:
         """Renders nested directory paths correctly."""
@@ -3214,6 +3217,74 @@ class TestFormatStructureTree:
         # The next line (if any, for hidden items inside api) should continue with │
         # Or the hidden items count for src should show
         assert "[and 1 other items]" in result
+
+
+class TestFormatStructureTreeToplevel:
+    """Tests for _format_structure_tree_toplevel function."""
+
+    def test_shows_tree_format(self, tmp_path: Path) -> None:
+        """Uses tree format with code block."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "tests").mkdir()
+
+        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+
+        assert "```" in result
+        assert "├──" in result or "└──" in result
+
+    def test_ignores_files_in_root(self, tmp_path: Path) -> None:
+        """Only shows directories, not files in root."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "README.md").write_text("# Hello")
+
+        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+
+        assert "src/" in result
+        assert "README.md" not in result
+
+    def test_empty_directory(self, tmp_path: Path) -> None:
+        """Shows (empty) when no directories exist."""
+        # Create only a file, no directories
+        (tmp_path / "README.md").write_text("# Hello")
+
+        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+
+        assert "(empty)" in result
+
+    def test_shows_item_counts(self, tmp_path: Path) -> None:
+        """Shows item count for directories with contents."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+        (tmp_path / "src" / "utils.py").write_text("pass")
+
+        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+
+        assert "src/" in result
+        assert "(2 items)" in result
+
+    def test_more_than_10_directories(self, tmp_path: Path) -> None:
+        """Shows overflow message for more than 10 directories."""
+        for i in range(15):
+            (tmp_path / f"dir_{i:02d}").mkdir()
+
+        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+
+        assert "[and 5 other directories]" in result
+
+    def test_respects_excludes(self, tmp_path: Path) -> None:
+        """Excludes directories matching exclude patterns."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / ".git").mkdir()
+
+        from hypergumbo.discovery import DEFAULT_EXCLUDES
+        result = _format_structure_tree_toplevel(
+            tmp_path, list(DEFAULT_EXCLUDES), exclude_tests=False
+        )
+
+        assert "src/" in result
+        assert "node_modules" not in result
+        assert ".git" not in result
 
 
 class TestCollectImportantFiles:
