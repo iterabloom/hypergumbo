@@ -28,6 +28,14 @@ from hypergumbo.sketch import (
     _estimate_test_coverage,
     SketchStats,
     display_representativeness_table,
+    _extract_markdown_links,
+    _extract_org_links,
+    _extract_rst_links,
+    _extract_asciidoc_links,
+    _resolve_readme_link,
+    _resolve_pages_url,
+    _extract_path_from_forge_url,
+    _extract_readme_internal_links,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -1792,6 +1800,602 @@ class TestFormatAdditionalFiles:
         assert len(file_lines) >= 2
         assert "`high_centrality.md`" in file_lines[0]
         assert "`low_centrality.md`" in file_lines[1]
+
+    def test_round_robin_includes_readme_linked_files(self, tmp_path: Path) -> None:
+        """Round-robin includes files linked from README."""
+        # Create README with internal links
+        readme = tmp_path / "README.md"
+        linked_doc = tmp_path / "CONTRIBUTING.md"
+        linked_doc.write_text("# Contributing Guide")
+        readme.write_text("See [Contributing](CONTRIBUTING.md) for details.")
+
+        src = tmp_path / "main.py"
+        src.write_text("def foo(): pass")
+
+        result, selected = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            semantic_top_n=0,  # Disable semantic to focus on README links
+        )
+
+        # README should be first, linked file should be included
+        assert "## Additional Files" in result
+        assert "`README.md`" in result
+        assert "`CONTRIBUTING.md`" in result
+
+    def test_round_robin_breaks_at_max_files(self, tmp_path: Path) -> None:
+        """Round-robin stops when max_files is reached."""
+        # Create many files
+        for i in range(10):
+            (tmp_path / f"doc_{i}.md").write_text(f"# Doc {i}")
+
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result, _ = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            max_files=3,
+            semantic_top_n=0,
+        )
+
+        # Should show "... and N more files"
+        assert "... and 7 more files" in result
+
+    def test_with_content_budget_exhaustion(self, tmp_path: Path) -> None:
+        """Budget exhaustion triggers truncation and breaks."""
+        # Create files of varying sizes
+        small_file = tmp_path / "small.md"
+        small_file.write_text("# Small\nShort content.")
+
+        large_file = tmp_path / "large.md"
+        large_file.write_text("# Large\n" + "word " * 5000)  # ~5000 tokens
+
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result, selected = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            semantic_top_n=0,
+            token_budget=600,  # Small budget
+            include_content=True,
+        )
+
+        # Should include content with file content blocks
+        assert "## Additional Files" in result
+        # Content mode uses START/END markers
+        assert "START of" in result or "[...truncated...]" in result
+
+    def test_with_content_first_file_exceeds_budget(self, tmp_path: Path) -> None:
+        """When first file exceeds budget, uses MIN_TRUNCATION_TOKENS."""
+        # Create a large file
+        large_file = tmp_path / "README.md"
+        large_file.write_text("# README\n" + "word " * 2000)
+
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result, selected = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            semantic_top_n=0,
+            token_budget=800,
+            include_content=True,
+        )
+
+        # Should still show content with truncation
+        assert "## Additional Files" in result
+        assert "[...truncated...]" in result
+
+    def test_with_content_budget_too_small_for_truncation(self, tmp_path: Path) -> None:
+        """Very small budget breaks before truncation."""
+        large_file = tmp_path / "large.md"
+        large_file.write_text("# Large\n" + "word " * 2000)
+
+        src = tmp_path / "main.py"
+        src.write_text("pass")
+
+        result, selected = _format_additional_files(
+            tmp_path,
+            source_files=[src],
+            symbols=[],
+            in_degree={},
+            semantic_top_n=0,
+            token_budget=100,  # Very small budget
+            include_content=True,
+        )
+
+        # With such a small budget, we may not be able to include anything
+        # but header should still be present
+        assert "## Additional Files" in result
+
+
+class TestExtractMarkdownLinks:
+    """Tests for _extract_markdown_links function."""
+
+    def test_inline_links(self) -> None:
+        """Extracts inline Markdown links."""
+        content = "Check [docs](docs/readme.md) and [guide](guide.md)"
+        result = _extract_markdown_links(content)
+        assert ("docs", "docs/readme.md") in result
+        assert ("guide", "guide.md") in result
+
+    def test_reference_style_links(self) -> None:
+        """Extracts reference-style Markdown links."""
+        content = """
+Read the [INSTALL][] for setup.
+See [CONTRIBUTING][] for guidelines.
+
+[INSTALL]: INSTALL.md
+[CONTRIBUTING]: docs/contributing.md
+"""
+        result = _extract_markdown_links(content)
+        assert ("INSTALL", "INSTALL.md") in result
+        assert ("CONTRIBUTING", "docs/contributing.md") in result
+
+    def test_reference_style_with_different_ref(self) -> None:
+        """Extracts reference-style links with different ref name."""
+        content = """
+Read the [installation guide][install] for setup.
+
+[install]: INSTALL.md
+"""
+        result = _extract_markdown_links(content)
+        assert ("installation guide", "INSTALL.md") in result
+
+    def test_skips_images(self) -> None:
+        """Skips image links (prefixed with !)."""
+        content = "![badge](image.png) and [docs](docs.md)"
+        result = _extract_markdown_links(content)
+        assert ("docs", "docs.md") in result
+        # Image should not be in results
+        assert not any(text == "badge" for text, _ in result)
+
+    def test_empty_content(self) -> None:
+        """Returns empty list for content without links."""
+        result = _extract_markdown_links("No links here")
+        assert result == []
+
+    def test_skips_reference_definition_lines(self) -> None:
+        """Skips reference definitions that look like empty-ref links."""
+        content = """
+See [docs][] for more.
+
+[docs]: https://example.com/docs
+"""
+        result = _extract_markdown_links(content)
+        # Should only extract the [docs][] reference, not the definition line
+        assert len(result) == 1
+        assert ("docs", "https://example.com/docs") in result
+
+
+class TestExtractOrgLinks:
+    """Tests for _extract_org_links function."""
+
+    def test_org_link_with_text(self) -> None:
+        """Extracts Org-mode links with description text."""
+        content = "Check the [[https://orgmode.org][Org Mode website]]"
+        result = _extract_org_links(content)
+        assert ("Org Mode website", "https://orgmode.org") in result
+
+    def test_org_link_without_text(self) -> None:
+        """Extracts Org-mode links without description."""
+        content = "See [[file:docs/guide.org]]"
+        result = _extract_org_links(content)
+        assert ("file:docs/guide.org", "file:docs/guide.org") in result
+
+    def test_multiple_org_links(self) -> None:
+        """Extracts multiple Org-mode links."""
+        content = "[[doc1.org][Doc 1]] and [[doc2.org][Doc 2]]"
+        result = _extract_org_links(content)
+        assert ("Doc 1", "doc1.org") in result
+        assert ("Doc 2", "doc2.org") in result
+
+    def test_empty_content(self) -> None:
+        """Returns empty list for content without links."""
+        result = _extract_org_links("No links here")
+        assert result == []
+
+
+class TestExtractRstLinks:
+    """Tests for _extract_rst_links function."""
+
+    def test_inline_links(self) -> None:
+        """Extracts inline RST links."""
+        content = "See `documentation <docs/index.rst>`_ for details."
+        result = _extract_rst_links(content)
+        assert ("documentation", "docs/index.rst") in result
+
+    def test_anonymous_links(self) -> None:
+        """Extracts anonymous RST links (double underscore)."""
+        content = "See `docs <documentation/>`__"
+        result = _extract_rst_links(content)
+        assert ("docs", "documentation/") in result
+
+    def test_reference_style_links(self) -> None:
+        """Extracts reference-style RST links."""
+        content = """
+Read the `installation guide`_ first.
+
+.. _installation guide: docs/install.rst
+"""
+        result = _extract_rst_links(content)
+        assert ("installation guide", "docs/install.rst") in result
+
+    def test_empty_content(self) -> None:
+        """Returns empty list for content without links."""
+        result = _extract_rst_links("No links here")
+        assert result == []
+
+
+class TestExtractAsciidocLinks:
+    """Tests for _extract_asciidoc_links function."""
+
+    def test_url_with_text(self) -> None:
+        """Extracts AsciiDoc URL with bracket text."""
+        content = "Visit https://example.com/docs[the docs] for info."
+        result = _extract_asciidoc_links(content)
+        assert ("the docs", "https://example.com/docs") in result
+
+    def test_link_macro(self) -> None:
+        """Extracts AsciiDoc link: macro."""
+        content = "See link:docs/guide.adoc[the guide]"
+        result = _extract_asciidoc_links(content)
+        assert ("the guide", "docs/guide.adoc") in result
+
+    def test_attribute_reference(self) -> None:
+        """Extracts AsciiDoc attribute reference links."""
+        content = """
+:docs-base: https://docs.example.com
+
+See {docs-base}/getting-started[Getting Started]
+"""
+        result = _extract_asciidoc_links(content)
+        assert ("Getting Started", "https://docs.example.com/getting-started") in result
+
+    def test_attribute_with_path_suffix(self) -> None:
+        """Extracts AsciiDoc attribute with path suffix."""
+        content = """
+:project-home: /docs
+
+Read {project-home}/install.adoc[Installation Guide]
+"""
+        result = _extract_asciidoc_links(content)
+        assert ("Installation Guide", "/docs/install.adoc") in result
+
+    def test_empty_content(self) -> None:
+        """Returns empty list for content without links."""
+        result = _extract_asciidoc_links("No links here")
+        assert result == []
+
+    def test_link_macro_with_attribute_substitution(self) -> None:
+        """Extracts AsciiDoc link: macro with attribute in URL."""
+        content = """
+:base-url: https://docs.example.com
+
+See link:{base-url}/guide[the guide]
+"""
+        result = _extract_asciidoc_links(content)
+        assert ("the guide", "https://docs.example.com/guide") in result
+
+
+class TestResolveReadmeLink:
+    """Tests for _resolve_readme_link function."""
+
+    def test_relative_path(self, tmp_path: Path) -> None:
+        """Resolves relative paths from README directory."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        guide = docs_dir / "guide.md"
+        guide.write_text("# Guide")
+
+        result = _resolve_readme_link("guide.md", docs_dir, tmp_path, "myrepo")
+        assert result == guide
+
+    def test_absolute_path(self, tmp_path: Path) -> None:
+        """Resolves absolute paths as repo-relative."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        guide = docs_dir / "guide.md"
+        guide.write_text("# Guide")
+
+        result = _resolve_readme_link("/docs/guide.md", tmp_path, tmp_path, "myrepo")
+        assert result == guide
+
+    def test_anchor_only_returns_none(self, tmp_path: Path) -> None:
+        """Returns None for anchor-only links."""
+        result = _resolve_readme_link("#section", tmp_path, tmp_path, "myrepo")
+        assert result is None
+
+    def test_external_url_returns_none(self, tmp_path: Path) -> None:
+        """Returns None for external URLs."""
+        result = _resolve_readme_link(
+            "https://example.com/doc", tmp_path, tmp_path, "myrepo"
+        )
+        assert result is None
+
+    def test_non_file_protocol_returns_none(self, tmp_path: Path) -> None:
+        """Returns None for non-file protocols."""
+        result = _resolve_readme_link("mailto:user@example.com", tmp_path, tmp_path, "x")
+        assert result is None
+        result = _resolve_readme_link("javascript:void(0)", tmp_path, tmp_path, "x")
+        assert result is None
+        result = _resolve_readme_link("irc://chat.freenode.net", tmp_path, tmp_path, "x")
+        assert result is None
+
+    def test_file_not_found_returns_none(self, tmp_path: Path) -> None:
+        """Returns None when linked file doesn't exist."""
+        result = _resolve_readme_link("nonexistent.md", tmp_path, tmp_path, "myrepo")
+        assert result is None
+
+    def test_outside_repo_returns_none(self, tmp_path: Path) -> None:
+        """Returns None when resolved path is outside repo."""
+        # Create a file outside repo
+        result = _resolve_readme_link("../outside.md", tmp_path, tmp_path, "myrepo")
+        assert result is None
+
+    def test_directory_with_index(self, tmp_path: Path) -> None:
+        """Resolves directory links to index file."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        readme = docs_dir / "README.md"
+        readme.write_text("# Docs")
+
+        result = _resolve_readme_link("docs", tmp_path, tmp_path, "myrepo")
+        assert result == readme
+
+    def test_relative_forge_url_pattern(self, tmp_path: Path) -> None:
+        """Handles relative forge URL patterns like /repo/tree/branch/path."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        guide = docs_dir / "guide.md"
+        guide.write_text("# Guide")
+
+        # Relative forge URL (used in GitLab/Forgejo READMEs)
+        result = _resolve_readme_link(
+            "/myrepo/tree/main/docs/guide.md", tmp_path, tmp_path, "myrepo"
+        )
+        assert result == guide
+
+    def test_gitlab_style_forge_url(self, tmp_path: Path) -> None:
+        """Handles GitLab-style /-/tree/ URLs."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        guide = docs_dir / "guide.md"
+        guide.write_text("# Guide")
+
+        result = _resolve_readme_link(
+            "/myrepo/-/tree/main/docs/guide.md", tmp_path, tmp_path, "myrepo"
+        )
+        assert result == guide
+
+    def test_strips_anchor_and_query(self, tmp_path: Path) -> None:
+        """Strips anchor and query string from links."""
+        guide = tmp_path / "guide.md"
+        guide.write_text("# Guide")
+
+        result = _resolve_readme_link("guide.md#section", tmp_path, tmp_path, "myrepo")
+        assert result == guide
+
+        result = _resolve_readme_link("guide.md?foo=bar", tmp_path, tmp_path, "myrepo")
+        assert result == guide
+
+    def test_empty_file_scheme_returns_none(self, tmp_path: Path) -> None:
+        """Returns None for empty file: scheme link."""
+        result = _resolve_readme_link("file:", tmp_path, tmp_path, "myrepo")
+        assert result is None
+
+    def test_github_pages_url(self, tmp_path: Path) -> None:
+        """Resolves GitHub Pages URL to source file."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        guide = docs / "install.md"
+        guide.write_text("# Install")
+
+        result = _resolve_readme_link(
+            "https://myrepo.github.io/install", tmp_path, tmp_path, "myrepo"
+        )
+        assert result == guide
+
+    def test_forge_url_same_repo(self, tmp_path: Path) -> None:
+        """Resolves forge URL for same repo."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        guide = docs / "guide.md"
+        guide.write_text("# Guide")
+
+        result = _resolve_readme_link(
+            "https://github.com/owner/myrepo/blob/main/docs/guide.md",
+            tmp_path,
+            tmp_path,
+            "myrepo",
+        )
+        assert result == guide
+
+    def test_forge_url_different_repo_returns_none(self, tmp_path: Path) -> None:
+        """Returns None for forge URL to different repo."""
+        result = _resolve_readme_link(
+            "https://github.com/owner/otherrepo/blob/main/file.md",
+            tmp_path,
+            tmp_path,
+            "myrepo",
+        )
+        assert result is None
+
+
+class TestResolvePagesUrl:
+    """Tests for _resolve_pages_url function."""
+
+    def test_finds_file_in_docs(self, tmp_path: Path) -> None:
+        """Finds source file in docs directory."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        guide = docs_dir / "getting-started.md"
+        guide.write_text("# Getting Started")
+
+        result = _resolve_pages_url(
+            "https://myproject.github.io/getting-started", "myproject", tmp_path
+        )
+        assert result == guide
+
+    def test_finds_file_in_website(self, tmp_path: Path) -> None:
+        """Finds source file in website directory."""
+        website = tmp_path / "website"
+        website.mkdir()
+        guide = website / "install.md"
+        guide.write_text("# Install")
+
+        result = _resolve_pages_url(
+            "https://myproject.github.io/install", "myproject", tmp_path
+        )
+        assert result == guide
+
+    def test_strips_repo_name_from_path(self, tmp_path: Path) -> None:
+        """Strips repo name prefix from path if present."""
+        guide = tmp_path / "getting-started.md"
+        guide.write_text("# Getting Started")
+
+        result = _resolve_pages_url(
+            "https://myproject.github.io/myproject/getting-started", "myproject", tmp_path
+        )
+        assert result == guide
+
+    def test_returns_none_for_nonexistent(self, tmp_path: Path) -> None:
+        """Returns None when no matching file found."""
+        result = _resolve_pages_url(
+            "https://myproject.github.io/nonexistent", "myproject", tmp_path
+        )
+        assert result is None
+
+    def test_empty_path_returns_none(self, tmp_path: Path) -> None:
+        """Returns None for root path."""
+        result = _resolve_pages_url("https://myproject.github.io/", "myproject", tmp_path)
+        assert result is None
+
+    def test_strips_docs_prefix(self, tmp_path: Path) -> None:
+        """Finds source when URL path starts with docs/."""
+        website = tmp_path / "website" / "docs"
+        website.mkdir(parents=True)
+        guide = website / "guide.md"
+        guide.write_text("# Guide")
+
+        result = _resolve_pages_url(
+            "https://myproject.github.io/docs/guide", "myproject", tmp_path
+        )
+        assert result == guide
+
+
+class TestExtractPathFromForgeUrl:
+    """Tests for _extract_path_from_forge_url function."""
+
+    def test_github_blob_url(self) -> None:
+        """Extracts path from GitHub blob URL."""
+        url = "https://github.com/owner/myrepo/blob/main/docs/guide.md"
+        result = _extract_path_from_forge_url(url, "myrepo")
+        assert result == "docs/guide.md"
+
+    def test_github_tree_url(self) -> None:
+        """Extracts path from GitHub tree URL."""
+        url = "https://github.com/owner/myrepo/tree/main/docs"
+        result = _extract_path_from_forge_url(url, "myrepo")
+        assert result == "docs"
+
+    def test_gitlab_style_url(self) -> None:
+        """Extracts path from GitLab-style /-/ URL."""
+        url = "https://gitlab.com/owner/myrepo/-/blob/main/docs/guide.md"
+        result = _extract_path_from_forge_url(url, "myrepo")
+        assert result == "docs/guide.md"
+
+    def test_raw_githubusercontent_url(self) -> None:
+        """Extracts path from raw.githubusercontent.com URL."""
+        url = "https://raw.githubusercontent.com/owner/myrepo/main/docs/guide.md"
+        result = _extract_path_from_forge_url(url, "myrepo")
+        assert result == "docs/guide.md"
+
+    def test_different_repo_returns_none(self) -> None:
+        """Returns None for URLs pointing to different repo."""
+        url = "https://github.com/owner/otherrepo/blob/main/docs/guide.md"
+        result = _extract_path_from_forge_url(url, "myrepo")
+        assert result is None
+
+    def test_short_url_returns_none(self) -> None:
+        """Returns None for URLs with insufficient path parts."""
+        url = "https://github.com/owner"
+        result = _extract_path_from_forge_url(url, "myrepo")
+        assert result is None
+
+
+class TestExtractReadmeInternalLinks:
+    """Tests for _extract_readme_internal_links function."""
+
+    def test_extracts_markdown_links(self, tmp_path: Path) -> None:
+        """Extracts and resolves links from Markdown README."""
+        readme = tmp_path / "README.md"
+        guide = tmp_path / "INSTALL.md"
+        guide.write_text("# Installation")
+        readme.write_text("See [Installation](INSTALL.md) for setup.")
+
+        result = _extract_readme_internal_links(readme, tmp_path)
+        assert guide in result
+
+    def test_extracts_org_links(self, tmp_path: Path) -> None:
+        """Extracts and resolves links from Org-mode README."""
+        readme = tmp_path / "README.org"
+        contrib = tmp_path / "CONTRIBUTING.org"
+        contrib.write_text("* Contributing")
+        readme.write_text("Read [[file:CONTRIBUTING.org][Contributing Guide]]")
+
+        result = _extract_readme_internal_links(readme, tmp_path)
+        assert contrib in result
+
+    def test_extracts_rst_links(self, tmp_path: Path) -> None:
+        """Extracts and resolves links from RST README."""
+        readme = tmp_path / "README.rst"
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        guide = docs / "guide.rst"
+        guide.write_text("Guide\n=====")
+        readme.write_text("See `guide <docs/guide.rst>`_ for details.")
+
+        result = _extract_readme_internal_links(readme, tmp_path)
+        assert guide in result
+
+    def test_extracts_asciidoc_links(self, tmp_path: Path) -> None:
+        """Extracts and resolves links from AsciiDoc README."""
+        readme = tmp_path / "README.adoc"
+        guide = tmp_path / "INSTALL.adoc"
+        guide.write_text("= Installation")
+        readme.write_text("See link:INSTALL.adoc[Installation Guide]")
+
+        result = _extract_readme_internal_links(readme, tmp_path)
+        assert guide in result
+
+    def test_filters_duplicates(self, tmp_path: Path) -> None:
+        """Returns unique list of resolved paths."""
+        readme = tmp_path / "README.md"
+        guide = tmp_path / "guide.md"
+        guide.write_text("# Guide")
+        readme.write_text("[Guide](guide.md) and [again](guide.md)")
+
+        result = _extract_readme_internal_links(readme, tmp_path)
+        assert result.count(guide) == 1
+
+    def test_filters_unresolvable_links(self, tmp_path: Path) -> None:
+        """Filters out links that cannot be resolved."""
+        readme = tmp_path / "README.md"
+        readme.write_text("[Broken](nonexistent.md) and [External](https://example.com)")
+
+        result = _extract_readme_internal_links(readme, tmp_path)
+        assert result == []
 
 
 class TestRunAnalysis:

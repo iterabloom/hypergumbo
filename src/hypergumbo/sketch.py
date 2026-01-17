@@ -2700,7 +2700,8 @@ def _find_readme_path(repo_root: Path) -> Optional[Path]:
         Path to the README file, or None if not found.
     """
     # Priority order for extensions
-    extension_priority = [".md", ".rst", ".txt", ".markdown", ""]
+    # Supports: Markdown, RST, Org-mode, AsciiDoc, plain text, no extension
+    extension_priority = [".md", ".rst", ".org", ".adoc", ".asc", ".txt", ".markdown", ""]
 
     # Collect all files that start with "readme" (case-insensitive)
     try:
@@ -2901,6 +2902,452 @@ def _extract_readme_description(
         return _truncate_description(description, max_chars)
 
     return None
+
+
+# ============ README Link Extraction ============
+# These functions extract internal links from README files in various formats.
+# Used for README-first ordering in Additional Files section.
+
+
+def _extract_markdown_links(content: str) -> list[tuple[str, str]]:
+    """Extract all markdown links from content, in document order.
+
+    Handles:
+    - Inline links: [text](url)
+    - Reference links: [text][ref] or [text][] with [ref]: url definitions
+
+    Args:
+        content: Markdown file content.
+
+    Returns:
+        List of (link_text, url) tuples in document order.
+    """
+    import re
+
+    results = []
+
+    # First, build a map of reference definitions: [ref]: url
+    ref_pattern = r"^\s*\[([^\]]+)\]:\s*(\S+)"
+    ref_map = {}
+    for match in re.finditer(ref_pattern, content, re.MULTILINE):
+        ref_name = match.group(1).lower()
+        ref_url = match.group(2)
+        ref_map[ref_name] = ref_url
+
+    # Extract inline links: [text](url) - but not images ![...](...)
+    inline_pattern = r"(?<!\!)\[([^\]]*)\]\(([^)]+)\)"
+    for match in re.finditer(inline_pattern, content):
+        results.append((match.group(1), match.group(2)))
+
+    # Extract reference-style links: [text][ref] or [text][]
+    ref_link_pattern = r"(?<!\!)\[([^\]]+)\](?:\[([^\]]*)\])?(?!\()"
+    for match in re.finditer(ref_link_pattern, content):
+        text = match.group(1)
+        ref = match.group(2)
+
+        # Skip if this is a reference definition (has : immediately after)
+        # Check if the next character after match is ':'
+        if match.end() < len(content) and content[match.end()] == ":":
+            continue
+
+        # Determine which reference to look up
+        if ref is None or ref == "":
+            lookup = text.lower()
+        else:
+            lookup = ref.lower()
+
+        if lookup in ref_map:
+            results.append((text, ref_map[lookup]))
+
+    return results
+
+
+def _extract_org_links(content: str) -> list[tuple[str, str]]:
+    """Extract all Org-mode links from content, in document order.
+
+    Handles:
+    - [[url][text]] - link with description
+    - [[url]] - link without description
+
+    Args:
+        content: Org-mode file content.
+
+    Returns:
+        List of (link_text, url) tuples in document order.
+    """
+    import re
+
+    results = []
+    org_pattern = r"\[\[([^\]]+)\](?:\[([^\]]*)\])?\]"
+    for match in re.finditer(org_pattern, content):
+        url = match.group(1)
+        text = match.group(2) or url
+        results.append((text, url))
+
+    return results
+
+
+def _extract_rst_links(content: str) -> list[tuple[str, str]]:
+    """Extract all reStructuredText links from content, in document order.
+
+    Handles:
+    - `text <url>`_ or `text <url>`__ (inline links)
+    - `text`_ with .. _text: url defined elsewhere (reference links)
+
+    Args:
+        content: RST file content.
+
+    Returns:
+        List of (link_text, url) tuples in document order.
+    """
+    import re
+
+    results = []
+
+    # Build map of reference definitions: .. _name: url
+    ref_pattern = r"^\.\.\s+_([^:]+):\s*(\S+)"
+    ref_map = {}
+    for match in re.finditer(ref_pattern, content, re.MULTILINE):
+        ref_name = match.group(1).lower().strip()
+        ref_url = match.group(2)
+        ref_map[ref_name] = ref_url
+
+    # Inline links: `text <url>`_ or `text <url>`__
+    inline_pattern = r"`([^<`]+)\s+<([^>]+)>`_{1,2}"
+    for match in re.finditer(inline_pattern, content):
+        text = match.group(1).strip()
+        url = match.group(2)
+        results.append((text, url))
+
+    # Reference links: `text`_ (look up in ref_map)
+    ref_link_pattern = r"`([^`]+)`_(?!_)"
+    for match in re.finditer(ref_link_pattern, content):
+        text = match.group(1).strip()
+        lookup = text.lower()
+        if lookup in ref_map:
+            results.append((text, ref_map[lookup]))
+
+    return results
+
+
+def _extract_asciidoc_links(content: str) -> list[tuple[str, str]]:
+    """Extract all AsciiDoc links from content, in document order.
+
+    Handles:
+    - https://url[text] or http://url[text] - URL with bracket text
+    - link:url[text] - explicit link macro
+    - {attr}[text] with :attr: url - attribute reference links
+
+    Args:
+        content: AsciiDoc file content.
+
+    Returns:
+        List of (link_text, url) tuples in document order.
+    """
+    import re
+
+    results = []
+
+    # Build attribute map for {attribute} references
+    attr_pattern = r"^:([^:]+):\s*(.+)$"
+    attr_map = {}
+    for match in re.finditer(attr_pattern, content, re.MULTILINE):
+        attr_name = match.group(1).strip()
+        attr_value = match.group(2).strip()
+        attr_map[attr_name] = attr_value
+
+    # URL with bracket text: https://url[text] or http://url[text]
+    url_pattern = r"(https?://[^\s\[]+)\[([^\]]*)\]"
+    for match in re.finditer(url_pattern, content):
+        url = match.group(1)
+        text = match.group(2) or url
+        results.append((text, url))
+
+    # link: macro: link:url[text]
+    link_macro_pattern = r"link:([^\s\[]+)\[([^\]]*)\]"
+    for match in re.finditer(link_macro_pattern, content):
+        url = match.group(1)
+        text = match.group(2) or url
+        # Expand attribute references in URL
+        for attr, val in attr_map.items():
+            url = url.replace("{" + attr + "}", val)
+        results.append((text, url))
+
+    # Attribute reference links: {attr}[text] or {attr}/path[text]
+    attr_link_pattern = r"\{([^}]+)\}(/[^\s\[]+)?\[([^\]]*)\]"
+    for match in re.finditer(attr_link_pattern, content):
+        attr = match.group(1)
+        path_suffix = match.group(2) or ""
+        text = match.group(3)
+        if attr in attr_map:
+            url = attr_map[attr] + path_suffix
+            results.append((text, url))
+
+    return results
+
+
+def _resolve_readme_link(
+    link: str,
+    readme_dir: Path,
+    repo_root: Path,
+    repo_name: str,
+) -> Optional[Path]:
+    """Resolve a link from README to a file path within the repo.
+
+    Handles:
+    - Relative paths
+    - Absolute paths (treated as repo-relative)
+    - Forge URLs (github.com/org/repo/blob/...)
+    - GitHub/GitLab Pages URLs
+
+    Args:
+        link: The URL or path from the README.
+        readme_dir: Directory containing the README.
+        repo_root: Repository root path.
+        repo_name: Repository name (for forge URL matching).
+
+    Returns:
+        Resolved Path if the file exists within repo, None otherwise.
+    """
+    from urllib.parse import urlparse, unquote
+
+    # Skip anchor-only links
+    if link.startswith("#"):
+        return None
+
+    # Skip non-file protocols
+    if link.startswith(("mailto:", "javascript:", "tel:", "data:", "ftp:", "irc:")):
+        return None
+
+    # Handle Org-mode file: scheme (strip prefix and treat as relative path)
+    if link.startswith("file:"):
+        link = link[5:]  # Remove "file:" prefix
+        if not link:
+            return None
+
+    # Handle URLs
+    if link.startswith(("http://", "https://", "//")):
+        parsed = urlparse(link)
+
+        # Check for forge domains
+        forge_domains = [
+            "github.com",
+            "gitlab.com",
+            "codeberg.org",
+            "bitbucket.org",
+            "raw.githubusercontent.com",
+            "raw.github.com",
+        ]
+        is_forge = parsed.netloc.lower() in forge_domains
+        is_ghpages = parsed.netloc.lower().endswith(".github.io")
+        is_glpages = parsed.netloc.lower().endswith(".gitlab.io")
+
+        if not is_forge and not is_ghpages and not is_glpages:
+            return None  # External domain
+
+        # Try GitHub/GitLab Pages URL mapping
+        if is_ghpages or is_glpages:
+            target = _resolve_pages_url(link, repo_name, repo_root)
+            if target is not None:
+                return target
+
+        # Try forge URL extraction
+        path_str = _extract_path_from_forge_url(link, repo_name)
+        if path_str is None:
+            return None
+        target = repo_root / unquote(path_str)
+    else:
+        # Relative or absolute path
+        link_path = link.split("#")[0]  # Remove anchor
+        link_path = link_path.split("?")[0]  # Remove query string
+        if not link_path:  # pragma: no cover - defensive for ?query-only links
+            return None
+
+        # Handle absolute paths (starting with /) as repo-relative
+        if link_path.startswith("/"):
+            stripped = link_path.lstrip("/")
+            parts = stripped.split("/")
+
+            # Check for relative forge URL pattern: /repo/tree/branch/path
+            if len(parts) >= 4 and parts[1] in ("tree", "blob", "raw"):
+                # Skip repo, tree/blob/raw, and branch name
+                file_path = "/".join(parts[3:])
+                target = repo_root / unquote(file_path)
+            elif len(parts) >= 5 and parts[1] == "-" and parts[2] in (
+                "tree",
+                "blob",
+                "raw",
+            ):
+                # GitLab-style: /repo/-/tree/branch/path
+                file_path = "/".join(parts[4:])
+                target = repo_root / unquote(file_path)
+            else:
+                target = repo_root / unquote(stripped)
+        else:
+            target = (readme_dir / unquote(link_path)).resolve()
+
+    # Verify file exists and is within repo
+    try:
+        target = target.resolve()
+        target.relative_to(repo_root)
+        if target.is_file():
+            return target
+        elif target.is_dir():
+            # Check for index file in directory
+            for index_name in ["README.md", "index.md", "README.rst", "index.html"]:
+                index_path = target / index_name
+                if index_path.is_file():
+                    return index_path
+    except (ValueError, OSError):
+        pass
+
+    return None
+
+
+def _resolve_pages_url(url: str, repo_name: str, repo_root: Path) -> Optional[Path]:
+    """Try to find a repo file that corresponds to a GitHub/GitLab Pages URL.
+
+    Args:
+        url: The Pages URL.
+        repo_name: Repository name.
+        repo_root: Repository root path.
+
+    Returns:
+        Path to source file if found, None otherwise.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    path_parts = parsed.path.strip("/").split("/")
+
+    if not path_parts or path_parts == [""]:
+        return None
+
+    # First part might be the repo name, skip it if so
+    if path_parts[0].lower() == repo_name.lower():
+        path_parts = path_parts[1:]
+
+    if not path_parts or path_parts == [""]:  # pragma: no cover - defensive
+        return None
+
+    url_path = "/".join(path_parts)
+
+    # Common source locations to try
+    search_paths = [
+        f"{url_path}.md",
+        url_path,
+        f"website/{url_path}.md",
+        f"website/{url_path}/index.md",
+        f"docs/{url_path}.md",
+        f"docs/{url_path}/index.md",
+        f"doc/{url_path}.md",
+        f"site/{url_path}.md",
+        f"documentation/{url_path}.md",
+    ]
+
+    # If URL path starts with 'docs/', also try without that prefix
+    if url_path.startswith("docs/"):
+        subpath = url_path[5:]
+        search_paths.extend(
+            [
+                f"website/docs/{subpath}.md",
+                f"website/docs/{subpath}/index.md",
+                f"{subpath}.md",
+            ]
+        )
+
+    for search_path in search_paths:
+        candidate = repo_root / search_path
+        if candidate.is_file():
+            return candidate
+
+    return None
+
+
+def _extract_path_from_forge_url(url: str, repo_name: str) -> Optional[str]:
+    """Extract file path from a forge URL if it points to the same repo.
+
+    Args:
+        url: The forge URL.
+        repo_name: Repository name to match.
+
+    Returns:
+        File path string if extracted, None otherwise.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    path_parts = parsed.path.strip("/").split("/")
+
+    if len(path_parts) < 3:
+        return None
+
+    # Check if this URL is for our repo (case-insensitive)
+    url_repo = path_parts[1].lower()
+    if url_repo != repo_name.lower():
+        return None
+
+    # GitHub/GitLab: /org/repo/blob/branch/path or /org/repo/tree/branch/path
+    if len(path_parts) >= 4 and path_parts[2] in ("blob", "tree", "raw", "-"):
+        if path_parts[2] == "-":
+            # GitLab uses /-/blob/branch/path
+            if len(path_parts) >= 5 and path_parts[3] in ("blob", "tree", "raw"):
+                return "/".join(path_parts[5:]) if len(path_parts) > 5 else None
+        return "/".join(path_parts[4:]) if len(path_parts) > 4 else None
+
+    # raw.githubusercontent.com: /org/repo/branch/path
+    if "raw.githubusercontent.com" in parsed.netloc:
+        if len(path_parts) >= 4:
+            return "/".join(path_parts[3:])
+
+    return None  # pragma: no cover - fallback for unrecognized forge URL patterns
+
+
+def _extract_readme_internal_links(
+    readme_path: Path, repo_root: Path
+) -> list[Path]:
+    """Extract all internal file links from README, in document order.
+
+    Uses format-specific parsers based on README extension.
+
+    Args:
+        readme_path: Path to the README file.
+        repo_root: Repository root path.
+
+    Returns:
+        List of resolved Paths to files that exist in the repo.
+    """
+    try:
+        content = readme_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover
+        return []
+
+    # Choose extractor based on file type
+    ext = readme_path.suffix.lower()
+    if ext == ".org":
+        links = _extract_org_links(content)
+    elif ext == ".rst":
+        links = _extract_rst_links(content)
+    elif ext in (".adoc", ".asc", ".asciidoc"):
+        links = _extract_asciidoc_links(content)
+    else:
+        # .md, .txt, .markdown, or no extension
+        links = _extract_markdown_links(content)
+
+    # Resolve links to file paths
+    readme_dir = readme_path.parent
+    repo_name = repo_root.name
+
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+
+    for _, url in links:
+        target = _resolve_readme_link(url, readme_dir, repo_root, repo_name)
+        if target is not None and target not in seen:
+            seen.add(target)
+            resolved.append(target)
+
+    return resolved
 
 
 def _extract_python_docstrings(
@@ -3238,14 +3685,18 @@ def _format_additional_files(
     centrality_progress_callback: "callable | None" = None,
     cached_centrality_scores: dict[str, float] | None = None,
     exclude_tests: bool = False,
+    token_budget: int | None = None,
+    include_content: bool = False,
 ) -> tuple[str, list[Path]]:
     """Format additional files (non-source) as a Markdown section.
 
-    Uses a hybrid ordering approach:
-    1. Top N files are selected by semantic similarity to 5W1H probes
-       (surfaces docs, READMEs, and descriptive content)
-    2. Remaining files are ordered by symbol mention centrality
-       (surfaces files that reference important code)
+    Uses a README-first hybrid ordering approach:
+    1. README is always first (truncated if it exceeds budget)
+    2. Files linked from README in document order
+    3. Round-robin from similarity-ranked and centrality-ranked files
+
+    When include_content=True, uses dynamic truncation based on median token
+    count of already-selected files.
 
     Args:
         repo_root: Repository root path.
@@ -3261,13 +3712,16 @@ def _format_additional_files(
         cached_centrality_scores: Optional pre-computed centrality scores from
             run_behavior_map(). Maps relative path strings to scores. When
             provided, skips the expensive centrality computation in Phase 2.
+        exclude_tests: Whether tests are excluded (for section header).
+        token_budget: Optional token budget for content. Required if include_content=True.
+        include_content: If True, include file contents with dynamic truncation.
 
     Returns:
         Tuple of (Markdown formatted section, list of selected file paths).
         The list allows the caller to include file content for --with-source mode.
     """
-    # Import embedding functions lazily to avoid circular imports
     from fnmatch import fnmatch
+    from statistics import median
 
     from .sketch_embeddings import (
         batch_embed_files,
@@ -3280,36 +3734,31 @@ def _format_additional_files(
     all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
 
     def _is_excluded(filepath: Path) -> bool:
-        """Check if file should be excluded from Additional Files.
-
-        Uses two-layer filtering (ADR-0004 Phase 4):
-        1. Role-based: Only CONFIG or DOCUMENTATION files are candidates
-        2. Pattern-based: Exclude low-value boilerplate patterns
-        """
+        """Check if file should be excluded from Additional Files."""
         rel_path = filepath.relative_to(repo_root)
         filename = filepath.name
 
-        # Exclude hidden files/directories
         if any(p.startswith(".") for p in rel_path.parts):
             return True
 
-        # ADR-0004 Phase 4: Role-based filtering
-        # Only CONFIG or DOCUMENTATION files are candidates for Additional Files.
-        # This excludes binary files, data files, and unknown file types.
         if not is_additional_file_candidate(filepath):
             return True
 
-        # Pattern-based filtering for low-value boilerplate
         for pattern in all_excludes:
-            # Check filename match (e.g., "LICENSE", "*.min.js")
             if fnmatch(filename, pattern):
                 return True
-            # Check path parts match (e.g., "node_modules", ".vscode")
             for part in rel_path.parts:
                 if fnmatch(part, pattern):
                     return True
 
         return False
+
+    def _is_additional_candidate(filepath: Path) -> bool:
+        """Check if file is a valid additional file candidate."""
+        if _is_excluded(filepath):
+            return False  # pragma: no cover - README links to excluded file
+        rel_str = str(filepath.relative_to(repo_root))
+        return rel_str not in source_set
 
     # Collect all non-excluded files
     all_files: list[Path] = []
@@ -3325,55 +3774,55 @@ def _format_additional_files(
 
     # Exclude source files from candidates
     candidate_files = [
-        f for f in all_files
-        if str(f.relative_to(repo_root)) not in source_set
+        f for f in all_files if str(f.relative_to(repo_root)) not in source_set
     ]
 
     if not candidate_files:
-        return "", []  # pragma: no cover - defensive, all candidates were source files
+        return "", []  # pragma: no cover - defensive
 
-    # Phase 1: Semantic ranking for top N (if embeddings available)
-    semantic_files: list[Path] = []
-    remaining_files = candidate_files
+    # ========== README-First Hybrid Ordering ==========
 
+    # Find README
+    readme_path = _find_readme_path(repo_root)
+    readme_links: list[Path] = []
+
+    if readme_path is not None:
+        # Extract internal links from README
+        all_readme_links = _extract_readme_internal_links(readme_path, repo_root)
+        # Filter to only additional file candidates
+        readme_links = [f for f in all_readme_links if _is_additional_candidate(f)]
+
+    # Build similarity rankings (only if semantic_top_n > 0)
+    similarity_ranked: list[Path] = []
     if semantic_top_n > 0 and _has_sentence_transformers():
         cache_dir = _get_cache_dir(repo_root)
-
-        # Batch embed all candidates (~5-10x faster than one-by-one)
         embeddings = batch_embed_files(
             candidate_files,
             cache_dir=cache_dir,
             progress_callback=progress_callback,
         )
 
-        # Score by 5W1H similarity
         file_scores: list[tuple[Path, float]] = []
         for f in candidate_files:
             embedding = embeddings.get(f)
             if embedding is not None:
                 score = compute_5w1h_similarity(embedding)
                 file_scores.append((f, score))
-            else:  # pragma: no cover - defensive: empty/unreadable files
+            else:  # pragma: no cover
                 file_scores.append((f, 0.0))
 
-        # Sort by score descending and take top N
         file_scores.sort(key=lambda x: x[1], reverse=True)
-        semantic_files = [f for f, _ in file_scores[:semantic_top_n]]
-        remaining_files = [f for f, _ in file_scores[semantic_top_n:]]
+        similarity_ranked = [f for f, _ in file_scores]
 
-    # Phase 2: Symbol mention centrality for remaining files
-    # Use cached scores when available (from run_behavior_map precomputation),
-    # otherwise compute using ripgrep (fast) or Python regex (fallback)
+    # Build centrality rankings
     if cached_centrality_scores is not None:
-        # Use cached scores - map relative path strings to Path objects
         centrality_scores: dict[Path, float] = {}
-        for f in remaining_files:
+        for f in candidate_files:
             rel_str = str(f.relative_to(repo_root))
             centrality_scores[f] = cached_centrality_scores.get(rel_str, 0.0)
     else:
-        # Compute fresh - uses ripgrep when available for ~10x speedup
         centrality_scores = compute_symbol_mention_centrality_batch(
-            files=remaining_files,
+            files=candidate_files,
             symbols=symbols,
             in_degree=in_degree,
             min_in_degree=2,
@@ -3381,28 +3830,160 @@ def _format_additional_files(
             progress_callback=centrality_progress_callback,
         )
 
-    # Sort remaining by mention centrality descending
-    centrality_files = sorted(
-        remaining_files,
+    centrality_ranked = sorted(
+        candidate_files,
         key=lambda f: centrality_scores.get(f, 0.0),
         reverse=True,
     )
 
-    # Combine: semantic top N first, then centrality-ordered
-    ordered_files = semantic_files + centrality_files
+    # ========== Round-Robin Selection ==========
 
-    # Format output
+    selected_files: list[Path] = []
+    selected_set: set[Path] = set()
+
+    # Iterators for round-robin sources
+    readme_iter = iter(readme_links)
+    similarity_iter = iter(similarity_ranked)
+    centrality_iter = iter(centrality_ranked)
+
+    def next_from_iter(it: "iter") -> Optional[Path]:
+        """Get next unselected file from iterator."""
+        while True:
+            try:
+                f = next(it)
+                if f not in selected_set:
+                    return f
+            except StopIteration:
+                return None
+
+    # Add README first if it's a valid additional file candidate
+    if readme_path is not None and _is_additional_candidate(readme_path):
+        selected_files.append(readme_path)
+        selected_set.add(readme_path)
+
+    # Round-robin: readme_link, similarity, centrality, readme_link, ...
+    sources_exhausted = [False, False, False]  # readme_links, similarity, centrality
+
+    while len(selected_files) < max_files and not all(sources_exhausted):
+        # README link
+        if not sources_exhausted[0]:
+            f = next_from_iter(readme_iter)
+            if f is not None:
+                selected_files.append(f)
+                selected_set.add(f)
+            else:
+                sources_exhausted[0] = True
+
+        if len(selected_files) >= max_files:  # pragma: no cover - defensive
+            break
+
+        # Similarity
+        if not sources_exhausted[1]:
+            f = next_from_iter(similarity_iter)
+            if f is not None:
+                selected_files.append(f)
+                selected_set.add(f)
+            else:
+                sources_exhausted[1] = True
+
+        if len(selected_files) >= max_files:  # pragma: no cover - defensive
+            break
+
+        # Centrality
+        if not sources_exhausted[2]:
+            f = next_from_iter(centrality_iter)
+            if f is not None:
+                selected_files.append(f)
+                selected_set.add(f)
+            else:
+                sources_exhausted[2] = True
+
+    # ========== Format Output ==========
+
+    if not include_content or token_budget is None:
+        # Simple list format (backward compatible)
+        lines = [_section_header("Additional Files", exclude_tests), ""]
+        for f in selected_files:
+            rel_path = f.relative_to(repo_root)
+            lines.append(f"- `{rel_path}`")
+
+        remaining = len(candidate_files) - len(selected_files)
+        if remaining > 0:
+            lines.append(f"- ... and {remaining} more files")
+
+        return "\n".join(lines), selected_files
+
+    # ========== Content Mode with Dynamic Truncation ==========
+
     lines = [_section_header("Additional Files", exclude_tests), ""]
+    included_files: list[Path] = []
+    token_counts: list[int] = []
+    tokens_used = estimate_tokens("\n".join(lines))
+    remaining_budget = token_budget - tokens_used
 
-    selected_files = ordered_files[:max_files]
-    for f in selected_files:
-        rel_path = f.relative_to(repo_root)
-        lines.append(f"- `{rel_path}`")
+    # Minimum tokens for truncation floor
+    MIN_TRUNCATION_TOKENS = 500
 
-    if len(ordered_files) > max_files:
-        lines.append(f"- ... and {len(ordered_files) - max_files} more files")
+    for file_path in selected_files:
+        if remaining_budget <= 50:  # pragma: no cover - budget exhausted
+            break
 
-    return "\n".join(lines), selected_files
+        try:
+            content = file_path.read_text(errors="replace")
+            if not content.strip():  # pragma: no cover
+                continue
+
+            rel_path = file_path.relative_to(repo_root)
+            file_tokens = _estimate_file_block_tokens(str(rel_path), content)
+
+            # Check if file fits in remaining budget
+            if file_tokens <= remaining_budget:
+                # File fits completely
+                lines.extend(_format_file_content_block(str(rel_path), content))
+                included_files.append(file_path)
+                token_counts.append(file_tokens)
+                tokens_used += file_tokens
+                remaining_budget -= file_tokens
+            else:
+                # File needs truncation
+                # Calculate median of already-selected files (or use floor)
+                if token_counts:
+                    median_tokens = max(int(median(token_counts)), MIN_TRUNCATION_TOKENS)
+                else:
+                    median_tokens = MIN_TRUNCATION_TOKENS
+
+                # Determine truncation target
+                truncation_target = min(median_tokens, remaining_budget - 50)
+
+                if truncation_target < MIN_TRUNCATION_TOKENS:
+                    # Not enough budget for meaningful truncation, we're done
+                    break
+
+                # Truncate content to target tokens
+                truncated_content = truncate_to_tokens(content, truncation_target)
+                if truncated_content != content:
+                    truncated_content += "\n\n[...truncated...]"
+
+                truncated_tokens = _estimate_file_block_tokens(
+                    str(rel_path), truncated_content
+                )
+
+                if truncated_tokens <= remaining_budget:
+                    lines.extend(
+                        _format_file_content_block(str(rel_path), truncated_content)
+                    )
+                    included_files.append(file_path)
+                    token_counts.append(truncated_tokens)
+                    tokens_used += truncated_tokens
+                    remaining_budget -= truncated_tokens
+                else:
+                    # Even truncated content doesn't fit, we're done
+                    break  # pragma: no cover - truncated still exceeds budget
+
+        except (OSError, IOError):  # pragma: no cover
+            continue
+
+    return "\n".join(lines), included_files
 
 
 # Test file patterns by language/framework
@@ -5190,58 +5771,62 @@ def generate_sketch(
                         )
 
     # Section 10: Additional Files Content (if with_source and we have additional files)
-    # ADR-0005: Shows actual code for semantic/centrality-picked additional files
-    if with_source and additional_files_selected and max_tokens is not None:
+    # Uses README-first hybrid ordering with round-robin selection from
+    # README links, similarity-ranked, and centrality-ranked files.
+    # Dynamic truncation based on median token count of already-selected files.
+    if with_source and max_tokens is not None:
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
         current_tokens = estimate_tokens(current_sketch)
         remaining_tokens = max_tokens - current_tokens
 
-        if remaining_tokens > 50:  # Need some space for content
-            additional_content_lines = [_section_header("Additional Files Content", exclude_tests), ""]
+        if remaining_tokens > 100:  # Need meaningful space for content
+            # Use cached centrality scores if available
+            cached_centrality = None
+            if (
+                cached_results is not None
+                and "sketch_precomputed" in cached_results
+                and cached_results["sketch_precomputed"].get("centrality_scores")
+                is not None
+            ):
+                cached_centrality = cached_results["sketch_precomputed"].get(
+                    "centrality_scores"
+                )
 
-            additional_tokens_used = 0
-            # ADR-0005: allocate 100% of remaining minus 50 for reserve
-            additional_budget = remaining_tokens - 50
+            # Use the new README-first hybrid approach with content
+            additional_content_section, additional_content_files_added = (
+                _format_additional_files(
+                    repo_root,
+                    source_files=source_files,
+                    symbols=symbols,
+                    in_degree=raw_in_degree,
+                    max_files=max_additional_files,
+                    semantic_top_n=10,
+                    cached_centrality_scores=cached_centrality,
+                    exclude_tests=exclude_tests,
+                    token_budget=remaining_tokens - 50,  # Reserve 50 tokens
+                    include_content=True,
+                )
+            )
 
-            # Track files with content shown for stats
-            additional_content_files_added: list[Path] = []
+            if additional_content_section:
+                # Replace the header to be "Additional Files Content"
+                header_to_replace = _section_header("Additional Files", exclude_tests)
+                new_header = _section_header("Additional Files Content", exclude_tests)
+                additional_content_section = additional_content_section.replace(
+                    header_to_replace, new_header, 1
+                )
+                sections.append(additional_content_section)
 
-            for add_file in additional_files_selected:
-                try:
-                    content = add_file.read_text(errors="replace")
-
-                    # Skip empty files
-                    if not content.strip():  # pragma: no cover - defensive
-                        continue
-
-                    rel_path = add_file.relative_to(repo_root)
-                    # Estimate full block size including markers, not just content
-                    file_tokens = _estimate_file_block_tokens(str(rel_path), content)
-
-                    # ADR-0005: All-or-nothing per file - skip if file doesn't fit
-                    if additional_tokens_used + file_tokens > additional_budget:
-                        continue
-
-                    additional_content_lines.extend(
-                        _format_file_content_block(str(rel_path), content)
-                    )
-                    additional_content_files_added.append(add_file)
-
-                    additional_tokens_used += file_tokens
-                except (OSError, IOError):  # pragma: no cover - rare I/O errors
-                    continue
-
-            if len(additional_content_lines) > 2:  # More than just header
-                sections.append("\n".join(additional_content_lines))
-                # Track stats: mark section as present, compute in-degree if available
+                # Track stats
                 if stats_out is not None:
                     stats_out.has_additional_files_content = True
                     if raw_in_degree and additional_content_files_added:
                         content_files = {str(f) for f in additional_content_files_added}
                         stats_out.additional_files_content_in_degree = sum(
                             raw_in_degree.get(s.id, 0)
-                            for s in symbols if s.path and str(repo_root / s.path) in content_files
+                            for s in symbols
+                            if s.path and str(repo_root / s.path) in content_files
                         )
 
     # Combine all sections
