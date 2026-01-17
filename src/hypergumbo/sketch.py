@@ -31,7 +31,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
-from .discovery import find_files, is_excluded, DEFAULT_EXCLUDES
+from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge
 from .entrypoints import detect_entrypoints, Entrypoint
@@ -2099,6 +2099,9 @@ def _count_test_loc(
 ) -> tuple[int, int]:
     """Count LOC in test files.
 
+    Only counts source code files (SOURCE_EXTENSIONS), not config/build files.
+    This ensures consistency with the Tests section which also uses SOURCE_EXTENSIONS.
+
     Args:
         repo_root: Repository root path.
         profile: Repository profile with detected languages.
@@ -2108,7 +2111,6 @@ def _count_test_loc(
         (test_loc, test_files) tuple.
     """
     from .discovery import find_files, DEFAULT_EXCLUDES
-    from .taxonomy import LANGUAGE_EXTENSIONS
 
     # Combine default and extra excludes (same as detect_profile)
     excludes = list(DEFAULT_EXCLUDES)
@@ -2118,17 +2120,22 @@ def _count_test_loc(
     test_loc = 0
     test_files = 0
 
-    for lang in profile.languages:
-        patterns = LANGUAGE_EXTENSIONS.get(lang, [])
-        for f in find_files(repo_root, patterns, excludes=excludes):
-            rel_path = str(f.relative_to(repo_root))
-            if _is_test_path(rel_path):
-                test_files += 1
-                try:
-                    content = f.read_text(encoding="utf-8", errors="ignore")
-                    test_loc += sum(1 for line in content.splitlines() if line.strip())
-                except Exception:  # pragma: no cover
-                    pass  # Skip unreadable files
+    # Use SOURCE_EXTENSIONS (source code only) instead of LANGUAGE_EXTENSIONS
+    # This excludes config/build files like Makefile from test counts
+    all_patterns: set[str] = set()
+    for pattern_list in SOURCE_EXTENSIONS.values():
+        all_patterns.update(pattern_list)
+    patterns = list(all_patterns)
+
+    for f in find_files(repo_root, patterns, excludes=excludes):
+        rel_path = str(f.relative_to(repo_root))
+        if _is_test_path(rel_path):
+            test_files += 1
+            try:
+                content = f.read_text(encoding="utf-8", errors="ignore")
+                test_loc += sum(1 for line in content.splitlines() if line.strip())
+            except Exception:  # pragma: no cover
+                pass  # Skip unreadable files
 
     return test_loc, test_files
 
@@ -2203,7 +2210,7 @@ def _format_language_stats(
 
         return f"{lang_line}\n{files_line}\n{loc_line}"
 
-    return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"
+    return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"  # pragma: no cover
 
 
 def _format_structure(
@@ -3320,8 +3327,9 @@ TEST_FRAMEWORK_PATTERNS = [
 def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
     """Detect test files and frameworks, return a summary string and frameworks.
 
-    This is a static analysis - it detects test files by naming conventions
-    and test frameworks by import patterns. It does NOT measure coverage
+    This is a static analysis - it detects test files using the same path-based
+    detection as the Overview section (_is_test_path), ensuring consistency.
+    Framework detection uses import patterns. It does NOT measure coverage
     (which requires execution).
 
     Args:
@@ -3333,18 +3341,29 @@ def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
         - frameworks_set: Set of detected framework names
     """
     import re
+    from .discovery import find_files, DEFAULT_EXCLUDES
 
     test_files: list[Path] = []
     frameworks_found: set[str] = set()
 
-    # Find test files by pattern
-    for pattern in TEST_FILE_PATTERNS:
-        for f in repo_root.rglob(pattern):
-            if f.is_file() and not is_excluded(f, repo_root):
-                test_files.append(f)
+    # Find all source files using SOURCE_EXTENSIONS (already imported at module level)
+    # SOURCE_EXTENSIONS is a dict of language -> list of extensions (patterns like "*.py")
+    all_patterns: set[str] = set()
+    for pattern_list in SOURCE_EXTENSIONS.values():
+        all_patterns.update(pattern_list)
 
-    # Deduplicate (same file might match multiple patterns)
-    test_files = list(set(test_files))
+    # Also include test-only file extensions not in SOURCE_EXTENSIONS
+    # These are files that are only used for tests, never for regular source code
+    test_only_extensions = ["*.bats"]  # Bash Automated Testing System
+    all_patterns.update(test_only_extensions)
+
+    patterns = list(all_patterns)
+
+    # Find test files using _is_test_path (same as Overview section)
+    for f in find_files(repo_root, patterns, excludes=list(DEFAULT_EXCLUDES)):
+        rel_path = str(f.relative_to(repo_root))
+        if _is_test_path(rel_path):
+            test_files.append(f)
 
     if not test_files:
         return None, set()

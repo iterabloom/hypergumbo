@@ -28,6 +28,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   or YAML files now display correct file and LOC counts when using `-x/--exclude-tests`. Previously
   showed "0 files" and "~0 LOC" because the function was recalculating totals from an empty
   source files list.
+- **Unified test detection between Overview and Tests sections:** Both sections now use the same
+  `_is_test_path` function for test classification and `SOURCE_EXTENSIONS` for file discovery.
+  Previously the Overview counted config files like Makefile as tests (showing "6 test files")
+  while the Tests section used different patterns (showing "No test files detected" or "4 test
+  files"). Now both agree on test file counts.
+- **Added `tests.py` and `*_spec.rb` to test detection:** The `is_test_path` function now
+  recognizes Python's single-file test module (`tests.py`) and Ruby RSpec files (`*_spec.rb`)
+  as test files.
 
 ### Changed
 - **Section header renames for clarity:**
