@@ -42,6 +42,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Representativeness table shows with `-x` flag:** The "How Representative Is This Sketch?"
   table now appears when using `-x/--exclude-tests`, showing coverage for Additional Files
   sections. Previously the table was hidden when all source symbols were excluded.
+- **Removed misleading "Coverage requires execution" message:** When coverage cannot be estimated
+  (e.g., no production functions to measure), the Tests section now simply omits the coverage
+  line instead of showing a confusing hint about running tests. Coverage estimation is shown
+  when available; otherwise, only the test count and framework detection are displayed.
+- **Overview totals match `-x` semantics:** When using `-x/--exclude-tests`, the Overview section
+  now shows adjusted totals (e.g., "2 files (2 non-test + 0 test)") instead of showing all files
+  with the `[IGNORING TESTS]` marker. The total now equals the non-test count, making the semantics
+  clear: tests are truly being ignored in the counts.
+- **Structure section filters test files with `-x` flag:** Directory item counts in the Structure
+  section now exclude test source files when `-x` is used. Config/documentation files (like
+  `Makefile`, `Cargo.toml`) inside test directories are still counted since they're not test code.
 
 ### Changed
 - **Section header renames for clarity:**

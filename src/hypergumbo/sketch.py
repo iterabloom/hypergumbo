@@ -2192,20 +2192,33 @@ def _format_language_stats(
         non_test_loc = total_loc - test_loc
         non_test_files = total_files - test_files
 
+        # When exclude_tests=True, show non-test as total and 0 for tests
+        # This matches the [IGNORING TESTS] marker semantics
+        if exclude_tests:
+            display_total_files = non_test_files
+            display_total_loc = non_test_loc
+            display_test_files = 0
+            display_test_loc = 0
+        else:
+            display_total_files = total_files
+            display_total_loc = total_loc
+            display_test_files = test_files
+            display_test_loc = test_loc
+
         # Format with aligned columns for easy comparison
         # Determine widths for alignment
-        files_width = max(len(f"{non_test_files:,}"), len(f"{test_files:,}"))
-        loc_width = max(len(f"~{non_test_loc:,}"), len(f"~{test_loc:,}"))
+        files_width = max(len(f"{non_test_files:,}"), len(f"{display_test_files:,}"))
+        loc_width = max(len(f"~{non_test_loc:,}"), len(f"~{display_test_loc:,}"))
 
         files_line = (
-            f"{total_files:,} files    "
+            f"{display_total_files:,} files    "
             f"({non_test_files:>{files_width},} non-test + "
-            f"{test_files:>{files_width},} test){ignore_marker}"
+            f"{display_test_files:>{files_width},} test){ignore_marker}"
         )
         loc_line = (
-            f"~{total_loc:,} LOC "
+            f"~{display_total_loc:,} LOC "
             f"(~{non_test_loc:>{loc_width - 1},} non-test + "
-            f"~{test_loc:>{loc_width - 1},} test){ignore_marker}"
+            f"~{display_test_loc:>{loc_width - 1},} test){ignore_marker}"
         )
 
         return f"{lang_line}\n{files_line}\n{loc_line}"
@@ -2310,8 +2323,21 @@ def _format_structure_tree_toplevel(
         count = 0
         try:
             for item in dir_path.iterdir():
-                if not any(fnmatch(item.name, p) for p in excludes):
-                    count += 1
+                # Skip excluded items
+                if any(fnmatch(item.name, p) for p in excludes):
+                    continue
+                # When excluding tests, skip test files but keep config/doc files
+                if exclude_tests:
+                    rel_path = str(item.relative_to(repo_root))
+                    if _is_test_path(rel_path):
+                        if item.is_file():
+                            # Keep config/documentation files (Additional Files candidates)
+                            if not is_additional_file_candidate(item):
+                                continue  # Skip test source file
+                        else:
+                            # Skip test directories
+                            continue
+                count += 1
         except PermissionError:  # pragma: no cover
             pass
         return count
@@ -3461,60 +3487,6 @@ def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
         return f"{file_count} test {file_word}", frameworks_found
 
 
-# Coverage command hints for different test frameworks
-COVERAGE_HINTS: dict[str, str] = {
-    # Python
-    "pytest": "pytest --cov",
-    "unittest": "coverage run -m unittest",
-    "hypothesis": "pytest --cov",  # Usually used with pytest
-    # JavaScript/TypeScript
-    "jest": "jest --coverage",
-    "vitest": "vitest run --coverage",
-    "mocha": "nyc mocha",
-    "testing-library": "jest --coverage",  # Usually used with jest
-    # Go
-    "go test": "go test -cover",
-    # Java/Kotlin
-    "junit": "mvn test jacoco:report",
-    "testng": "mvn test jacoco:report",
-    # Ruby
-    "rspec": "rspec --format documentation",
-    # Rust
-    "cargo test": "cargo tarpaulin",
-    # Elixir
-    "exunit": "mix test --cover",
-    # Shell
-    "bats": "bats tests/",
-}
-
-
-def _get_coverage_hint(frameworks: set[str]) -> str:
-    """Get the best coverage command hint for the detected frameworks.
-
-    Prioritizes common frameworks and returns the first match.
-    Falls back to generic hint if no match found.
-    """
-    # Priority order for common frameworks
-    priority = [
-        "pytest", "jest", "vitest", "go test", "junit",
-        "rspec", "cargo test", "exunit", "mocha", "bats",
-        "unittest", "testing-library", "hypothesis", "testng",
-    ]
-
-    for fw in priority:
-        if fw in frameworks:
-            return COVERAGE_HINTS[fw]
-
-    # If no specific match, try to infer from any framework
-    # (This is a defensive fallback for any future frameworks not in priority list)
-    for fw in frameworks:  # pragma: no cover
-        if fw in COVERAGE_HINTS:
-            return COVERAGE_HINTS[fw]
-
-    # Default fallback
-    return "your test runner's coverage tool"
-
-
 def _estimate_test_coverage(
     symbols: list[Symbol], edges: list
 ) -> tuple[int, int, float] | None:
@@ -3595,12 +3567,13 @@ def _format_test_summary(
 
     if coverage_stats is not None:
         tested, total, pct = coverage_stats
-        coverage_line = f"*~{pct:.0f}% estimated coverage ({tested}/{total} functions called by tests)*"
+        coverage_line = f"\n\n*~{pct:.0f}% estimated coverage ({tested}/{total} functions called by tests)*"
     else:
-        coverage_hint = _get_coverage_hint(frameworks)
-        coverage_line = f"*Coverage requires execution; see {coverage_hint}*"
+        # No production functions to estimate coverage (e.g., all code is test code)
+        # Don't show a misleading "requires execution" message - just omit the coverage line
+        coverage_line = ""
 
-    return f"{_section_header('Tests', exclude_tests)}\n\n{summary}\n\n{coverage_line}"
+    return f"{_section_header('Tests', exclude_tests)}\n\n{summary}{coverage_line}"
 
 
 # Language analyzer registry: (languages_set, module_name, function_name, display_name)
