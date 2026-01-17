@@ -2816,7 +2816,33 @@ def _extract_readme_description_heuristic(
             return title_subtitle
         return None
 
-    return " ".join(paragraph_lines)
+    result = " ".join(paragraph_lines)
+
+    # If the sentence seems incomplete (no period at end) and we stopped at an
+    # empty line, check if the next non-empty line continues the sentence.
+    # This helps complete sentences that span paragraph breaks.
+    if not result.rstrip().endswith((".", "!", "?", ":")):
+        # Find where we stopped in the original lines
+        end_idx = start_idx + len(paragraph_lines)
+        # Skip empty lines to find the next content line
+        next_line_idx = end_idx
+        while next_line_idx < len(lines) and not lines[next_line_idx].strip():
+            next_line_idx += 1
+
+        if next_line_idx < len(lines):
+            next_line = lines[next_line_idx].strip()
+            # Strip HTML tags from the line
+            next_line = re.sub(r"<[^>]+>", "", next_line)
+            # Only continue if it's a regular text line (not a header/image/etc)
+            if next_line and not next_line.startswith(("#", "!", "[", "<", "-")):
+                # Append words until we hit a period or end of line
+                words = next_line.split()
+                for word in words:
+                    result += " " + word
+                    if word.rstrip().endswith((".", "!", "?", ":")):
+                        break
+
+    return result
 
 
 def _truncate_description(description: str, max_chars: int) -> str:
@@ -3502,6 +3528,188 @@ def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
         return f"{file_count} test {file_word}", frameworks_found
 
 
+def _detect_project_binary_names(repo_root: Path) -> list[str]:
+    """Detect likely binary/executable names from build files.
+
+    Checks common build systems for the project's binary name:
+    - meson.build: executable('name', ...)
+    - Makefile: TARGET, BINARY, PROGRAM variables
+    - CMakeLists.txt: add_executable(name ...)
+    - Cargo.toml: name in [package] or [[bin]]
+    - go.mod: module name (last component)
+
+    Falls back to the directory name if no build files found.
+
+    Args:
+        repo_root: Path to the repository root.
+
+    Returns:
+        List of likely binary names (may have multiple).
+    """
+    import re
+
+    binary_names: set[str] = set()
+
+    # meson.build: executable('name', ...)
+    meson_build = repo_root / "meson.build"
+    if meson_build.exists():
+        try:
+            content = meson_build.read_text(errors="replace")
+            # Match executable('name' or executable("name"
+            for match in re.finditer(r"executable\s*\(\s*['\"]([^'\"]+)['\"]", content):
+                binary_names.add(match.group(1))
+        except OSError:  # pragma: no cover
+            pass
+
+    # Makefile: TARGET, BINARY, PROGRAM, NAME variables
+    for makefile_name in ["Makefile", "makefile", "GNUmakefile"]:
+        makefile = repo_root / makefile_name
+        if makefile.exists():
+            try:
+                content = makefile.read_text(errors="replace")
+                # Match TARGET = name, BINARY := name, etc.
+                for match in re.finditer(
+                    r"^(?:TARGET|BINARY|PROGRAM|NAME|APP)\s*[:?]?=\s*(\S+)",
+                    content,
+                    re.MULTILINE,
+                ):
+                    name = match.group(1).strip()
+                    # Skip variables like $(something)
+                    if not name.startswith("$"):
+                        binary_names.add(name)
+            except OSError:  # pragma: no cover
+                pass
+
+    # CMakeLists.txt: add_executable(name ...)
+    cmake_lists = repo_root / "CMakeLists.txt"
+    if cmake_lists.exists():
+        try:
+            content = cmake_lists.read_text(errors="replace")
+            # Match add_executable(name or add_executable( name
+            for match in re.finditer(r"add_executable\s*\(\s*(\S+)", content):
+                name = match.group(1)
+                if not name.startswith("$"):
+                    binary_names.add(name)
+        except OSError:  # pragma: no cover
+            pass
+
+    # Cargo.toml: name in [package] section
+    cargo_toml = repo_root / "Cargo.toml"
+    if cargo_toml.exists():
+        try:
+            content = cargo_toml.read_text(errors="replace")
+            # Simple pattern for name = "..." in package section
+            for match in re.finditer(r'name\s*=\s*"([^"]+)"', content):
+                binary_names.add(match.group(1))
+        except OSError:  # pragma: no cover
+            pass
+
+    # go.mod: module path (use last component)
+    go_mod = repo_root / "go.mod"
+    if go_mod.exists():
+        try:
+            content = go_mod.read_text(errors="replace")
+            match = re.search(r"^module\s+(\S+)", content, re.MULTILINE)
+            if match:
+                # Use last path component as binary name
+                module_path = match.group(1)
+                binary_names.add(module_path.split("/")[-1])
+        except OSError:  # pragma: no cover
+            pass
+
+    # configure.ac: AC_INIT([name], ...)
+    configure_ac = repo_root / "configure.ac"
+    if configure_ac.exists():
+        try:
+            content = configure_ac.read_text(errors="replace")
+            match = re.search(r"AC_INIT\s*\(\s*\[?([^\],\[]+)", content)
+            if match:
+                binary_names.add(match.group(1).strip())
+        except OSError:  # pragma: no cover
+            pass
+
+    # Fall back to directory name only if we have compiled language source files
+    # (no point detecting binaries for pure Python/JS projects)
+    if not binary_names:
+        compiled_extensions = {".c", ".cc", ".cpp", ".cxx", ".go", ".rs"}
+        has_compiled_source = any(
+            f.suffix in compiled_extensions
+            for f in repo_root.iterdir()
+            if f.is_file()
+        )
+        if has_compiled_source:
+            binary_names.add(repo_root.name)
+
+    return list(binary_names)
+
+
+def _detect_shell_integration_tests(
+    repo_root: Path, binary_names: list[str]
+) -> list[Path]:
+    """Find shell test scripts that likely invoke the project's binary.
+
+    Searches for shell scripts in test directories that contain references
+    to the project's binary name in a way that suggests invocation.
+
+    Args:
+        repo_root: Path to the repository root.
+        binary_names: List of binary names to look for.
+
+    Returns:
+        List of shell script paths that likely invoke the binary.
+    """
+    from .discovery import find_files, DEFAULT_EXCLUDES
+
+    shell_tests: list[Path] = []
+
+    # Find shell scripts
+    shell_patterns = ["*.sh", "*.bash"]
+    for f in find_files(repo_root, shell_patterns, excludes=list(DEFAULT_EXCLUDES)):
+        rel_path = str(f.relative_to(repo_root))
+
+        # Only consider files in test-like directories or with test-like names
+        is_test_location = any(
+            part in rel_path.lower()
+            for part in ["test", "tests", "spec", "specs", "check", "checks"]
+        )
+        is_test_name = any(
+            pattern in f.name.lower()
+            for pattern in ["test", "spec", "check"]
+        )
+
+        if not (is_test_location or is_test_name):
+            continue
+
+        # Check if the script references any binary name
+        try:
+            content = f.read_text(errors="replace")
+
+            for binary in binary_names:
+                # Patterns that suggest binary invocation
+                invocation_patterns = [
+                    f"./{binary}",           # ./slirp4netns
+                    f"/{binary} ",           # /path/to/slirp4netns
+                    f"/{binary}\n",          # end of line
+                    f"/{binary}\"",          # quoted path end
+                    f"/{binary}'",           # single quoted path end
+                    f"${{{binary}",          # ${SLIRP4NETNS variable
+                    f"$({binary}",           # $(slirp4netns ...) command sub
+                    f" {binary} ",           # command with spaces
+                    f"\n{binary} ",          # command at line start
+                    f'"{binary}"',           # quoted command
+                    f"'{binary}'",           # single quoted command
+                ]
+
+                if any(pattern in content for pattern in invocation_patterns):
+                    shell_tests.append(f)
+                    break  # Don't count same file multiple times
+
+        except OSError:  # pragma: no cover
+            continue
+
+    return shell_tests
+
+
 def _estimate_test_coverage(
     symbols: list[Symbol], edges: list
 ) -> tuple[int, int, float] | None:
@@ -3560,6 +3768,7 @@ def _format_test_summary(
     repo_root: Path,
     coverage_stats: tuple[int, int, float] | None = None,
     exclude_tests: bool = False,
+    shell_integration_count: int = 0,
 ) -> str:
     """Format test summary as a Markdown section.
 
@@ -3567,6 +3776,8 @@ def _format_test_summary(
         repo_root: Path to the repository root.
         coverage_stats: Optional (tested, total, pct) from static analysis.
         exclude_tests: If True, show that tests are being ignored.
+        shell_integration_count: Number of shell scripts that invoke the project binary.
+            These are integration tests that can't be tracked via call graph analysis.
 
     Returns:
         Markdown section string (always returns a section, even if no tests detected).
@@ -3580,13 +3791,22 @@ def _format_test_summary(
         # No tests detected - still show the section for consistency
         return f"{_section_header('Tests', exclude_tests)}\n\nNo test files detected"
 
+    # Build coverage line with optional shell integration test info
+    coverage_line = ""
     if coverage_stats is not None:
         tested, total, pct = coverage_stats
-        coverage_line = f"\n\n*~{pct:.0f}% estimated coverage ({tested}/{total} functions called by tests)*"
-    else:
-        # No production functions to estimate coverage (e.g., all code is test code)
-        # Don't show a misleading "requires execution" message - just omit the coverage line
-        coverage_line = ""
+
+        # Format the shell integration test suffix
+        shell_suffix = ""
+        if shell_integration_count > 0:
+            script_word = "script" if shell_integration_count == 1 else "scripts"
+            shell_suffix = f" + {shell_integration_count} shell integration {script_word}"
+
+        coverage_line = f"\n\n*~{pct:.0f}% estimated coverage ({tested}/{total} functions called by tests){shell_suffix}*"
+    elif shell_integration_count > 0:
+        # No call graph coverage but we have shell integration tests
+        script_word = "script" if shell_integration_count == 1 else "scripts"
+        coverage_line = f"\n\n*{shell_integration_count} shell integration {script_word} (invoke project binary)*"
 
     return f"{_section_header('Tests', exclude_tests)}\n\n{summary}{coverage_line}"
 
@@ -4479,6 +4699,15 @@ def generate_sketch(
     base_sketch = "\n\n".join(sections)
     base_tokens = estimate_tokens(base_sketch)
 
+    # Detect shell integration tests (only if not excluding tests)
+    # These are shell scripts that invoke the project's compiled binary
+    shell_integration_count = 0
+    if not exclude_tests:
+        binary_names = _detect_project_binary_names(repo_root)
+        if binary_names:
+            shell_tests = _detect_shell_integration_tests(repo_root, binary_names)
+            shell_integration_count = len(shell_tests)
+
     # If no budget, run analysis for coverage then return base sketch
     if max_tokens is None:
         prog.start_phase("analysis")
@@ -4494,7 +4723,19 @@ def generate_sketch(
 
         # Update test summary with coverage stats (only if not excluding tests)
         if coverage_stats is not None and not exclude_tests:
-            updated_test_summary = _format_test_summary(repo_root, coverage_stats)
+            updated_test_summary = _format_test_summary(
+                repo_root, coverage_stats, shell_integration_count=shell_integration_count
+            )
+            for i, section in enumerate(sections):
+                if section.startswith("## Tests"):
+                    sections[i] = updated_test_summary
+                    break
+        elif shell_integration_count > 0 and not exclude_tests:  # pragma: no cover
+            # No call graph coverage but we have shell integration tests
+            # (rare: happens when analysis returns no countable symbols)
+            updated_test_summary = _format_test_summary(
+                repo_root, shell_integration_count=shell_integration_count
+            )
             for i, section in enumerate(sections):
                 if section.startswith("## Tests"):
                     sections[i] = updated_test_summary
@@ -4583,7 +4824,19 @@ def generate_sketch(
     # Update test summary with coverage stats if we got analysis results (only if not excluding tests)
     if coverage_stats is not None and not exclude_tests:
         # Find and replace the test summary section with coverage info
-        updated_test_summary = _format_test_summary(repo_root, coverage_stats)
+        updated_test_summary = _format_test_summary(
+            repo_root, coverage_stats, shell_integration_count=shell_integration_count
+        )
+        for i, section in enumerate(sections):
+            if section.startswith("## Tests"):
+                sections[i] = updated_test_summary
+                break
+    elif shell_integration_count > 0 and not exclude_tests:  # pragma: no cover
+        # No call graph coverage but we have shell integration tests
+        # (rare: happens when analysis returns no countable symbols)
+        updated_test_summary = _format_test_summary(
+            repo_root, shell_integration_count=shell_integration_count
+        )
         for i, section in enumerate(sections):
             if section.startswith("## Tests"):
                 sections[i] = updated_test_summary

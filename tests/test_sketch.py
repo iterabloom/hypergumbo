@@ -1042,6 +1042,74 @@ class TestExtractReadmeDescriptionHeuristic:
         result = _extract_readme_description_heuristic(readme)
         assert result == "Actual description here."
 
+    def test_completes_sentence_across_paragraph_break(self, tmp_path: Path) -> None:
+        """Completes sentence when split across paragraph break."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        # Sentence incomplete at first paragraph, continues after blank line
+        readme.write_text(
+            "# Project\n\n"
+            "This is a tool that helps developers\n\n"
+            "be more productive.\n\n"
+            "## Overview\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "This is a tool that helps developers be more productive."
+
+    def test_completes_sentence_stops_at_period(self, tmp_path: Path) -> None:
+        """Stops appending words when period is reached."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Project\n\n"
+            "A great tool\n\n"
+            "for building. It also does other things.\n\n"
+            "## Usage\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "A great tool for building."
+
+    def test_does_not_complete_into_header(self, tmp_path: Path) -> None:
+        """Does not append words from header lines."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Project\n\n"
+            "A wonderful library\n\n"
+            "## Installation\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        # Should not try to complete since next line is a header
+        assert result == "A wonderful library"
+
+    def test_completes_sentence_strips_html(self, tmp_path: Path) -> None:
+        """Strips HTML tags when checking continuation line."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Project\n\n"
+            "A useful tool\n\n"
+            "<p>for everyone.</p>\n\n"
+            "## Overview\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        # After HTML stripping, "<p>for everyone.</p>" becomes "for everyone."
+        # which is valid continuation text, so sentence is completed
+        assert result == "A useful tool for everyone."
+
+    def test_no_completion_when_sentence_complete(self, tmp_path: Path) -> None:
+        """Does not append when sentence already ends with punctuation."""
+        from hypergumbo.sketch import _extract_readme_description_heuristic
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# Project\n\n"
+            "This is complete.\n\n"
+            "Extra text here.\n\n"
+            "## Overview\n"
+        )
+        result = _extract_readme_description_heuristic(readme)
+        assert result == "This is complete."
+
     def test_returns_none_when_no_content(self, tmp_path: Path) -> None:
         """Returns None when both embedding and heuristic fail."""
         from unittest.mock import patch
@@ -4935,6 +5003,176 @@ class TestFormatTestSummary:
         assert "~0% estimated coverage" in result
         assert "0/10 functions called by tests" in result
 
+    def test_shell_integration_count_with_coverage(self, tmp_path: Path) -> None:
+        """Shell integration count appended to coverage line."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        coverage_stats = (3, 10, 30.0)
+        result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=5)
+        assert "~30% estimated coverage" in result
+        assert "3/10 functions called by tests" in result
+        assert "+ 5 shell integration scripts" in result
+
+    def test_shell_integration_count_singular(self, tmp_path: Path) -> None:
+        """Uses singular 'script' for count of 1."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        coverage_stats = (3, 10, 30.0)
+        result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=1)
+        assert "+ 1 shell integration script" in result
+        assert "scripts" not in result
+
+    def test_shell_integration_only_no_coverage(self, tmp_path: Path) -> None:
+        """Shell integration tests shown when no call graph coverage available."""
+        (tmp_path / "test_example.sh").write_text("#!/bin/bash\n./myapp")
+        result = _format_test_summary(tmp_path, shell_integration_count=3)
+        assert "3 shell integration scripts" in result
+        assert "invoke project binary" in result
+
+    def test_shell_integration_zero_not_shown(self, tmp_path: Path) -> None:
+        """Zero shell integration count not displayed."""
+        (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
+        coverage_stats = (3, 10, 30.0)
+        result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=0)
+        assert "shell integration" not in result
+
+
+class TestDetectProjectBinaryNames:
+    """Tests for _detect_project_binary_names function."""
+
+    def test_meson_build_executable(self, tmp_path: Path) -> None:
+        """Detects executable from meson.build."""
+        (tmp_path / "meson.build").write_text("executable('myapp', 'main.c')")
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "myapp" in result
+
+    def test_meson_build_multiple_executables(self, tmp_path: Path) -> None:
+        """Detects multiple executables from meson.build."""
+        (tmp_path / "meson.build").write_text(
+            "executable('app1', 'main1.c')\nexecutable('app2', 'main2.c')"
+        )
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "app1" in result
+        assert "app2" in result
+
+    def test_makefile_target(self, tmp_path: Path) -> None:
+        """Detects binary target from Makefile variable."""
+        (tmp_path / "Makefile").write_text("TARGET = myapp\n\nmyapp: main.o\n\t$(CC) -o $(TARGET) main.o")
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "myapp" in result
+
+    def test_cmake_add_executable(self, tmp_path: Path) -> None:
+        """Detects executable from CMakeLists.txt."""
+        (tmp_path / "CMakeLists.txt").write_text("add_executable(myapp main.cpp)")
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "myapp" in result
+
+    def test_cargo_toml_package_name(self, tmp_path: Path) -> None:
+        """Detects binary name from Cargo.toml package name."""
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "myapp"\nversion = "0.1.0"')
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "myapp" in result
+
+    def test_cargo_toml_explicit_bin(self, tmp_path: Path) -> None:
+        """Detects explicit [[bin]] name from Cargo.toml."""
+        (tmp_path / "Cargo.toml").write_text('[[bin]]\nname = "my-cli"\npath = "src/main.rs"')
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "my-cli" in result
+
+    def test_go_mod_module_name(self, tmp_path: Path) -> None:
+        """Detects binary name from go.mod module path."""
+        (tmp_path / "go.mod").write_text("module github.com/user/myapp\n\ngo 1.21")
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "myapp" in result
+
+    def test_configure_ac_package_name(self, tmp_path: Path) -> None:
+        """Detects package name from configure.ac."""
+        (tmp_path / "configure.ac").write_text('AC_INIT([myapp], [1.0])')
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert "myapp" in result
+
+    def test_fallback_to_directory_name(self, tmp_path: Path) -> None:
+        """Falls back to directory name when no build files found."""
+        # Create a .c file so it looks like a C project
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        # Falls back to directory name
+        assert tmp_path.name in result
+
+    def test_no_build_files_no_c_files(self, tmp_path: Path) -> None:
+        """Returns empty list when no build files and no C/C++/Go/Rust files."""
+        (tmp_path / "main.py").write_text("print('hello')")
+        from hypergumbo.sketch import _detect_project_binary_names
+        result = _detect_project_binary_names(tmp_path)
+        assert result == []
+
+
+class TestDetectShellIntegrationTests:
+    """Tests for _detect_shell_integration_tests function."""
+
+    def test_detects_shell_script_invoking_binary(self, tmp_path: Path) -> None:
+        """Detects shell scripts that invoke the project binary."""
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test-app.sh").write_text("#!/bin/bash\n./myapp --help")
+        from hypergumbo.sketch import _detect_shell_integration_tests
+        result = _detect_shell_integration_tests(tmp_path, ["myapp"])
+        assert len(result) == 1
+        assert result[0].name == "test-app.sh"
+
+    def test_detects_various_invocation_patterns(self, tmp_path: Path) -> None:
+        """Detects various patterns of binary invocation."""
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        # Different invocation patterns
+        (tests / "test1.sh").write_text("#!/bin/bash\n./myapp arg")
+        (tests / "test2.sh").write_text("#!/bin/bash\nmyapp arg1 arg2")
+        (tests / "test3.sh").write_text("#!/bin/bash\n/usr/bin/myapp ")
+        from hypergumbo.sketch import _detect_shell_integration_tests
+        result = _detect_shell_integration_tests(tmp_path, ["myapp"])
+        assert len(result) == 3
+
+    def test_ignores_non_test_shell_scripts(self, tmp_path: Path) -> None:
+        """Ignores shell scripts not in test directories or without test names."""
+        # Script not in test directory and no test-like name
+        (tmp_path / "build.sh").write_text("#!/bin/bash\n./myapp build")
+        from hypergumbo.sketch import _detect_shell_integration_tests
+        result = _detect_shell_integration_tests(tmp_path, ["myapp"])
+        assert len(result) == 0
+
+    def test_detects_test_named_scripts_outside_test_dir(self, tmp_path: Path) -> None:
+        """Detects scripts with test-like names even outside test directories."""
+        (tmp_path / "test-integration.sh").write_text("#!/bin/bash\n./myapp test")
+        from hypergumbo.sketch import _detect_shell_integration_tests
+        result = _detect_shell_integration_tests(tmp_path, ["myapp"])
+        assert len(result) == 1
+
+    def test_multiple_binaries(self, tmp_path: Path) -> None:
+        """Detects scripts invoking any of multiple binaries."""
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test1.sh").write_text("#!/bin/bash\n./app1 arg")
+        (tests / "test2.sh").write_text("#!/bin/bash\n./app2 arg")
+        from hypergumbo.sketch import _detect_shell_integration_tests
+        result = _detect_shell_integration_tests(tmp_path, ["app1", "app2"])
+        assert len(result) == 2
+
+    def test_empty_binary_list(self, tmp_path: Path) -> None:
+        """Returns empty list when no binaries provided."""
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test.sh").write_text("#!/bin/bash\n./myapp test")
+        from hypergumbo.sketch import _detect_shell_integration_tests
+        result = _detect_shell_integration_tests(tmp_path, [])
+        assert len(result) == 0
+
 
 class TestEstimateTestCoverage:
     """Tests for _estimate_test_coverage function."""
@@ -5891,6 +6129,47 @@ def long_enough():
 
         # Large config shouldn't appear (budget constraint)
         assert "key: value" * 100 not in sketch
+
+    def test_shell_integration_tests_detected_in_c_project(
+        self, tmp_path: Path
+    ) -> None:
+        """Shell integration tests are detected and shown in test summary."""
+        # Create a C project with meson.build
+        (tmp_path / "meson.build").write_text("executable('myapp', 'main.c')")
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+
+        # Create shell test scripts that invoke the binary
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test-basic.sh").write_text("#!/bin/bash\n./myapp --help")
+        (tests / "test-run.sh").write_text("#!/bin/bash\n./myapp run")
+
+        # Generate sketch with source (triggers analysis path)
+        sketch = generate_sketch(tmp_path, max_tokens=4000, with_source=True)
+
+        # Should show shell integration tests in test summary
+        assert "## Tests" in sketch
+        assert "shell integration" in sketch
+
+    def test_shell_integration_tests_without_token_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """Shell integration tests detected even with unlimited token budget."""
+        # Create a C project with configure.ac (autotools)
+        (tmp_path / "configure.ac").write_text("AC_INIT([testapp], [1.0])")
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+
+        # Create shell test that invokes the binary
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "check-app.sh").write_text("#!/bin/bash\n./testapp check")
+
+        # Generate sketch without budget (max_tokens=None)
+        sketch = generate_sketch(tmp_path, max_tokens=None, with_source=True)
+
+        # Should show shell integration script
+        assert "## Tests" in sketch
+        assert "shell integration" in sketch
 
 
 class TestRepoFingerprint:
