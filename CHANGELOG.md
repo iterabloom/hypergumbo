@@ -33,6 +33,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Section header renames for clarity:**
   - "Source Content" → "Source Files Content"
   - "Additional File Content" → "Additional Files Content"
+- **Overview always shows test/non-test breakdown:** The Overview section now consistently shows
+  the file and LOC breakdown (e.g., "43 files (43 non-test + 0 test)") whether or not the `-x`
+  flag is used. Previously the compact format was shown when there were no test files.
+- **Tests section always present:** The `## Tests` section is now always included in the sketch,
+  showing "No test files detected" when no tests are found. Previously the section was omitted
+  entirely for repos without tests.
 
 ### Added (continued)
 - **ADR-0004: File Taxonomy (Tier + Role):** Two-dimensional file classification system implemented.

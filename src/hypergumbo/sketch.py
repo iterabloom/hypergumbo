@@ -2181,30 +2181,27 @@ def _format_language_stats(
         # (profile.languages includes all file types: code, markdown, JSON, etc.)
         test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
 
-        # Show breakdown when tests exist OR when exclude_tests is active
-        # (When exclude_tests=True, test_loc should be ~0 if filtering works;
-        # if it's non-zero, that indicates test detection isn't catching all test files)
-        if test_loc > 0 or exclude_tests:
-            non_test_loc = total_loc - test_loc
-            non_test_files = total_files - test_files
+        # Always show breakdown format for consistency (with or without -x flag)
+        non_test_loc = total_loc - test_loc
+        non_test_files = total_files - test_files
 
-            # Format with aligned columns for easy comparison
-            # Determine widths for alignment
-            files_width = max(len(f"{non_test_files:,}"), len(f"{test_files:,}"))
-            loc_width = max(len(f"~{non_test_loc:,}"), len(f"~{test_loc:,}"))
+        # Format with aligned columns for easy comparison
+        # Determine widths for alignment
+        files_width = max(len(f"{non_test_files:,}"), len(f"{test_files:,}"))
+        loc_width = max(len(f"~{non_test_loc:,}"), len(f"~{test_loc:,}"))
 
-            files_line = (
-                f"{total_files:,} files    "
-                f"({non_test_files:>{files_width},} non-test + "
-                f"{test_files:>{files_width},} test){ignore_marker}"
-            )
-            loc_line = (
-                f"~{total_loc:,} LOC "
-                f"(~{non_test_loc:>{loc_width - 1},} non-test + "
-                f"~{test_loc:>{loc_width - 1},} test){ignore_marker}"
-            )
+        files_line = (
+            f"{total_files:,} files    "
+            f"({non_test_files:>{files_width},} non-test + "
+            f"{test_files:>{files_width},} test){ignore_marker}"
+        )
+        loc_line = (
+            f"~{total_loc:,} LOC "
+            f"(~{non_test_loc:>{loc_width - 1},} non-test + "
+            f"~{test_loc:>{loc_width - 1},} test){ignore_marker}"
+        )
 
-            return f"{lang_line}\n{files_line}\n{loc_line}"
+        return f"{lang_line}\n{files_line}\n{loc_line}"
 
     return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"
 
@@ -3497,7 +3494,7 @@ def _format_test_summary(
         exclude_tests: If True, show that tests are being ignored.
 
     Returns:
-        Markdown section string, or empty string if no tests.
+        Markdown section string (always returns a section, even if no tests detected).
     """
     # When exclude_tests=True, show that tests are excluded
     if exclude_tests:
@@ -3505,7 +3502,8 @@ def _format_test_summary(
 
     summary, frameworks = _detect_test_summary(repo_root)
     if not summary:
-        return ""
+        # No tests detected - still show the section for consistency
+        return f"{_section_header('Tests', exclude_tests)}\n\nNo test files detected"
 
     if coverage_stats is not None:
         tested, total, pct = coverage_stats

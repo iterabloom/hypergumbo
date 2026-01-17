@@ -576,14 +576,15 @@ class TestGenerateSketch:
         assert "pytest" in sketch
         assert "1 test file" in sketch
 
-    def test_no_test_summary_when_no_tests(self, tmp_path: Path) -> None:
-        """Sketch omits test summary section when no tests exist."""
+    def test_test_summary_always_present(self, tmp_path: Path) -> None:
+        """Sketch always includes Tests section, even when no tests exist."""
         (tmp_path / "main.py").write_text("print('hello')\n")
 
         sketch = generate_sketch(tmp_path)
 
-        # Should not have Tests section
-        assert "## Tests" not in sketch
+        # Tests section should always be present for consistency
+        assert "## Tests" in sketch
+        assert "No test files detected" in sketch
 
     def test_many_directories(self, tmp_path: Path) -> None:
         """Sketch handles projects with many directories."""
@@ -2900,14 +2901,16 @@ class TestExcludeTests:
         (tmp_path / "README.md").write_text("# Project\n\nDescription\n")
         (tmp_path / "SPEC.md").write_text("## Specification\n\nDetails\n")
 
-        # Without -x flag: should show totals
+        # Without -x flag: should show breakdown format with totals
         result = _format_language_stats(
             profile, tmp_path, extra_excludes=None, exclude_tests=False
         )
         assert "43 files" in result
-        assert "8,781 LOC" in result
+        assert "8,781" in result
+        # Should show breakdown format (non-test + test)
+        assert "non-test" in result
 
-        # With -x flag: should STILL show totals (no test files to exclude)
+        # With -x flag: should STILL show breakdown with totals (no test files to exclude)
         result_exclude = _format_language_stats(
             profile, tmp_path, extra_excludes=None, exclude_tests=True
         )
@@ -2919,6 +2922,8 @@ class TestExcludeTests:
         assert "8,781" in result_exclude
         # Should have [IGNORING TESTS] marker
         assert "[IGNORING TESTS]" in result_exclude
+        # Should show breakdown format
+        assert "non-test" in result_exclude
 
 
 class TestFormatStructure:
@@ -4683,11 +4688,13 @@ class TestDetectTestSummary:
 class TestFormatTestSummary:
     """Tests for _format_test_summary function."""
 
-    def test_returns_empty_when_no_tests(self, tmp_path: Path) -> None:
-        """Returns empty string when no tests detected."""
+    def test_returns_section_when_no_tests(self, tmp_path: Path) -> None:
+        """Returns a Tests section even when no tests detected."""
         (tmp_path / "main.py").write_text("print('hello')")
         result = _format_test_summary(tmp_path)
-        assert result == ""
+        # Should always return a Tests section for consistency
+        assert "## Tests" in result
+        assert "No test files detected" in result
 
     def test_formats_as_markdown_section(self, tmp_path: Path) -> None:
         """Formats test summary as a Markdown section."""
