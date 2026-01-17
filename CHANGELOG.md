@@ -24,6 +24,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   sections are now budgeted accurately, including START/END markers and code fences (~130 chars
   overhead per file). Previously files could be truncated mid-content.
 - **Sketch files now end with newline:** Standard text file convention.
+- **`-x` flag showing 0 files/LOC for non-code repos:** Repos primarily containing markdown, JSON,
+  or YAML files now display correct file and LOC counts when using `-x/--exclude-tests`. Previously
+  showed "0 files" and "~0 LOC" because the function was recalculating totals from an empty
+  source files list.
 
 ### Changed
 - **Section header renames for clarity:**

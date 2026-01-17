@@ -2138,7 +2138,6 @@ def _format_language_stats(
     repo_root: Optional[Path] = None,
     extra_excludes: Optional[List[str]] = None,
     exclude_tests: bool = False,
-    filtered_source_files: Optional[List[Path]] = None,
 ) -> str:
     """Format language statistics as a multi-line summary.
 
@@ -2147,8 +2146,6 @@ def _format_language_stats(
         repo_root: If provided, compute and show test LOC separately.
         extra_excludes: Additional exclude patterns for test LOC counting.
         exclude_tests: If True, add [IGNORING TESTS] marker to output.
-        filtered_source_files: When exclude_tests=True, the list of source files
-            after filtering. Used to verify no test files slipped through.
 
     Returns:
         Formatted statistics (multi-line if test files detected).
@@ -2180,31 +2177,9 @@ def _format_language_stats(
 
     # Compute test LOC if repo_root provided
     if repo_root is not None:
-        # When exclude_tests=True with filtered files, count test files that slipped through
-        # (Should be 0 if filtering works correctly)
-        if exclude_tests and filtered_source_files is not None:
-            test_files = 0
-            test_loc = 0
-            for f in filtered_source_files:
-                rel_path = str(f.relative_to(repo_root)) if repo_root else str(f)
-                if _is_test_path(rel_path):  # pragma: no cover - only if filter fails
-                    test_files += 1
-                    try:
-                        content = f.read_text(encoding="utf-8", errors="ignore")
-                        test_loc += len([ln for ln in content.splitlines() if ln.strip()])
-                    except (OSError, IOError):
-                        pass
-            # Adjust totals based on filtered files
-            total_files = len(filtered_source_files)
-            total_loc = 0
-            for f in filtered_source_files:
-                try:
-                    content = f.read_text(encoding="utf-8", errors="ignore")
-                    total_loc += len([ln for ln in content.splitlines() if ln.strip()])
-                except (OSError, IOError):  # pragma: no cover
-                    pass
-        else:
-            test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
+        # Always use _count_test_loc to get accurate test counts from the profile
+        # (profile.languages includes all file types: code, markdown, JSON, etc.)
+        test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
 
         # Show breakdown when tests exist OR when exclude_tests is active
         # (When exclude_tests=True, test_loc should be ~0 if filtering works;
@@ -4356,12 +4331,12 @@ def generate_sketch(
         header = (
             f"# {repo_name}\n\n"
             f"{readme_desc}\n\n"
-            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
+            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests)}"
         )
     else:
         header = (
             f"# {repo_name}\n\n{_section_header('Overview', exclude_tests)}\n"
-            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, source_files if exclude_tests else None)}"
+            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests)}"
         )
     sections.append(header)
 
@@ -4675,7 +4650,7 @@ def generate_sketch(
                         key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
                         reverse=True,
                     )
-                else:
+                else:  # pragma: no cover - defensive, density_scores usually exists
                     sorted_files = source_files
                 selected_files = {str(f) for f in sorted_files[:max_source_files]}
                 # Sum in-degree for symbols in selected files

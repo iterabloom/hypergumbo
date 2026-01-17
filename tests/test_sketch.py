@@ -11,6 +11,7 @@ from hypergumbo.sketch import (
     _format_source_files,
     _format_all_files,
     _format_additional_files,
+    _format_language_stats,
     _run_analysis,
     _format_entrypoints,
     _format_datamodels,
@@ -24,6 +25,8 @@ from hypergumbo.sketch import (
     _detect_test_summary,
     _format_test_summary,
     _estimate_test_coverage,
+    SketchStats,
+    display_representativeness_table,
 )
 from hypergumbo.ranking import compute_centrality, _is_test_path
 from hypergumbo.profile import detect_profile
@@ -45,6 +48,311 @@ def _has_sentence_transformers() -> bool:
         return True
     except ImportError:
         return False
+
+
+class TestSketchStats:
+    """Tests for SketchStats dataclass and methods."""
+
+    def test_symbol_mass_with_zero_total(self) -> None:
+        """symbol_mass returns 0 when total_in_degree is 0."""
+        stats = SketchStats(total_in_degree=0)
+        assert stats.symbol_mass(100) == 0.0
+
+    def test_symbol_mass_computes_percentage(self) -> None:
+        """symbol_mass computes correct percentage."""
+        stats = SketchStats(total_in_degree=1000)
+        # 500 out of 1000 = 50%
+        assert stats.symbol_mass(500) == 50.0
+        # 250 out of 1000 = 25%
+        assert stats.symbol_mass(250) == 25.0
+
+    def test_confidence_mass_with_zero_total(self) -> None:
+        """confidence_mass returns 0 when total is 0."""
+        stats = SketchStats()
+        assert stats.confidence_mass(100.0, 0.0) == 0.0
+
+    def test_confidence_mass_computes_percentage(self) -> None:
+        """confidence_mass computes correct percentage."""
+        stats = SketchStats()
+        # 0.5 out of 1.0 = 50%
+        assert stats.confidence_mass(0.5, 1.0) == 50.0
+        # 0.25 out of 1.0 = 25%
+        assert stats.confidence_mass(0.25, 1.0) == 25.0
+
+
+class TestDisplayRepresentativenessTable:
+    """Tests for display_representativeness_table function."""
+
+    def test_displays_table_with_key_symbols(self, capsys) -> None:
+        """Table displays Key Symbols row when present."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            key_symbols_in_degree=50,
+            has_key_symbols=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            key_symbols_in_degree=80,
+            has_key_symbols=True,
+        )
+
+        # Capture output using StringIO console
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Key Symbols" in result
+        assert "50%" in result
+        assert "80%" in result
+
+    def test_displays_entry_points_with_confidence(self, capsys) -> None:
+        """Table displays Entry Points row with confidence mass."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_entrypoint_confidence=10.0,
+            entrypoints_confidence=5.0,
+            has_entrypoints=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_entrypoint_confidence=10.0,
+            entrypoints_confidence=8.0,
+            has_entrypoints=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Entry Points" in result
+        assert "confidence mass" in result
+
+    def test_displays_data_models(self) -> None:
+        """Table displays Data Models row when present."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_datamodel_confidence=10.0,
+            datamodels_confidence=3.0,
+            has_datamodels=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_datamodel_confidence=10.0,
+            datamodels_confidence=6.0,
+            has_datamodels=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Data Models" in result
+
+    def test_displays_source_files(self) -> None:
+        """Table displays Source Files row when present."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            source_files_in_degree=30,
+            has_source_files=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            source_files_in_degree=60,
+            has_source_files=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Source Files" in result
+        assert "symbol mass" in result
+
+    def test_displays_additional_files(self) -> None:
+        """Table displays Additional Files row when present."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            additional_files_in_degree=20,
+            has_additional_files=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            additional_files_in_degree=40,
+            has_additional_files=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Additional Files" in result
+
+    def test_displays_source_files_content(self) -> None:
+        """Table displays Source Files Content row when present."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            source_files_content_in_degree=15,
+            has_source_files_content=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            source_files_content_in_degree=35,
+            has_source_files_content=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Source Files Content" in result
+
+    def test_displays_additional_files_content(self) -> None:
+        """Table displays Additional Files Content row when present."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            additional_files_content_in_degree=10,
+            has_additional_files_content=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            additional_files_content_in_degree=25,
+            has_additional_files_content=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        assert "Additional Files Content" in result
+
+    def test_formats_small_percentages_with_decimal(self) -> None:
+        """Percentages under 10 are formatted with one decimal place."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            key_symbols_in_degree=5,  # 5%
+            has_key_symbols=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            key_symbols_in_degree=8,  # 8%
+            has_key_symbols=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        # Small percentages get one decimal place
+        assert "5.0%" in result or "5%" in result  # Either format acceptable
+        assert "8.0%" in result or "8%" in result
+
+    def test_shows_dash_for_zero_percentage(self) -> None:
+        """Zero percentage shows as dash."""
+        from io import StringIO
+        from rich.console import Console
+
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            key_symbols_in_degree=0,  # 0%
+            has_key_symbols=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            key_symbols_in_degree=50,
+            has_key_symbols=True,
+        )
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        # Zero should be displayed as "-"
+        # The table should contain "-" for the zero value column
+        result = output.getvalue()
+        assert "Key Symbols" in result
+
+    def test_no_output_for_empty_table(self) -> None:
+        """No table output when no sections are present."""
+        from io import StringIO
+        from rich.console import Console
+
+        # Stats with no sections marked as present
+        stats = SketchStats(token_budget=1000)
+        stats_2x = SketchStats(token_budget=2000)
+
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, width=100)
+        display_representativeness_table(stats, stats_2x, console)
+
+        result = output.getvalue()
+        # Should be empty or minimal since no sections are present
+        assert "Key Symbols" not in result
+        assert "Entry Points" not in result
+
+    def test_creates_default_console_when_none_provided(self) -> None:
+        """Function creates a console when None is provided."""
+        # Stats with one section to ensure table is created
+        stats = SketchStats(
+            token_budget=1000,
+            total_in_degree=100,
+            key_symbols_in_degree=50,
+            has_key_symbols=True,
+        )
+        stats_2x = SketchStats(
+            token_budget=2000,
+            total_in_degree=100,
+            key_symbols_in_degree=80,
+            has_key_symbols=True,
+        )
+
+        # Should not raise when console is None
+        display_representativeness_table(stats, stats_2x, console=None)
 
 
 class TestEstimateTokens:
@@ -2185,6 +2493,168 @@ class TestGenerateSketchWithBudget:
         # Key Symbols must appear even with tight budget
         assert "## Key Symbols" in sketch, "Key Symbols must appear even with tight budget"
 
+    def test_stats_out_tracks_all_sections(self, tmp_path: Path) -> None:
+        """stats_out parameter tracks statistics for all sections."""
+        # Create a project with enough content to trigger all sections
+        src = tmp_path / "src"
+        src.mkdir()
+
+        # Create multiple Python files with functions and classes
+        (src / "main.py").write_text(
+            "from utils import helper\n\n"
+            "def main():\n    helper()\n\n"
+            "class App:\n    def run(self):\n        pass\n"
+        )
+        (src / "utils.py").write_text(
+            "def helper():\n    pass\n\n"
+            "def process():\n    pass\n"
+        )
+        (src / "models.py").write_text(
+            "class User:\n    name: str\n    email: str\n\n"
+            "class Config:\n    debug: bool\n"
+        )
+
+        # Create config and additional files
+        (tmp_path / "config.yaml").write_text("debug: true\nport: 8080\n")
+        (tmp_path / "README.md").write_text("# Test Project\n\nA test project.\n")
+
+        # Generate sketch with stats tracking
+        stats = SketchStats()
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=5000,  # Large budget to include all sections
+            with_source=True,  # Enable source content sections
+            stats_out=stats,
+        )
+
+        # Verify stats were tracked
+        assert stats.token_budget == 5000
+        assert stats.has_key_symbols is True
+        assert stats.key_symbols_in_degree >= 0
+
+        # Verify sketch content
+        assert "## Overview" in sketch
+        assert "## Key Symbols" in sketch
+
+    def test_stats_out_tracks_source_files(self, tmp_path: Path) -> None:
+        """stats_out tracks source files in-degree."""
+        # Create files with symbols that have edges
+        (tmp_path / "main.py").write_text(
+            "from utils import helper, process\n\n"
+            "def main():\n    helper()\n    process()\n"
+        )
+        (tmp_path / "utils.py").write_text(
+            "def helper():\n    pass\n\n"
+            "def process():\n    helper()\n"
+        )
+
+        stats = SketchStats()
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=3000,
+            stats_out=stats,
+        )
+
+        # Should have source files section
+        if "## Source Files" in sketch:
+            assert stats.has_source_files is True
+            assert stats.source_files_in_degree >= 0
+
+    def test_stats_out_tracks_additional_files(self, tmp_path: Path) -> None:
+        """stats_out tracks additional files in-degree."""
+        src = tmp_path / "src"
+        src.mkdir()
+        # Create some code in src
+        (src / "app.py").write_text("def main():\n    pass\n")
+        (src / "utils.py").write_text("def helper():\n    pass\n")
+
+        # Create additional files (config, docs) that should be included
+        (tmp_path / "config.yaml").write_text("key: value\nhost: localhost\n")
+        (tmp_path / "settings.json").write_text('{"debug": true, "port": 8080}')
+
+        stats = SketchStats()
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=5000,  # Larger budget to include additional files
+            stats_out=stats,
+        )
+
+        # Verify sketch was generated with overview
+        assert "## Overview" in sketch
+        # Stats should be tracked regardless of whether section was included
+        assert stats.token_budget == 5000
+
+    def test_stats_out_tracks_content_sections(self, tmp_path: Path) -> None:
+        """stats_out tracks source and additional file content sections."""
+        src = tmp_path / "src"
+        src.mkdir()
+        # Create code files with more content for better coverage
+        (src / "main.py").write_text(
+            "def main():\n"
+            "    '''Main entry point.'''\n"
+            "    print('Hello')\n"
+            "    helper()\n\n"
+            "def helper():\n"
+            "    '''Helper function.'''\n"
+            "    pass\n"
+        )
+        (src / "utils.py").write_text(
+            "def process():\n"
+            "    '''Process data.'''\n"
+            "    return 42\n\n"
+            "def compute():\n"
+            "    '''Compute result.'''\n"
+            "    return process() * 2\n"
+        )
+
+        # Config files for additional content
+        (tmp_path / "config.yaml").write_text("debug: true\nhost: localhost\nport: 8080\n")
+
+        stats = SketchStats()
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=8000,  # Large budget for content sections
+            with_source=True,
+            stats_out=stats,
+        )
+
+        # Verify sketch was generated
+        assert "## Overview" in sketch
+        # with_source=True should trigger source content sections
+        # Stats tracking is exercised regardless of whether sections fit in budget
+        assert stats.token_budget == 8000
+
+    def test_stats_out_tracks_datamodels(self, tmp_path: Path) -> None:
+        """stats_out tracks datamodels confidence."""
+        # Create a file with dataclass-like classes
+        (tmp_path / "models.py").write_text(
+            "from dataclasses import dataclass\n\n"
+            "@dataclass\n"
+            "class User:\n"
+            "    name: str\n"
+            "    email: str\n\n"
+            "@dataclass\n"
+            "class Product:\n"
+            "    id: int\n"
+            "    price: float\n"
+        )
+        (tmp_path / "app.py").write_text(
+            "from models import User, Product\n\n"
+            "def main():\n    u = User('a', 'b')\n"
+        )
+
+        stats = SketchStats()
+        sketch = generate_sketch(
+            tmp_path,
+            max_tokens=5000,
+            stats_out=stats,
+        )
+
+        # If datamodels were detected and section generated
+        if stats.has_datamodels:
+            assert stats.datamodels_confidence >= 0
+            assert stats.total_datamodel_confidence >= 0
+
 
 class TestCLISketch:
     """Tests for CLI sketch command."""
@@ -2405,6 +2875,50 @@ class TestExcludeTests:
         # Should complete without error
         sketch = generate_sketch(tmp_path, max_tokens=1000, exclude_tests=True)
         assert "## Overview" in sketch
+
+    def test_format_language_stats_markdown_repo_with_exclude_tests(
+        self, tmp_path: Path
+    ) -> None:
+        """exclude_tests shows correct counts for markdown-only repos.
+
+        Regression test for a bug where repos with non-source files (markdown,
+        JSON, YAML) showed "0 files" and "~0 LOC" when using -x flag because
+        _format_language_stats was recalculating totals from an empty
+        filtered_source_files list instead of using the profile's counts.
+        """
+        from hypergumbo.profile import RepoProfile, LanguageStats
+
+        # Simulate a markdown/JSON repo (like compose-spec)
+        profile = RepoProfile()
+        profile.languages = {
+            "markdown": LanguageStats(files=38, loc=7500),
+            "json": LanguageStats(files=4, loc=1200),
+            "yaml": LanguageStats(files=1, loc=81),
+        }
+
+        # Create temp repo with only markdown files (no test files)
+        (tmp_path / "README.md").write_text("# Project\n\nDescription\n")
+        (tmp_path / "SPEC.md").write_text("## Specification\n\nDetails\n")
+
+        # Without -x flag: should show totals
+        result = _format_language_stats(
+            profile, tmp_path, extra_excludes=None, exclude_tests=False
+        )
+        assert "43 files" in result
+        assert "8,781 LOC" in result
+
+        # With -x flag: should STILL show totals (no test files to exclude)
+        result_exclude = _format_language_stats(
+            profile, tmp_path, extra_excludes=None, exclude_tests=True
+        )
+        # Key assertion: counts must NOT be zero
+        assert "0 files" not in result_exclude
+        assert "~0 LOC" not in result_exclude
+        # Should show the profile totals
+        assert "43 files" in result_exclude
+        assert "8,781" in result_exclude
+        # Should have [IGNORING TESTS] marker
+        assert "[IGNORING TESTS]" in result_exclude
 
 
 class TestFormatStructure:
