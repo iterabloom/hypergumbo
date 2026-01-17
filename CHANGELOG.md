@@ -10,6 +10,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **README-first hybrid ranking for Additional Files:** The Additional Files section now uses a
+  smarter ordering algorithm:
+  - README always appears first (truncated if it exceeds the token budget)
+  - Remaining files selected via round-robin from: README-linked files, similarity-ranked files,
+    and centrality-ranked files
+  - Dynamic truncation based on median token count of already-selected files (500-token floor)
+- **Multi-format README link extraction:** Extracts internal links from READMEs in multiple formats:
+  - Markdown: inline `[text](url)` and reference-style `[text][ref]` with `[ref]: url` definitions
+  - Org-mode: `[[url][text]]` and `[[url]]` formats, plus `file:path` scheme
+  - RST: `` `text <url>`_ `` inline and `.. _text: url` reference links
+  - AsciiDoc: `https://url[text]`, `link:url[text]`, and `{attr}[text]` with `:attr: url` definitions
+- **Forge URL resolution for README links:** Resolves links to GitHub/GitLab/Codeberg URLs pointing
+  to the same repo, including raw content URLs and GitHub/GitLab Pages URLs.
 - **`-x/--exclude-tests` flag for sketch:** Exclude test files from all sketch sections (symbols,
   source files, LOC counts). Shows `[IGNORING TESTS]` markers on section headers. The test LOC
   counter reveals if any test files slip through the filter.

@@ -799,7 +799,7 @@ Markdown output to stdout (not a file). Designed for pasting into LLM chat inter
 | 8 | ⬜ Data Models | ORM models, entities, core data structures |
 | 9 | 🟩 Source Files | File listing by importance density |
 | 10 | 🟩 Key Symbols | Functions, classes, types with centrality |
-| 11 | 🟩 Additional Files | Semantic + centrality ranked |
+| 11 | 🟩 Additional Files | README-first + hybrid round-robin |
 | 12 | 🟩 Source Content | Actual code (--with-source only) |
 | 13 | ⬜ Additional File Content | Code for semantic picks (--with-source only) |
 
@@ -1301,6 +1301,32 @@ def weighted_score(symbol: Symbol, centrality: float) -> float:
 ```
 
 This ensures first-party symbols appear first even when third-party utilities have higher raw centrality.
+
+#### Additional Files ranking
+
+The Additional Files section uses a README-first hybrid ranking algorithm:
+
+1. **README always first:** The project's README is placed first. If it exceeds the token budget, it's truncated and no other files are included.
+
+2. **Round-robin selection:** Remaining files are selected by cycling through three sources:
+   - README-linked files (internal links extracted from the README)
+   - Similarity-ranked files (semantic similarity to project description)
+   - Centrality-ranked files (symbol mention frequency)
+
+3. **Multi-format link extraction:** Supports Markdown (inline + reference-style), Org-mode, RST, and AsciiDoc link syntaxes. Resolves relative paths, absolute paths, and forge URLs (GitHub/GitLab/Codeberg).
+
+4. **Dynamic truncation:** When budget is limited, files are truncated based on median token count of already-selected files, with a 500-token floor.
+
+**Example round-robin order:**
+```
+1. README.md (always first)
+2. CONTRIBUTING.md (linked from README)
+3. docs/overview.md (similarity-ranked)
+4. config.yaml (centrality-ranked)
+5. INSTALL.md (linked from README)
+6. docs/api.md (similarity-ranked)
+...
+```
 
 #### Slicing behavior
 
