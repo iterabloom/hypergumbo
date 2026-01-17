@@ -452,6 +452,70 @@ int main() {
         assert "helper" in names
         assert "main" in names
 
+    def test_prefers_definition_over_declaration_for_call_edges(self, tmp_path: Path) -> None:
+        """Call edges point to definitions (.c), not declarations (.h).
+
+        This ensures transitive coverage estimation works correctly.
+        When caller() calls process(), the edge should point to the
+        definition in impl.c (which has outgoing calls), not the
+        declaration in header.h (which has none).
+        """
+        from hypergumbo.analyze.c import analyze_c
+
+        # Header with declaration
+        header = tmp_path / "header.h"
+        header.write_text("""
+void process(void);
+void helper(void);
+""")
+
+        # Source with definitions
+        impl = tmp_path / "impl.c"
+        impl.write_text("""
+#include "header.h"
+
+void helper(void) {
+    // No calls
+}
+
+void process(void) {
+    helper();  // Calls helper
+}
+""")
+
+        # Test file that calls process
+        test = tmp_path / "test.c"
+        test.write_text("""
+#include "header.h"
+
+void test_process(void) {
+    process();  // Should resolve to impl.c definition
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        # Find the edge from test_process -> process
+        test_to_process_edge = None
+        for e in result.edges:
+            if "test_process" in e.src and "process" in e.dst:
+                test_to_process_edge = e
+                break
+
+        assert test_to_process_edge is not None
+        # Edge should point to impl.c definition, not header.h declaration
+        assert "impl.c" in test_to_process_edge.dst
+        assert "header.h" not in test_to_process_edge.dst
+
+        # Verify the definition has outgoing edges (calls helper)
+        process_to_helper_edge = None
+        for e in result.edges:
+            if "impl.c" in e.src and "process" in e.src and "helper" in e.dst:
+                process_to_helper_edge = e
+                break
+
+        assert process_to_helper_edge is not None
+
 
 class TestCPointerAndComplexTypes:
     """Tests for complex C type handling."""

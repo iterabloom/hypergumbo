@@ -61,8 +61,12 @@ CppAnalysisResult = AnalysisResult
 
 
 def find_cpp_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all C++ files in the repository."""
-    yield from find_files(repo_root, ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hxx", "*.h"])
+    """Yield all C++ files in the repository.
+
+    Headers (.h, .hpp, .hxx) are yielded before source files (.cpp, .cc, .cxx)
+    so that definitions can replace declarations when building the symbol registry.
+    """
+    yield from find_files(repo_root, ["*.h", "*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
 
 
 def is_cpp_tree_sitter_available() -> bool:
@@ -516,13 +520,27 @@ def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
             files_skipped += 1
 
     # Build global symbol registry
+    # Prefer function definitions (.cpp/.cc/.cxx) over declarations (.h/.hpp/.hxx)
+    # This ensures call edges point to implementations (with outgoing calls)
     global_symbols: dict[str, Symbol] = {}
     for analysis in file_analyses.values():
         for symbol in analysis.symbols:
             # Store by short name for cross-file resolution
             short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
+            # Check if this is a source file (definition) vs header (declaration)
+            sym_is_source = any(symbol.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
+            for name in (short_name, symbol.name):
+                existing = global_symbols.get(name)
+                if existing is None:
+                    global_symbols[name] = symbol
+                else:
+                    # Prefer source files over headers
+                    # Note: Currently C++ analyzer only extracts function_definition nodes,
+                    # not forward declarations. This path handles potential future support
+                    # for declaration extraction or edge cases with duplicate definitions.
+                    existing_is_source = any(existing.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
+                    if sym_is_source and not existing_is_source:
+                        global_symbols[name] = symbol  # pragma: no cover
 
     # Pass 2: Extract edges
     all_symbols: list[Symbol] = []

@@ -48,8 +48,12 @@ PASS_VERSION = "hypergumbo-0.1.0"
 
 
 def find_c_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all C files in the repository."""
-    yield from find_files(repo_root, ["*.c", "*.h"])
+    """Yield all C files in the repository.
+
+    Headers (.h) are yielded before source files (.c) so that
+    definitions can replace declarations when building the symbol registry.
+    """
+    yield from find_files(repo_root, ["*.h", "*.c"])
 
 
 def is_c_tree_sitter_available() -> bool:
@@ -480,10 +484,22 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
             files_skipped += 1
 
     # Build global symbol registry
+    # Prefer function definitions (.c files) over declarations (.h files)
+    # This ensures call edges point to the implementation (with outgoing calls)
+    # rather than the header declaration (no outgoing calls)
     global_symbols: dict[str, Symbol] = {}
 
     for sym in all_symbols:
-        global_symbols[sym.name] = sym
+        existing = global_symbols.get(sym.name)
+        if existing is None:
+            global_symbols[sym.name] = sym
+        else:
+            # Prefer .c (definition) over .h (declaration)
+            sym_is_source = sym.path.endswith('.c')
+            existing_is_source = existing.path.endswith('.c')
+            if sym_is_source and not existing_is_source:
+                global_symbols[sym.name] = sym
+            # If both are source files, prefer the later one (already in dict)
 
     # Pass 2: Extract edges using global symbol registry
     all_edges: list[Edge] = []

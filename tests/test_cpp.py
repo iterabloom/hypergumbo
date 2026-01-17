@@ -448,6 +448,60 @@ void create() {
         # create should instantiate Widget
         assert len(instantiate_edges) >= 1
 
+    def test_prefers_definition_over_declaration_for_call_edges(
+        self, tmp_path: Path
+    ) -> None:
+        """Call edges point to definitions (.cpp), not declarations (.h).
+
+        This ensures transitive coverage estimation works correctly.
+        When caller() calls process(), the edge should point to the
+        definition in impl.cpp (which has outgoing calls), not the
+        declaration in header.h (which has none).
+        """
+        # Header with declaration (no function body)
+        header = tmp_path / "header.h"
+        header.write_text("""
+void process();
+void helper();
+""")
+
+        # Source with definitions (has function body with calls)
+        impl = tmp_path / "impl.cpp"
+        impl.write_text("""
+#include "header.h"
+
+void helper() {
+    // No calls
+}
+
+void process() {
+    helper();  // Calls helper
+}
+""")
+
+        # Test file that calls process
+        test_file = tmp_path / "test.cpp"
+        test_file.write_text("""
+#include "header.h"
+
+void test_process() {
+    process();  // Should resolve to impl.cpp definition
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        # Find the edge from test_process -> process
+        test_to_process_edge = None
+        for e in result.edges:
+            if "test_process" in e.src and "process" in e.dst:
+                test_to_process_edge = e
+                break
+
+        assert test_to_process_edge is not None
+        assert "impl.cpp" in test_to_process_edge.dst
+        assert "header.h" not in test_to_process_edge.dst
+
 
 class TestCppSignatureExtraction:
     """Tests for C++ function signature extraction."""

@@ -53,6 +53,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Structure section filters test files with `-x` flag:** Directory item counts in the Structure
   section now exclude test source files when `-x` is used. Config/documentation files (like
   `Makefile`, `Cargo.toml`) inside test directories are still counted since they're not test code.
+- **C/C++ analyzers prefer definitions over declarations:** Call edges now point to function
+  definitions (`.c`, `.cpp` files) instead of declarations (`.h` files). This fixes transitive
+  test coverage estimation for C/C++ codebases where the previous behavior could truncate the
+  call graph at header file declarations (which have no outgoing call edges).
 
 ### Changed
 - **Section header renames for clarity:**
