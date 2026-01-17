@@ -363,11 +363,14 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
     # Generate double-budget sketch for comparison and display representativeness table
     if max_tokens and stats is not None:
+        import tempfile
+
         stats_2x = SketchStats()
-        # Generate 2x budget sketch (discards output, just for stats)
-        _ = generate_sketch(
+        double_budget = max_tokens * 2
+        # Generate 2x budget sketch
+        sketch_2x = generate_sketch(
             repo_root,
-            max_tokens=max_tokens * 2,
+            max_tokens=double_budget,
             exclude_tests=exclude_tests,
             first_party_priority=first_party_priority,
             extra_excludes=extra_excludes,
@@ -383,6 +386,27 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             stats_out=stats_2x,
         )
         display_representativeness_table(stats, stats_2x)
+
+        # Save 2x sketch to temp file and show copy command
+        temp_dir = Path(tempfile.gettempdir()) / "hypergumbo_sketch_compare"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        sketch_2x_filename = _generate_sketch_filename(
+            tokens=double_budget,
+            exclude_tests=exclude_tests,
+            with_source=with_source,
+        )
+        temp_sketch_path = temp_dir / sketch_2x_filename
+        temp_sketch_path.write_text(sketch_2x)
+
+        # Show helpful message with copy command
+        if cache_dir is not None:
+            cache_dest = cache_dir / sketch_2x_filename
+            print(
+                f"\nhypergumbo also created the double-budget ({double_budget:,}-token) sketch temporarily.\n"
+                f"If you like, preserve it to the cache by running:\n\n"
+                f"  cp {temp_sketch_path} {cache_dest}\n",
+                file=sys.stderr,
+            )
 
     # Cache the sketch to a file with descriptive name
     sketch_cache_path: Path | None = None
