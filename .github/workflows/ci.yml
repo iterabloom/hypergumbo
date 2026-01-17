@@ -150,6 +150,44 @@ jobs:
             echo "sentence-transformers not installed, embedding tests will be skipped"
             echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          pytest -n 2
+          pytest -n 2 --cov=src --cov-report=term | tee coverage-output.txt
+      - name: Update coverage badge
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+        run: |
+          # Extract coverage percentage from pytest output
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          if [ -z "$COV" ]; then
+            echo "Could not extract coverage percentage"
+            exit 0  # Don't fail the build
+          fi
+
+          # Determine badge color based on coverage
+          if [ "$COV" -ge 90 ]; then
+            COLOR="brightgreen"
+          elif [ "$COV" -ge 70 ]; then
+            COLOR="yellow"
+          else
+            COLOR="red"
+          fi
+
+          # Create shields.io endpoint JSON in temp location
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
+
+          # Configure git
+          git config user.name "CI Bot"
+          git config user.email "ci@iterabloom.org"
+
+          # Fetch badges branch or create orphan
+          git fetch origin badges:badges 2>/dev/null || true
+          git checkout badges 2>/dev/null || git checkout --orphan badges
+
+          # Clean branch and add only coverage.json
+          git rm -rf . 2>/dev/null || true
+          cp /tmp/coverage.json coverage.json
+
+          # Commit and push
+          git add coverage.json
+          git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
+          git push origin badges --force || echo "Push failed - may need write permissions"
