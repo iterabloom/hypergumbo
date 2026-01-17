@@ -95,22 +95,29 @@ class TestDisplayRepresentativenessTable:
             key_symbols_in_degree=50,
             has_key_symbols=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             key_symbols_in_degree=80,
+            has_key_symbols=True,
+        )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            key_symbols_in_degree=95,
             has_key_symbols=True,
         )
 
         # Capture output using StringIO console
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Key Symbols" in result
         assert "50%" in result
         assert "80%" in result
+        assert "95%" in result
 
     def test_displays_entry_points_with_confidence(self, capsys) -> None:
         """Table displays Entry Points row with confidence mass."""
@@ -123,16 +130,22 @@ class TestDisplayRepresentativenessTable:
             entrypoints_confidence=5.0,
             has_entrypoints=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_entrypoint_confidence=10.0,
             entrypoints_confidence=8.0,
             has_entrypoints=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_entrypoint_confidence=10.0,
+            entrypoints_confidence=10.0,
+            has_entrypoints=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Entry Points" in result
@@ -149,16 +162,22 @@ class TestDisplayRepresentativenessTable:
             datamodels_confidence=3.0,
             has_datamodels=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_datamodel_confidence=10.0,
             datamodels_confidence=6.0,
             has_datamodels=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_datamodel_confidence=10.0,
+            datamodels_confidence=9.0,
+            has_datamodels=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Data Models" in result
@@ -174,16 +193,22 @@ class TestDisplayRepresentativenessTable:
             source_files_in_degree=30,
             has_source_files=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             source_files_in_degree=60,
             has_source_files=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            source_files_in_degree=90,
+            has_source_files=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Source Files" in result
@@ -200,16 +225,22 @@ class TestDisplayRepresentativenessTable:
             additional_files_in_degree=20,
             has_additional_files=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             additional_files_in_degree=40,
             has_additional_files=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            additional_files_in_degree=60,
+            has_additional_files=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Additional Files" in result
@@ -225,16 +256,22 @@ class TestDisplayRepresentativenessTable:
             source_files_content_in_degree=15,
             has_source_files_content=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             source_files_content_in_degree=35,
             has_source_files_content=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            source_files_content_in_degree=70,
+            has_source_files_content=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Source Files Content" in result
@@ -250,16 +287,22 @@ class TestDisplayRepresentativenessTable:
             additional_files_content_in_degree=10,
             has_additional_files_content=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             additional_files_content_in_degree=25,
             has_additional_files_content=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            additional_files_content_in_degree=50,
+            has_additional_files_content=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         assert "Additional Files Content" in result
@@ -275,16 +318,22 @@ class TestDisplayRepresentativenessTable:
             key_symbols_in_degree=5,  # 5%
             has_key_symbols=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             key_symbols_in_degree=8,  # 8%
             has_key_symbols=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            key_symbols_in_degree=15,  # 15%
+            has_key_symbols=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         # Small percentages get one decimal place
@@ -302,16 +351,22 @@ class TestDisplayRepresentativenessTable:
             key_symbols_in_degree=0,  # 0%
             has_key_symbols=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             key_symbols_in_degree=50,
             has_key_symbols=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            key_symbols_in_degree=80,
+            has_key_symbols=True,
+        )
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         # Zero should be displayed as "-"
         # The table should contain "-" for the zero value column
@@ -325,11 +380,12 @@ class TestDisplayRepresentativenessTable:
 
         # Stats with no sections marked as present
         stats = SketchStats(token_budget=1000)
-        stats_2x = SketchStats(token_budget=2000)
+        stats_4x = SketchStats(token_budget=4000)
+        stats_16x = SketchStats(token_budget=16000)
 
         output = StringIO()
-        console = Console(file=output, force_terminal=True, width=100)
-        display_representativeness_table(stats, stats_2x, console)
+        console = Console(file=output, force_terminal=True, width=120)
+        display_representativeness_table(stats, stats_4x, stats_16x, console)
 
         result = output.getvalue()
         # Should be empty or minimal since no sections are present
@@ -345,15 +401,21 @@ class TestDisplayRepresentativenessTable:
             key_symbols_in_degree=50,
             has_key_symbols=True,
         )
-        stats_2x = SketchStats(
-            token_budget=2000,
+        stats_4x = SketchStats(
+            token_budget=4000,
             total_in_degree=100,
             key_symbols_in_degree=80,
             has_key_symbols=True,
         )
+        stats_16x = SketchStats(
+            token_budget=16000,
+            total_in_degree=100,
+            key_symbols_in_degree=95,
+            has_key_symbols=True,
+        )
 
         # Should not raise when console is None
-        display_representativeness_table(stats, stats_2x, console=None)
+        display_representativeness_table(stats, stats_4x, stats_16x, console=None)
 
 
 class TestEstimateTokens:

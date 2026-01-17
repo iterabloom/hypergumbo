@@ -111,17 +111,20 @@ class SketchStats:
 
 def display_representativeness_table(
     stats: SketchStats,
-    stats_2x: SketchStats,
+    stats_4x: SketchStats,
+    stats_16x: SketchStats,
     console: Optional["Console"] = None,  # noqa: F821 - Console imported lazily
 ) -> None:
     """Display a Rich table showing sketch representativeness.
 
     Shows what fraction of the codebase's "importance" is captured in each
-    sketch section, comparing the requested budget vs. double budget.
+    sketch section, comparing the requested budget vs. 4x and 16x budgets.
+    Using 4x/16x (instead of 2x) reveals when large files start fitting.
 
     Args:
         stats: Stats from sketch at requested token budget.
-        stats_2x: Stats from sketch at double the token budget.
+        stats_4x: Stats from sketch at 4x the token budget.
+        stats_16x: Stats from sketch at 16x the token budget.
         console: Optional Rich console to use. If None, creates one.
     """
     from rich.console import Console
@@ -138,7 +141,8 @@ def display_representativeness_table(
     )
     table.add_column("Section", style="cyan")
     table.add_column(f"{stats.token_budget:,}t", justify="right")
-    table.add_column(f"{stats_2x.token_budget:,}t", justify="right", style="dim")
+    table.add_column(f"{stats_4x.token_budget:,}t", justify="right", style="dim")
+    table.add_column(f"{stats_16x.token_budget:,}t", justify="right", style="dim")
     table.add_column("Metric", style="dim")
 
     def fmt_pct(val: float) -> str:
@@ -149,47 +153,58 @@ def display_representativeness_table(
             return f"{val:.0f}%"
         return f"{val:.1f}%"
 
+    def any_has(*flags: bool) -> bool:
+        """Check if any stats object has this section."""
+        return any(flags)
+
     # Entry Points (confidence mass)
-    if stats.has_entrypoints or stats_2x.has_entrypoints:
+    if any_has(stats.has_entrypoints, stats_4x.has_entrypoints, stats_16x.has_entrypoints):
         pct1 = stats.confidence_mass(stats.entrypoints_confidence, stats.total_entrypoint_confidence)
-        pct2 = stats_2x.confidence_mass(stats_2x.entrypoints_confidence, stats_2x.total_entrypoint_confidence)
-        table.add_row("Entry Points", fmt_pct(pct1), fmt_pct(pct2), "confidence mass")
+        pct4 = stats_4x.confidence_mass(stats_4x.entrypoints_confidence, stats_4x.total_entrypoint_confidence)
+        pct16 = stats_16x.confidence_mass(stats_16x.entrypoints_confidence, stats_16x.total_entrypoint_confidence)
+        table.add_row("Entry Points", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "confidence mass")
 
     # Data Models (confidence mass)
-    if stats.has_datamodels or stats_2x.has_datamodels:
+    if any_has(stats.has_datamodels, stats_4x.has_datamodels, stats_16x.has_datamodels):
         pct1 = stats.confidence_mass(stats.datamodels_confidence, stats.total_datamodel_confidence)
-        pct2 = stats_2x.confidence_mass(stats_2x.datamodels_confidence, stats_2x.total_datamodel_confidence)
-        table.add_row("Data Models", fmt_pct(pct1), fmt_pct(pct2), "confidence mass")
+        pct4 = stats_4x.confidence_mass(stats_4x.datamodels_confidence, stats_4x.total_datamodel_confidence)
+        pct16 = stats_16x.confidence_mass(stats_16x.datamodels_confidence, stats_16x.total_datamodel_confidence)
+        table.add_row("Data Models", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "confidence mass")
 
     # Source Files (symbol mass)
-    if stats.has_source_files or stats_2x.has_source_files:
+    if any_has(stats.has_source_files, stats_4x.has_source_files, stats_16x.has_source_files):
         pct1 = stats.symbol_mass(stats.source_files_in_degree)
-        pct2 = stats_2x.symbol_mass(stats_2x.source_files_in_degree)
-        table.add_row("Source Files", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+        pct4 = stats_4x.symbol_mass(stats_4x.source_files_in_degree)
+        pct16 = stats_16x.symbol_mass(stats_16x.source_files_in_degree)
+        table.add_row("Source Files", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "symbol mass")
 
     # Key Symbols (symbol mass)
-    if stats.has_key_symbols or stats_2x.has_key_symbols:
+    if any_has(stats.has_key_symbols, stats_4x.has_key_symbols, stats_16x.has_key_symbols):
         pct1 = stats.symbol_mass(stats.key_symbols_in_degree)
-        pct2 = stats_2x.symbol_mass(stats_2x.key_symbols_in_degree)
-        table.add_row("Key Symbols", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+        pct4 = stats_4x.symbol_mass(stats_4x.key_symbols_in_degree)
+        pct16 = stats_16x.symbol_mass(stats_16x.key_symbols_in_degree)
+        table.add_row("Key Symbols", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "symbol mass")
 
     # Additional Files (symbol mass)
-    if stats.has_additional_files or stats_2x.has_additional_files:
+    if any_has(stats.has_additional_files, stats_4x.has_additional_files, stats_16x.has_additional_files):
         pct1 = stats.symbol_mass(stats.additional_files_in_degree)
-        pct2 = stats_2x.symbol_mass(stats_2x.additional_files_in_degree)
-        table.add_row("Additional Files", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+        pct4 = stats_4x.symbol_mass(stats_4x.additional_files_in_degree)
+        pct16 = stats_16x.symbol_mass(stats_16x.additional_files_in_degree)
+        table.add_row("Additional Files", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "symbol mass")
 
     # Source Files Content (symbol mass) - only if --with-source was used
-    if stats.has_source_files_content or stats_2x.has_source_files_content:
+    if any_has(stats.has_source_files_content, stats_4x.has_source_files_content, stats_16x.has_source_files_content):
         pct1 = stats.symbol_mass(stats.source_files_content_in_degree)
-        pct2 = stats_2x.symbol_mass(stats_2x.source_files_content_in_degree)
-        table.add_row("Source Files Content", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+        pct4 = stats_4x.symbol_mass(stats_4x.source_files_content_in_degree)
+        pct16 = stats_16x.symbol_mass(stats_16x.source_files_content_in_degree)
+        table.add_row("Source Files Content", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "symbol mass")
 
     # Additional Files Content (symbol mass) - only if --with-source was used
-    if stats.has_additional_files_content or stats_2x.has_additional_files_content:
+    if any_has(stats.has_additional_files_content, stats_4x.has_additional_files_content, stats_16x.has_additional_files_content):
         pct1 = stats.symbol_mass(stats.additional_files_content_in_degree)
-        pct2 = stats_2x.symbol_mass(stats_2x.additional_files_content_in_degree)
-        table.add_row("Additional Files Content", fmt_pct(pct1), fmt_pct(pct2), "symbol mass")
+        pct4 = stats_4x.symbol_mass(stats_4x.additional_files_content_in_degree)
+        pct16 = stats_16x.symbol_mass(stats_16x.additional_files_content_in_degree)
+        table.add_row("Additional Files Content", fmt_pct(pct1), fmt_pct(pct4), fmt_pct(pct16), "symbol mass")
 
     # Only display if there's at least one row
     if table.row_count > 0:

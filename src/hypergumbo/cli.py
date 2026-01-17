@@ -361,50 +361,88 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     )
     print(sketch)
 
-    # Generate double-budget sketch for comparison and display representativeness table
+    # Generate 4x and 16x budget sketches for comparison table
+    # Using 4x/16x (instead of 2x) reveals when large files start fitting
     if max_tokens and stats is not None:
         import tempfile
 
-        stats_2x = SketchStats()
-        double_budget = max_tokens * 2
-        # Generate 2x budget sketch
-        sketch_2x = generate_sketch(
+        budget_4x = max_tokens * 4
+        budget_16x = max_tokens * 16
+
+        stats_4x = SketchStats()
+        stats_16x = SketchStats()
+
+        # Generate 4x budget sketch
+        sketch_4x = generate_sketch(
             repo_root,
-            max_tokens=double_budget,
+            max_tokens=budget_4x,
             exclude_tests=exclude_tests,
             first_party_priority=first_party_priority,
             extra_excludes=extra_excludes,
             config_extraction_mode=config_mode,
-            verbose=False,  # Suppress verbose for 2x run
+            verbose=False,
             max_config_files=max_config_files,
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
             language_proportional=language_proportional,
-            progress=False,  # Suppress progress for 2x run
+            progress=False,
             cached_results=cached_results,
             with_source=with_source,
-            stats_out=stats_2x,
+            stats_out=stats_4x,
         )
-        display_representativeness_table(stats, stats_2x)
 
-        # Save 2x sketch to temp file and show copy command
+        # Generate 16x budget sketch
+        sketch_16x = generate_sketch(
+            repo_root,
+            max_tokens=budget_16x,
+            exclude_tests=exclude_tests,
+            first_party_priority=first_party_priority,
+            extra_excludes=extra_excludes,
+            config_extraction_mode=config_mode,
+            verbose=False,
+            max_config_files=max_config_files,
+            fleximax_lines=fleximax_lines,
+            max_chunk_chars=max_chunk_chars,
+            language_proportional=language_proportional,
+            progress=False,
+            cached_results=cached_results,
+            with_source=with_source,
+            stats_out=stats_16x,
+        )
+
+        display_representativeness_table(stats, stats_4x, stats_16x)
+
+        # Save comparison sketches to temp files
         temp_dir = Path(tempfile.gettempdir()) / "hypergumbo_sketch_compare"
         temp_dir.mkdir(parents=True, exist_ok=True)
-        sketch_2x_filename = _generate_sketch_filename(
-            tokens=double_budget,
+
+        sketch_4x_filename = _generate_sketch_filename(
+            tokens=budget_4x,
             exclude_tests=exclude_tests,
             with_source=with_source,
         )
-        temp_sketch_path = temp_dir / sketch_2x_filename
-        temp_sketch_path.write_text(sketch_2x)
+        sketch_16x_filename = _generate_sketch_filename(
+            tokens=budget_16x,
+            exclude_tests=exclude_tests,
+            with_source=with_source,
+        )
 
-        # Show helpful message with copy command
+        temp_4x_path = temp_dir / sketch_4x_filename
+        temp_16x_path = temp_dir / sketch_16x_filename
+        temp_4x_path.write_text(sketch_4x)
+        temp_16x_path.write_text(sketch_16x)
+
+        # Show helpful message with copy commands
         if cache_dir is not None:
-            cache_dest = cache_dir / sketch_2x_filename
+            cache_4x = cache_dir / sketch_4x_filename
+            cache_16x = cache_dir / sketch_16x_filename
             print(
-                f"\nhypergumbo also created the double-budget ({double_budget:,}-token) sketch temporarily.\n"
-                f"If you like, preserve it to the cache by running:\n\n"
-                f"  cp {temp_sketch_path} {cache_dest}\n",
+                f"\nhypergumbo also created comparison sketches temporarily:\n"
+                f"  4x budget ({budget_4x:,}t):  {temp_4x_path}\n"
+                f"  16x budget ({budget_16x:,}t): {temp_16x_path}\n"
+                f"\nTo preserve them to cache:\n"
+                f"  cp {temp_4x_path} {cache_4x}\n"
+                f"  cp {temp_16x_path} {cache_16x}\n",
                 file=sys.stderr,
             )
 
