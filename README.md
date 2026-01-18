@@ -9,7 +9,8 @@ A local-first CLI that generates behavior maps from source code. Helps developer
 
 ```bash
 pip install hypergumbo
-hypergumbo .
+git clone https://codeberg.org/iterabloom/hypergumbo
+hypergumbo hypergumbo/
 ```
 
 **Requires Python 3.10+. Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
@@ -26,24 +27,38 @@ brew install ripgrep
 
 Output:
 ```markdown
-# my-project
+# hypergumbo
 
 ## Overview
-Python (72%), TypeScript (18%), Markdown (10%) · 84 files · ~12,400 LOC
+Python (91%), Markdown (6%), Yaml (2%)
+334 files    (200 non-test + 134 test)
+~130,359 LOC (~66,204 non-test + ~64,155 test)
 
 ## Structure
-- `src/` — Source code
-- `tests/` — Tests
+hypergumbo/
+├── docs/
+├── scripts/
+├── src/hypergumbo/
+├── tests/
+├── pyproject.toml
+└── [and 22 other items]
 
 ## Frameworks
-- fastapi
 - pytest
+- pytorch
+- transformers
+
+## Tests
+135 test files · pytest, unittest
+*~92% estimated coverage (1329/1442 functions called by tests)*
 
 ## Key Symbols
-### `src/api/routes.py`
-- `create_user` (function) ★
-- `get_user` (function) ★
+### `src/hypergumbo/ir.py`
+- `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
+- `Span` (class) ★ — Source code location with line and column info.
 ```
+
+**[See full example output](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output.md)** | **[With --with-source](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output-with-source.md)**
 
 Use `-t` to control the token budget:
 ```bash
