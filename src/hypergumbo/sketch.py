@@ -2759,6 +2759,27 @@ def _collect_important_files(
             if sym and sym.path:
                 add_file(sym.path)  # add_file handles path conversion
 
+    # 5b. Root-level source files (even without symbols)
+    # For flat repos (all files at root), collect source files directly.
+    # This ensures repos like qemu-sgabios show all root-level .c/.h/.S files,
+    # not just those with symbols detected.
+    if len(seen_root_files) < max_root_files:
+        from fnmatch import fnmatch
+
+        # Build set of all source patterns from SOURCE_EXTENSIONS
+        source_patterns: set[str] = set()
+        for patterns in SOURCE_EXTENSIONS.values():
+            source_patterns.update(patterns)
+
+        for item in sorted(repo_root.iterdir(), key=lambda x: x.name):
+            if not item.is_file():
+                continue
+            # Check if it matches a source file pattern
+            if any(fnmatch(item.name, pat) for pat in source_patterns):
+                add_file(item.name)
+            if len(seen_root_files) >= max_root_files:
+                break
+
     # 6. Additional files (CONFIG and DOCUMENTATION files)
     # Scan for files that would appear in Additional Files section,
     # adding only those that introduce new root directories.

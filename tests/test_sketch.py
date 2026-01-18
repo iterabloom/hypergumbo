@@ -4530,6 +4530,66 @@ class TestCollectImportantFiles:
         # Verify .git was excluded
         assert not any(".git" in f for f in result)
 
+    def test_collects_root_level_source_files_without_symbols(self, tmp_path: Path) -> None:
+        """Collects root-level source files even if they have no symbols.
+
+        For flat repos like qemu-sgabios where all files are at the root level,
+        we should show source files even if they don't have symbols (e.g., .h
+        files with only #defines, .S assembly files).
+        """
+        # Create root-level source files (like qemu-sgabios)
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("#define MAX 100")  # No symbols
+        (tmp_path / "code.S").write_text(".text\n.global start")  # Assembly, no symbols
+        (tmp_path / "README.md").write_text("# Project")  # Not a source file
+
+        # Only main.c has a symbol
+        symbol = Symbol(
+            id="root:main",
+            name="main",
+            kind="function",
+            language="c",
+            path="main.c",
+            span=Span(1, 1, 1, 10),
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=["main.c"],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={"root:main": 0.5},
+        )
+
+        # Should include all source files, not just those with symbols
+        assert "main.c" in result
+        assert "utils.h" in result  # .h file even without symbols
+        # README.md is not a source file, shouldn't be here
+        assert "README.md" not in result
+
+    def test_root_level_source_files_respects_max_limit(self, tmp_path: Path) -> None:
+        """Root-level source files collection stops at max_root_files limit."""
+        # Create 8 root-level source files (more than default max of 5)
+        for i in range(8):
+            (tmp_path / f"file{i}.c").write_text(f"int func{i}() {{ return {i}; }}")
+
+        # No symbols - only step 5b will collect files
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[],
+            centrality={},
+            max_root_files=5,
+        )
+
+        # Should have exactly 5 root-level files (the limit)
+        assert len(result) == 5
+        # Files should be sorted alphabetically (file0.c, file1.c, ...)
+        assert result[0] == "file0.c"
+
 
 class TestExtractPythonDocstrings:
     """Tests for Python docstring extraction."""
