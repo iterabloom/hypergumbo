@@ -86,10 +86,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   search are expanded with their following content paragraphs, then the header markup is stripped
   from the final description so the elevator pitch reads naturally.
 - **Structure section shows all root directories:** The tree structure now ensures directory
-  diversity by including one representative file from each root-level directory (up to 10),
-  rather than taking only the top 5 files by centrality. Previously, directories with
-  lower-ranked files (like `npcm7xx/`, `npcm8xx/` in a multi-platform codebase) would be
-  hidden under "[and N other items]" even when `max_root_dirs` wasn't exceeded.
+  diversity by including one representative file from each root-level directory. Uses separate
+  limits for root-level files (max 5) vs directories (max 10) to prevent many root configs from
+  crowding out directory representation. After processing source files by centrality, also scans
+  for additional files (CONFIG/DOCUMENTATION) in unrepresented directories (max 5 additional).
+  Previously, directories with lower-ranked files would be hidden under "[and N other items]".
 
 ### Changed
 - **Section header renames for clarity:**

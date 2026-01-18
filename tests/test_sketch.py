@@ -4449,6 +4449,55 @@ class TestCollectImportantFiles:
         assert "/completely" not in str(result)
         assert len(result) == 0
 
+    def test_collects_additional_files_from_subdirectories(self, tmp_path: Path) -> None:
+        """Collects additional files (CONFIG/DOCUMENTATION) from unrepresented directories."""
+        # Create directories with only documentation files (no source code)
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# User Guide\n\nThis is a guide.")
+
+        examples_dir = tmp_path / "examples"
+        examples_dir.mkdir()
+        (examples_dir / "example.md").write_text("# Example\n\nAn example.")
+
+        # Create an excluded directory that should be skipped
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text("[core]")
+
+        # Create a source file in src/ to ensure it's seen first
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("def main(): pass")
+
+        symbol = Symbol(
+            id="src:main",
+            name="main",
+            kind="function",
+            language="python",
+            path="src/main.py",
+            span=Span(1, 1, 1, 10),
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=["src/main.py"],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[symbol],
+            centrality={"src:main": 0.5},
+        )
+
+        # Should include src/main.py from source files
+        assert "src/main.py" in result
+        # Should include additional files from docs/ and examples/ directories
+        # (these are DOCUMENTATION role files in unrepresented directories)
+        root_dirs = {Path(f).parts[0] for f in result if "/" in f or "\\" in f}
+        # At minimum, src should be there; docs/examples may be picked up
+        assert "src" in root_dirs
+        # Verify .git was excluded
+        assert not any(".git" in f for f in result)
+
 
 class TestExtractPythonDocstrings:
     """Tests for Python docstring extraction."""

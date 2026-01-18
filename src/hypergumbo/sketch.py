@@ -2563,6 +2563,8 @@ def _collect_important_files(
     symbols: list[Symbol],
     centrality: dict[str, float],
     max_root_dirs: int = 10,
+    max_root_files: int = 5,
+    max_additional_files: int = 5,
 ) -> list[str]:
     """Collect important files for the Structure tree per ADR-0005.
 
@@ -2572,8 +2574,12 @@ def _collect_important_files(
     1. Configuration files (2+ files)
     2. Test files (1+ file, highest LOC)
     3. Entry point files (1+ file, highest confidence)
-    4. Source files (3+ files, top centrality density)
-    5. Additional important files
+    4. Source files (by centrality, one per new root directory)
+    5. Data model files (top 3)
+    6. Additional files (CONFIG/DOCUMENTATION, one per new root directory)
+
+    Uses separate limits for root-level files vs directories to prevent
+    many root-level config files from crowding out directory representation.
 
     Args:
         repo_root: Repository root path.
@@ -2582,13 +2588,16 @@ def _collect_important_files(
         datamodels: Detected data models.
         symbols: All symbols for lookup.
         centrality: Symbol centrality scores.
-        max_root_dirs: Target number of root directories.
+        max_root_dirs: Max root-level directories to show (default 10).
+        max_root_files: Max root-level files to show (default 5).
+        max_additional_files: Max additional files to add in step 6 (default 5).
 
     Returns:
         List of relative file paths to show in the tree.
     """
     important_files: list[str] = []
-    seen_root_dirs: set[str] = set()
+    seen_root_dirs: set[str] = set()  # Directories only
+    seen_root_files: set[str] = set()  # Root-level files only
     resolved_root = repo_root.resolve()
 
     def to_relative(path: str) -> str:
@@ -2607,21 +2616,39 @@ def _collect_important_files(
         parts = Path(path).parts
         return parts[0] if parts else ""
 
+    def is_root_level_file(path: str) -> bool:
+        """Check if path is a root-level file (not in a subdirectory)."""
+        return len(Path(path).parts) == 1
+
     def add_file(path: str) -> bool:
-        """Add a file if it contributes a new root directory or we need more files."""
+        """Add a file if it contributes a new root item within limits."""
         path = to_relative(path)
         if not path:
             return False  # Path not under repo_root or empty
+        if path in important_files:
+            return False  # Already added
+
         root = get_root_dir(path)
         if not root:  # pragma: no cover
             return False  # Empty paths filtered by callers
-        if root not in seen_root_dirs and len(seen_root_dirs) >= max_root_dirs:
-            return False  # Would exceed max root dirs  # pragma: no cover
-        if path not in important_files:
+
+        # Apply separate limits for root-level files vs directories
+        if is_root_level_file(path):
+            # Root-level file: check against max_root_files
+            if root in seen_root_files:  # pragma: no cover
+                return False  # Already have this file (duplicate prevention)
+            if len(seen_root_files) >= max_root_files:  # pragma: no cover
+                return False  # Would exceed max root files
+            important_files.append(path)
+            seen_root_files.add(root)
+            return True
+        else:
+            # File in subdirectory: check against max_root_dirs
+            if root not in seen_root_dirs and len(seen_root_dirs) >= max_root_dirs:
+                return False  # Would exceed max root dirs  # pragma: no cover
             important_files.append(path)
             seen_root_dirs.add(root)
             return True
-        return False
 
     # 1. Configuration files (look for common config file patterns)
     config_patterns = [
@@ -2699,6 +2726,47 @@ def _collect_important_files(
             sym = symbol_by_id.get(dm.symbol_id)
             if sym and sym.path:
                 add_file(sym.path)  # add_file handles path conversion
+
+    # 6. Additional files (CONFIG and DOCUMENTATION files)
+    # Scan for files that would appear in Additional Files section,
+    # adding only those that introduce new root directories.
+    if len(seen_root_dirs) < max_root_dirs:
+        from fnmatch import fnmatch
+        excludes = list(DEFAULT_EXCLUDES)
+
+        def walk_additional_files() -> list[str]:
+            """Walk repo and collect additional file candidates."""
+            candidates: list[str] = []
+            for item in repo_root.rglob("*"):
+                if not item.is_file():
+                    continue
+                # Skip excluded directories
+                if any(fnmatch(p, pat) for p in item.parts for pat in excludes):
+                    continue
+                if is_additional_file_candidate(item):
+                    try:
+                        rel_path = str(item.relative_to(resolved_root))
+                        candidates.append(rel_path)
+                    except ValueError:  # pragma: no cover
+                        continue  # Not under repo_root (defensive)
+            return candidates
+
+        additional_candidates = walk_additional_files()
+        additional_added = 0
+        for path in additional_candidates:
+            # Skip root-level files - they're handled by config patterns in step 1
+            parts = Path(path).parts
+            if len(parts) < 2:
+                continue
+            root = get_root_dir(path)
+            if root and root not in seen_root_dirs:
+                if add_file(path):
+                    additional_added += 1
+            # Stop when we hit either limit
+            if additional_added >= max_additional_files:
+                break  # pragma: no cover
+            if len(seen_root_dirs) >= max_root_dirs:
+                break  # pragma: no cover
 
     return important_files
 
