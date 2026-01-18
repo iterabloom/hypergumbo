@@ -548,6 +548,7 @@ def extract_readme_description_embedding(
     max_lines: int = 80,
     max_window: int = 15,
     quality_drop_threshold: float = 0.07,
+    min_quality_threshold: float = 0.12,
     top_k_probes: int = 3,
     position_bias: float = 0.4,
     debug: bool = False,
@@ -632,6 +633,47 @@ def extract_readme_description_embedding(
             )
         return None
 
+    # Merge header lines with their following content
+    # Headers alone are structural, not descriptive - expand them to include
+    # the paragraph that follows, similar to license chunk expansion.
+    merged_lines: list[tuple[int, str]] = []
+    i = 0
+    while i < len(filtered_lines):
+        idx, line = filtered_lines[i]
+        if line.startswith("#"):
+            # This is a header - merge with following non-header lines
+            merged_content = [line]
+            j = i + 1
+            # Include following lines until we hit another header or run out
+            while j < len(filtered_lines):
+                next_idx, next_line = filtered_lines[j]
+                if next_line.startswith("#"):
+                    break  # Stop at next header
+                merged_content.append(next_line)
+                j += 1
+            # Only include the merged chunk if we found content after the header
+            if len(merged_content) > 1:
+                merged_lines.append((idx, " ".join(merged_content)))
+                i = j  # Skip the lines we merged
+            else:
+                # Header with no following content - skip it entirely
+                i += 1
+        else:
+            # Non-header line - keep as-is
+            merged_lines.append((idx, line))
+            i += 1
+
+    filtered_lines = merged_lines
+
+    if not filtered_lines:
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=[], final_k=0, stopped_early=False,
+                quality_drop=None, elapsed_seconds=_time.time() - start_time,
+                lines_processed=0
+            )
+        return None
+
     # Load model and get pre-computed probe embeddings
     model = _load_embedding_model()
     probe_embeddings = _get_readme_probe_embeddings()
@@ -663,10 +705,12 @@ def extract_readme_description_embedding(
         absolute_positions = np.minimum(absolute_positions, 1.0)
         # Exponential decay based on absolute position
         position_weights = np.exp(-position_bias * 2 * absolute_positions)
-        # Title-proximity bonus for lines AFTER the title (positions 1-5)
-        # The title itself (position 0, usually "# Project") shouldn't get the bonus
+        # Title-proximity bonus for early lines (positions 0-4)
+        # Headers are merged with their following content, so position 0 is
+        # typically the title+description chunk. We boost early positions
+        # since descriptions usually appear near the top of READMEs.
         title_bonus = np.ones(len(filtered_lines))
-        title_bonus[1:6] = 1.25  # 25% boost for lines 1-5 (right after title)
+        title_bonus[0:5] = 1.25  # 25% boost for lines 0-4
         line_scores = line_scores * position_weights * title_bonus
 
     # Sliding window to find best consecutive k lines
@@ -717,6 +761,19 @@ def extract_readme_description_embedding(
             )
         return None
 
+    # Reject low-quality descriptions (score below threshold)
+    # This prevents non-descriptive content like "pip install foo" from being
+    # selected as descriptions when there's no real description paragraph.
+    if prev_best_score < min_quality_threshold:
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=k_scores, final_k=final_k,
+                stopped_early=stopped_early, quality_drop=quality_drop_value,
+                elapsed_seconds=_time.time() - start_time,
+                lines_processed=len(filtered_lines)
+            )
+        return None
+
     # Extract the winning lines
     start_idx, end_idx = best_window
     selected_lines = [line for _, line in filtered_lines[start_idx:end_idx]]
@@ -724,12 +781,47 @@ def extract_readme_description_embedding(
     # Join and return
     description = " ".join(selected_lines)
 
+    # Handle Markdown soft line breaks: if the description ends mid-sentence
+    # (no sentence-ending punctuation), try to extend it with following lines
+    # until we reach a sentence boundary or run out of content.
+    sentence_endings = (".", "!", "?", ":")
+    max_extension_lines = 5  # Limit how far we extend
+    extended_count = 0
+    current_end_idx = end_idx
+
+    while (
+        description
+        and not description.rstrip().rstrip(")]}").endswith(sentence_endings)
+        and current_end_idx < len(filtered_lines)
+        and extended_count < max_extension_lines
+    ):
+        next_line = filtered_lines[current_end_idx][1]
+        # Stop if we hit a header or section break
+        if next_line.startswith("#") or next_line.startswith("---"):
+            break
+        description = description + " " + next_line
+        current_end_idx += 1
+        extended_count += 1
+
     # Cleanup: strip HTML tags and excessive whitespace
     import re
     # Remove HTML tags but keep content
     description = re.sub(r"<[^>]+>", "", description)
     # Collapse whitespace
     description = " ".join(description.split())
+
+    # Strip leading markdown header if present (from merged header+content)
+    # Headers were merged with content for selection, but the header text
+    # itself shouldn't appear in the final elevator pitch.
+    if description.startswith("#"):
+        # Match header patterns:
+        # - "## catatonit ## A container init..." -> "A container init..."
+        # - "# Title Some content..." -> "Some content..."
+        # The first alternative handles "## Word(s) ##" (closing hash) format
+        # The second alternative handles simple "# " prefix
+        header_match = re.match(r"^(#+\s+\S+\s*#+\s*|#+\s+)", description)
+        if header_match:
+            description = description[header_match.end():].lstrip()
 
     final_description = description if description else None
 

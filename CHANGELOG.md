@@ -79,6 +79,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   chunks like heading-only fragments (e.g., `> Preamble`) from appearing in the "Additional
   context (semantic)" section. Non-license config files retain the ability to have short
   chunks since they often contain meaningful short lines (commands, flags, identifiers).
+- **Embedding-based README extraction handles soft line breaks:** READMEs with paragraphs spanning
+  multiple physical lines (Markdown soft breaks) now extract complete sentences instead of cutting
+  off mid-sentence (e.g., "A container init that is so simple it's effectively brain-dead. This is a"
+  now correctly continues to "...rewrite of initrs in C..."). Headers selected during embedding
+  search are expanded with their following content paragraphs, then the header markup is stripped
+  from the final description so the elevator pitch reads naturally.
 
 ### Changed
 - **Section header renames for clarity:**
