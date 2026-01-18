@@ -1418,6 +1418,7 @@ def _build_context_chunk(
     center_idx: int,
     max_chunk_chars: int,
     fleximax_words: int = 50,
+    min_chunk_chars: int = 0,
 ) -> str:
     """Build a 3-line chunk with context, subsampling words if too long.
 
@@ -1425,11 +1426,17 @@ def _build_context_chunk(
     If the result exceeds max_chunk_chars, applies word-level subsampling
     with ellipsis to indicate elision.
 
+    If min_chunk_chars > 0 and the initial chunk is too small, expands
+    forward by including additional lines until the minimum is reached
+    or no more content is available. This prevents undersized chunks
+    (e.g., heading-only fragments) from being indexed.
+
     Args:
         lines: All lines in the file.
         center_idx: Index of the center line to build chunk around.
         max_chunk_chars: Maximum characters for the chunk.
         fleximax_words: Base sample size for word-level subsampling.
+        min_chunk_chars: Minimum characters for the chunk (0 = no minimum).
 
     Returns:
         Chunk string, possibly with ellipsis if words were subsampled.
@@ -1442,6 +1449,15 @@ def _build_context_chunk(
     context_lines = [lines[i] for i in range(start_idx, end_idx) if lines[i]]
 
     chunk = " ".join(context_lines)
+
+    # If chunk is undersized and we have a minimum, expand forward
+    if min_chunk_chars > 0 and len(chunk) < min_chunk_chars:
+        current_end = end_idx
+        while len(chunk) < min_chunk_chars and current_end < len(lines):
+            if lines[current_end]:
+                context_lines.append(lines[current_end])
+                chunk = " ".join(context_lines)
+            current_end += 1
 
     # If within limit, return as-is
     if len(chunk) <= max_chunk_chars:
@@ -1597,9 +1613,19 @@ def _extract_config_embedding(
             sampled_indices.append(non_empty[i][0])  # Get original line index
 
         # Build context chunks for each sampled line
+        # For license/copying files, enforce minimum chunk size to avoid
+        # undersized chunks (e.g., heading-only fragments like "Preamble")
+        source_lower = source.lower()
+        is_license_file = any(
+            lic.lower() in source_lower for lic in LICENSE_FILES
+        )
+        min_chars = 80 if is_license_file else 0
+
         start_idx = len(all_chunks)
         for center_idx in sampled_indices:
-            chunk = _build_context_chunk(file_lines, center_idx, max_chunk_chars)
+            chunk = _build_context_chunk(
+                file_lines, center_idx, max_chunk_chars, min_chunk_chars=min_chars
+            )
             if chunk:  # Skip empty chunks
                 all_chunks.append((source, center_idx, chunk, file_lines))
 
@@ -2847,7 +2873,11 @@ def _extract_readme_description_heuristic(
 
 
 def _truncate_description(description: str, max_chars: int) -> str:
-    """Truncate description at word boundary.
+    """Truncate description at sentence boundary, falling back to word boundary.
+
+    Prefers to truncate at sentence-ending punctuation (. ! ? :) to avoid
+    cutting off mid-sentence. Falls back to word boundary if no sentence
+    boundary is found within a reasonable range.
 
     Args:
         description: The description to truncate.
@@ -2859,7 +2889,30 @@ def _truncate_description(description: str, max_chars: int) -> str:
     if len(description) <= max_chars:
         return description
 
-    # Find last space before max_chars
+    # First, try to find a sentence boundary before max_chars
+    # Look for sentence-ending punctuation followed by space or end
+    search_range = description[:max_chars]
+    best_sentence_end = -1
+
+    for i in range(len(search_range) - 1, -1, -1):
+        char = search_range[i]
+        if char in ".!?:":
+            # Check if this looks like a sentence end (not part of URL, number, etc.)
+            # A sentence end is followed by space, newline, or is at end of string
+            if i == len(search_range) - 1:
+                best_sentence_end = i + 1
+                break
+            next_char = search_range[i + 1]
+            if next_char in " \n\t":
+                best_sentence_end = i + 1
+                break
+
+    # Use sentence boundary if found and it's not unreasonably short
+    # Minimum 10 chars to avoid single-word sentences like "Hi."
+    if best_sentence_end >= 10:
+        return description[:best_sentence_end].rstrip()
+
+    # Fall back to word boundary
     truncate_at = description.rfind(" ", 0, max_chars)
     if truncate_at > max_chars // 2:
         return description[:truncate_at] + "…"

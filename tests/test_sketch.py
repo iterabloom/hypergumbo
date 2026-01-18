@@ -955,6 +955,79 @@ class TestTruncateDescription:
         assert len(result) == 10
         assert result.endswith("…")
 
+    def test_prefers_sentence_boundary(self) -> None:
+        """Truncates at sentence boundary when available."""
+        from hypergumbo.sketch import _truncate_description
+        # "First sentence. This is a" would be the word-boundary truncation
+        # but we want sentence boundary at "First sentence."
+        text = "First sentence. This is a longer continuation that goes on."
+        result = _truncate_description(text, 50)
+        # Should end at the first sentence, not mid-second-sentence
+        assert result == "First sentence."
+        assert "This is a" not in result
+
+    def test_sentence_boundary_with_exclamation(self) -> None:
+        """Handles exclamation marks as sentence boundaries."""
+        from hypergumbo.sketch import _truncate_description
+        text = "Hello world! This continues for a while after the mark."
+        result = _truncate_description(text, 40)
+        assert result == "Hello world!"
+
+    def test_sentence_boundary_with_question(self) -> None:
+        """Handles question marks as sentence boundaries."""
+        from hypergumbo.sketch import _truncate_description
+        text = "What is this? It's a test of the truncation logic."
+        result = _truncate_description(text, 40)
+        assert result == "What is this?"
+
+    def test_sentence_boundary_with_colon(self) -> None:
+        """Handles colons as sentence boundaries."""
+        from hypergumbo.sketch import _truncate_description
+        text = "Here is the point: we need good truncation always."
+        result = _truncate_description(text, 40)
+        assert result == "Here is the point:"
+
+    def test_falls_back_to_word_boundary(self) -> None:
+        """Falls back to word boundary if no sentence boundary is found."""
+        from hypergumbo.sketch import _truncate_description
+        # No sentence-ending punctuation, should fall back to word boundary
+        text = "This is a very long text without any sentence endings at all"
+        result = _truncate_description(text, 30)
+        assert result.endswith("…")
+        # Should end with a complete word before ellipsis (not mid-word)
+        word_before_ellipsis = result[:-1].split()[-1]  # Remove ellipsis, get last word
+        assert word_before_ellipsis in text.split()  # Should be a complete word
+
+    def test_sentence_too_short_falls_back(self) -> None:
+        """Falls back if sentence boundary is too short (< 10 chars)."""
+        from hypergumbo.sketch import _truncate_description
+        # "Hi." is only 3 chars, so falls back to word boundary
+        text = "Hi. This is a much longer text that we want."
+        result = _truncate_description(text, 30)
+        # Should NOT truncate at "Hi." (too short), but at a later word boundary
+        assert result != "Hi."
+        # Should use word boundary fallback
+        assert result.endswith("…") or result.endswith(".")
+
+    def test_sentence_at_end_of_search_range(self) -> None:
+        """Handles sentence ending exactly at max_chars."""
+        from hypergumbo.sketch import _truncate_description
+        # "Exactly." is 8 chars, put it right at the limit
+        text = "Exactly."
+        result = _truncate_description(text, 8)
+        assert result == "Exactly."
+
+    def test_sentence_punctuation_at_max_chars_boundary(self) -> None:
+        """Handles punctuation at exact max_chars position in longer text."""
+        from hypergumbo.sketch import _truncate_description
+        # Text longer than max_chars, with period at position 14 (0-indexed)
+        # "Hello world123." is 15 chars, with period at index 14
+        text = "Hello world123. More text follows here."
+        # max_chars=15 means search_range is "Hello world123."
+        # The period is at index 14 which is len(search_range) - 1
+        result = _truncate_description(text, 15)
+        assert result == "Hello world123."
+
 
 class TestExtractReadmeDescriptionHeuristic:
     """Tests for _extract_readme_description_heuristic function."""
@@ -5436,6 +5509,82 @@ class TestLogScaledSampling:
 
         # Should be truncated
         assert len(chunk) <= 200
+
+    def test_min_chunk_chars_expands_forward(self) -> None:
+        """Minimum chunk size causes expansion forward."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        # Short heading followed by longer content
+        lines = [
+            "",
+            "Preamble",
+            "",
+            "The first paragraph of actual content.",
+            "The second paragraph continues here.",
+        ]
+
+        # Without min_chunk_chars, we'd get just "Preamble"
+        chunk_no_min = _build_context_chunk(lines, center_idx=1, max_chunk_chars=800)
+        assert chunk_no_min == "Preamble"
+
+        # With min_chunk_chars=80, should expand forward
+        chunk_with_min = _build_context_chunk(
+            lines, center_idx=1, max_chunk_chars=800, min_chunk_chars=80
+        )
+        assert len(chunk_with_min) >= 80
+        assert "Preamble" in chunk_with_min
+        assert "The first paragraph" in chunk_with_min
+
+    def test_min_chunk_chars_stops_at_file_end(self) -> None:
+        """Expansion stops at end of file if minimum can't be reached."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        # Short content that can't meet minimum
+        lines = ["Short", "text", "here"]
+
+        chunk = _build_context_chunk(
+            lines, center_idx=0, max_chunk_chars=800, min_chunk_chars=1000
+        )
+        # Should include all available content
+        assert "Short" in chunk
+        assert "text" in chunk
+        assert "here" in chunk
+        # But still be shorter than min because there's no more content
+        assert len(chunk) < 1000
+
+    def test_min_chunk_chars_skips_empty_lines(self) -> None:
+        """Empty lines are skipped during forward expansion."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        lines = [
+            "Heading",
+            "",
+            "",
+            "",
+            "Content after many blank lines that we want to include.",
+        ]
+
+        chunk = _build_context_chunk(
+            lines, center_idx=0, max_chunk_chars=800, min_chunk_chars=50
+        )
+        assert "Heading" in chunk
+        assert "Content after many blank lines" in chunk
+
+    def test_min_chunk_chars_zero_no_expansion(self) -> None:
+        """min_chunk_chars=0 (default) doesn't trigger expansion."""
+        from hypergumbo.sketch import _build_context_chunk
+
+        lines = ["A", "B", "C", "D", "E"]
+
+        # With min_chunk_chars=0, just get normal 3-line context
+        chunk = _build_context_chunk(lines, center_idx=1, max_chunk_chars=800)
+        assert chunk == "A B C"  # lines 0, 1, 2
+
+        # Explicitly pass 0
+        chunk_explicit = _build_context_chunk(
+            lines, center_idx=1, max_chunk_chars=800, min_chunk_chars=0
+        )
+        assert chunk_explicit == "A B C"
 
 
 class TestDetectTestSummary:

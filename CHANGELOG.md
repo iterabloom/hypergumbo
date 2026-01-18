@@ -70,6 +70,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   definitions (`.c`, `.cpp` files) instead of declarations (`.h` files). This fixes transitive
   test coverage estimation for C/C++ codebases where the previous behavior could truncate the
   call graph at header file declarations (which have no outgoing call edges).
+- **Elevator pitch truncation respects sentence boundaries:** The README description in the
+  sketch header now prefers to truncate at sentence-ending punctuation (. ! ? :) instead of
+  cutting off mid-sentence. Falls back to word boundary if no sentence boundary is found
+  within a reasonable range. Minimum 10 characters to avoid single-word sentences.
+- **Minimum chunk size for license files in semantic search:** License/copying files now
+  enforce a minimum chunk size (80 chars) during config extraction to prevent undersized
+  chunks like heading-only fragments (e.g., `> Preamble`) from appearing in the "Additional
+  context (semantic)" section. Non-license config files retain the ability to have short
+  chunks since they often contain meaningful short lines (commands, flags, identifiers).
 
 ### Changed
 - **Section header renames for clarity:**
