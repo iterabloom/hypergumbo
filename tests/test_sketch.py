@@ -18,7 +18,7 @@ from hypergumbo.sketch import (
     _format_symbols,
     _format_structure,
     _format_structure_tree,
-    _format_structure_tree_toplevel,
+    _format_structure_tree_fallback,
     _collect_important_files,
     _extract_python_docstrings,
     _extract_domain_vocabulary,
@@ -4026,15 +4026,15 @@ class TestFormatStructureTree:
         assert "[and 1 other items]" in result
 
 
-class TestFormatStructureTreeToplevel:
-    """Tests for _format_structure_tree_toplevel function."""
+class TestFormatStructureTreeFallback:
+    """Tests for _format_structure_tree_fallback function."""
 
     def test_shows_tree_format(self, tmp_path: Path) -> None:
         """Uses tree format with code block."""
         (tmp_path / "src").mkdir()
         (tmp_path / "tests").mkdir()
 
-        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+        result = _format_structure_tree_fallback(tmp_path, [], exclude_tests=False)
 
         assert "```" in result
         assert "├──" in result or "└──" in result
@@ -4045,7 +4045,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / "README.md").write_text("# Hello")
         (tmp_path / "main.py").write_text("print('hello')")
 
-        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+        result = _format_structure_tree_fallback(tmp_path, [], exclude_tests=False)
 
         assert "src/" in result
         # Root-level files with recognized extensions are shown
@@ -4057,7 +4057,7 @@ class TestFormatStructureTreeToplevel:
         # Create only an unrecognized file type
         (tmp_path / "random.xyz").write_text("unknown")
 
-        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+        result = _format_structure_tree_fallback(tmp_path, [], exclude_tests=False)
 
         assert "(empty)" in result
 
@@ -4067,7 +4067,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / "src" / "main.py").write_text("print('hello')")
         (tmp_path / "src" / "utils.py").write_text("pass")
 
-        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+        result = _format_structure_tree_fallback(tmp_path, [], exclude_tests=False)
 
         assert "src/" in result
         assert "(2 items)" in result
@@ -4077,7 +4077,7 @@ class TestFormatStructureTreeToplevel:
         for i in range(15):
             (tmp_path / f"dir_{i:02d}").mkdir()
 
-        result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
+        result = _format_structure_tree_fallback(tmp_path, [], exclude_tests=False)
 
         assert "[and 5 other items]" in result
 
@@ -4088,7 +4088,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / ".git").mkdir()
 
         from hypergumbo.discovery import DEFAULT_EXCLUDES
-        result = _format_structure_tree_toplevel(
+        result = _format_structure_tree_fallback(
             tmp_path, list(DEFAULT_EXCLUDES), exclude_tests=False
         )
 
@@ -4103,7 +4103,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / "package-lock.json").write_text("{}")  # Common exclude pattern
 
         # Use a pattern that matches the lock file
-        result = _format_structure_tree_toplevel(
+        result = _format_structure_tree_fallback(
             tmp_path, ["*-lock.json"], exclude_tests=False
         )
 
@@ -4117,7 +4117,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / "main.py").write_text("print('hello')")
         (tmp_path / "test_main.py").write_text("def test_main(): pass")
 
-        result = _format_structure_tree_toplevel(
+        result = _format_structure_tree_fallback(
             tmp_path, [], exclude_tests=True
         )
 
@@ -4137,7 +4137,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("print('hello')")
 
-        result = _format_structure_tree_toplevel(
+        result = _format_structure_tree_fallback(
             tmp_path, [], exclude_tests=True
         )
 
@@ -4156,7 +4156,7 @@ class TestFormatStructureTreeToplevel:
         (tmp_path / "tests" / "unit" / "test_core.py").write_text("def test(): pass")
         # The unit/ subdir is a test directory and should be skipped
 
-        result = _format_structure_tree_toplevel(
+        result = _format_structure_tree_fallback(
             tmp_path, [], exclude_tests=True
         )
 

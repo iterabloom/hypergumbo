@@ -2320,7 +2320,7 @@ def _format_structure(
     return "\n".join(lines)
 
 
-def _format_structure_tree_toplevel(
+def _format_structure_tree_fallback(
     repo_root: Path,
     excludes: list[str],
     exclude_tests: bool = False,
@@ -2477,7 +2477,7 @@ def _format_structure_tree(
     # If no important files, show top-level directories in tree format
     # (Don't fall back to deprecated bullet-list format)
     if not important_files:
-        return _format_structure_tree_toplevel(repo_root, excludes, exclude_tests)
+        return _format_structure_tree_fallback(repo_root, excludes, exclude_tests)
 
     # Build a tree from paths
     # Tree node: {"name": str, "children": dict, "is_file": bool, "shown": bool}
