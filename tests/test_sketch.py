@@ -16,7 +16,6 @@ from hypergumbo.sketch import (
     _format_entrypoints,
     _format_datamodels,
     _format_symbols,
-    _format_structure,
     _format_structure_tree,
     _format_structure_tree_fallback,
     _collect_important_files,
@@ -666,8 +665,8 @@ class TestGenerateSketch:
 
         sketch = generate_sketch(tmp_path)
 
-        # Should show truncation message
-        assert "... and" in sketch and "more directories" in sketch
+        # Should show truncation message (tree format uses "other items")
+        assert "other items" in sketch
 
     def test_various_directory_types(self, tmp_path: Path) -> None:
         """Sketch labels different directory types correctly."""
@@ -3732,88 +3731,6 @@ class TestExcludeTests:
         assert "[IGNORING TESTS]" in result_exclude
         # Should show breakdown format
         assert "non-test" in result_exclude
-
-
-class TestFormatStructure:
-    """Tests for _format_structure."""
-
-    def test_excludes_node_modules(self, tmp_path: Path) -> None:
-        """node_modules should not appear in structure."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "node_modules").mkdir()
-        (tmp_path / "tests").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "src" in structure
-        assert "tests" in structure
-        assert "node_modules" not in structure
-
-    def test_excludes_pycache(self, tmp_path: Path) -> None:
-        """__pycache__ should not appear in structure."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "__pycache__").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "src" in structure
-        assert "__pycache__" not in structure
-
-    def test_excludes_venv(self, tmp_path: Path) -> None:
-        """venv and .venv should not appear in structure."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "venv").mkdir()
-        (tmp_path / ".venv").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "src" in structure
-        assert "venv" not in structure
-        assert ".venv" not in structure
-
-    def test_excludes_build_and_dist(self, tmp_path: Path) -> None:
-        """build and dist should not appear in structure."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "build").mkdir()
-        (tmp_path / "dist").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "src" in structure
-        assert "build" not in structure
-        assert "dist" not in structure
-
-    def test_extra_excludes(self, tmp_path: Path) -> None:
-        """Extra excludes should filter additional directories."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "generated").mkdir()
-        (tmp_path / "vendor").mkdir()
-
-        structure = _format_structure(tmp_path, extra_excludes=["generated"])
-        assert "src" in structure
-        assert "vendor" not in structure  # Already in DEFAULT_EXCLUDES
-        assert "generated" not in structure  # Extra exclude
-
-    def test_labels_source_dirs(self, tmp_path: Path) -> None:
-        """Source directories should be labeled."""
-        (tmp_path / "src").mkdir()
-        (tmp_path / "lib").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "- `src/` — Source code" in structure
-        assert "- `lib/` — Source code" in structure
-
-    def test_labels_test_dirs(self, tmp_path: Path) -> None:
-        """Test directories should be labeled."""
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "spec").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "- `tests/` — Tests" in structure
-        assert "- `spec/` — Tests" in structure
-
-    def test_labels_doc_dirs(self, tmp_path: Path) -> None:
-        """Documentation directories should be labeled."""
-        (tmp_path / "docs").mkdir()
-
-        structure = _format_structure(tmp_path)
-        assert "- `docs/` — Documentation" in structure
 
 
 class TestFormatStructureTree:

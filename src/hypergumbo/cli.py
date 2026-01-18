@@ -250,7 +250,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    max_tokens = args.tokens if args.tokens else None
+    # Default to 4000 tokens when -t not specified (unified behavior)
+    max_tokens = args.tokens if args.tokens else 4000
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
@@ -339,8 +340,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         except Exception:  # pragma: no cover - cache discovery errors
             pass
 
-    # Track stats for representativeness table (only when budget specified)
-    stats = SketchStats() if max_tokens else None
+    # Track stats for representativeness table (always enabled with default budget)
+    stats = SketchStats()
 
     sketch = generate_sketch(
         repo_root,

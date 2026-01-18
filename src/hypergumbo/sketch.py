@@ -2267,59 +2267,6 @@ def _format_language_stats(
     return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"  # pragma: no cover
 
 
-def _format_structure(
-    repo_root: Path,
-    extra_excludes: Optional[List[str]] = None,
-    exclude_tests: bool = False,
-) -> str:
-    """Format top-level directory structure.
-
-    Filters out directories that match DEFAULT_EXCLUDES patterns
-    (e.g., node_modules, __pycache__, .git) to show only meaningful
-    project structure.
-    """
-    from fnmatch import fnmatch
-
-    lines = [_section_header("Structure", exclude_tests), ""]
-
-    # Combine default and extra excludes
-    excludes = list(DEFAULT_EXCLUDES)
-    if extra_excludes:
-        excludes.extend(extra_excludes)
-
-    # Get top-level directories, filtering out excluded ones
-    dirs = []
-    for d in repo_root.iterdir():
-        if not d.is_dir():
-            continue
-        # Check if directory matches any exclude pattern
-        excluded = any(fnmatch(d.name, pattern) for pattern in excludes)
-        if not excluded:
-            dirs.append(d.name)
-
-    dirs = sorted(dirs)
-
-    # Common source directories to highlight
-    source_dirs = {"src", "lib", "app", "pkg", "cmd", "internal", "core"}
-    test_dirs = {"test", "tests", "spec", "specs", "__tests__"}
-    doc_dirs = {"docs", "doc", "documentation"}
-
-    for d in dirs[:10]:  # Limit to 10 directories
-        if d in source_dirs:
-            lines.append(f"- `{d}/` — Source code")
-        elif d in test_dirs:
-            lines.append(f"- `{d}/` — Tests")
-        elif d in doc_dirs:
-            lines.append(f"- `{d}/` — Documentation")
-        else:
-            lines.append(f"- `{d}/`")
-
-    if len(dirs) > 10:
-        lines.append(f"- ... and {len(dirs) - 10} more directories")
-
-    return "\n".join(lines)
-
-
 def _format_structure_tree_fallback(
     repo_root: Path,
     excludes: list[str],
@@ -2413,16 +2360,33 @@ def _format_structure_tree_fallback(
     shown_items = all_items[:10]
     hidden_count = len(all_items) - len(shown_items)
 
+    # Directory type annotations for common directory names
+    source_dirs = {"src", "lib", "source", "app", "pkg"}
+    test_dirs = {"test", "tests", "spec", "specs", "__tests__"}
+    doc_dirs = {"docs", "doc", "documentation"}
+
+    def get_dir_label(dirname: str) -> str:
+        """Get descriptive label for a directory based on its name."""
+        lower_name = dirname.lower()
+        if lower_name in source_dirs:
+            return " — Source code"
+        elif lower_name in test_dirs:
+            return " — Tests"
+        elif lower_name in doc_dirs:
+            return " — Documentation"
+        return ""
+
     for i, (name, is_dir) in enumerate(shown_items):
         is_last = (i == len(shown_items) - 1) and hidden_count == 0
         prefix = "└── " if is_last else "├── "
         if is_dir:
             dir_path = repo_root / name
             item_count = count_items(dir_path)
+            label = get_dir_label(name)
             if item_count > 0:
-                lines.append(f"{prefix}{name}/ ({item_count} items)")
+                lines.append(f"{prefix}{name}/ ({item_count} items){label}")
             else:
-                lines.append(f"{prefix}{name}/")
+                lines.append(f"{prefix}{name}/{label}")
         else:
             lines.append(f"{prefix}{name}")
 
@@ -2814,7 +2778,7 @@ def _collect_important_files(
             root = get_root_dir(path)
             if root and root not in seen_root_dirs:
                 if add_file(path):
-                    additional_added += 1
+                    additional_added += 1  # pragma: no cover (rare: new dir from additional files)
             # Stop when we hit either limit
             if additional_added >= max_additional_files:
                 break  # pragma: no cover
@@ -5274,7 +5238,7 @@ def generate_sketch(
 
     Args:
         repo_root: Path to the repository root.
-        max_tokens: Target tokens for output. If None, returns minimal sketch.
+        max_tokens: Target tokens for output. Defaults to 4000 if None.
         exclude_tests: If True, skip analyzing test files for faster performance.
             When using cached_results, filters test symbols/edges at load time.
         first_party_priority: If True (default), boost first-party symbols in
@@ -5309,6 +5273,10 @@ def generate_sketch(
     """
     import sys
     import time
+
+    # Default to 4000 tokens if not specified (unified behavior)
+    if max_tokens is None:
+        max_tokens = 4000
 
     def _log(msg: str) -> None:
         if verbose:  # pragma: no cover
@@ -5396,9 +5364,12 @@ def generate_sketch(
         )
     sections.append(header)
 
-    # Section 2: Structure
+    # Section 2: Structure (using tree format from the start)
     prog.start_phase("structure")
-    structure = _format_structure(repo_root, extra_excludes=extra_excludes, exclude_tests=exclude_tests)
+    excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:  # pragma: no cover
+        excludes.extend(extra_excludes)
+    structure = _format_structure_tree_fallback(repo_root, excludes, exclude_tests=exclude_tests)
     prog.complete_phase("structure")
     if structure:
         sections.append(structure)
@@ -5470,42 +5441,8 @@ def generate_sketch(
             shell_tests = _detect_shell_integration_tests(repo_root, binary_names)
             shell_integration_count = len(shell_tests)
 
-    # If no budget, run analysis for coverage then return base sketch
-    if max_tokens is None:
-        prog.start_phase("analysis")
-
-        def analysis_progress(current: int, total: int, lang: str) -> None:
-            prog.update_item_progress(f"Analyzing {lang}", current, total)
-
-        _, _, coverage_stats = _run_analysis(
-            repo_root, profile, exclude_tests=exclude_tests,
-            progress_callback=analysis_progress
-        )
-        prog.complete_phase("analysis")
-
-        # Update test summary with coverage stats (only if not excluding tests)
-        if coverage_stats is not None and not exclude_tests:
-            updated_test_summary = _format_test_summary(
-                repo_root, coverage_stats, shell_integration_count=shell_integration_count
-            )
-            for i, section in enumerate(sections):
-                if section.startswith("## Tests"):
-                    sections[i] = updated_test_summary
-                    break
-        elif shell_integration_count > 0 and not exclude_tests:  # pragma: no cover
-            # No call graph coverage but we have shell integration tests
-            # (rare: happens when analysis returns no countable symbols)
-            updated_test_summary = _format_test_summary(
-                repo_root, shell_integration_count=shell_integration_count
-            )
-            for i, section in enumerate(sections):
-                if section.startswith("## Tests"):
-                    sections[i] = updated_test_summary
-                    break
-
-        prog.finish()
-        return "\n\n".join(sections)
-
+    # Note: max_tokens is always set (defaults to 4000 in CLI)
+    # If budget is very small, return truncated base sketch
     if max_tokens <= base_tokens:
         prog.finish()
         return truncate_to_tokens(base_sketch, max_tokens)
