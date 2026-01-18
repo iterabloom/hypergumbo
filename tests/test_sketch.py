@@ -4039,20 +4039,23 @@ class TestFormatStructureTreeToplevel:
         assert "```" in result
         assert "├──" in result or "└──" in result
 
-    def test_ignores_files_in_root(self, tmp_path: Path) -> None:
-        """Only shows directories, not files in root."""
+    def test_shows_root_level_files(self, tmp_path: Path) -> None:
+        """Shows both directories and root-level source/doc files."""
         (tmp_path / "src").mkdir()
         (tmp_path / "README.md").write_text("# Hello")
+        (tmp_path / "main.py").write_text("print('hello')")
 
         result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
 
         assert "src/" in result
-        assert "README.md" not in result
+        # Root-level files with recognized extensions are shown
+        assert "README.md" in result
+        assert "main.py" in result
 
     def test_empty_directory(self, tmp_path: Path) -> None:
-        """Shows (empty) when no directories exist."""
-        # Create only a file, no directories
-        (tmp_path / "README.md").write_text("# Hello")
+        """Shows (empty) when no directories or recognized files exist."""
+        # Create only an unrecognized file type
+        (tmp_path / "random.xyz").write_text("unknown")
 
         result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
 
@@ -4069,14 +4072,14 @@ class TestFormatStructureTreeToplevel:
         assert "src/" in result
         assert "(2 items)" in result
 
-    def test_more_than_10_directories(self, tmp_path: Path) -> None:
-        """Shows overflow message for more than 10 directories."""
+    def test_more_than_10_items(self, tmp_path: Path) -> None:
+        """Shows overflow message for more than 10 items."""
         for i in range(15):
             (tmp_path / f"dir_{i:02d}").mkdir()
 
         result = _format_structure_tree_toplevel(tmp_path, [], exclude_tests=False)
 
-        assert "[and 5 other directories]" in result
+        assert "[and 5 other items]" in result
 
     def test_respects_excludes(self, tmp_path: Path) -> None:
         """Excludes directories matching exclude patterns."""
@@ -4092,6 +4095,35 @@ class TestFormatStructureTreeToplevel:
         assert "src/" in result
         assert "node_modules" not in result
         assert ".git" not in result
+
+    def test_respects_excludes_for_root_files(self, tmp_path: Path) -> None:
+        """Excludes root-level files matching exclude patterns."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "main.py").write_text("print('hello')")
+        (tmp_path / "package-lock.json").write_text("{}")  # Common exclude pattern
+
+        # Use a pattern that matches the lock file
+        result = _format_structure_tree_toplevel(
+            tmp_path, ["*-lock.json"], exclude_tests=False
+        )
+
+        assert "src/" in result
+        assert "main.py" in result
+        assert "package-lock.json" not in result
+
+    def test_exclude_tests_skips_root_test_files(self, tmp_path: Path) -> None:
+        """When exclude_tests=True, root-level test files are skipped."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "main.py").write_text("print('hello')")
+        (tmp_path / "test_main.py").write_text("def test_main(): pass")
+
+        result = _format_structure_tree_toplevel(
+            tmp_path, [], exclude_tests=True
+        )
+
+        assert "src/" in result
+        assert "main.py" in result
+        assert "test_main.py" not in result
 
     def test_exclude_tests_filters_test_source_files(self, tmp_path: Path) -> None:
         """When exclude_tests=True, test source files are not counted."""

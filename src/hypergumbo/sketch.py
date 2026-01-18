@@ -2353,8 +2353,33 @@ def _format_structure_tree_toplevel(
         if not excluded:
             dirs.append(d.name)
 
+    # Also get root-level files (source and config/doc files)
+    # Build set of all source file patterns from SOURCE_EXTENSIONS
+    source_patterns: set[str] = set()
+    for patterns in SOURCE_EXTENSIONS.values():
+        source_patterns.update(patterns)
+
+    def is_source_file(filename: str) -> bool:
+        """Check if filename matches any source file pattern."""
+        return any(fnmatch(filename, pat) for pat in source_patterns)
+
+    root_files = []
+    for f in repo_root.iterdir():
+        if not f.is_file():
+            continue
+        if any(fnmatch(f.name, pattern) for pattern in excludes):
+            continue
+        # Include source files and additional file candidates (CONFIG/DOCUMENTATION)
+        if is_source_file(f.name) or is_additional_file_candidate(f):
+            # When excluding tests, skip test files
+            if exclude_tests and _is_test_path(f.name):
+                continue
+            root_files.append(f.name)
+
+    root_files = sorted(root_files)
     dirs = sorted(dirs)
-    if not dirs:
+
+    if not dirs and not root_files:
         lines.append("└── (empty)")
         lines.append("```")
         return "\n".join(lines)
@@ -2383,19 +2408,26 @@ def _format_structure_tree_toplevel(
             pass
         return count
 
-    # Show directories with counts
-    for i, d in enumerate(dirs[:10]):
-        is_last = (i == len(dirs[:10]) - 1) and len(dirs) <= 10
-        prefix = "└── " if is_last else "├── "
-        dir_path = repo_root / d
-        item_count = count_items(dir_path)
-        if item_count > 0:
-            lines.append(f"{prefix}{d}/ ({item_count} items)")
-        else:
-            lines.append(f"{prefix}{d}/")
+    # Combine dirs and files, showing dirs first (max 10 total items)
+    all_items = [(d, True) for d in dirs] + [(f, False) for f in root_files]
+    shown_items = all_items[:10]
+    hidden_count = len(all_items) - len(shown_items)
 
-    if len(dirs) > 10:
-        lines.append(f"└── [and {len(dirs) - 10} other directories]")
+    for i, (name, is_dir) in enumerate(shown_items):
+        is_last = (i == len(shown_items) - 1) and hidden_count == 0
+        prefix = "└── " if is_last else "├── "
+        if is_dir:
+            dir_path = repo_root / name
+            item_count = count_items(dir_path)
+            if item_count > 0:
+                lines.append(f"{prefix}{name}/ ({item_count} items)")
+            else:
+                lines.append(f"{prefix}{name}/")
+        else:
+            lines.append(f"{prefix}{name}")
+
+    if hidden_count > 0:
+        lines.append(f"└── [and {hidden_count} other items]")
 
     lines.append("```")
     return "\n".join(lines)

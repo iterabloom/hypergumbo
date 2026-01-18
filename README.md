@@ -14,6 +14,16 @@ hypergumbo .
 
 **Requires Python 3.10+. Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
 
+**Optional but highly recommended: Install ripgrep for faster analysis.** Hypergumbo uses ripgrep (if available) to accelerate symbol centrality computation during sketch generation. Without it, falls back to Python's regex (still parallelized).
+
+```bash
+# Ubuntu/Debian
+sudo apt install ripgrep
+
+# macOS
+brew install ripgrep
+```
+
 Output:
 ```markdown
 # my-project
@@ -87,14 +97,6 @@ See `hypergumbo --help` for all options.
 
 ## How It Works
 
-Hypergumbo builds understanding through a pipeline:
-
-```
-┌─────────┐    ┌──────────┐    ┌─────────┐    ┌──────────┐    ┌────────┐
-│ Profile │ →  │ Analyze  │ →  │  Link   │ →  │ Enrich   │ →  │ Output │
-└─────────┘    └──────────┘    └─────────┘    └──────────┘    └────────┘
-```
-
 1. **Profile**: Scan the repo for languages, file counts, LOC
 2. **Analyze**: Run language-specific analyzers to extract symbols and edges
 3. **Link**: Connect symbols across language boundaries (JS fetch → Python route)
@@ -141,16 +143,6 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
 pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
-```
-
-**Optional: Install ripgrep for faster analysis.** Hypergumbo uses ripgrep (if available) to accelerate symbol centrality computation during sketch generation. Without it, falls back to Python's regex (still parallelized).
-
-```bash
-# Ubuntu/Debian
-sudo apt install ripgrep
-
-# macOS
-brew install ripgrep
 ```
 
 100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.

@@ -91,6 +91,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   crowding out directory representation. After processing source files by centrality, also scans
   for additional files (CONFIG/DOCUMENTATION) in unrepresented directories (max 5 additional).
   Previously, directories with lower-ranked files would be hidden under "[and N other items]".
+- **Structure section shows root-level files for flat repos:** When a repository has only
+  root-level files and no subdirectories (or when `-x` excludes all subdirectory contents),
+  the Structure section now shows root-level source and config files instead of "(empty)".
+  Previously, the fallback tree renderer only showed directories and would display "(empty)"
+  for repos like `qemu-sgabios` that have all source files at the root level.
 
 ### Changed
 - **Section header renames for clarity:**
