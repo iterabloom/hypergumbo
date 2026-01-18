@@ -4,7 +4,8 @@ This is the full terminal output of running `hypergumbo hypergumbo/ --with-sourc
 
 The `--with-source` flag appends actual source code content for the most important files, useful when you want an LLM to understand implementation details.
 
-```
+---
+
 # hypergumbo
 
 Two Outputs **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected). **Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
@@ -237,7 +238,8 @@ enabling cross-language call graph construction.
 ## Additional Files Content
 
 (No additional file content within token budget)
-```
+
+---
 
 ## Representativeness Table
 

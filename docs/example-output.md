@@ -2,7 +2,8 @@
 
 This is the full terminal output of running `hypergumbo hypergumbo/` (with default 4000 token budget).
 
-```
+---
+
 # hypergumbo
 
 Two Outputs **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected). **Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
@@ -222,7 +223,8 @@ LICENSE: AGPL
 - `CHANGELOG.md`
 - `AGENTS.md`
 - ... and 66 more files
-```
+
+---
 
 ## Representativeness Table
 
