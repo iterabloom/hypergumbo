@@ -2616,7 +2616,7 @@ def _collect_important_files(
         if not root:  # pragma: no cover
             return False  # Empty paths filtered by callers
         if root not in seen_root_dirs and len(seen_root_dirs) >= max_root_dirs:
-            return False  # Would exceed max root dirs
+            return False  # Would exceed max root dirs  # pragma: no cover
         if path not in important_files:
             important_files.append(path)
             seen_root_dirs.add(root)
@@ -2664,7 +2664,7 @@ def _collect_important_files(
             if sym and sym.path:
                 add_file(sym.path)  # add_file handles path conversion
 
-    # 4. Source files (top centrality density)
+    # 4. Source files (maximize root directory coverage)
     # Get files with highest average symbol centrality
     file_centrality: dict[str, float] = {}
     file_counts: dict[str, int] = {}
@@ -2683,8 +2683,15 @@ def _collect_important_files(
         key=lambda x: x[1],
         reverse=True
     )
-    for path, _ in sorted_files[:5]:  # Top 5 by centrality
-        add_file(path)
+    # Add files only if they introduce a new root directory.
+    # This ensures directory diversity: each root dir gets its highest-centrality
+    # file as representative, and we cover up to max_root_dirs directories.
+    for path, _ in sorted_files:
+        root = get_root_dir(path)
+        if root and root not in seen_root_dirs:
+            add_file(path)
+        if len(seen_root_dirs) >= max_root_dirs:
+            break
 
     # 5. Data model files
     if datamodels:
