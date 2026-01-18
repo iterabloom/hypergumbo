@@ -154,10 +154,20 @@ def _process_make_tree(
         edges: List to append edges to
         target_registry: Registry mapping target names to symbol IDs
     """
+    # Track seen variable names in this file to dedupe (e.g., ASFLAGS := ... / ASFLAGS += ...)
+    seen_variables: set[str] = set()
+
     for node in iter_tree(root):
         if node.type == "variable_assignment":
             var_name = _get_variable_name(node, source)
             if var_name:
+                # Skip duplicate variable definitions (e.g., VAR := x / VAR += y)
+                # Only emit a symbol for the first definition
+                var_key = var_name.lower()
+                if var_key in seen_variables:
+                    continue
+                seen_variables.add(var_key)
+
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "variable")
