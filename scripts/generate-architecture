@@ -123,13 +123,122 @@ def run_command(args: list[str], description: str) -> subprocess.CompletedProces
 
 
 def run_hypergumbo_sketch() -> str:
-    """Run hypergumbo sketch on itself."""
+    """Run hypergumbo sketch on the entire repo."""
     result = run_command(
-        [sys.executable, "-m", "hypergumbo", "sketch", str(REPO_ROOT / "src"),
-         "-t", "1500"],
+        [sys.executable, "-m", "hypergumbo", "sketch", str(REPO_ROOT),
+         "-t", "4000"],
         "hypergumbo sketch",
     )
     return result.stdout
+
+
+# AI tool folders to filter from structure output
+AI_TOOL_FOLDERS = {".gemini", ".codex", ".claude", ".continue", ".aider", ".clinerules", ".cursor"}
+
+
+def filter_ai_folders_from_structure(sketch: str) -> str:
+    """Remove AI tool folders from the Structure section of the sketch.
+
+    Filters out repo-root-level folders like .claude, .cursor, etc.
+    """
+    lines = sketch.split("\n")
+    result = []
+    in_structure = False
+    skip_until_unindent = False
+    skip_indent_level = 0
+
+    for line in lines:
+        # Detect Structure section
+        if line.startswith("## Structure"):
+            in_structure = True
+            result.append(line)
+            continue
+
+        # Detect end of Structure section (next ## header)
+        if in_structure and line.startswith("## ") and not line.startswith("## Structure"):
+            in_structure = False
+            skip_until_unindent = False
+
+        if in_structure:
+            # Check if this line references an AI tool folder at repo root level
+            # These appear as "├── .claude" or "└── .claude" at low indent
+            stripped = line.lstrip("│├└─ ")
+            folder_name = stripped.split()[0] if stripped.split() else ""
+
+            # Check for AI tool folder at root level (shallow indent)
+            # Root level items have minimal leading characters
+            leading_chars = len(line) - len(line.lstrip("│├└─ "))
+            is_root_level = leading_chars <= 4
+
+            if is_root_level and folder_name in AI_TOOL_FOLDERS:
+                # Skip this line and any children (more indented lines)
+                skip_until_unindent = True
+                skip_indent_level = leading_chars
+                continue
+
+            if skip_until_unindent:
+                current_indent = len(line) - len(line.lstrip("│├└─ "))
+                if current_indent <= skip_indent_level and line.strip():
+                    # Back to same or lower indent, stop skipping
+                    skip_until_unindent = False
+                else:
+                    # Still in AI folder subtree, skip
+                    continue
+
+        result.append(line)
+
+    return "\n".join(result)
+
+
+def remove_structure_code_fence(sketch: str) -> str:
+    """Remove code fence (triple backticks) around the Structure section.
+
+    The Structure section uses tree characters that render better without
+    being wrapped in a code fence in web markdown viewers.
+    """
+    lines = sketch.split("\n")
+    result = []
+    in_structure = False
+    found_opening_fence = False
+    structure_depth = 0
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Detect Structure section
+        if line.startswith("## Structure"):
+            in_structure = True
+            result.append(line)
+            i += 1
+            # Skip empty lines after header
+            while i < len(lines) and not lines[i].strip():
+                result.append(lines[i])
+                i += 1
+            # Check for opening code fence
+            if i < len(lines) and lines[i].strip() == "```":
+                found_opening_fence = True
+                i += 1  # Skip the opening fence
+                continue
+
+        # In structure section, look for closing fence
+        if in_structure and found_opening_fence:
+            if line.strip() == "```":
+                # Found closing fence - skip it and end structure section
+                in_structure = False
+                found_opening_fence = False
+                i += 1
+                continue
+
+        # Detect end of Structure section (next ## header)
+        if in_structure and line.startswith("## ") and not line.startswith("## Structure"):
+            in_structure = False
+            found_opening_fence = False
+
+        result.append(line)
+        i += 1
+
+    return "\n".join(result)
 
 
 def run_hypergumbo_analysis() -> dict:
@@ -271,6 +380,10 @@ def generate_architecture_md() -> str:
     print("Running hypergumbo sketch on itself...", file=sys.stderr)
     sketch = run_hypergumbo_sketch()
 
+    # Post-process sketch: filter AI folders and remove Structure code fence
+    sketch = filter_ai_folders_from_structure(sketch)
+    sketch = remove_structure_code_fence(sketch)
+
     print("Running hypergumbo analysis on itself...", file=sys.stderr)
     analysis = run_hypergumbo_analysis()
 
@@ -343,7 +456,7 @@ def generate_architecture_md() -> str:
         "┌─────────────────────────────────────────────────────────────────┐",
         "│                         ANALYZERS                               │",
         "│  Pure language processors - NO framework knowledge              │",
-        f"│  Output: {node_count} Symbols + {edge_count} Edges + UsageContexts            │",
+        f"│  Output: {node_count} Symbols + {edge_count} Edges + UsageContexts".ljust(66) + "│",
         "│  Rich metadata: decorators, base_classes, parameters            │",
         "└─────────────────────────────────────────────────────────────────┘",
         "     │",
@@ -351,14 +464,14 @@ def generate_architecture_md() -> str:
         "┌─────────────────────────────────────────────────────────────────┐",
         "│                       PATTERN SYSTEM                            │",
         "│  ┌─────────────────────────────────────────────────────────┐    │",
-        "│  │  Convention Patterns (always loaded):                    │    │",
+        "│  │  Convention Patterns (always loaded):                   │    │",
         "│  │  - main-functions.yaml: main() entrypoints              │    │",
         "│  │  - test-frameworks.yaml: test function detection        │    │",
         "│  │  - language-conventions.yaml: CUDA/WGSL/COBOL/etc.      │    │",
         "│  │  - config-conventions.yaml: NPM/Maven/Cargo deps        │    │",
         "│  └─────────────────────────────────────────────────────────┘    │",
         "│  ┌─────────────────────────────────────────────────────────┐    │",
-        "│  │  Framework Patterns (loaded when framework detected):    │    │",
+        "│  │  Framework Patterns (loaded when framework detected):   │    │",
         "│  │  - 37 framework YAML files (fastapi, django, etc.)      │    │",
         "│  └─────────────────────────────────────────────────────────┘    │",
         "│  Output: Symbols enriched with meta.concepts                    │",
@@ -371,8 +484,8 @@ def generate_architecture_md() -> str:
         "│  Match via meta.concepts (route paths, gRPC services, etc.)     │",
         f"│  {linker_file_count} linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │",
         "└─────────────────────────────────────────────────────────────────┘",
-        "     │",
-        "     ▼",
+        "                          │",
+        "                          ▼",
         "          ┌───────────────┼───────────────┐",
         "          ▼               ▼               ▼",
         "    ┌──────────┐   ┌──────────┐   ┌──────────┐",
