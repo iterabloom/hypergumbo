@@ -6315,3 +6315,185 @@ class TestMainFunctionPatterns:
         assert pattern.matches(symbol_python) is not None
         # JavaScript symbol does not match (wrong language)
         assert pattern.matches(symbol_js) is None
+
+
+class TestTestFrameworkPatterns:
+    """Tests for test-frameworks.yaml patterns (ADR-0003 v1.2.x)."""
+
+    def test_test_frameworks_yaml_loads(self) -> None:
+        """test-frameworks.yaml loads correctly."""
+        pattern_def = load_framework_patterns("test-frameworks")
+        assert pattern_def is not None
+        assert pattern_def.id == "test-frameworks"
+        assert pattern_def.language == "multi"
+        # Should have patterns for multiple languages
+        assert len(pattern_def.patterns) >= 10
+
+    def test_python_test_function_pattern(self) -> None:
+        """Pattern matches Python test_* functions."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^test_",
+            symbol_kind="^function$",
+            language="^python$",
+        )
+        symbol = Symbol(
+            id="python:test_users.py:10-20:test_create_user:function",
+            name="test_create_user",
+            kind="function",
+            language="python",
+            path="test_users.py",
+            span=Span(10, 20, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+        assert result["matched_symbol_name"] == "test_create_user"
+
+    def test_python_non_test_function_no_match(self) -> None:
+        """Pattern does not match non-test functions."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^test_",
+            symbol_kind="^function$",
+            language="^python$",
+        )
+        symbol = Symbol(
+            id="python:users.py:10-20:create_user:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="users.py",
+            span=Span(10, 20, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_go_test_function_pattern(self) -> None:
+        """Pattern matches Go Test* functions."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^Test[A-Z]",
+            symbol_kind="^function$",
+            language="^go$",
+        )
+        symbol = Symbol(
+            id="go:user_test.go:10-30:TestCreateUser:function",
+            name="TestCreateUser",
+            kind="function",
+            language="go",
+            path="user_test.go",
+            span=Span(10, 30, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_go_benchmark_function_pattern(self) -> None:
+        """Pattern matches Go Benchmark* functions."""
+        pattern = Pattern(
+            concept="benchmark_function",
+            symbol_name="^Benchmark[A-Z]",
+            symbol_kind="^function$",
+            language="^go$",
+        )
+        symbol = Symbol(
+            id="go:user_test.go:50-70:BenchmarkCreateUser:function",
+            name="BenchmarkCreateUser",
+            kind="function",
+            language="go",
+            path="user_test.go",
+            span=Span(50, 70, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "benchmark_function"
+
+    def test_java_test_annotation_pattern(self) -> None:
+        """Pattern matches Java @Test annotation."""
+        pattern = Pattern(
+            concept="test_function",
+            decorator="^Test$",
+            symbol_kind="^method$",
+            language="^java$",
+        )
+        symbol = Symbol(
+            id="java:UserTest.java:20-40:testCreateUser:method",
+            name="testCreateUser",
+            kind="method",
+            language="java",
+            path="UserTest.java",
+            span=Span(20, 40, 0, 100),
+            meta={"decorators": [{"name": "Test", "args": []}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_rust_test_attribute_pattern(self) -> None:
+        """Pattern matches Rust #[test] attribute."""
+        pattern = Pattern(
+            concept="test_function",
+            decorator="^test$",
+            symbol_kind="^function$",
+            language="^rust$",
+        )
+        symbol = Symbol(
+            id="rust:lib.rs:30-50:test_create_user:function",
+            name="test_create_user",
+            kind="function",
+            language="rust",
+            path="lib.rs",
+            span=Span(30, 50, 0, 100),
+            meta={"decorators": [{"name": "test", "args": []}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_csharp_fact_attribute_pattern(self) -> None:
+        """Pattern matches C# [Fact] attribute (xUnit)."""
+        pattern = Pattern(
+            concept="test_function",
+            decorator="^Fact$",
+            symbol_kind="^method$",
+            language="^csharp$",
+        )
+        symbol = Symbol(
+            id="csharp:UserTests.cs:25-45:CreateUser_ShouldWork:method",
+            name="CreateUser_ShouldWork",
+            kind="method",
+            language="csharp",
+            path="UserTests.cs",
+            span=Span(25, 45, 0, 100),
+            meta={"decorators": [{"name": "Fact", "args": []}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_enrich_symbols_with_test_function(self) -> None:
+        """enrich_symbols enriches Python test function with test_function concept."""
+        symbol = Symbol(
+            id="python:test_api.py:10-20:test_user_creation:function",
+            name="test_user_creation",
+            kind="function",
+            language="python",
+            path="test_api.py",
+            span=Span(10, 20, 0, 100),
+            meta={},
+        )
+
+        # Use real test-frameworks patterns (no mock)
+        enriched = enrich_symbols([symbol], set())  # No frameworks detected
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        test_concepts = [c for c in concepts if c["concept"] == "test_function"]
+        assert len(test_concepts) == 1
+        assert test_concepts[0]["framework"] == "test-frameworks"

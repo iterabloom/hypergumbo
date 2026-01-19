@@ -751,11 +751,12 @@ def enrich_symbols(
         if pattern_def:
             pattern_defs.append(pattern_def)
 
-    # Always load language convention patterns (main-functions.yaml)
+    # Always load language convention patterns (main-functions.yaml, test-frameworks.yaml)
     # These are applied regardless of framework detection
-    main_patterns = load_framework_patterns("main-functions")
-    if main_patterns:
-        pattern_defs.append(main_patterns)
+    for convention_id in ("main-functions", "test-frameworks"):
+        convention_patterns = load_framework_patterns(convention_id)
+        if convention_patterns:
+            pattern_defs.append(convention_patterns)
 
     if not pattern_defs:  # pragma: no cover - main-functions.yaml is always loaded
         return symbols
