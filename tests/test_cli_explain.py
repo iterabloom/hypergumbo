@@ -243,16 +243,25 @@ def test_cmd_explain_input_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_cmd_explain_no_results_file(tmp_path: Path) -> None:
-    """Explain fails if no results file exists."""
+def test_cmd_explain_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Explain auto-runs analysis if no results file exists."""
     args = FakeArgs()
     args.symbol = "foo"
     args.path = str(tmp_path)
     args.input = None
+    args.exclude_tests = False
+    args.with_source = False
+    args.tokens = None
 
     result = cmd_explain(args)
 
+    # Auto-runs analysis, but returns error since symbol not found
+    # (explain still requires finding the symbol)
     assert result == 1
+    _, err = capsys.readouterr()
+    # Verify analysis was auto-run before failing to find symbol
+    assert "No cached results found, running analysis" in err
+    assert "No symbol found matching 'foo'" in err
 
 
 def test_main_with_explain(tmp_path: Path, capsys) -> None:
@@ -344,7 +353,7 @@ def test_cmd_explain_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "[hypergumbo explain] Generated 0 artifact(s)" in out
+    assert "[hypergumbo explain] Using 1 cached" in out
     assert "Output: stdout" in out
 
 

@@ -274,8 +274,8 @@ def test_cmd_search_input_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_cmd_search_no_results_file(tmp_path: Path) -> None:
-    """Search fails if no results file exists."""
+def test_cmd_search_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Search auto-runs analysis if no results file exists."""
     args = FakeArgs()
     args.pattern = "foo"
     args.path = str(tmp_path)
@@ -286,7 +286,10 @@ def test_cmd_search_no_results_file(tmp_path: Path) -> None:
 
     result = cmd_search(args)
 
-    assert result == 1
+    # Auto-runs analysis and succeeds (even if no matches found)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "No cached results found, running analysis" in err
 
 
 def test_cmd_search_respects_limit(tmp_path: Path, capsys) -> None:
@@ -386,5 +389,6 @@ def test_cmd_search_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "[hypergumbo search] Generated 0 artifact(s)" in out
+    # With auto-discovery, uses cached results
+    assert "[hypergumbo search] Using 1 cached" in out
     assert "Output: stdout" in out

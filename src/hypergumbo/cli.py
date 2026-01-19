@@ -127,6 +127,94 @@ def _find_git_root(start_path: Path) -> Optional[Path]:
     return None
 
 
+def _discover_input_file(repo_root: Path) -> Optional[Path]:
+    """Auto-discover behavior map file from cache or repo root.
+
+    Search order:
+    1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/
+    2. Repo root: <repo>/hypergumbo.results.json
+
+    This enables seamless workflow where 'hypergumbo run .' (which caches results)
+    is automatically discovered by search/explain/routes/slice/symbols commands.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        Path to behavior map file if found, None otherwise.
+    """
+    # First, check cache directory (where 'hypergumbo run' saves by default)
+    try:
+        from .sketch_embeddings import _get_results_cache_dir
+
+        cache_dir = _get_results_cache_dir(repo_root)
+        cached_file = cache_dir / "hypergumbo.results.json"
+        if cached_file.exists():
+            return cached_file
+    except Exception:  # pragma: no cover - cache discovery errors
+        pass
+
+    # Fall back to repo root (for explicit --out or legacy workflows)
+    repo_file = repo_root / "hypergumbo.results.json"
+    if repo_file.exists():
+        return repo_file
+
+    return None
+
+
+def _get_or_run_analysis(
+    repo_root: Path,
+    explicit_input: Optional[str] = None,
+    show_progress: bool = True,
+) -> tuple[Optional[Path], bool, list[Path]]:
+    """Get cached behavior map or run analysis if needed.
+
+    Provides seamless auto-analysis: commands that need a behavior map will
+    automatically run 'hypergumbo run' if no cached results exist.
+
+    Args:
+        repo_root: Repository root path.
+        explicit_input: Explicit --input path (takes precedence).
+        show_progress: Whether to show progress during analysis.
+
+    Returns:
+        Tuple of (input_path, was_cached, generated_artifacts):
+        - input_path: Path to behavior map file, or None if explicit_input not found
+        - was_cached: True if using cached results, False if freshly generated
+        - generated_artifacts: List of generated file paths (empty if cached)
+    """
+    # If explicit --input provided, use it directly
+    if explicit_input:
+        input_path = Path(explicit_input)
+        if not input_path.exists():
+            return None, False, []
+        return input_path, True, []  # Treat explicit input as "cached"
+
+    # Try to discover cached results
+    cached_path = _discover_input_file(repo_root)
+    if cached_path is not None:
+        return cached_path, True, []
+
+    # No cached results - run analysis
+    print(
+        "[hypergumbo] No cached results found, running analysis...",
+        file=sys.stderr,
+    )
+
+    generated_files = run_behavior_map(
+        repo_root=repo_root,
+        out_path=None,  # Use default cache location
+        progress=show_progress,
+    )
+
+    # Now discover the newly created results
+    new_path = _discover_input_file(repo_root)
+    if new_path is None:  # pragma: no cover - shouldn't happen
+        return None, False, generated_files
+
+    return new_path, False, generated_files
+
+
 def _print_output_summary(
     command: str,
     artifacts: list[Path] | None = None,
@@ -724,10 +812,25 @@ def _extract_path_from_symbol_id(symbol_id: str) -> str:
     return ""
 
 
+def _sanitize_filename_part(s: str, max_len: int = 50) -> str:
+    """Sanitize a string for use in a filename.
+
+    Replaces unsafe characters and truncates to max_len.
+    """
+    import re
+    # Replace non-alphanumeric (except dash, underscore, dot) with underscore
+    safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", s)
+    # Collapse multiple underscores
+    safe = re.sub(r"_+", "_", safe)
+    # Strip leading/trailing underscores
+    safe = safe.strip("_")
+    return safe[:max_len] if safe else "unnamed"
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
-    out_path = Path(args.out)
+    out_path_arg = args.out  # Keep as string to detect if default was used
 
     # Smart detection: if path is a .json file, treat it as --input automatically
     # This provides better UX: `hypergumbo slice results.json` just works
@@ -738,22 +841,15 @@ def cmd_slice(args: argparse.Namespace) -> int:
     else:
         repo_root = path_arg
 
-    # Determine input file
-    if args.input:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            return 1
-    else:
-        # Look for default results file
-        input_path = repo_root / "hypergumbo.results.json"
-        if not input_path.exists():
-            print(
-                "Error: No hypergumbo.results.json found. "
-                "Run 'hypergumbo run' first or specify --input.",
-                file=sys.stderr,
-            )
-            return 1
+    # Get or run analysis (auto-runs if no cached results)
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
 
     behavior_map = json.loads(input_path.read_text())
 
@@ -806,6 +902,17 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"  {entry}")
         if out_edges > 0:
             print(f"  (selected for connectivity: {out_edges} outgoing edges)")
+
+    # Generate output path with entry name if using default
+    # This prevents accidental overwrites when slicing different symbols
+    if out_path_arg == "slice.json":
+        # Extract short name from entry (e.g., "main" from "python:src/main.py:1-5:main:function")
+        entry_parts = entry.split(":")
+        short_name = entry_parts[-2] if len(entry_parts) >= 2 else entry_parts[0]
+        safe_name = _sanitize_filename_part(short_name)
+        out_path = Path(f"slice.{safe_name}.json")
+    else:
+        out_path = Path(out_path_arg)
 
     # Build slice query
     max_tier = getattr(args, "max_tier", None)
@@ -875,7 +982,10 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
 
     # Output summary (always at the end)
-    _print_output_summary("slice", artifacts=[out_path])
+    cached_set = {input_path} if was_cached else set()
+    # Include generated analysis files + the slice output
+    all_artifacts = generated_files + [input_path, out_path] if not was_cached else [input_path, out_path]
+    _print_output_summary("slice", artifacts=all_artifacts, cached_artifacts=cached_set)
 
     return 0
 
@@ -884,22 +994,15 @@ def cmd_search(args: argparse.Namespace) -> int:
     """Search for symbols by name pattern."""
     repo_root = Path(args.path).resolve()
 
-    # Determine input file
-    if args.input:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            return 1
-    else:
-        # Look for default results file
-        input_path = repo_root / "hypergumbo.results.json"
-        if not input_path.exists():
-            print(
-                "Error: No hypergumbo.results.json found. "
-                "Run 'hypergumbo run' first or specify --input.",
-                file=sys.stderr,
-            )
-            return 1
+    # Get or run analysis (auto-runs if no cached results)
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
 
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
@@ -944,7 +1047,14 @@ def cmd_search(args: argparse.Namespace) -> int:
         print()
 
     # Output summary (always at the end)
-    _print_output_summary("search", stdout_output=True)
+    cached_set = {input_path} if was_cached else set()
+    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    _print_output_summary(
+        "search",
+        artifacts=artifacts,
+        stdout_output=True,
+        cached_artifacts=cached_set,
+    )
     return 0
 
 
@@ -956,22 +1066,15 @@ def cmd_routes(args: argparse.Namespace) -> int:
     """Display API routes/endpoints from the behavior map."""
     repo_root = Path(args.path).resolve()
 
-    # Determine input file
-    if args.input:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            return 1
-    else:
-        # Look for default results file
-        input_path = repo_root / "hypergumbo.results.json"
-        if not input_path.exists():
-            print(
-                "Error: No hypergumbo.results.json found. "
-                "Run 'hypergumbo run' first or specify --input.",
-                file=sys.stderr,
-            )
-            return 1
+    # Get or run analysis (auto-runs if no cached results)
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
 
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
@@ -1010,6 +1113,11 @@ def cmd_routes(args: argparse.Namespace) -> int:
 
     if not routes:
         print("No API routes found in the behavior map.")
+        cached_set = {input_path} if was_cached else set()
+        artifacts = generated_files + [input_path] if not was_cached else [input_path]
+        _print_output_summary(
+            "routes", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
+        )
         return 0
 
     # Group routes by path
@@ -1057,7 +1165,11 @@ def cmd_routes(args: argparse.Namespace) -> int:
         print()
 
     # Output summary (always at the end)
-    _print_output_summary("routes", stdout_output=True)
+    cached_set = {input_path} if was_cached else set()
+    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    _print_output_summary(
+        "routes", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
+    )
     return 0
 
 
@@ -1114,22 +1226,15 @@ def cmd_explain(args: argparse.Namespace) -> int:
     """Explain a symbol with its callers and callees."""
     repo_root = Path(args.path).resolve()
 
-    # Determine input file
-    if args.input:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            return 1
-    else:
-        # Look for default results file
-        input_path = repo_root / "hypergumbo.results.json"
-        if not input_path.exists():
-            print(
-                "Error: No hypergumbo.results.json found. "
-                "Run 'hypergumbo run' first or specify --input.",
-                file=sys.stderr,
-            )
-            return 1
+    # Get or run analysis (auto-runs if no cached results)
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
 
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
@@ -1438,7 +1543,11 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 print(f"\n  [{callee_regular_omitted} callee source(s) omitted for brevity]")
 
     # Output summary (always at the end)
-    _print_output_summary("explain", stdout_output=True)
+    cached_set = {input_path} if was_cached else set()
+    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    _print_output_summary(
+        "explain", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
+    )
     return 0
 
 
@@ -1591,21 +1700,15 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     """
     repo_root = Path(args.path).resolve()
 
-    # Determine input file
-    if args.input:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            return 1
-    else:
-        input_path = repo_root / "hypergumbo.results.json"
-        if not input_path.exists():
-            print(
-                "Error: No hypergumbo.results.json found. "
-                "Run 'hypergumbo run' first or specify --input.",
-                file=sys.stderr,
-            )
-            return 1
+    # Get or run analysis (auto-runs if no cached results)
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
 
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
@@ -1698,7 +1801,11 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
     if not display_rows:
         print("No symbols found.")
-        _print_output_summary("symbols", stdout_output=True)
+        cached_set = {input_path} if was_cached else set()
+        artifacts = generated_files + [input_path] if not was_cached else [input_path]
+        _print_output_summary(
+            "symbols", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
+        )
         return 0
 
     # Create Rich table with auto-adjusting columns
@@ -1727,7 +1834,11 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         )
 
     # Output summary
-    _print_output_summary("symbols", stdout_output=True)
+    cached_set = {input_path} if was_cached else set()
+    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    _print_output_summary(
+        "symbols", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
+    )
     return 0
 
 
@@ -1740,21 +1851,15 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     """
     repo_root = Path(args.path).resolve()
 
-    # Determine input file
-    if args.input:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            return 1
-    else:
-        input_path = repo_root / "hypergumbo.results.json"
-        if not input_path.exists():
-            print(
-                "Error: No hypergumbo.results.json found. "
-                "Run 'hypergumbo run' first or specify --input.",
-                file=sys.stderr,
-            )
-            return 1
+    # Get or run analysis (auto-runs if no cached results)
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
 
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
@@ -1937,7 +2042,15 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
 
     # Output summary (to stderr for JSON mode to avoid breaking JSON parsing)
     summary_file = sys.stderr if args.format == "json" else None
-    _print_output_summary("test-coverage", stdout_output=True, file=summary_file)
+    cached_set = {input_path} if was_cached else set()
+    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    _print_output_summary(
+        "test-coverage",
+        artifacts=artifacts,
+        stdout_output=True,
+        file=summary_file,
+        cached_artifacts=cached_set,
+    )
     return 0
 
 
@@ -2270,7 +2383,7 @@ Use cases:
   - Find all callers of a function (reverse slice)
   - Extract a focused subgraph for debugging or review
 
-Requires: Run 'hypergumbo run .' first to create behavior map."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_slice = sub.add_parser(
         "slice",
@@ -2298,7 +2411,7 @@ Requires: Run 'hypergumbo run .' first to create behavior map."""
     p_slice.add_argument(
         "--out",
         default="slice.json",
-        help="Output JSON path (default: slice.json)",
+        help="Output JSON path (default: slice.<entry-name>.json)",
     )
     p_slice.add_argument(
         "--input",
@@ -2363,7 +2476,7 @@ Examples:
   hypergumbo search "test" --limit 50     # Show more results
   hypergumbo search "handle" --language python
 
-Requires: Run 'hypergumbo run .' first to create behavior map."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_search = sub.add_parser(
         "search",
@@ -2411,7 +2524,7 @@ Examples:
 
 Detects: Flask routes, FastAPI endpoints, Express routes, Django URLs, etc.
 
-Requires: Run 'hypergumbo run .' first to create behavior map."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_routes = sub.add_parser(
         "routes",
@@ -2445,7 +2558,7 @@ Examples:
 
 Shows: Symbol location, callers (what calls it), callees (what it calls).
 
-Requires: Run 'hypergumbo run .' first to create behavior map."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_explain = sub.add_parser(
         "explain",
@@ -2558,7 +2671,7 @@ Analyzes the call graph to estimate which functions are tested.
 Does NOT execute code - uses static analysis only.
 Language agnostic - works with any language hypergumbo supports.
 
-Requires: Run 'hypergumbo run .' first to create behavior map."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_test_cov = sub.add_parser(
         "test-coverage",
@@ -2618,7 +2731,7 @@ Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
 Deg (total degree), File. Auto-adjusts column widths and wraps long text.
 Sorted by file connectivity (hottest files first), then filename, then degree.
 
-Requires: Run 'hypergumbo run .' first to create behavior map."""
+Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_symbols = sub.add_parser(
         "symbols",

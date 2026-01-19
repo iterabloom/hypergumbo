@@ -10,6 +10,20 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **Auto-run analysis for query commands:** Commands `search`, `routes`, `explain`, `symbols`,
+  `test-coverage`, and `slice` now automatically run `hypergumbo run` if no cached results exist.
+  Previously these commands failed with "Run 'hypergumbo run' first" - now they seamlessly generate
+  the behavior map on demand. Shows `[hypergumbo] No cached results found, running analysis...`
+  when auto-running.
+- **Auto-discovery of cached results:** Query commands automatically discover behavior maps from the
+  cache directory (`~/.cache/hypergumbo/<fingerprint>/results/<state>/`) or fall back to repo root.
+  This fixes the mismatch where `hypergumbo run` saved to cache but query commands looked in repo root.
+- **Artifact location reporting:** All commands now report where results came from at the end of
+  execution. Shows "[cached]" prefix for pre-existing files vs freshly generated ones. Example:
+  `[hypergumbo search] Using 1 cached` followed by the file path.
+- **Symbol-specific slice output naming:** `hypergumbo slice` now generates output filenames that
+  include the entry symbol name when using defaults (e.g., `slice.main.json` instead of `slice.json`).
+  This prevents accidental overwrites when slicing different symbols in the same session.
 - **README-first hybrid ranking for Additional Files:** The Additional Files section now uses a
   smarter ordering algorithm:
   - README always appears first (truncated if it exceeds the token budget)

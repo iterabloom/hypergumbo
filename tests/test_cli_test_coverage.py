@@ -590,8 +590,8 @@ def test_cmd_test_coverage_input_not_found(tmp_path: Path, capsys) -> None:
     assert "Input file not found" in err
 
 
-def test_cmd_test_coverage_no_results_file(tmp_path: Path, capsys) -> None:
-    """Test error when no hypergumbo.results.json exists."""
+def test_cmd_test_coverage_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Test auto-runs analysis when no hypergumbo.results.json exists."""
     args = FakeArgs()
     args.path = str(tmp_path)
     args.input = None
@@ -602,9 +602,11 @@ def test_cmd_test_coverage_no_results_file(tmp_path: Path, capsys) -> None:
 
     result = cmd_test_coverage(args)
 
-    assert result == 1
+    # Auto-runs analysis and succeeds
+    assert result == 0
     _, err = capsys.readouterr()
-    assert "No hypergumbo.results.json found" in err
+    # Should indicate analysis was auto-run
+    assert "No cached results found, running analysis" in err
 
 
 def test_cmd_test_coverage_ignores_non_call_edges(tmp_path: Path, capsys) -> None:
@@ -920,7 +922,7 @@ def test_cmd_test_coverage_prints_output_summary(tmp_path: Path, capsys) -> None
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "[hypergumbo test-coverage] Generated 0 artifact(s)" in out
+    assert "[hypergumbo test-coverage] Using 1 cached" in out
     assert "Output: stdout" in out
 
 

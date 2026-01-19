@@ -89,8 +89,8 @@ Sets security defaults: `trust: local_only`, `network: deny`, `sandbox: recommen
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Runs the analyzer capsule on the repo. If no capsule exists, auto-generates a default one with a warning.
 
-🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.json]`**
-Produces a reduced subgraph suitable for LLM context.
+🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.<entry>.json]`**
+Produces a reduced subgraph suitable for LLM context. Default output filename includes a sanitized entry name to prevent overwrites when slicing different symbols.
 
 🟩 **`hypergumbo catalog [--show-all]`**
 Displays available passes, packs, and rule templates. Use `--show-all` to include optional extras requiring additional dependencies (e.g., tree-sitter language packs).

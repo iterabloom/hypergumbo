@@ -13,6 +13,7 @@ from hypergumbo.cli import (
     main,
     _find_git_root,
     _print_output_summary,
+    _sanitize_filename_part,
 )
 
 
@@ -742,8 +743,8 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     assert result == 1  # Error exit code
 
 
-def test_cmd_slice_no_results_file(tmp_path: Path, capsys) -> None:
-    """Test slice command errors when no results file exists."""
+def test_cmd_slice_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Test slice command auto-runs analysis when no cached results exist."""
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "foo"
@@ -759,11 +760,12 @@ def test_cmd_slice_no_results_file(tmp_path: Path, capsys) -> None:
 
     result = cmd_slice(args)
 
-    assert result == 1
+    # Auto-runs analysis and succeeds (even if slice is empty due to no matching entry)
+    assert result == 0
 
     _, err = capsys.readouterr()
-    assert "No hypergumbo.results.json found" in err
-    assert "Run 'hypergumbo run' first" in err
+    # Should indicate analysis was auto-run
+    assert "No cached results found, running analysis" in err
 
 
 def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
@@ -2244,3 +2246,93 @@ def test_cmd_sketch_input_no_staleness_warning_when_fresh(tmp_path: Path, capsys
     _, err = capsys.readouterr()
     # Should NOT warn about stale results
     assert "stale" not in err
+
+
+def test_sanitize_filename_part_simple() -> None:
+    """Test sanitize filename part with normal input."""
+    assert _sanitize_filename_part("hello") == "hello"
+    assert _sanitize_filename_part("my_func") == "my_func"
+    assert _sanitize_filename_part("test-name") == "test-name"
+
+
+def test_sanitize_filename_part_special_chars() -> None:
+    """Test sanitize filename part replaces special characters."""
+    assert _sanitize_filename_part("hello:world") == "hello_world"
+    assert _sanitize_filename_part("a/b/c") == "a_b_c"
+    assert _sanitize_filename_part("foo::bar::baz") == "foo_bar_baz"
+
+
+def test_sanitize_filename_part_collapse_underscores() -> None:
+    """Test sanitize filename part collapses multiple underscores."""
+    assert _sanitize_filename_part("a___b") == "a_b"
+    assert _sanitize_filename_part("x::y::z") == "x_y_z"
+
+
+def test_sanitize_filename_part_strip_underscores() -> None:
+    """Test sanitize filename part strips leading/trailing underscores."""
+    assert _sanitize_filename_part("_hello_") == "hello"
+    assert _sanitize_filename_part("::foo::") == "foo"
+
+
+def test_sanitize_filename_part_truncates() -> None:
+    """Test sanitize filename part truncates long names."""
+    long_name = "a" * 100
+    result = _sanitize_filename_part(long_name, max_len=50)
+    assert len(result) == 50
+
+
+def test_sanitize_filename_part_empty_becomes_unnamed() -> None:
+    """Test sanitize filename part handles empty/all-special input."""
+    assert _sanitize_filename_part("") == "unnamed"
+    assert _sanitize_filename_part(":::") == "unnamed"
+
+
+def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) -> None:
+    """Test that slice default output filename includes sanitized entry name."""
+    import os
+    # Change to tmp_path so output goes there
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        # Create a behavior map file
+        behavior_map = {
+            "schema_version": "0.1.0",
+            "nodes": [
+                {
+                    "id": "python:src/main.py:1-2:my_func:function",
+                    "name": "my_func",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/main.py",
+                    "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+                }
+            ],
+            "edges": [],
+        }
+        (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+        args = FakeArgs()
+        args.path = str(tmp_path)
+        args.entry = "my_func"
+        args.out = "slice.json"  # Default value
+        args.input = None
+        args.max_hops = 3
+        args.max_files = 20
+        args.min_confidence = 0.0
+        args.exclude_tests = False
+        args.list_entries = False
+        args.reverse = False
+        args.language = None
+
+        result = cmd_slice(args)
+
+        assert result == 0
+
+        # Output should be slice.my_func.json, not slice.json
+        assert (tmp_path / "slice.my_func.json").exists()
+        assert not (tmp_path / "slice.json").exists()
+
+        out, _ = capsys.readouterr()
+        assert "slice.my_func.json" in out
+    finally:
+        os.chdir(original_cwd)

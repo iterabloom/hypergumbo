@@ -401,8 +401,8 @@ def test_cmd_symbols_input_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_cmd_symbols_no_results_file(tmp_path: Path) -> None:
-    """Symbols fails if no results file exists."""
+def test_cmd_symbols_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Symbols auto-runs analysis if no results file exists."""
     args = FakeArgs()
     args.path = str(tmp_path)
     args.input = None
@@ -415,7 +415,10 @@ def test_cmd_symbols_no_results_file(tmp_path: Path) -> None:
 
     result = cmd_symbols(args)
 
-    assert result == 1
+    # Auto-runs analysis and succeeds (even if no symbols found)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "No cached results found, running analysis" in err
 
 
 def test_cmd_symbols_prints_output_summary(tmp_path: Path, capsys) -> None:
@@ -452,7 +455,7 @@ def test_cmd_symbols_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    assert "[hypergumbo symbols] Generated 0 artifact(s)" in out
+    assert "[hypergumbo symbols] Using 1 cached" in out
     assert "Output: stdout" in out
 
 
