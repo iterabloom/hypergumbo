@@ -399,7 +399,7 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-See §4 "Supported stacks" for the full list of 67 language analyzers, 15 cross-language linkers, and 37 framework patterns. Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
+See §4 "Supported stacks" for the full list of 67 language analyzers, 15 cross-language linkers, and 41 pattern files (4 convention + 37 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
 
 ## 6) Output: "Repo Behavior Map" JSON (v0.1)
 
@@ -1443,7 +1443,7 @@ ANALYZERS (pure language, no framework knowledge)
   → Capture symbols + rich metadata (decorators, base classes, parameters)
   → Capture UsageContext for call-based patterns (route registrations, etc.)
 
-FRAMEWORK_PATTERNS (37 YAML files, configured by detected frameworks)
+PATTERN SYSTEM (41 YAML files: 4 convention + 37 framework)
   → Match patterns against symbol metadata and usage contexts
   → Enrich symbols with concept metadata (route, task, model, etc.)
 
@@ -1453,6 +1453,48 @@ ENTRYPOINTS (semantic detection)
 ```
 
 **Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts detected from symbol metadata, not file paths.
+
+### meta.concepts Structure
+
+Enriched symbols have a `meta.concepts` list that serves as the **single source of truth** for semantic metadata:
+
+```json
+{
+  "meta": {
+    "concepts": [
+      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},
+      {"concept": "test_function", "framework": "test-frameworks"},
+      {"concept": "main_entrypoint", "framework": "main-functions"}
+    ]
+  }
+}
+```
+
+**Fields:**
+- `concept`: Semantic type (route, model, task, test_function, main_entrypoint, etc.)
+- `framework`: Which pattern file matched (fastapi, test-frameworks, main-functions, etc.)
+- Additional fields vary by concept type (e.g., `path`, `method` for routes)
+
+**Path normalization:** Route paths are normalized to always start with `/` for consistent matching (e.g., `users` → `/users`).
+
+Linkers and entrypoint detection query `meta.concepts` exclusively.
+
+### Convention Patterns vs Framework Patterns
+
+The pattern system has two categories:
+
+| Category | When Loaded | Purpose | Examples |
+|----------|-------------|---------|----------|
+| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, language-conventions, config-conventions |
+| **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
+
+**Convention patterns (4 files):**
+- `main-functions.yaml`: main() entrypoints across 10+ languages
+- `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
+- `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
+- `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
+
+**Framework patterns (37 files):** Loaded only when the framework is detected in profile. See `src/hypergumbo/frameworks/` for full list.
 
 ### Pattern Types
 
