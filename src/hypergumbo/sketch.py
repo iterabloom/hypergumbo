@@ -3858,7 +3858,7 @@ def _format_additional_files(
     exclude_tests: bool = False,
     token_budget: int | None = None,
     include_content: bool = False,
-) -> tuple[str, list[Path]]:
+) -> tuple[str, list[Path], float]:
     """Format additional files (non-source) as a Markdown section.
 
     Uses a README-first hybrid ordering approach:
@@ -3888,8 +3888,10 @@ def _format_additional_files(
         include_content: If True, include file contents with dynamic truncation.
 
     Returns:
-        Tuple of (Markdown formatted section, list of selected file paths).
-        The list allows the caller to include file content for --with-source mode.
+        Tuple of (Markdown formatted section, list of selected file paths,
+        mention centrality sum). The mention centrality sum represents how much
+        symbol connectivity is covered by the selected documentation files
+        (based on symbol name mentions weighted by in-degree).
     """
     from fnmatch import fnmatch
     from statistics import median
@@ -3938,7 +3940,7 @@ def _format_additional_files(
             all_files.append(f)
 
     if not all_files:
-        return "", []
+        return "", [], 0.0
 
     # Create set of source file paths for exclusion
     source_set = {str(f.relative_to(repo_root)) for f in source_files}
@@ -3949,7 +3951,7 @@ def _format_additional_files(
     ]
 
     if not candidate_files:
-        return "", []  # pragma: no cover - defensive
+        return "", [], 0.0  # pragma: no cover - defensive
 
     # ========== README-First Hybrid Ordering ==========
 
@@ -4071,6 +4073,10 @@ def _format_additional_files(
 
     # ========== Format Output ==========
 
+    # Calculate mention centrality sum for selected files
+    # This measures how much symbol connectivity is covered by doc files
+    selected_centrality = sum(centrality_scores.get(f, 0.0) for f in selected_files)
+
     if not include_content or token_budget is None:
         # Simple list format (backward compatible)
         lines = [_section_header("Additional Files", exclude_tests), ""]
@@ -4082,7 +4088,7 @@ def _format_additional_files(
         if remaining > 0:
             lines.append(f"- ... and {remaining} more files")
 
-        return "\n".join(lines), selected_files
+        return "\n".join(lines), selected_files, selected_centrality
 
     # ========== Content Mode with Dynamic Truncation ==========
 
@@ -4154,7 +4160,9 @@ def _format_additional_files(
         except (OSError, IOError):  # pragma: no cover
             continue
 
-    return "\n".join(lines), included_files
+    # Recalculate centrality for included files (may differ from selected due to budget)
+    included_centrality = sum(centrality_scores.get(f, 0.0) for f in included_files)
+    return "\n".join(lines), included_files, included_centrality
 
 
 # Test file patterns by language/framework
@@ -5823,7 +5831,7 @@ def generate_sketch(
         ):
             cached_centrality = cached_results["sketch_precomputed"].get("centrality_scores")
 
-        additional_files_section, additional_files_selected = _format_additional_files(
+        additional_files_section, additional_files_selected, additional_centrality = _format_additional_files(
             repo_root,
             source_files=source_files,
             symbols=symbols,
@@ -5837,15 +5845,13 @@ def generate_sketch(
         )
         if additional_files_section:
             sections.append(additional_files_section)
-            # Track stats: mark section as present, compute in-degree if available
+            # Track stats: mark section as present, use mention centrality
+            # Mention centrality = sum of in-degree-weighted symbol mentions in doc files
             if stats_out is not None:
                 stats_out.has_additional_files = True
-                if raw_in_degree and additional_files_selected:
-                    selected_add_files = {str(f) for f in additional_files_selected}
-                    stats_out.additional_files_in_degree = sum(
-                        raw_in_degree.get(s.id, 0)
-                        for s in symbols if s.path and str(repo_root / s.path) in selected_add_files
-                    )
+                # Use mention centrality (sum of in-degree for mentioned symbols)
+                # This is more meaningful than symbol definitions for doc/config files
+                stats_out.additional_files_in_degree = int(additional_centrality)
 
     prog.complete_phase("embedding")  # In case centrality was skipped
     prog.complete_phase("centrality")  # Complete centrality if it ran
@@ -5941,7 +5947,7 @@ def generate_sketch(
                 )
 
             # Use the new README-first hybrid approach with content
-            additional_content_section, additional_content_files_added = (
+            additional_content_section, additional_content_files_added, additional_content_centrality = (
                 _format_additional_files(
                     repo_root,
                     source_files=source_files,
@@ -5965,16 +5971,11 @@ def generate_sketch(
                 )
                 sections.append(additional_content_section)
 
-                # Track stats
+                # Track stats using mention centrality
                 if stats_out is not None:
                     stats_out.has_additional_files_content = True
-                    if raw_in_degree and additional_content_files_added:
-                        content_files = {str(f) for f in additional_content_files_added}
-                        stats_out.additional_files_content_in_degree = sum(
-                            raw_in_degree.get(s.id, 0)
-                            for s in symbols
-                            if s.path and str(repo_root / s.path) in content_files
-                        )
+                    # Use mention centrality for content files
+                    stats_out.additional_files_content_in_degree = int(additional_content_centrality)
 
     # Combine all sections
     full_sketch = "\n\n".join(sections)

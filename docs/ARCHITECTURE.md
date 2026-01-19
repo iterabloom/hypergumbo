@@ -5,35 +5,67 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 1b5d127673cd
-  hypergumbo: 0.9.1
+  commit: afc8b2438f6b
+  hypergumbo: 1.0.0
   python: 3.12.3
 -->
 
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **108** Python modules (68 analyzers, 15 linkers)
-- **1670** symbols (functions, classes, methods)
-- **6146** edges (calls, imports, instantiates)
+- **113** Python modules (70 analyzers, 16 linkers)
+- **1815** symbols (functions, classes, methods)
+- **6582** edges by type:
+  - calls: 3270
+  - imports: 2016
+  - instantiates: 1146
+  - uses: 79
+  - message_queue: 39
+  - event_publishes: 26
+  - other: 6
 
 ## Sketch (hypergumbo on hypergumbo)
 
 ```markdown
 # src
 
-## Overview
-Python (95%), Yaml (5%) · 149 files · ~50,611 LOC
+## Overview [IGNORING TESTS]
+Python (96%), Yaml (4%)
+155 files    (155 non-test +   0 test) [IGNORING TESTS]
+~56,561 LOC (~56,561 non-test + ~     0 test) [IGNORING TESTS]
 
-## Structure
+## Structure [IGNORING TESTS]
 
-- `hypergumbo/`
+```
+src/
+└── hypergumbo
+    ├── ir.py
+    └── [and 29 other items]
+```
 
-## Domain Vocabulary
+## Tests [IGNORING TESTS]
 
-*Key terms: symbol, symbols, line, source, sitter, files, edges, find, cover, pragma, extract, edge*
+0 tests (excluded via -x flag)
 
-## Source Files
+## Data Models [IGNORING TESTS]
+
+- `Symbol` (Python @dataclass) — `hypergumbo/ir.py`
+- `Span` (Python @dataclass) — `hypergumbo/ir.py`
+- `Edge` (Python @dataclass) — `hypergumbo/ir.py`
+- `AnalysisRun` (Python @dataclass) — `hypergumbo/ir.py`
+- `LanguageSpec` (Python @dataclass) — `hypergumbo/taxonomy.py`
+- `Pass` (Python @dataclass) — `hypergumbo/catalog.py`
+- `LinkerResult` (Python @dataclass) — `hypergumbo/linkers/registry.py`
+- `LinkerRequirement` (Python @dataclass) — `hypergumbo/linkers/registry.py`
+- `Entrypoint` (Python @dataclass) — `hypergumbo/entrypoints.py`
+- `EventPattern` (Python @dataclass) — `hypergumbo/linkers/event_sourcing.py`
+- `FileClassification` (Python @dataclass) — `hypergumbo/supply_chain.py`
+- `GrpcPattern` (Python @dataclass) — `hypergumbo/linkers/grpc.py`
+- `WebSocketPattern` (Python @dataclass) — `hypergumbo/linkers/websocket.py`
+- `LLMConfig` (Python @dataclass) — `hypergumbo/llm_assist.py`
+- ... and 167 more data models
+
+## Source Files [IGNORING TESTS]
 
 - `hypergumbo/schema.py`
 - `hypergumbo/user_config.py`
@@ -43,10 +75,12 @@ Python (95%), Yaml (5%) · 149 files · ~50,611 LOC
 - `hypergumbo/export.py`
 - `hypergumbo/sketch.py`
 - `hypergumbo/discovery.py`
+- `hypergumbo/_embedding_data.py`
 - `hypergumbo/cli.py`
 - `hypergumbo/metrics.py`
 - `hypergumbo/compact.py`
 - `hypergumbo/framework_patterns.py`
+- `hypergumbo/datamodels.py`
 - `hypergumbo/slice.py`
 - `hypergumbo/entrypoints.py`
 - `hypergumbo/build_grammars.py`
@@ -55,19 +89,11 @@ Python (95%), Yaml (5%) · 149 files · ~50,611 LOC
 - `hypergumbo/llm_assist.py`
 - `hypergumbo/profile.py`
 - `hypergumbo/plan.py`
+- `hypergumbo/taxonomy.py`
 - `hypergumbo/__init__.py`
-- `hypergumbo/ir.py`
-- `hypergumbo/supply_chain.py`
-- `hypergumbo/analyze/haskell.py`
-- `hypergumbo/analyze/latex.py`
-- `hypergumbo/analyze/fortran.py`
-- `hypergumbo/analyze/csharp.py`
-- `hypergumbo/analyze/sql.py`
-- `hypergumbo/analyze/capnp.py`
-- `hypergumbo/analyze/groovy.py`
-- ... and 82 more files
+- ... and 94 more files
 
-## Key Symbols
+## Key Symbols [IGNORING TESTS]
 
 *★ = centrality ≥ 50% of max*
 
@@ -79,96 +105,86 @@ Python (95%), Yaml (5%) · 149 files · ~50,611 LOC
 ### `hypergumbo/analyze/base.py`
 - `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) ★ — Extract text content for a tree-sitter node.
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
-- `find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find a child node by field name.
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
 
+### `hypergumbo/taxonomy.py`
+- `LanguageSpec` (class) — Specification for a language/file type.
+
 ### `hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
-
-### `hypergumbo/analyze/rust.py`
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
 
 ### `hypergumbo/analyze/julia.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 
+### `hypergumbo/analyze/rust.py`
+- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
+
+### `hypergumbo/sketch.py`
+- `_section_header(title: str, exclude_tests: bool=…) -> str` (function) — Generate a section header with optional [IGNORING TESTS] marker.
+
 ### `hypergumbo/linkers/registry.py`
 - `LinkerResult` (class) — Result from running a linker.
-
-### `hypergumbo/analyze/js_ts.py`
-- `_make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind…` (function) — Generate location-based ID.
 
 ### `hypergumbo/analyze/py.py`
 - `_format_annotation(node: ast.expr) -> str` (function) — Format a type annotation node to a readable string.
 
-(... and 1537 more symbols across 90 other files)
+(... and 1679 more symbols across 96 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 8 appearances of `_node_text`
-- `_find_child_by_type` - we omitted 5 appearances
+- `_node_text` - we omitted 5 appearances of `_node_text`
+- `_find_child_by_type` - we omitted 4 appearances
 
-## All Files
+## Additional Files [IGNORING TESTS]
 
-- `hypergumbo/__init__.py`
-- `hypergumbo/__main__.py`
-- `hypergumbo/analyze/__init__.py`
-- `hypergumbo/analyze/ada.py`
-- `hypergumbo/analyze/agda.py`
-- `hypergumbo/analyze/all_analyzers.py`
-- `hypergumbo/analyze/base.py`
-- `hypergumbo/analyze/bash.py`
-- `hypergumbo/analyze/c.py`
-- `hypergumbo/analyze/capnp.py`
-- `hypergumbo/analyze/clojure.py`
-- `hypergumbo/analyze/cmake.py`
-- `hypergumbo/analyze/cobol.py`
-- `hypergumbo/analyze/cpp.py`
-- `hypergumbo/analyze/csharp.py`
-- `hypergumbo/analyze/css.py`
-- `hypergumbo/analyze/cuda.py`
-- `hypergumbo/analyze/d_lang.py`
-- `hypergumbo/analyze/dart.py`
-- `hypergumbo/analyze/dockerfile.py`
-- `hypergumbo/analyze/elixir.py`
-- `hypergumbo/analyze/elm.py`
-- `hypergumbo/analyze/erlang.py`
-- `hypergumbo/analyze/fish.py`
-- `hypergumbo/analyze/fortran.py`
-- `hypergumbo/analyze/fsharp.py`
-- `hypergumbo/analyze/gdscript.py`
-- `hypergumbo/analyze/glsl.py`
-- `hypergumbo/analyze/go.py`
-- `hypergumbo/analyze/graphql.py`
-- `hypergumbo/analyze/groovy.py`
-- `hypergumbo/analyze/haskell.py`
-- `hypergumbo/analyze/hcl.py`
-- `hypergumbo/analyze/hlsl.py`
-- `hypergumbo/analyze/html.py`
-- `hypergumbo/analyze/java.py`
-- `hypergumbo/analyze/js_ts.py`
-- `hypergumbo/analyze/json_config.py`
-- `hypergumbo/analyze/julia.py`
-- `hypergumbo/analyze/kotlin.py`
-- `hypergumbo/analyze/latex.py`
-- `hypergumbo/analyze/lean.py`
-- `hypergumbo/analyze/lua.py`
-- `hypergumbo/analyze/make.py`
-- `hypergumbo/analyze/nim.py`
-- `hypergumbo/analyze/nix.py`
-- `hypergumbo/analyze/objc.py`
-- `hypergumbo/analyze/ocaml.py`
-- `hypergumbo/analyze/perl.py`
-- `hypergumbo/analyze/php.py`
-- `hypergumbo/analyze/powershell.py`
-- `hypergumbo/analyze/proto.py`
-- `hypergumbo/analyze/py.py`
-- `hypergumbo/analyze/r_lang.py`
-- `hypergumbo/analyze/registry.py`
-- `hypergumbo/analyze/ruby.py`
-- `hypergumbo/analyze/rust.py`
-- ... and 92 more files
+- `hypergumbo/frameworks/micronaut.yaml`
+- `hypergumbo/frameworks/nestjs.yaml`
+- `hypergumbo/frameworks/cli-rust.yaml`
+- `hypergumbo/frameworks/sinatra.yaml`
+- `hypergumbo/frameworks/fastify.yaml`
+- `hypergumbo/frameworks/flask.yaml`
+- `hypergumbo/frameworks/vapor.yaml`
+- `hypergumbo/frameworks/express.yaml`
+- `hypergumbo/frameworks/ktor.yaml`
+- `hypergumbo/frameworks/hapi.yaml`
+- `hypergumbo/frameworks/cli-js.yaml`
+- `hypergumbo/frameworks/nextjs.yaml`
+- `hypergumbo/frameworks/android.yaml`
+- `hypergumbo/frameworks/go-web.yaml`
+- `hypergumbo/frameworks/graphql.yaml`
+- `hypergumbo/frameworks/laravel.yaml`
+- `hypergumbo/frameworks/rust-web.yaml`
+- `hypergumbo/frameworks/phoenix.yaml`
+- `hypergumbo/frameworks/jax-rs.yaml`
+- `hypergumbo/frameworks/django.yaml`
+- `hypergumbo/frameworks/slim.yaml`
+- `hypergumbo/frameworks/rails.yaml`
+- `hypergumbo/frameworks/cli-go.yaml`
+- `hypergumbo/frameworks/tornado.yaml`
+- `hypergumbo/frameworks/plug.yaml`
+- `hypergumbo/frameworks/cli.yaml`
+- `hypergumbo/frameworks/celery.yaml`
+- `hypergumbo/frameworks/electron.yaml`
+- `hypergumbo/frameworks/fastapi.yaml`
+- `hypergumbo/frameworks/spring-boot.yaml`
+- `hypergumbo/frameworks/grape.yaml`
+- `hypergumbo/frameworks/aiohttp.yaml`
+- `hypergumbo/frameworks/cli-ruby.yaml`
+- `hypergumbo/frameworks/graphql-ruby.yaml`
+- `hypergumbo/frameworks/koa.yaml`
+- `hypergumbo/frameworks/graphql-python.yaml`
+- `hypergumbo/frameworks/aspnet.yaml`
+
+
+[hypergumbo sketch] Generated 5
+  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.16k.json
+  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.4k.json
+  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.64k.json
+  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.json
+  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/sketch.1500.notests.md
+  Output: stdout
+  Embeddings cached: /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/embeddings
 ```
 
 ## Data Flow (ADR-0003)
@@ -187,7 +203,7 @@ Source Files
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ANALYZERS                               │
 │  Pure language processors - NO framework knowledge              │
-│  Output: 1670 Symbols + 6146 Edges + UsageContexts            │
+│  Output: 1815 Symbols + 6582 Edges + UsageContexts            │
 │  Rich metadata: decorators, base_classes, parameters            │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -205,7 +221,7 @@ Source Files
 │                          LINKERS                                │
 │  Cross-language edge creation                                   │
 │  Use enriched metadata (route paths, gRPC services)             │
-│  14 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+│  15 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -223,15 +239,15 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 336 | ir.py |
-| `Span` | class | 333 | ir.py |
-| `iter_tree` | function | 166 | base.py |
-| `find_files` | function | 149 | discovery.py |
+| `Symbol` | class | 342 | ir.py |
+| `Span` | class | 339 | ir.py |
+| `iter_tree` | function | 174 | base.py |
+| `find_files` | function | 161 | discovery.py |
 | `node_text` | function | 136 | base.py |
-| `Edge` | class | 130 | ir.py |
-| `AnalysisRun` | class | 93 | ir.py |
+| `Edge` | class | 136 | ir.py |
+| `AnalysisRun` | class | 96 | ir.py |
+| `LanguageSpec` | class | 75 | taxonomy.py |
 | `Pass` | class | 66 | catalog.py |
-| `_find_child_by_type` | function | 30 | julia.py |
 
 ## Module Reference
 
@@ -240,6 +256,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`catalog`**: Catalog of available analysis passes and packs.
 - **`compact`**: Compact output mode with coverage-based truncation and residual sum...
+- **`datamodels`**: Data model detection for code analysis.
 - **`discovery`**: File discovery with exclude patterns.
 - **`entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003 v0.8.x).
@@ -252,9 +269,10 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`selection.language_proportional`**: Language-proportional symbol selection utilities.
 - **`selection.token_budget`**: Token estimation and budget management for LLM-aware output.
-- **`sketch_embeddings`**: Embedding-based config extraction for sketch generation.
+- **`sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`slice`**: Graph slicing for LLM context extraction.
 - **`supply_chain`**: Supply chain classification for code analysis.
+- **`taxonomy`**: File taxonomy classification (ADR-0004).
 - **`user_config`**: User configuration management for hypergumbo.
 
 ### Analyzers
@@ -269,6 +287,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.clojure`**: Clojure analysis pass using tree-sitter.
 - **`analyze.cmake`**: CMake analysis pass using tree-sitter-cmake.
 - **`analyze.cobol`**: COBOL analyzer using tree-sitter.
+- **`analyze.commonlisp`**: Common Lisp analysis pass using tree-sitter.
 - **`analyze.cpp`**: C++ analysis pass using tree-sitter-cpp.
 - **`analyze.csharp`**: C# analysis pass using tree-sitter-c-sharp.
 - **`analyze.css`**: CSS stylesheet analysis using tree-sitter-css.
@@ -298,6 +317,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.kotlin`**: Kotlin analysis pass using tree-sitter-kotlin.
 - **`analyze.latex`**: LaTeX analyzer using tree-sitter.
 - **`analyze.lean`**: Lean 4 analysis pass using tree-sitter-lean.
+- **`analyze.llvm_ir`**: LLVM IR analysis pass using tree-sitter.
 - **`analyze.lua`**: Lua analysis pass using tree-sitter-lua.
 - **`analyze.make`**: Makefile analysis pass using tree-sitter-make.
 - **`analyze.nim`**: Nim language analysis pass using tree-sitter.
@@ -343,6 +363,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`linkers.openapi`**: OpenAPI/Swagger linker for detecting API schema to handler connecti...
 - **`linkers.phoenix_ipc`**: Phoenix Channels IPC linker for detecting Elixir IPC patterns.
 - **`linkers.registry`**: Linker registry for dynamic dispatch.
+- **`linkers.subprocess_cli`**: Subprocess-to-CLI linker for detecting cross-process CLI invocations.
 - **`linkers.swift_objc`**: Swift/Objective-C bridging linker.
 - **`linkers.websocket`**: WebSocket linker for detecting WebSocket communication patterns.
 

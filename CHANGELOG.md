@@ -96,6 +96,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   the Structure section now shows root-level source and config files instead of "(empty)".
   Previously, the fallback tree renderer only showed directories and would display "(empty)"
   for repos like `qemu-sgabios` that have all source files at the root level.
+- **Unified sketch output with and without `-t` flag:** Running `hypergumbo .` now produces
+  identical output to `hypergumbo . -t 4000` (the default budget). Previously, without `-t`,
+  the Structure section used an old bullet-list format and the Representativeness Table was
+  missing. Now both modes use the tree format and include all sections.
+- **Consistent item counting in Structure section:** The fallback Structure format (used for
+  small token budgets) now counts all non-excluded root items, matching the full tree format.
+  Previously, it only counted source/config files, showing "[and 8 other items]" when there
+  were actually 20 hidden items.
+- **Representativeness Table shows correct token budget for small sketches:** When using a
+  very small token budget (e.g., `-t 500`), the table now shows the correct budget (e.g., "500t")
+  instead of "0t". Previously, the early-return code path for tiny budgets didn't set the
+  token_budget stat before returning.
+- **Additional Files representativeness uses mention centrality:** The symbol mass metric for
+  Additional Files now uses mention centrality (how many high-connectivity symbols are mentioned
+  in the documentation) instead of symbol definitions (which are always 0 for doc/config files).
+  This gives a meaningful measure of how much of the codebase's important symbols are documented.
 
 ### Changed
 - **Section header renames for clarity:**

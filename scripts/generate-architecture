@@ -239,6 +239,33 @@ def get_top_symbols(analysis: dict, limit: int = 20) -> list[dict]:
     return result
 
 
+def get_edge_type_distribution(analysis: dict) -> dict[str, int]:
+    """Get the distribution of edge types.
+
+    Returns a dict mapping edge type to count, sorted by count descending.
+    """
+    type_counts: dict[str, int] = defaultdict(int)
+    for edge in analysis.get("edges", []):
+        edge_type = edge.get("type", "unknown")
+        type_counts[edge_type] += 1
+
+    # Sort by count descending, then by name for determinism
+    return dict(sorted(type_counts.items(), key=lambda x: (-x[1], x[0])))
+
+
+def count_linkers() -> int:
+    """Count the number of linker modules (excluding __init__ and registry)."""
+    linkers_dir = REPO_ROOT / "src" / "hypergumbo" / "linkers"
+    if not linkers_dir.exists():
+        return 0
+    count = 0
+    for py_file in linkers_dir.glob("*.py"):
+        # Exclude __init__.py and registry.py
+        if py_file.name not in {"__init__.py", "registry.py"}:
+            count += 1
+    return count
+
+
 def generate_architecture_md() -> str:
     """Generate the ARCHITECTURE.md content."""
     print("Running hypergumbo sketch on itself...", file=sys.stderr)
@@ -253,9 +280,11 @@ def generate_architecture_md() -> str:
     # Count stats
     analyzer_count = len(categories.get("Analyzers", []))
     linker_count = len(categories.get("Linkers", []))
+    linker_file_count = count_linkers()  # For data flow diagram (excludes registry.py)
     total_modules = sum(len(v) for v in categories.values())
     node_count = len(analysis.get("nodes", []))
     edge_count = len(analysis.get("edges", []))
+    edge_types = get_edge_type_distribution(analysis)
 
     # Get metadata for drift detection
     commit_sha = get_git_commit_sha()
@@ -280,7 +309,17 @@ def generate_architecture_md() -> str:
         f"hypergumbo analyzed its own source code and found:",
         f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers)",
         f"- **{node_count}** symbols (functions, classes, methods)",
-        f"- **{edge_count}** edges (calls, imports, instantiates)",
+        f"- **{edge_count}** edges by type:",
+    ]
+
+    # Add edge type breakdown
+    for edge_type, count in list(edge_types.items())[:6]:  # Top 6 types
+        lines.append(f"  - {edge_type}: {count}")
+    if len(edge_types) > 6:
+        other_count = sum(c for t, c in list(edge_types.items())[6:])
+        lines.append(f"  - other: {other_count}")
+
+    lines.extend([
         "",
         "## Sketch (hypergumbo on hypergumbo)",
         "",
@@ -322,7 +361,7 @@ def generate_architecture_md() -> str:
         "│                          LINKERS                                │",
         "│  Cross-language edge creation                                   │",
         "│  Use enriched metadata (route paths, gRPC services)             │",
-        "│  14 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │",
+        f"│  {linker_file_count} linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │",
         "└─────────────────────────────────────────────────────────────────┘",
         "     │",
         "     ▼",
@@ -334,7 +373,7 @@ def generate_architecture_md() -> str:
         "    └──────────┘   └──────────┘   └──────────┘",
         "```",
         "",
-    ]
+    ])
 
     # Top symbols section
     if top_symbols:

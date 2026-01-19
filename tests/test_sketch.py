@@ -1492,7 +1492,7 @@ class TestFormatAdditionalFiles:
         readme = tmp_path / "README.md"
         readme.write_text("# Project")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[source_file],
             symbols=[],
@@ -1521,7 +1521,7 @@ class TestFormatAdditionalFiles:
         bar = _make_test_symbol("bar")
         in_degree = {foo.id: 5, bar.id: 3}
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[source_file],
             symbols=[foo, bar],
@@ -1540,7 +1540,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("def foo(): pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1559,7 +1559,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("def foo(): pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1578,7 +1578,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1598,7 +1598,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1620,7 +1620,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1642,7 +1642,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1661,7 +1661,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1690,7 +1690,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1712,7 +1712,7 @@ class TestFormatAdditionalFiles:
 
     def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty directory."""
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[],
             symbols=[],
@@ -1743,7 +1743,7 @@ class TestFormatAdditionalFiles:
         src.write_text("pass")
 
         # Run with semantic ranking enabled - empty file should get 0.0 score
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1787,7 +1787,7 @@ class TestFormatAdditionalFiles:
             "hypergumbo.sketch_embeddings._get_cache_dir",
             return_value=tmp_path / ".cache"
         ):
-            result, _ = _format_additional_files(
+            result, _, _ = _format_additional_files(
                 tmp_path,
                 source_files=[src],
                 symbols=[],
@@ -1831,7 +1831,7 @@ class TestFormatAdditionalFiles:
             "hypergumbo.sketch_embeddings._get_cache_dir",
             return_value=tmp_path / ".cache"
         ):
-            result, _ = _format_additional_files(
+            result, _, _ = _format_additional_files(
                 tmp_path,
                 source_files=[src],
                 symbols=[],
@@ -1857,7 +1857,7 @@ class TestFormatAdditionalFiles:
             "low_centrality.md": 1.0,
         }
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1884,7 +1884,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("def foo(): pass")
 
-        result, selected = _format_additional_files(
+        result, selected, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1906,7 +1906,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, _ = _format_additional_files(
+        result, _, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1930,7 +1930,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, selected = _format_additional_files(
+        result, selected, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1954,7 +1954,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, selected = _format_additional_files(
+        result, selected, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
@@ -1976,7 +1976,7 @@ class TestFormatAdditionalFiles:
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        result, selected = _format_additional_files(
+        result, selected, _ = _format_additional_files(
             tmp_path,
             source_files=[src],
             symbols=[],
