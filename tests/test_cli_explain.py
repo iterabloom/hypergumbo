@@ -1409,3 +1409,333 @@ initialize()
     out, _ = capsys.readouterr()
     # Should show the module-level line
     assert "initialize()" in out
+
+
+
+def test_cmd_explain_with_source_budget_all_fit(tmp_path: Path, capsys) -> None:
+    """--tokens budget shows all sources when they fit within budget."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    return 42
+
+def bar():
+    return foo()
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:4-5:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 4, "end_line": 5, "start_col": 0, "end_col": 17},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:4-5:bar:function",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                "line": 5,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.with_source = True
+    args.tokens = 10000  # Large budget - everything fits
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Both foo and bar sources shown (nothing omitted)
+    assert "def foo():" in out
+    assert "def bar():" in out
+    assert "omitted" not in out.lower()
+
+
+def test_cmd_explain_with_source_module_level_caller_omitted(tmp_path: Path, capsys) -> None:
+    """Module-level callers are omitted first when budget is tight."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    return 42
+
+def bar():
+    return foo()
+
+foo()
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:4-5:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 4, "end_line": 5, "start_col": 0, "end_col": 17},
+            },
+            {
+                "id": "python:src/main.py:file:file",
+                "name": "file",
+                "kind": "file",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 7, "end_line": 7, "start_col": 0, "end_col": 5},
+            },
+        ],
+        "edges": [
+            # bar calls foo (regular caller)
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:4-5:bar:function",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                "line": 5,
+            },
+            # Module-level calls foo
+            {
+                "id": "edge2",
+                "src": "python:src/main.py:file:file",
+                "dst": "python:src/main.py:1-2:foo:function",
+                "type": "calls",
+                "line": 7,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.with_source = True
+    args.tokens = 13  # Tight budget: foo (~7) + bar (~7) = 14, leaving 6 - only bar fits, module-level omitted
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # foo source shown (queried symbol always shown)
+    assert "def foo():" in out
+    # Module-level call should be omitted first
+    assert "module-level call(s) omitted" in out
+
+
+def test_cmd_explain_with_source_callee_omitted(tmp_path: Path, capsys) -> None:
+    """Callee sources are omitted when budget is tight."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    bar()
+    baz()
+    return 42
+
+def bar():
+    return 1
+
+def baz():
+    return 2
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-4:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 4, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:6-7:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 6, "end_line": 7, "start_col": 0, "end_col": 12},
+            },
+            {
+                "id": "python:src/main.py:9-10:baz:function",
+                "name": "baz",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 9, "end_line": 10, "start_col": 0, "end_col": 12},
+            },
+        ],
+        "edges": [
+            # foo calls bar
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-4:foo:function",
+                "dst": "python:src/main.py:6-7:bar:function",
+                "type": "calls",
+                "line": 2,
+            },
+            # foo calls baz
+            {
+                "id": "edge2",
+                "src": "python:src/main.py:1-4:foo:function",
+                "dst": "python:src/main.py:9-10:baz:function",
+                "type": "calls",
+                "line": 3,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.with_source = True
+    args.tokens = 22  # Budget: foo (~14) + one callee (~6) fits, other callee (~6) omitted
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # foo source shown (queried symbol always shown)
+    assert "def foo():" in out
+    # At least one callee should be omitted
+    assert "callee source(s) omitted" in out
+
+
+def test_cmd_explain_with_source_module_level_callee_omitted(tmp_path: Path, capsys) -> None:
+    """Module-level callees are omitted first when budget is tight."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        """\
+def foo():
+    bar()
+    return init_value
+
+def bar():
+    return 1
+
+init_value = 42
+"""
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-3:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 21},
+            },
+            {
+                "id": "python:src/main.py:5-6:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 5, "end_line": 6, "start_col": 0, "end_col": 12},
+            },
+            {
+                "id": "python:src/main.py:file:file",
+                "name": "file",
+                "kind": "file",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 8, "end_line": 8, "start_col": 0, "end_col": 16},
+            },
+        ],
+        "edges": [
+            # foo calls bar (regular callee)
+            {
+                "id": "edge1",
+                "src": "python:src/main.py:1-3:foo:function",
+                "dst": "python:src/main.py:5-6:bar:function",
+                "type": "calls",
+                "line": 2,
+            },
+            # foo references module-level variable
+            {
+                "id": "edge2",
+                "src": "python:src/main.py:1-3:foo:function",
+                "dst": "python:src/main.py:file:file",
+                "type": "calls",
+                "line": 3,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.with_source = True
+    args.tokens = 18  # Budget: foo (~11) + bar (~6) fits, module-level callee (~5) omitted
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # foo source shown (queried symbol always shown)
+    assert "def foo():" in out
+    # Module-level callee should be omitted first
+    assert "module-level call(s) omitted" in out

@@ -1273,6 +1273,104 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # Sort callees by in-degree (descending), then by name for stability
         callees.sort(key=lambda x: (-x[0], x[1]))
 
+        # In with_source mode, prepare all source items first for budget calculation
+        # Each item: (in_degree, symbol_id, display_name, path, start, end, is_module_level, source, tokens)
+        caller_source_items: list[tuple[int, str, str, str, int, int, bool, str, int]] = []
+        callee_source_items: list[tuple[int, str, str, str, int, int, bool, str, int]] = []
+
+        if with_source:
+            # Track IDs added to caller list for deduplication
+            caller_ids_added: set[str] = set()
+
+            # Prepare caller source items
+            for caller_in_degree, caller_name, caller_path, caller_line, caller_id, caller_node in callers:
+                if caller_id in sources_shown:
+                    continue
+                is_module_level = (
+                    caller_node is not None and caller_node.get("kind") == "file"
+                ) or caller_id.endswith(":file:file")
+
+                if is_module_level:
+                    start, end = caller_line, caller_line
+                elif caller_node:
+                    caller_span = caller_node.get("span", {})
+                    start = caller_span.get("start_line", 0)
+                    end = caller_span.get("end_line", 0)
+                    if not (start and end):  # pragma: no cover
+                        continue
+                else:  # pragma: no cover
+                    continue
+
+                source = _extract_source_lines(repo_root, caller_path, start, end)
+                if source:
+                    tokens = _estimate_tokens(source)
+                    caller_source_items.append((
+                        caller_in_degree, caller_id, caller_name, caller_path,
+                        start, end, is_module_level, source, tokens
+                    ))
+                    caller_ids_added.add(caller_id)
+
+            # Prepare callee source items (skip if already in caller list)
+            for callee_in_degree, callee_name, callee_path, callee_line, callee_id, callee_node in callees:
+                if callee_id in sources_shown or callee_id in caller_ids_added:
+                    continue
+                is_module_level = (
+                    callee_node is not None and callee_node.get("kind") == "file"
+                ) or callee_id.endswith(":file:file")
+
+                if is_module_level:
+                    start, end = callee_line, callee_line
+                elif callee_node:
+                    callee_span = callee_node.get("span", {})
+                    start = callee_span.get("start_line", 0)
+                    end = callee_span.get("end_line", 0)
+                    if not (start and end):  # pragma: no cover
+                        continue
+                else:  # pragma: no cover
+                    continue
+
+                source = _extract_source_lines(repo_root, callee_path, start, end)
+                if source:
+                    tokens = _estimate_tokens(source)
+                    callee_source_items.append((
+                        callee_in_degree, callee_id, callee_name, callee_path,
+                        start, end, is_module_level, source, tokens
+                    ))
+
+            # Determine which items to show based on budget
+            # Omission order: module-level first, then ascending in-degree (least important first)
+            all_items = caller_source_items + callee_source_items
+            items_to_show: set[str] = set()  # symbol IDs to show
+
+            if token_budget is None:
+                # No budget - show all
+                items_to_show = {item[1] for item in all_items}
+            else:
+                remaining_budget = token_budget - tokens_used
+                total_tokens = sum(item[8] for item in all_items)
+
+                if total_tokens <= remaining_budget:
+                    # All fit - show all
+                    items_to_show = {item[1] for item in all_items}
+                else:
+                    # Need to omit some. Start with all items, then omit one at a time
+                    # in omission order until we fit in budget.
+                    # Omission order: module-level first, then ascending in-degree
+                    items_to_show = {item[1] for item in all_items}
+                    current_total = total_tokens
+
+                    sorted_for_omission = sorted(
+                        all_items,
+                        key=lambda x: (not x[6], x[0])  # module-level first, then in-degree asc
+                    )
+
+                    for item in sorted_for_omission:
+                        if current_total <= remaining_budget:
+                            break
+                        # Omit this item
+                        items_to_show.discard(item[1])
+                        current_total -= item[8]
+
         # Display callers
         print()
         if callers:
@@ -1282,7 +1380,32 @@ def cmd_explain(args: argparse.Namespace) -> int:
         else:
             print("  Called by: (none)")
 
+        # Show caller sources (after Called by list)
+        if with_source and caller_source_items:
+            caller_module_omitted = 0
+            caller_regular_omitted = 0
+            for _item_in_degree, item_id, item_name, item_path, item_start, item_end, is_mod, source, _ in caller_source_items:
+                if item_id not in items_to_show:
+                    if is_mod:
+                        caller_module_omitted += 1
+                    else:
+                        caller_regular_omitted += 1
+                    continue
+
+                loc_str = f"{item_path}:{item_start}" if item_start == item_end else f"{item_path}:{item_start}-{item_end}"
+                label = "(module level) " if is_mod else ""
+                print(f"\n  Source for {item_name} {label}({loc_str}):")
+                for line in source.splitlines():
+                    print(f"    {line}")
+                sources_shown.add(item_id)
+
+            if caller_module_omitted > 0:
+                print(f"\n  [{caller_module_omitted} module-level call(s) omitted for brevity]")
+            if caller_regular_omitted > 0:
+                print(f"\n  [{caller_regular_omitted} caller source(s) omitted for brevity]")
+
         # Display callees
+        print()
         if callees:
             print(f"  Calls ({len(callees)}):")
             for _, callee_name, callee_path, callee_line, _, _ in callees:
@@ -1290,89 +1413,29 @@ def cmd_explain(args: argparse.Namespace) -> int:
         else:
             print("  Calls: (none)")
 
-        # In with_source mode, show source for callers and callees
-        if with_source:
-            # Prepare source items for callers and callees (combined for budgeting)
-            # We show them in order: high in-degree first, callers before callees at same level
-            source_items: list[tuple[int, str, str, str, int, int, Optional[Dict[str, Any]], bool]] = []
-            # (in_degree, symbol_id, display_name, path, start, end, node, is_module_level)
-
-            for caller_in_degree, caller_name, caller_path, caller_line, caller_id, caller_node in callers:
-                if caller_id in sources_shown:
-                    continue
-                # Determine if module-level (kind == "file")
-                is_module_level = (
-                    caller_node is not None and caller_node.get("kind") == "file"
-                ) or caller_id.endswith(":file:file")
-
-                if is_module_level:
-                    # For module-level, show only the single call line
-                    source_items.append((
-                        caller_in_degree, caller_id, caller_name, caller_path,
-                        caller_line, caller_line, caller_node, True
-                    ))
-                elif caller_node:
-                    caller_span = caller_node.get("span", {})
-                    c_start = caller_span.get("start_line", 0)
-                    c_end = caller_span.get("end_line", 0)
-                    if c_start and c_end:
-                        source_items.append((
-                            caller_in_degree, caller_id, caller_name, caller_path,
-                            c_start, c_end, caller_node, False
-                        ))
-
-            for callee_in_degree, callee_name, callee_path, callee_line, callee_id, callee_node in callees:
-                if callee_id in sources_shown:
-                    continue
-                # Determine if module-level
-                is_module_level = (
-                    callee_node is not None and callee_node.get("kind") == "file"
-                ) or callee_id.endswith(":file:file")
-
-                if is_module_level:
-                    source_items.append((
-                        callee_in_degree, callee_id, callee_name, callee_path,
-                        callee_line, callee_line, callee_node, True
-                    ))
-                elif callee_node:
-                    callee_span = callee_node.get("span", {})
-                    c_start = callee_span.get("start_line", 0)
-                    c_end = callee_span.get("end_line", 0)
-                    if c_start and c_end:
-                        source_items.append((
-                            callee_in_degree, callee_id, callee_name, callee_path,
-                            c_start, c_end, callee_node, False
-                        ))
-
-            # Sort by in-degree descending (most important first)
-            source_items.sort(key=lambda x: -x[0])
-
-            # Show sources, respecting budget
-            omitted_count = 0
-            for _item_in_degree, item_id, item_name, item_path, item_start, item_end, _, is_mod in source_items:
-                if item_id in sources_shown:
+        # Show callee sources (after Calls list)
+        if with_source and callee_source_items:
+            callee_module_omitted = 0
+            callee_regular_omitted = 0
+            for _item_in_degree, item_id, item_name, item_path, item_start, item_end, is_mod, source, _ in callee_source_items:
+                if item_id not in items_to_show:
+                    if is_mod:
+                        callee_module_omitted += 1
+                    else:
+                        callee_regular_omitted += 1
                     continue
 
-                source = _extract_source_lines(repo_root, item_path, item_start, item_end)
-                if source:
-                    source_tokens = _estimate_tokens(source)
+                loc_str = f"{item_path}:{item_start}" if item_start == item_end else f"{item_path}:{item_start}-{item_end}"
+                label = "(module level) " if is_mod else ""
+                print(f"\n  Source for {item_name} {label}({loc_str}):")
+                for line in source.splitlines():
+                    print(f"    {line}")
+                sources_shown.add(item_id)
 
-                    # Check budget
-                    if token_budget is not None and tokens_used + source_tokens > token_budget:
-                        omitted_count += 1
-                        continue
-
-                    # Print source
-                    loc_str = f"{item_path}:{item_start}" if item_start == item_end else f"{item_path}:{item_start}-{item_end}"
-                    label = "(module level)" if is_mod else ""
-                    print(f"\n  Source for {item_name} {label}({loc_str}):")
-                    for line in source.splitlines():
-                        print(f"    {line}")
-                    tokens_used += source_tokens
-                    sources_shown.add(item_id)
-
-            if omitted_count > 0:
-                print(f"\n  [{omitted_count} source(s) omitted due to token budget]")
+            if callee_module_omitted > 0:
+                print(f"\n  [{callee_module_omitted} module-level call(s) omitted for brevity]")
+            if callee_regular_omitted > 0:
+                print(f"\n  [{callee_regular_omitted} callee source(s) omitted for brevity]")
 
     # Output summary (always at the end)
     _print_output_summary("explain", stdout_output=True)
