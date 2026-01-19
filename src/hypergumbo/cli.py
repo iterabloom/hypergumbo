@@ -2953,7 +2953,7 @@ def run_behavior_map(
         # Compute centrality scores for all candidates
         if candidate_files and all_symbols:
             raw_in_degree = compute_raw_in_degree(all_symbols, all_edges)
-            centrality_scores = compute_symbol_mention_centrality_batch(
+            centrality_result = compute_symbol_mention_centrality_batch(
                 files=candidate_files,
                 symbols=all_symbols,
                 in_degree=raw_in_degree,
@@ -2963,7 +2963,7 @@ def run_behavior_map(
             # Store as relative path strings for JSON serialization
             sketch_precomputed["centrality_scores"] = {
                 str(f.relative_to(repo_root)): score
-                for f, score in centrality_scores.items()
+                for f, score in centrality_result.normalized_scores.items()
             }
         else:  # pragma: no cover - defensive: no candidates or no symbols
             sketch_precomputed["centrality_scores"] = {}

@@ -523,6 +523,23 @@ def _is_ripgrep_available() -> bool:
     return _RIPGREP_AVAILABLE
 
 
+@dataclass
+class CentralityResult:
+    """Result from symbol mention centrality computation.
+
+    Attributes:
+        normalized_scores: Dict mapping file paths to normalized centrality scores
+            (in-degree sum / file size). Used for ranking files.
+        symbols_per_file: Dict mapping file paths to sets of symbol names mentioned
+            in that file. Used for accurate representativeness (unique symbols).
+        name_to_in_degree: Dict mapping symbol names to their in-degree values.
+            Used to compute in-degree sum for unique symbols.
+    """
+    normalized_scores: Dict[Path, float]
+    symbols_per_file: Dict[Path, set[str]]
+    name_to_in_degree: Dict[str, int]
+
+
 def compute_symbol_mention_centrality_batch(
     files: List[Path],
     symbols: List[Symbol],
@@ -530,7 +547,7 @@ def compute_symbol_mention_centrality_batch(
     min_in_degree: int = 2,
     max_file_size: int = 100 * 1024,
     progress_callback: "callable | None" = None,
-) -> Dict[Path, float]:
+) -> CentralityResult:
     """Compute symbol mention centrality for multiple files efficiently.
 
     Uses ripgrep when available for much faster searching (~10x speedup).
@@ -545,28 +562,39 @@ def compute_symbol_mention_centrality_batch(
         progress_callback: Optional callback(current, total) for progress.
 
     Returns:
-        Dict mapping file paths to their centrality scores.
+        CentralityResult containing:
+        - normalized_scores: For ranking (in-degree/filesize)
+        - symbols_per_file: Per-file sets of mentioned symbol names
+        - name_to_in_degree: Symbol name to in-degree mapping
     """
-    if not files:
-        return {}
-
     # Filter symbols by in-degree threshold and dedupe names
     eligible_symbols = [
         s for s in symbols
         if in_degree.get(s.id, 0) >= min_in_degree
     ]
 
-    # Build name -> max in-degree map (same name can have multiple symbols)
+    # Build name -> total in-degree map (sum in-degrees for all symbols with same name)
+    # When a doc mentions a name, it documents all symbols with that name,
+    # so we sum their in-degrees (analogous to how Source Files counts each symbol).
     name_to_in_degree: Dict[str, int] = {}
     for s in eligible_symbols:
-        current = name_to_in_degree.get(s.name, 0)
         s_in_degree = in_degree.get(s.id, 0)
-        if s_in_degree > current:
-            name_to_in_degree[s.name] = s_in_degree
+        name_to_in_degree[s.name] = name_to_in_degree.get(s.name, 0) + s_in_degree
+
+    if not files:
+        return CentralityResult(
+            normalized_scores={},
+            symbols_per_file={},
+            name_to_in_degree=name_to_in_degree,
+        )
 
     if not name_to_in_degree:
         # No eligible symbols, return zeros
-        return dict.fromkeys(files, 0.0)
+        return CentralityResult(
+            normalized_scores=dict.fromkeys(files, 0.0),
+            symbols_per_file={f: set() for f in files},
+            name_to_in_degree=name_to_in_degree,
+        )
 
     # Try ripgrep for batch search
     if _is_ripgrep_available() and len(files) > 5:
@@ -671,17 +699,21 @@ def _compute_centrality_with_ripgrep(
         except json.JSONDecodeError:  # pragma: no cover - malformed JSON
             continue  # Skip malformed lines
 
-    # Calculate scores
-    scores: Dict[Path, float] = {}
+    # Calculate normalized scores and track per-file symbols
+    normalized_scores: Dict[Path, float] = {}
+    symbols_per_file: Dict[Path, set[str]] = {}
     processed = 0
+
     for f in files:
         if f in file_matches:
             matched = file_matches[f]
             total = sum(name_to_in_degree.get(name, 0) for name in matched)
             size = file_sizes.get(f, 1)
-            scores[f] = total / size if size > 0 else 0.0
+            normalized_scores[f] = total / size if size > 0 else 0.0
+            symbols_per_file[f] = matched
         else:
-            scores[f] = 0.0
+            normalized_scores[f] = 0.0
+            symbols_per_file[f] = set()
 
         processed += 1
         if progress_callback and processed % 50 == 0:  # pragma: no cover - batched progress
@@ -690,7 +722,11 @@ def _compute_centrality_with_ripgrep(
     if progress_callback:
         progress_callback(len(files), len(files))
 
-    return scores
+    return CentralityResult(
+        normalized_scores=normalized_scores,
+        symbols_per_file=symbols_per_file,
+        name_to_in_degree=name_to_in_degree,
+    )
 
 
 def _compute_centrality_with_python(
@@ -698,21 +734,22 @@ def _compute_centrality_with_python(
     name_to_in_degree: Dict[str, int],
     max_file_size: int,
     progress_callback: "callable | None",
-) -> Dict[Path, float]:
+) -> CentralityResult:
     """Compute centrality using Python regex (fallback path)."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    def _compute_one(f: Path) -> tuple[Path, float]:
+    def _compute_one(f: Path) -> tuple[Path, float, set[str]]:
+        """Returns (path, normalized_score, matched_names)."""
         try:
             file_size = f.stat().st_size
             if file_size > max_file_size:
-                return (f, 0.0)
+                return (f, 0.0, set())
             content = f.read_text(encoding='utf-8', errors='replace')
         except OSError:
-            return (f, 0.0)
+            return (f, 0.0, set())
 
         if not content:  # pragma: no cover - empty file
-            return (f, 0.0)
+            return (f, 0.0, set())
 
         total_in_degree = 0
         matched_names: set[str] = set()
@@ -725,9 +762,10 @@ def _compute_centrality_with_python(
                     matched_names.add(name)
 
         score = total_in_degree / len(content) if content else 0.0
-        return (f, score)
+        return (f, score, matched_names)
 
-    scores: Dict[Path, float] = {}
+    normalized_scores: Dict[Path, float] = {}
+    symbols_per_file: Dict[Path, set[str]] = {}
 
     if progress_callback:
         progress_callback(0, len(files))
@@ -736,12 +774,17 @@ def _compute_centrality_with_python(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_compute_one, f): f for f in files}
         for i, future in enumerate(as_completed(futures)):
-            path, score = future.result()
-            scores[path] = score
+            path, score, matched = future.result()
+            normalized_scores[path] = score
+            symbols_per_file[path] = matched
             if progress_callback:
                 progress_callback(i + 1, len(files))
 
-    return scores
+    return CentralityResult(
+        normalized_scores=normalized_scores,
+        symbols_per_file=symbols_per_file,
+        name_to_in_degree=name_to_in_degree,
+    )
 
 
 def compute_symbol_mention_centrality(
