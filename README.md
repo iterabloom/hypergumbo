@@ -5,57 +5,76 @@
 [![License](https://img.shields.io/pypi/l/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
 [![Coverage](https://img.shields.io/endpoint?url=https://codeberg.org/iterabloom/hypergumbo/raw/branch/badges/coverage.json)](https://codeberg.org/iterabloom/hypergumbo)
 
-A local-first CLI that generates behavior maps from source code. Helps developers and LLMs quickly understand any codebase.
+hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase.
 
 ```bash
 pip install hypergumbo
+
+# Optional but highly recommended: Install ripgrep for faster analysis. Hypergumbo uses ripgrep (if available) to accelerate symbol centrality computation during sketch generation. Without it, falls back to Python's regex (still parallelized).
+# Ubuntu/Debian
+sudo apt install ripgrep
+```
+
+> Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
+
+```bash
 git clone https://codeberg.org/iterabloom/hypergumbo
 hypergumbo hypergumbo/
 ```
 
-**Requires Python 3.10+. Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
-
-**Optional but highly recommended: Install ripgrep for faster analysis.** Hypergumbo uses ripgrep (if available) to accelerate symbol centrality computation during sketch generation. Without it, falls back to Python's regex (still parallelized).
+Output:
 
 ```bash
-# Ubuntu/Debian
-sudo apt install ripgrep
-
-# macOS
-brew install ripgrep
-```
-
-Output:
-```markdown
 # hypergumbo
+
+Two Outputs **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected). **Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
 
 ## Overview
 Python (91%), Markdown (6%), Yaml (2%)
-334 files    (200 non-test + 134 test)
-~130,359 LOC (~66,204 non-test + ~64,155 test)
+335 files    (201 non-test + 134 test)
+~130,574 LOC (~66,411 non-test + ~64,163 test)
 
 ## Structure
+
+` ` `
 hypergumbo/
-├── docs/
-├── scripts/
-├── src/hypergumbo/
-├── tests/
+├── .github
+│   └── workflows
+│       ├── release-mirror.yml
+│       └── [and 2 other items]
+├── docs
+│   ├── hypergumbo-spec.md
+│   └── [and 20 other items]
+├── scripts
+│   ├── auto-pr
+│   └── [and 16 other items]
+├── src
+│   └── hypergumbo
+│       ├── ir.py
+│       └── [and 29 other items]
+├── tests
+│   ├── test_sketch.py
+│   └── [and 133 other items]
+├── package.json
 ├── pyproject.toml
-└── [and 22 other items]
+└── [and 20 other items]
+` ` `
 
 ## Frameworks
+
+- openai
 - pytest
 - pytorch
 - transformers
 
 ## Tests
+
 135 test files · pytest, unittest
+
 *~92% estimated coverage (1329/1442 functions called by tests)*
 
-## Key Symbols
-### `src/hypergumbo/ir.py`
-- `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
-- `Span` (class) ★ — Source code location with line and column info.
+## Configuration
+[...]
 ```
 
 **[See full example output](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output.md)** | **[With --with-source](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output-with-source.md)**
@@ -178,3 +197,4 @@ pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 [AGPL-3.0-or-later](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/LICENSE)
 
 ![Hypergumbo logo](https://codeberg.org/iterabloom/hypergumbo/raw/branch/dev/docs/hypergumbo%20FINAL%20halfres.jpg)
+
