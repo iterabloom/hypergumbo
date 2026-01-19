@@ -2505,6 +2505,74 @@ router
         param_methods = {r.stable_id for r in param_routes}
         assert param_methods == {"GET", "PATCH", "DELETE"}
 
+    def test_express_inline_handler_usage_context_has_symbol_ref(self, tmp_path: Path) -> None:
+        """UsageContext for inline Express handlers should reference the Symbol.
+
+        This is critical for YAML pattern enrichment to work - the enrichment
+        phase skips UsageContexts with no symbol_ref.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+app.get('/users', (req, res) => {
+    res.json([]);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find the inline handler symbol
+        handlers = [s for s in result.symbols if s.meta and s.meta.get("route_path") == "/users"]
+        assert len(handlers) == 1
+        handler = handlers[0]
+
+        # Find the UsageContext for this route
+        contexts = [c for c in result.usage_contexts if "app.get" in c.context_name]
+        assert len(contexts) >= 1
+
+        # The UsageContext should reference the handler Symbol
+        matching_ctx = [c for c in contexts if c.symbol_ref == handler.id]
+        assert len(matching_ctx) == 1, f"Expected UsageContext.symbol_ref={handler.id}, got contexts: {[(c.context_name, c.symbol_ref) for c in contexts]}"
+
+    def test_express_external_handler_usage_context_has_symbol_ref(self, tmp_path: Path) -> None:
+        """UsageContext for external Express handlers should have a symbol_ref.
+
+        For external handlers like `app.get('/users', listUsers)`, the UsageContext
+        references the route symbol created for the handler reference.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+function listUsers(req, res) {
+    res.json([]);
+}
+
+app.get('/users', listUsers);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find the UsageContext for this route
+        contexts = [c for c in result.usage_contexts if "app.get" in c.context_name]
+        assert len(contexts) >= 1
+
+        # The UsageContext should have a symbol_ref (critical for YAML enrichment)
+        ctx = contexts[0]
+        assert ctx.symbol_ref is not None, "External handler UsageContext should have symbol_ref"
+
+        # The referenced symbol should exist
+        ref_symbols = [s for s in result.symbols if s.id == ctx.symbol_ref]
+        assert len(ref_symbols) == 1
+        assert ref_symbols[0].name == "listUsers"
+
 
 # ============================================================================
 # NestJS Route Detection Tests

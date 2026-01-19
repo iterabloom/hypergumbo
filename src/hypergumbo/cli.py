@@ -1086,24 +1086,15 @@ def cmd_routes(args: argparse.Namespace) -> int:
     for node in nodes:
         is_route = False
 
-        # Check for route concept in meta.concepts (FRAMEWORK_PATTERNS phase)
+        # Check for route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
+        # Routes are ONLY detected via concepts - no fallback to legacy fields.
+        # If routes aren't showing up, check that YAML patterns are being applied.
         meta = node.get("meta") or {}
         concepts = meta.get("concepts", [])
         for concept in concepts:
             if isinstance(concept, dict) and concept.get("concept") == "route":
                 is_route = True
                 break
-
-        # Fall back to checking stable_id for HTTP methods (legacy)
-        if not is_route:
-            stable_id = node.get("stable_id", "")
-            if stable_id:
-                # Check if stable_id is an HTTP method or comma-separated list of methods
-                # e.g., "get", "post", or "get,post" for DRF @api_view(['GET', 'POST'])
-                stable_id_lower = stable_id.lower()
-                methods = stable_id_lower.split(",")
-                if all(m.strip() in HTTP_METHODS for m in methods):
-                    is_route = True
 
         if is_route:
             # Apply language filter
@@ -1141,7 +1132,9 @@ def cmd_routes(args: argparse.Namespace) -> int:
             line = span.get("start_line", 0)
             meta = route.get("meta", {}) or {}
 
-            # Try concept metadata first (FRAMEWORK_PATTERNS phase)
+            # Extract route info from concept metadata (YAML pattern enrichment)
+            # No fallback to legacy fields - if enrichment fails, routes should
+            # appear with missing info to make the failure visible.
             route_path = None
             method = None
             concepts = meta.get("concepts", [])
@@ -1150,12 +1143,6 @@ def cmd_routes(args: argparse.Namespace) -> int:
                     route_path = concept.get("path")
                     method = concept.get("method")
                     break
-
-            # Fall back to legacy metadata
-            if not route_path:
-                route_path = meta.get("route_path", "")
-            if not method:
-                method = meta.get("http_method") or route.get("stable_id", "")
 
             method = method.upper() if method else ""
             if route_path:

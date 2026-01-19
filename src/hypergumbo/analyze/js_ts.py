@@ -598,6 +598,7 @@ def _extract_express_usage_contexts(
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
     line_offset: int = 0,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Express-style route calls.
 
@@ -609,8 +610,10 @@ def _extract_express_usage_contexts(
         tree: The parsed tree-sitter tree
         source: Source file bytes
         file_path: Path to the source file
-        symbol_by_name: Lookup table for symbols defined in this file
+        symbol_by_name: Lookup table for symbols by name
         line_offset: Line offset for Svelte/Vue script blocks
+        symbol_by_position: Lookup table for symbols by (path, line, col) - enables
+            linking inline handlers to their Symbol objects
 
     Returns:
         List of UsageContext records for Express route patterns.
@@ -633,7 +636,16 @@ def _extract_express_usage_contexts(
         # Try to resolve handler to a symbol reference
         handler_ref = None
         if handler_name and handler_name in symbol_by_name:
+            # External handler - look up by name
             handler_ref = symbol_by_name[handler_name].id
+        elif handler_node and symbol_by_position:
+            # Inline handler - look up by position
+            # The Symbol was created at the handler node's position
+            handler_line = handler_node.start_point[0] + 1 + line_offset
+            handler_col = handler_node.start_point[1]
+            position_key = (str(file_path), handler_line, handler_col)
+            if position_key in symbol_by_position:
+                handler_ref = symbol_by_position[position_key].id
 
         # Get the receiver name (app, router, express, etc.)
         receiver_name = None
@@ -2297,9 +2309,13 @@ def analyze_javascript(
     global_symbols: dict[str, Symbol] = {}
     global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
+    # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
+    symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
+        # Index by position for inline handler lookup in UsageContext creation
+        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind == "method":
             method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
             if method_name not in global_methods:
@@ -2323,7 +2339,8 @@ def analyze_javascript(
     for pf in parsed_files:
         # Express-style route calls (app.get, router.post, etc.)
         usage_contexts = _extract_express_usage_contexts(
-            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset,
+            symbol_by_position,
         )
         all_usage_contexts.extend(usage_contexts)
 
