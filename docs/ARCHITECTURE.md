@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: afc8b2438f6b
+  commit: 448ce9dc075d
   hypergumbo: 1.0.0
   python: 3.12.3
 -->
@@ -13,12 +13,12 @@ GENERATION METADATA (for drift detection):
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **113** Python modules (70 analyzers, 16 linkers)
-- **1815** symbols (functions, classes, methods)
-- **6582** edges by type:
-  - calls: 3270
-  - imports: 2016
-  - instantiates: 1146
+- **114** Python modules (70 analyzers, 16 linkers)
+- **1827** symbols (functions, classes, methods)
+- **6624** edges by type:
+  - calls: 3301
+  - imports: 2022
+  - instantiates: 1151
   - uses: 79
   - message_queue: 39
   - event_publishes: 26
@@ -29,25 +29,30 @@ hypergumbo analyzed its own source code and found:
 ```markdown
 # src
 
-## Overview [IGNORING TESTS]
-Python (96%), Yaml (4%)
-155 files    (155 non-test +   0 test) [IGNORING TESTS]
-~56,561 LOC (~56,561 non-test + ~     0 test) [IGNORING TESTS]
+## Overview
+Python (95%), Yaml (5%)
+160 files    (160 non-test +   0 test)
+~57,348 LOC (~57,348 non-test + ~     0 test)
 
-## Structure [IGNORING TESTS]
+## Structure
 
 ```
 src/
 └── hypergumbo
+    ├── cli.py
     ├── ir.py
     └── [and 29 other items]
 ```
 
-## Tests [IGNORING TESTS]
+## Tests
 
-0 tests (excluded via -x flag)
+No test files detected
 
-## Data Models [IGNORING TESTS]
+## Entry Points
+
+- `main` (Python main()) — `hypergumbo/cli.py`
+
+## Data Models
 
 - `Symbol` (Python @dataclass) — `hypergumbo/ir.py`
 - `Span` (Python @dataclass) — `hypergumbo/ir.py`
@@ -57,15 +62,15 @@ src/
 - `Pass` (Python @dataclass) — `hypergumbo/catalog.py`
 - `LinkerResult` (Python @dataclass) — `hypergumbo/linkers/registry.py`
 - `LinkerRequirement` (Python @dataclass) — `hypergumbo/linkers/registry.py`
+- `LinkerContext` (Python @dataclass) — `hypergumbo/linkers/registry.py`
 - `Entrypoint` (Python @dataclass) — `hypergumbo/entrypoints.py`
 - `EventPattern` (Python @dataclass) — `hypergumbo/linkers/event_sourcing.py`
 - `FileClassification` (Python @dataclass) — `hypergumbo/supply_chain.py`
 - `GrpcPattern` (Python @dataclass) — `hypergumbo/linkers/grpc.py`
 - `WebSocketPattern` (Python @dataclass) — `hypergumbo/linkers/websocket.py`
-- `LLMConfig` (Python @dataclass) — `hypergumbo/llm_assist.py`
-- ... and 167 more data models
+- ... and 168 more data models
 
-## Source Files [IGNORING TESTS]
+## Source Files
 
 - `hypergumbo/schema.py`
 - `hypergumbo/user_config.py`
@@ -87,24 +92,25 @@ src/
 - `hypergumbo/__main__.py`
 - `hypergumbo/sketch_embeddings.py`
 - `hypergumbo/llm_assist.py`
+- `hypergumbo/paths.py`
 - `hypergumbo/profile.py`
 - `hypergumbo/plan.py`
 - `hypergumbo/taxonomy.py`
-- `hypergumbo/__init__.py`
-- ... and 94 more files
+- ... and 95 more files
 
-## Key Symbols [IGNORING TESTS]
+## Key Symbols
 
 *★ = centrality ≥ 50% of max*
 
 ### `hypergumbo/ir.py`
-- `Span` (class) ★ — Source code location with line and column info.
 - `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
+- `Span` (class) ★ — Source code location with line and column info.
 - `Edge` (class) — A relationship between two symbols (e.g., function calls).
+- `AnalysisRun` (class) — Provenance tracking for an analysis pass execution.
 
 ### `hypergumbo/analyze/base.py`
-- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) ★ — Extract text content for a tree-sitter node.
-- `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
+- `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) ★ — Iterate over all nodes in a tree-sitter tree without recursion.
+- `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text content for a tree-sitter node.
 
 ### `hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
@@ -115,6 +121,9 @@ src/
 ### `hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
 
+### `hypergumbo/linkers/registry.py`
+- `LinkerResult` (class) — Result from running a linker.
+
 ### `hypergumbo/analyze/julia.py`
 - `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 
@@ -124,19 +133,16 @@ src/
 ### `hypergumbo/sketch.py`
 - `_section_header(title: str, exclude_tests: bool=…) -> str` (function) — Generate a section header with optional [IGNORING TESTS] marker.
 
-### `hypergumbo/linkers/registry.py`
-- `LinkerResult` (class) — Result from running a linker.
-
 ### `hypergumbo/analyze/py.py`
 - `_format_annotation(node: ast.expr) -> str` (function) — Format a type annotation node to a readable string.
 
-(... and 1679 more symbols across 96 other files)
+(... and 1691 more symbols across 98 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 5 appearances of `_node_text`
+- `_node_text` - we omitted 4 appearances of `_node_text`
 - `_find_child_by_type` - we omitted 4 appearances
 
-## Additional Files [IGNORING TESTS]
+## Additional Files
 
 - `hypergumbo/frameworks/micronaut.yaml`
 - `hypergumbo/frameworks/nestjs.yaml`
@@ -164,8 +170,10 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `hypergumbo/frameworks/tornado.yaml`
 - `hypergumbo/frameworks/plug.yaml`
 - `hypergumbo/frameworks/cli.yaml`
-- `hypergumbo/frameworks/celery.yaml`
+- `hypergumbo/frameworks/main-functions.yaml`
 - `hypergumbo/frameworks/electron.yaml`
+- `hypergumbo/frameworks/celery.yaml`
+- `hypergumbo/frameworks/config-conventions.yaml`
 - `hypergumbo/frameworks/fastapi.yaml`
 - `hypergumbo/frameworks/spring-boot.yaml`
 - `hypergumbo/frameworks/grape.yaml`
@@ -173,16 +181,18 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `hypergumbo/frameworks/cli-ruby.yaml`
 - `hypergumbo/frameworks/graphql-ruby.yaml`
 - `hypergumbo/frameworks/koa.yaml`
-- `hypergumbo/frameworks/graphql-python.yaml`
+- `hypergumbo/frameworks/test-frameworks.yaml`
 - `hypergumbo/frameworks/aspnet.yaml`
+- `hypergumbo/frameworks/language-conventions.yaml`
+- ... and 1 more files
 
 
-[hypergumbo sketch] Generated 5
-  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.16k.json
-  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.4k.json
-  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.64k.json
-  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/hypergumbo.results.json
-  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/4c069ffada6db56e/sketch.1500.notests.md
+[hypergumbo sketch] Generated 1, Using 4 cached
+  [cached] /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/f76508288abfcafb/hypergumbo.results.16k.json
+  [cached] /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/f76508288abfcafb/hypergumbo.results.4k.json
+  [cached] /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/f76508288abfcafb/hypergumbo.results.64k.json
+  [cached] /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/f76508288abfcafb/hypergumbo.results.json
+  /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/results/f76508288abfcafb/sketch.1500.md
   Output: stdout
   Embeddings cached: /home/jgstern_agent/.cache/hypergumbo/38e77d3fcdc6f084/embeddings
 ```
@@ -203,24 +213,32 @@ Source Files
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ANALYZERS                               │
 │  Pure language processors - NO framework knowledge              │
-│  Output: 1815 Symbols + 6582 Edges + UsageContexts            │
+│  Output: 1827 Symbols + 6624 Edges + UsageContexts            │
 │  Rich metadata: decorators, base_classes, parameters            │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     FRAMEWORK_PATTERNS                          │
-│  Data-driven symbol enrichment (YAML pattern files)             │
-│  Definition-based: decorators, annotations, base classes        │
-│  Usage-based (v1.1.x): UsageContext for call/data/export        │
-│  Output: Enriched symbols with concept metadata                 │
+│                       PATTERN SYSTEM                            │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Convention Patterns (always loaded):                    │    │
+│  │  - main-functions.yaml: main() entrypoints              │    │
+│  │  - test-frameworks.yaml: test function detection        │    │
+│  │  - language-conventions.yaml: CUDA/WGSL/COBOL/etc.      │    │
+│  │  - config-conventions.yaml: NPM/Maven/Cargo deps        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Framework Patterns (loaded when framework detected):    │    │
+│  │  - 37 framework YAML files (fastapi, django, etc.)      │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│  Output: Symbols enriched with meta.concepts                    │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                          LINKERS                                │
 │  Cross-language edge creation                                   │
-│  Use enriched metadata (route paths, gRPC services)             │
+│  Match via meta.concepts (route paths, gRPC services, etc.)     │
 │  15 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -264,6 +282,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`limits`**: Limits tracking for behavior map output.
 - **`llm_assist`**: LLM-assisted capsule plan generation.
 - **`metrics`**: Metrics computation for behavior map output.
+- **`paths`**: Centralized path handling utilities for hypergumbo.
 - **`profile`**: Repo profile detection - language and framework heuristics.
 - **`ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`selection.filters`**: Path classification and symbol kind filtering for selection.
@@ -420,7 +439,7 @@ Provenance tracking for reproducibility:
 4. Create cross-language edges
 5. Add tests in `tests/test_<name>_linker.py`
 
-## Framework Patterns Architecture (ADR-0003)
+## Pattern System Architecture (ADR-0003)
 
 > **Note:** This section is manually maintained. See `docs/adr/0003-architectural-analysis-and-revision-plan.md` for the full design rationale.
 
@@ -437,31 +456,63 @@ Source Files
      │
      ▼
 ┌─────────────────────────┐
-│  FRAMEWORK_PATTERNS     │  Data-driven symbol enrichment
-│  (framework_patterns.py)│  - YAML pattern files define framework patterns
-└─────────────────────────┘  - Symbols enriched with concept metadata
+│  PATTERN SYSTEM         │  Data-driven symbol enrichment
+│  (framework_patterns.py)│  - Definition: decorators, base classes
+│                         │  - Usage: UsageContext (v1.1.x)
+│                         │  - Output: meta.concepts
+│                         │
+│  Convention patterns:   │  Always loaded (language-agnostic):
+│  - main-functions       │  main() entrypoints
+│  - test-frameworks      │  test function detection
+│  - language-conventions │  CUDA/WGSL/COBOL/LaTeX/Starlark
+│  - config-conventions   │  NPM/Maven/Cargo dependencies
+│                         │
+│  Framework patterns:    │  Loaded when framework detected:
+│  - fastapi, django, etc │  37 framework YAML files
+└─────────────────────────┘
      │
      ▼
 ┌─────────────────┐
 │    Linkers      │  Cross-language edge creation
-│   (http.py, etc)│  - Use concept metadata for matching
-└─────────────────┘  - Fall back to legacy meta.route_path
+│   (http.py, etc)│  - Match via meta.concepts
+└─────────────────┘
 ```
 
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: Pattern definitions for each framework
-- **`meta.concepts`**: List of matched concepts on enriched symbols
-- **`meta.annotations`/`meta.decorators`**: Raw metadata for pattern matching
+- **`frameworks/*.yaml`**: 41 pattern files (4 convention + 37 framework)
+- **`meta.concepts`**: List of matched concepts (single source of truth)
+- **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
-### Adding a New Framework Pattern
+### meta.concepts Structure
 
+Enriched symbols have a `meta.concepts` list:
+
+```json
+{
+  "meta": {
+    "concepts": [
+      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},
+      {"concept": "test_function", "framework": "test-frameworks"}
+    ]
+  }
+}
+```
+
+Linkers and entrypoint detection use `meta.concepts` exclusively.
+
+### Adding a New Pattern
+
+**Framework pattern** (loaded when framework detected):
 1. Create `src/hypergumbo/frameworks/<framework>.yaml`
-2. Define patterns matching decorator/annotation names
-3. Specify concept types (route, model, task, etc.)
-4. Add extraction methods for path/method if needed
-5. Add tests in `tests/test_framework_patterns.py`
+2. Add `linkers:` section to enable relevant linkers
+3. Add tests in `tests/test_framework_patterns.py`
+
+**Convention pattern** (always loaded):
+1. Edit existing convention file or create new one
+2. Use `language: multi` for cross-language patterns
+3. Add to `enrich_symbols()` load list in `framework_patterns.py`
 
 Example patterns:
 
@@ -477,34 +528,17 @@ patterns:
     extract_method: "decorator_suffix"
 ```
 
-**Usage-based (v1.1.x - call/data/export contexts):**
+**Convention-based (symbol_name + symbol_kind + language):**
 ```yaml
-id: express
-language: javascript
+id: test-frameworks
+language: multi
 
 patterns:
-  - concept: route
-    usage:
-      kind: call
-      name: "^(app|router)\\.(get|post|put|delete)$"
-      position: "args[-1]"
-    extract:
-      path: "metadata.args[0]"
-      method: "context_name | split:. | last | uppercase"
+  - concept: test_function
+    symbol_name: "^test_"
+    symbol_kind: "^function$"
+    language: "^python$"
 ```
-
-### Migration Status (v1.0.x)
-
-Analyzer-level route detection is deprecated. Deprecation warnings fire when:
-- Spring Boot/JAX-RS routes detected in Java
-- Django URL patterns detected in Python
-- ASP.NET Core routes detected in C#
-- Axum/Actix routes detected in Rust
-- Rails routes detected in Ruby
-- Laravel routes detected in PHP
-- Express routes detected in JavaScript/TypeScript
-
-Use `--frameworks` flag with YAML patterns instead.
 
 ---
 
