@@ -10,6 +10,7 @@ from hypergumbo.linkers.openapi import (
     OpenApiOperation,
     _count_openapi_files,
     _get_route_symbols,
+    _has_route_concept,
     _is_openapi_spec,
     _load_yaml,
     _normalize_path,
@@ -198,7 +199,9 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"path": "/users", "method": "GET"},
+            meta={
+                "concepts": [{"concept": "route", "path": "/users", "method": "GET"}]
+            },
         )
 
         result = link_openapi(tmp_path, [route_symbol])
@@ -229,7 +232,9 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"path": "/api/users", "method": "GET"},
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_openapi(tmp_path, [route_symbol])
@@ -263,7 +268,9 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"path": "/users/:id", "method": "GET"},
+            meta={
+                "concepts": [{"concept": "route", "path": "/users/:id", "method": "GET"}]
+            },
         )
 
         result = link_openapi(tmp_path, [route_symbol])
@@ -295,7 +302,9 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"path": "/users", "method": "GET"},
+            meta={
+                "concepts": [{"concept": "route", "path": "/users", "method": "GET"}]
+            },
         )
 
         result = link_openapi(tmp_path, [route_symbol])
@@ -385,13 +394,15 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"path": "/users", "method": "GET", "concept": "route"},
+            meta={
+                "concepts": [{"concept": "route", "path": "/users", "method": "GET"}]
+            },
         )
 
         result = link_openapi(tmp_path, [route_symbol])
-        # The linker uses kind="route" check, so this won't match by path
-        # but may match by operationId
+        # Routes with concept metadata are detected and matched
         assert len(result.symbols) == 1
+        assert len(result.edges) >= 1  # Should match by path
 
 
 class TestOpenApiEdgeCases:
@@ -542,12 +553,25 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            meta={"concept": "route"},
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[route])
         symbols = _get_route_symbols(ctx)
         assert len(symbols) == 1
         assert symbols[0].name == "get_users"
+
+    def test_has_route_concept_with_none_meta(self, tmp_path: Path) -> None:
+        """_has_route_concept returns False for symbol with meta=None."""
+        symbol = Symbol(
+            id="test:func",
+            name="no_meta",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            meta=None,
+        )
+        assert _has_route_concept(symbol) is False
 
     def test_openapi_linker_integration(self, tmp_path: Path) -> None:
         """Tests the full openapi_linker function."""

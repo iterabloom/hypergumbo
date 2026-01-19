@@ -743,17 +743,19 @@ public class UserController {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
         # Find the getUsers method
-        methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "getUsers" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
-        # Should have route_path and http_method in meta (from YAML patterns)
+        # Should have route concept in meta (from YAML patterns)
         assert method.meta is not None
-        assert method.meta.get("route_path") == "/users"
-        assert method.meta.get("http_method") == "GET"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["path"] == "/users"
+        assert route_concepts[0]["method"] == "GET"
 
     def test_post_mapping_detection(self, tmp_path: Path) -> None:
         """Detects @PostMapping annotation via YAML patterns."""
@@ -774,15 +776,17 @@ public class UserController {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "createUser" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "createUser" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("route_path") == "/users"
-        assert method.meta.get("http_method") == "POST"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["path"] == "/users"
+        assert route_concepts[0]["method"] == "POST"
 
     def test_all_http_method_mappings(self, tmp_path: Path) -> None:
         """Detects all Spring Boot HTTP method annotations via YAML patterns."""
@@ -813,12 +817,19 @@ public class ResourceController {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and s.meta and s.meta.get("http_method")]
-        http_methods = {m.meta.get("http_method") for m in methods}
+        # Find methods with route concepts
+        methods_with_routes = []
+        http_methods = set()
+        for s in enriched:
+            if s.kind == "method" and s.meta:
+                route_concepts = [c for c in s.meta.get("concepts", []) if c.get("concept") == "route"]
+                if route_concepts:
+                    methods_with_routes.append(s)
+                    http_methods.add(route_concepts[0]["method"])
 
-        assert len(methods) == 5
+        assert len(methods_with_routes) == 5
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
     def test_request_mapping_with_method(self, tmp_path: Path) -> None:
@@ -841,14 +852,19 @@ public class LegacyController {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method"]
-        route_methods = [m for m in methods if m.meta and m.meta.get("route_path")]
+        methods = [s for s in enriched if s.kind == "method"]
+        route_methods = []
+        for m in methods:
+            if m.meta:
+                route_concepts = [c for c in m.meta.get("concepts", []) if c.get("concept") == "route"]
+                if route_concepts:
+                    route_methods.append((m, route_concepts[0]))
 
         assert len(route_methods) == 2
-        assert any(m.meta.get("http_method") == "GET" for m in route_methods)
-        assert any(m.meta.get("http_method") == "POST" for m in route_methods)
+        assert any(rc["method"] == "GET" for m, rc in route_methods)
+        assert any(rc["method"] == "POST" for m, rc in route_methods)
 
     def test_mapping_with_path_variable(self, tmp_path: Path) -> None:
         """Detects routes with path variables like {id} via YAML patterns."""
@@ -869,15 +885,17 @@ public class ItemController {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "getById" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "getById" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("route_path") == "/items/{id}"
-        assert method.meta.get("http_method") == "GET"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["path"] == "/items/{id}"
+        assert route_concepts[0]["method"] == "GET"
 
     def test_get_mapping_with_value_attribute(self, tmp_path: Path) -> None:
         """Detects @GetMapping with explicit value attribute via YAML patterns."""
@@ -896,15 +914,17 @@ public class Controller {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "getExplicit" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "getExplicit" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("route_path") == "/explicit"
-        assert method.meta.get("http_method") == "GET"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["path"] == "/explicit"
+        assert route_concepts[0]["method"] == "GET"
 
     def test_request_mapping_without_qualified_method(self, tmp_path: Path) -> None:
         """Detects @RequestMapping with unqualified method via YAML patterns."""
@@ -924,15 +944,17 @@ public class Controller {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"spring-boot"})
+        enriched = enrich_symbols(result.symbols, {"spring-boot"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "test" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "test" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("route_path") == "/test"
-        assert method.meta.get("http_method") == "GET"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["path"] == "/test"
+        assert route_concepts[0]["method"] == "GET"
 
 
 class TestJaxRsRouteDetection:
@@ -963,14 +985,16 @@ public class UserResource {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"jax-rs"})
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "getUsers" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "getUsers" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("http_method") == "GET"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["method"] == "GET"
 
     def test_jaxrs_post_with_path(self, tmp_path: Path) -> None:
         """Detects JAX-RS @POST via YAML patterns."""
@@ -992,14 +1016,16 @@ public class UserResource {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"jax-rs"})
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "createUser" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "createUser" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("http_method") == "POST"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["method"] == "POST"
 
     def test_jaxrs_method_level_path(self, tmp_path: Path) -> None:
         """Detects JAX-RS @GET and @Path via YAML patterns."""
@@ -1021,16 +1047,17 @@ public class UserResource {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"jax-rs"})
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and "getById" in s.name]
+        methods = [s for s in enriched if s.kind == "method" and "getById" in s.name]
         assert len(methods) == 1
         method = methods[0]
 
         assert method.meta is not None
-        assert method.meta.get("http_method") == "GET"
+        route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["method"] == "GET"
         # JAX-RS path is extracted from @Path annotation via resource_path concept
-        assert "concepts" in method.meta
         path_concept = next(
             (c for c in method.meta["concepts"] if c.get("concept") == "resource_path"),
             None
@@ -1067,12 +1094,19 @@ public class ResourceController {
 """)
 
         result = analyze_java(tmp_path)
-        enrich_symbols(result.symbols, {"jax-rs"})
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
 
-        methods = [s for s in result.symbols if s.kind == "method" and s.meta and s.meta.get("http_method")]
-        http_methods = {m.meta.get("http_method") for m in methods}
+        # Find methods with route concepts
+        methods_with_routes = []
+        http_methods = set()
+        for s in enriched:
+            if s.kind == "method" and s.meta:
+                route_concepts = [c for c in s.meta.get("concepts", []) if c.get("concept") == "route"]
+                if route_concepts:
+                    methods_with_routes.append(s)
+                    http_methods.add(route_concepts[0]["method"])
 
-        assert len(methods) == 5
+        assert len(methods_with_routes) == 5
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
 

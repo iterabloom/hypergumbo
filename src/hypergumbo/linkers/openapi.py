@@ -249,19 +249,42 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
     return bool(re.match(pattern, norm_route))
 
 
+def _has_route_concept(symbol: Symbol) -> bool:
+    """Check if symbol has a route concept in meta.concepts."""
+    if not symbol.meta:
+        return False
+    concepts = symbol.meta.get("concepts", [])
+    return any(c.get("concept") == "route" for c in concepts if isinstance(c, dict))
+
+
+def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
+    """Extract route path and method from concept metadata.
+
+    Returns:
+        Tuple of (route_path, http_method) from the first route concept,
+        or (None, None) if no route concept exists.
+    """
+    if not symbol.meta:
+        return None, None
+
+    concepts = symbol.meta.get("concepts", [])
+    for concept in concepts:
+        if isinstance(concept, dict) and concept.get("concept") == "route":
+            return concept.get("path"), concept.get("method")
+    return None, None
+
+
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
-    """Extract route symbols from context."""
-    route_symbols: list[Symbol] = []
+    """Extract route symbols from context.
 
-    for symbol in ctx.symbols:
-        # Check if symbol is a route
-        if symbol.kind == "route":
-            route_symbols.append(symbol)
-        # Also check concept meta for route concept
-        elif symbol.meta and symbol.meta.get("concept") == "route":
-            route_symbols.append(symbol)
-
-    return route_symbols
+    Route symbols are either:
+    - kind="route" (Ruby, Go, Rust, Express analyzers)
+    - have route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
+    """
+    return [
+        s for s in ctx.symbols
+        if s.kind == "route" or _has_route_concept(s)
+    ]
 
 
 def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
@@ -318,8 +341,8 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         # Try to match to route handlers
         matched = False
         for route in route_symbols:
-            route_path = route.meta.get("path") if route.meta else None
-            route_method = route.meta.get("method") if route.meta else None
+            # Extract route info from concept metadata (single source of truth)
+            route_path, route_method = _get_route_info_from_concept(route)
 
             if not route_path:
                 continue

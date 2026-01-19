@@ -941,13 +941,8 @@ patterns:
         assert enriched[0].meta is not None
         assert "concepts" in enriched[0].meta
 
-    def test_populates_legacy_route_fields(self, tmp_path: Path) -> None:
-        """Route concepts with path/method populate legacy http_method/route_path.
-
-        ADR-0003 v1.0.x transition: when a route concept includes path and method,
-        enrich_symbols also populates the legacy meta fields for backward
-        compatibility with tests and linkers that check these fields directly.
-        """
+    def test_route_concepts_have_path_and_method(self, tmp_path: Path) -> None:
+        """Route concepts include path and method extracted from decorators."""
         clear_pattern_cache()
 
         # Pattern with capture group for method extraction (like real YAMLs)
@@ -984,21 +979,17 @@ patterns:
             enriched = enrich_symbols([symbol], {"test_fw"})
 
         assert len(enriched) == 1
-        # Should have concepts
+        # Should have concepts with path and method
         assert "concepts" in enriched[0].meta
         assert enriched[0].meta["concepts"][0]["concept"] == "route"
         assert enriched[0].meta["concepts"][0]["path"] == "/users"
         assert enriched[0].meta["concepts"][0]["method"] == "GET"
 
-        # Should ALSO have legacy fields for backward compatibility
-        assert enriched[0].meta["route_path"] == "/users"
-        assert enriched[0].meta["http_method"] == "GET"
+    def test_concepts_added_even_with_existing_meta(self, tmp_path: Path) -> None:
+        """Concepts are added to symbols that already have metadata.
 
-    def test_legacy_fields_not_overwritten(self, tmp_path: Path) -> None:
-        """Legacy fields are not overwritten if already present.
-
-        If http_method/route_path are already in meta (e.g., from deprecated
-        analyzer code still running), the enrichment should not overwrite them.
+        Symbols may have other metadata from analyzers; enrichment should
+        add concepts without affecting existing fields.
         """
         clear_pattern_cache()
 
@@ -1026,9 +1017,8 @@ patterns:
                 "decorators": [
                     {"name": "app.get", "args": ["/users"], "kwargs": {}}
                 ],
-                # Existing legacy fields from deprecated analyzer code
-                "route_path": "/old-path",
-                "http_method": "POST",
+                # Existing metadata from analyzer
+                "some_field": "some_value",
             },
         )
 
@@ -1038,11 +1028,10 @@ patterns:
         ):
             enriched = enrich_symbols([symbol], {"test_fw"})
 
-        # Legacy fields should NOT be overwritten
-        assert enriched[0].meta["route_path"] == "/old-path"
-        assert enriched[0].meta["http_method"] == "POST"
+        # Existing fields should be preserved
+        assert enriched[0].meta["some_field"] == "some_value"
 
-        # But concepts should still be added with correct values
+        # Concepts should be added with correct values
         assert enriched[0].meta["concepts"][0]["path"] == "/users"
         assert enriched[0].meta["concepts"][0]["method"] == "GET"
 
@@ -5413,12 +5402,6 @@ public class UserController {
         assert route_concept["path"] == "/users"
         assert route_concept["framework"] == "spring-boot"
 
-        # Verify legacy fields were populated (backward compat)
-        # Note: http_method/route_path may also be set by deprecated analyzer code,
-        # but this test proves YAML patterns can populate them independently
-        assert enriched_method.meta.get("route_path") == "/users"
-        assert enriched_method.meta.get("http_method") == "GET"
-
     def test_spring_all_methods_via_yaml(self, tmp_path: Path) -> None:
         """All HTTP method mappings work through YAML patterns."""
         from hypergumbo.analyze.java import analyze_java
@@ -5515,10 +5498,6 @@ public class ApiController {
         route = next(c for c in method.meta["concepts"] if c["concept"] == "route")
         assert route["method"] == "GET"
         assert route["path"] == "/users"
-
-        # Legacy fields were populated by enrich_symbols
-        assert method.meta.get("http_method") == "GET"
-        assert method.meta.get("route_path") == "/users"
 
 
 # ==================== USAGE CONTEXT TESTS (v1.1.x) ====================
@@ -5982,10 +5961,6 @@ class TestEnrichSymbolsWithUsageContexts:
         assert concepts[0]["path"] == "/users/"
         assert concepts[0]["method"] == "GET"
 
-        # Legacy fields should be populated
-        assert enriched[0].meta.get("route_path") == "/users/"
-        assert enriched[0].meta.get("http_method") == "GET"
-
     def test_skips_inline_handlers(self) -> None:
         """enrich_symbols skips usage contexts with no symbol_ref (inline handlers)."""
         symbol = Symbol(
@@ -6130,8 +6105,10 @@ class TestEnrichSymbolsWithUsageContexts:
         # Should create meta dict and populate it
         assert enriched[0].meta is not None
         assert "concepts" in enriched[0].meta
-        assert enriched[0].meta["route_path"] == "/users/"
-        assert enriched[0].meta["http_method"] == "GET"
+        concepts = enriched[0].meta["concepts"]
+        route = next(c for c in concepts if c["concept"] == "route")
+        assert route["path"] == "/users/"
+        assert route["method"] == "GET"
 
 
 class TestMainFunctionPatterns:

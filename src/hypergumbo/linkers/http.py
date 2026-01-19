@@ -440,15 +440,11 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             # Try concept metadata first (FRAMEWORK_PATTERNS phase)
             concept_path, concept_method = _get_route_info_from_concept(route)
 
-            # Extract route info from concept metadata (preferred) or legacy meta fields
-            # No fallback to stable_id - if http_method is missing, route matching
-            # should fail visibly rather than using a semantic hash as HTTP method.
-            if concept_path:
-                route_path = concept_path
-                route_method = concept_method
-            else:
-                route_path = route.meta.get("route_path", "") if route.meta else ""
-                route_method = route.meta.get("http_method", "") if route.meta else ""
+            # Extract route info ONLY from concept metadata (single source of truth).
+            # If concepts are missing, route matching will fail - this is intentional
+            # to make enrichment failures visible rather than masking them.
+            route_path = concept_path or ""
+            route_method = concept_method or ""
 
             # Must match HTTP method
             if route_method and route_method.upper() != call.method.upper():
@@ -530,14 +526,15 @@ def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
     """Extract route symbols from context.
 
     Route symbols are either:
-    - kind="route" (Ruby, Go, Rust analyzers)
-    - have meta.route_path (Python, JS framework analyzers - legacy)
-    - have route concept in meta.concepts (FRAMEWORK_PATTERNS phase)
+    - kind="route" (Ruby, Go, Rust, Express analyzers)
+    - have route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
+
+    Note: We no longer check legacy meta.route_path field - route detection
+    should come from concepts (single source of truth).
     """
     return [
         s for s in ctx.symbols
         if s.kind == "route"
-        or (s.meta and s.meta.get("route_path"))
         or _has_route_concept(s)
     ]
 
@@ -550,7 +547,7 @@ def _count_route_symbols(ctx: LinkerContext) -> int:
 HTTP_REQUIREMENTS = [
     LinkerRequirement(
         name="route_symbols",
-        description="Route handler symbols (kind=route or meta.route_path)",
+        description="Route handler symbols (kind=route or route concept)",
         check=_count_route_symbols,
     ),
 ]
