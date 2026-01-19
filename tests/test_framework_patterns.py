@@ -6497,3 +6497,516 @@ class TestTestFrameworkPatterns:
         test_concepts = [c for c in concepts if c["concept"] == "test_function"]
         assert len(test_concepts) == 1
         assert test_concepts[0]["framework"] == "test-frameworks"
+
+
+class TestLanguageConventionPatterns:
+    """Tests for language-conventions.yaml patterns (ADR-0003 v1.2.x)."""
+
+    def test_language_conventions_yaml_loads(self) -> None:
+        """language-conventions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("language-conventions")
+        assert pattern_def is not None
+        assert pattern_def.id == "language-conventions"
+        assert pattern_def.language == "multi"
+        # Should have patterns for CUDA, WGSL, COBOL, LaTeX, Starlark
+        assert len(pattern_def.patterns) >= 10
+
+    def test_cuda_global_kernel_pattern(self) -> None:
+        """Pattern matches CUDA __global__ kernels."""
+        pattern = Pattern(
+            concept="gpu_kernel",
+            symbol_kind="^global$",
+            language="^cuda$",
+        )
+        symbol = Symbol(
+            id="cuda:kernels.cu:10-30:matrixMul:global",
+            name="matrixMul",
+            kind="global",
+            language="cuda",
+            path="kernels.cu",
+            span=Span(10, 30, 0, 200),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "gpu_kernel"
+        assert result["matched_symbol_kind"] == "global"
+
+    def test_cuda_device_function_pattern(self) -> None:
+        """Pattern matches CUDA __device__ functions."""
+        pattern = Pattern(
+            concept="gpu_function",
+            symbol_kind="^device$",
+            language="^cuda$",
+        )
+        symbol = Symbol(
+            id="cuda:helpers.cu:5-15:dotProduct:device",
+            name="dotProduct",
+            kind="device",
+            language="cuda",
+            path="helpers.cu",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "gpu_function"
+
+    def test_wgsl_vertex_shader_pattern(self) -> None:
+        """Pattern matches WGSL @vertex shaders."""
+        pattern = Pattern(
+            concept="shader_entrypoint",
+            decorator="^vertex$",
+            language="^wgsl$",
+        )
+        symbol = Symbol(
+            id="wgsl:shader.wgsl:1-10:vs_main:function",
+            name="vs_main",
+            kind="function",
+            language="wgsl",
+            path="shader.wgsl",
+            span=Span(1, 10, 0, 50),
+            meta={"decorators": [{"name": "vertex", "args": []}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "shader_entrypoint"
+
+    def test_wgsl_compute_shader_pattern(self) -> None:
+        """Pattern matches WGSL @compute shaders."""
+        pattern = Pattern(
+            concept="shader_entrypoint",
+            decorator="^compute$",
+            language="^wgsl$",
+        )
+        symbol = Symbol(
+            id="wgsl:compute.wgsl:1-20:main:function",
+            name="main",
+            kind="function",
+            language="wgsl",
+            path="compute.wgsl",
+            span=Span(1, 20, 0, 80),
+            meta={"decorators": [{"name": "compute", "args": []}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "shader_entrypoint"
+
+    def test_cobol_program_pattern(self) -> None:
+        """Pattern matches COBOL programs."""
+        pattern = Pattern(
+            concept="program_entrypoint",
+            symbol_kind="^program$",
+            language="^cobol$",
+        )
+        symbol = Symbol(
+            id="cobol:PAYROLL.cbl:1-500:PAYROLL:program",
+            name="PAYROLL",
+            kind="program",
+            language="cobol",
+            path="PAYROLL.cbl",
+            span=Span(1, 500, 0, 10000),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "program_entrypoint"
+
+    def test_cobol_section_pattern(self) -> None:
+        """Pattern matches COBOL sections."""
+        pattern = Pattern(
+            concept="code_section",
+            symbol_kind="^section$",
+            language="^cobol$",
+        )
+        symbol = Symbol(
+            id="cobol:PAYROLL.cbl:50-100:PROCESS-EMPLOYEE:section",
+            name="PROCESS-EMPLOYEE",
+            kind="section",
+            language="cobol",
+            path="PAYROLL.cbl",
+            span=Span(50, 100, 0, 2000),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "code_section"
+
+    def test_latex_section_pattern(self) -> None:
+        """Pattern matches LaTeX sections."""
+        pattern = Pattern(
+            concept="document_structure",
+            symbol_kind="^section$",
+            language="^latex$",
+        )
+        symbol = Symbol(
+            id="latex:thesis.tex:50-100:Introduction:section",
+            name="Introduction",
+            kind="section",
+            language="latex",
+            path="thesis.tex",
+            span=Span(50, 100, 0, 2000),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "document_structure"
+
+    def test_starlark_rule_pattern(self) -> None:
+        """Pattern matches Starlark build rules."""
+        pattern = Pattern(
+            concept="build_rule",
+            symbol_kind="^rule$",
+            language="^starlark$",
+        )
+        symbol = Symbol(
+            id="starlark:BUILD:10-30:my_library:rule",
+            name="my_library",
+            kind="rule",
+            language="starlark",
+            path="BUILD",
+            span=Span(10, 30, 0, 300),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "build_rule"
+
+    def test_starlark_macro_pattern(self) -> None:
+        """Pattern matches Starlark macros."""
+        pattern = Pattern(
+            concept="build_macro",
+            symbol_kind="^macro$",
+            language="^starlark$",
+        )
+        symbol = Symbol(
+            id="starlark:defs.bzl:1-20:my_macro:macro",
+            name="my_macro",
+            kind="macro",
+            language="starlark",
+            path="defs.bzl",
+            span=Span(1, 20, 0, 200),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "build_macro"
+
+    def test_enrich_symbols_with_cuda_kernel(self) -> None:
+        """enrich_symbols enriches CUDA kernel with gpu_kernel concept."""
+        symbol = Symbol(
+            id="cuda:kernel.cu:1-50:compute:global",
+            name="compute",
+            kind="global",
+            language="cuda",
+            path="kernel.cu",
+            span=Span(1, 50, 0, 500),
+            meta={},
+        )
+
+        # Use real language-conventions patterns
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        gpu_concepts = [c for c in concepts if c["concept"] == "gpu_kernel"]
+        assert len(gpu_concepts) == 1
+        assert gpu_concepts[0]["framework"] == "language-conventions"
+
+
+class TestConfigConventionPatterns:
+    """Tests for config-conventions.yaml patterns (ADR-0003 v1.2.x)."""
+
+    def test_config_conventions_yaml_loads(self) -> None:
+        """config-conventions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("config-conventions")
+        assert pattern_def is not None
+        assert pattern_def.id == "config-conventions"
+        assert pattern_def.language == "multi"
+        # Should have patterns for NPM, Maven, Cargo
+        assert len(pattern_def.patterns) >= 15
+
+    def test_npm_dependency_pattern(self) -> None:
+        """Pattern matches NPM dependencies."""
+        pattern = Pattern(
+            concept="npm_dependency",
+            symbol_kind="^dependency$",
+            language="^json$",
+        )
+        symbol = Symbol(
+            id="json:package.json:5-5:react:dependency",
+            name="react",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(5, 5, 0, 30),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "npm_dependency"
+
+    def test_npm_dev_dependency_pattern(self) -> None:
+        """Pattern matches NPM dev dependencies."""
+        pattern = Pattern(
+            concept="npm_dev_dependency",
+            symbol_kind="^devDependency$",
+            language="^json$",
+        )
+        symbol = Symbol(
+            id="json:package.json:15-15:jest:devDependency",
+            name="jest",
+            kind="devDependency",
+            language="json",
+            path="package.json",
+            span=Span(15, 15, 0, 25),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "npm_dev_dependency"
+
+    def test_npm_script_pattern(self) -> None:
+        """Pattern matches NPM scripts."""
+        pattern = Pattern(
+            concept="npm_script",
+            symbol_kind="^script$",
+            language="^json$",
+        )
+        symbol = Symbol(
+            id="json:package.json:3-3:test:script",
+            name="test",
+            kind="script",
+            language="json",
+            path="package.json",
+            span=Span(3, 3, 0, 40),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "npm_script"
+
+    def test_maven_dependency_pattern(self) -> None:
+        """Pattern matches Maven dependencies."""
+        pattern = Pattern(
+            concept="maven_dependency",
+            symbol_kind="^dependency$",
+            language="^xml$",
+        )
+        symbol = Symbol(
+            id="xml:pom.xml:20-25:com.google.guava:guava:dependency",
+            name="com.google.guava:guava",
+            kind="dependency",
+            language="xml",
+            path="pom.xml",
+            span=Span(20, 25, 0, 150),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "maven_dependency"
+
+    def test_maven_module_pattern(self) -> None:
+        """Pattern matches Maven modules."""
+        pattern = Pattern(
+            concept="maven_module",
+            symbol_kind="^module$",
+            language="^xml$",
+        )
+        symbol = Symbol(
+            id="xml:pom.xml:50-50:core:module",
+            name="core",
+            kind="module",
+            language="xml",
+            path="pom.xml",
+            span=Span(50, 50, 0, 20),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "maven_module"
+
+    def test_android_permission_pattern(self) -> None:
+        """Pattern matches Android permissions."""
+        pattern = Pattern(
+            concept="android_permission",
+            symbol_kind="^permission$",
+            language="^xml$",
+        )
+        symbol = Symbol(
+            id="xml:AndroidManifest.xml:5-5:INTERNET:permission",
+            name="INTERNET",
+            kind="permission",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(5, 5, 0, 80),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "android_permission"
+
+    def test_android_activity_pattern(self) -> None:
+        """Pattern matches Android activities."""
+        pattern = Pattern(
+            concept="android_component",
+            symbol_kind="^activity$",
+            language="^xml$",
+        )
+        symbol = Symbol(
+            id="xml:AndroidManifest.xml:10-20:MainActivity:activity",
+            name="MainActivity",
+            kind="activity",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(10, 20, 0, 200),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "android_component"
+
+    def test_cargo_dependency_pattern(self) -> None:
+        """Pattern matches Cargo dependencies."""
+        pattern = Pattern(
+            concept="cargo_dependency",
+            symbol_kind="^dependency$",
+            language="^toml$",
+        )
+        symbol = Symbol(
+            id="toml:Cargo.toml:8-8:serde:dependency",
+            name="serde",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(8, 8, 0, 30),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "cargo_dependency"
+
+    def test_cargo_dev_dependency_pattern(self) -> None:
+        """Pattern matches Cargo dev dependencies."""
+        pattern = Pattern(
+            concept="cargo_dev_dependency",
+            symbol_kind="^dev-dependency$",
+            language="^toml$",
+        )
+        symbol = Symbol(
+            id="toml:Cargo.toml:15-15:tokio-test:dev-dependency",
+            name="tokio-test",
+            kind="dev-dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(15, 15, 0, 35),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "cargo_dev_dependency"
+
+    def test_cargo_binary_pattern(self) -> None:
+        """Pattern matches Cargo binary targets."""
+        pattern = Pattern(
+            concept="cargo_binary",
+            symbol_kind="^bin$",
+            language="^toml$",
+        )
+        symbol = Symbol(
+            id="toml:Cargo.toml:20-25:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(20, 25, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "cargo_binary"
+
+    def test_typescript_reference_pattern(self) -> None:
+        """Pattern matches TypeScript project references."""
+        pattern = Pattern(
+            concept="typescript_reference",
+            symbol_kind="^reference$",
+            language="^json$",
+        )
+        symbol = Symbol(
+            id="json:tsconfig.json:10-10:../common:reference",
+            name="../common",
+            kind="reference",
+            language="json",
+            path="tsconfig.json",
+            span=Span(10, 10, 0, 40),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "typescript_reference"
+
+    def test_poetry_dependency_pattern(self) -> None:
+        """Pattern matches Poetry dependencies."""
+        pattern = Pattern(
+            concept="poetry_dependency",
+            symbol_kind="^dependency$",
+            language="^toml$",
+        )
+        symbol = Symbol(
+            id="toml:pyproject.toml:12-12:requests:dependency",
+            name="requests",
+            kind="dependency",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(12, 12, 0, 25),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "poetry_dependency"
+
+    def test_enrich_symbols_with_npm_dependency(self) -> None:
+        """enrich_symbols enriches NPM dependency with npm_dependency concept."""
+        symbol = Symbol(
+            id="json:package.json:5-5:lodash:dependency",
+            name="lodash",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(5, 5, 0, 25),
+            meta={},
+        )
+
+        # Use real config-conventions patterns
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        npm_concepts = [c for c in concepts if c["concept"] == "npm_dependency"]
+        assert len(npm_concepts) == 1
+        assert npm_concepts[0]["framework"] == "config-conventions"
+
+    def test_enrich_symbols_with_cargo_dependency(self) -> None:
+        """enrich_symbols enriches Cargo dependency with cargo_dependency concept."""
+        symbol = Symbol(
+            id="toml:Cargo.toml:10-10:tokio:dependency",
+            name="tokio",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(10, 10, 0, 30),
+            meta={},
+        )
+
+        # Use real config-conventions patterns
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        cargo_concepts = [c for c in concepts if c["concept"] == "cargo_dependency"]
+        assert len(cargo_concepts) == 1
+        assert cargo_concepts[0]["framework"] == "config-conventions"

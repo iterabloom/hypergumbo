@@ -751,9 +751,13 @@ def enrich_symbols(
         if pattern_def:
             pattern_defs.append(pattern_def)
 
-    # Always load language convention patterns (main-functions.yaml, test-frameworks.yaml)
-    # These are applied regardless of framework detection
-    for convention_id in ("main-functions", "test-frameworks"):
+    # Always load language convention patterns
+    # These are applied regardless of framework detection:
+    # - main-functions.yaml: main() entry points across languages
+    # - test-frameworks.yaml: test function detection across frameworks
+    # - language-conventions.yaml: CUDA, WGSL, COBOL, LaTeX, Starlark patterns
+    # - config-conventions.yaml: NPM, Maven, Cargo dependency patterns
+    for convention_id in ("main-functions", "test-frameworks", "language-conventions", "config-conventions"):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
             pattern_defs.append(convention_patterns)

@@ -17,6 +17,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Pattern system: `symbol_name` and `language` fields:** Extended the Pattern class to support
   matching symbols by name (regex) and filtering by language. Enables language-convention patterns
   like main() detection that need to match by name+kind+language, not just decorators or base classes.
+- **YAML-based test function detection (ADR-0003 v1.2.x):** Test functions across 10+ languages/frameworks
+  are now detected via `test-frameworks.yaml`. Supports pytest, unittest, Go testing, JUnit, xUnit,
+  NUnit, MSTest, Rust #[test], RSpec, PHPUnit, XCTest, and jest/mocha/vitest. Patterns use naming
+  conventions (test_*, Test*, test*) or decorators (@Test, [Fact], #[test]).
+- **YAML-based language convention patterns:** Non-framework domain metadata is now enriched via YAML:
+  - `language-conventions.yaml`: CUDA kernels (__global__/__device__), WGSL shaders (@vertex/@fragment/@compute),
+    COBOL programs/sections, LaTeX document structure, Starlark build rules/macros
+  - `config-conventions.yaml`: NPM dependencies/scripts, Maven dependencies/modules, Android permissions/components,
+    Cargo dependencies/workspaces, Poetry dependencies, TypeScript project references
 - **Slice path suffix matching:** The `--entry` flag now supports relative paths that match as
   suffixes of absolute paths. For example, `--entry src/main.go` will match a symbol with path
   `/home/user/repo/src/main.go`. Previously required exact path match.

@@ -1,0 +1,98 @@
+# Language-specific convention patterns for analyzers without framework patterns
+#
+# These patterns add concept metadata to symbols from specialized analyzers
+# that don't have framework-specific YAML files. This enables these symbols
+# to participate in concept-based features like entrypoint detection.
+#
+# Analyzers covered:
+# - cuda.py: CUDA kernels and device functions
+# - wgsl.py: WebGPU shader functions
+# - cobol.py: COBOL programs and sections
+# - latex.py: LaTeX document structure
+# - starlark.py: Bazel/Buck build rules
+
+id: language-conventions
+language: multi
+
+patterns:
+  # ====== CUDA (GPU Computing) ======
+  # CUDA global kernels are GPU entry points - critical for understanding GPU code
+  - concept: gpu_kernel
+    symbol_kind: "^global$"
+    language: "^cuda$"
+
+  # CUDA device functions run on GPU but are called from kernels
+  - concept: gpu_function
+    symbol_kind: "^device$"
+    language: "^cuda$"
+
+  # CUDA host functions run on CPU
+  - concept: host_function
+    symbol_kind: "^host$"
+    language: "^cuda$"
+
+  # ====== WGSL (WebGPU Shaders) ======
+  # Vertex shaders are GPU entry points
+  - concept: shader_entrypoint
+    decorator: "^vertex$"
+    language: "^wgsl$"
+
+  # Fragment shaders are GPU entry points
+  - concept: shader_entrypoint
+    decorator: "^fragment$"
+    language: "^wgsl$"
+
+  # Compute shaders are GPU entry points
+  - concept: shader_entrypoint
+    decorator: "^compute$"
+    language: "^wgsl$"
+
+  # ====== COBOL (Legacy Systems) ======
+  # COBOL programs are execution units - critical entry points
+  - concept: program_entrypoint
+    symbol_kind: "^program$"
+    language: "^cobol$"
+
+  # COBOL sections organize code flow
+  - concept: code_section
+    symbol_kind: "^section$"
+    language: "^cobol$"
+
+  # COBOL paragraphs are callable units
+  - concept: callable_unit
+    symbol_kind: "^paragraph$"
+    language: "^cobol$"
+
+  # ====== LaTeX (Documents) ======
+  # LaTeX sections define document structure
+  - concept: document_structure
+    symbol_kind: "^section$"
+    language: "^latex$"
+
+  # LaTeX labels are cross-reference targets
+  - concept: reference_target
+    symbol_kind: "^label$"
+    language: "^latex$"
+
+  # LaTeX environments define content regions
+  - concept: content_region
+    symbol_kind: "^environment$"
+    language: "^latex$"
+
+  # ====== Starlark (Build Systems) ======
+  # Starlark rules define build targets
+  - concept: build_rule
+    symbol_kind: "^rule$"
+    language: "^starlark$"
+
+  # Starlark macros generate build rules
+  - concept: build_macro
+    symbol_kind: "^macro$"
+    language: "^starlark$"
+
+  # Starlark functions are helpers
+  - concept: build_helper
+    symbol_kind: "^function$"
+    language: "^starlark$"
+
+linkers: []
