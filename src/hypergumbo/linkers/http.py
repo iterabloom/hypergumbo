@@ -440,17 +440,15 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             # Try concept metadata first (FRAMEWORK_PATTERNS phase)
             concept_path, concept_method = _get_route_info_from_concept(route)
 
-            # Fall back to legacy meta if no concept
+            # Extract route info from concept metadata (preferred) or legacy meta fields
+            # No fallback to stable_id - if http_method is missing, route matching
+            # should fail visibly rather than using a semantic hash as HTTP method.
             if concept_path:
                 route_path = concept_path
                 route_method = concept_method
             else:
                 route_path = route.meta.get("route_path", "") if route.meta else ""
-                route_method = (
-                    route.meta.get("http_method", route.stable_id)
-                    if route.meta
-                    else route.stable_id
-                )
+                route_method = route.meta.get("http_method", "") if route.meta else ""
 
             # Must match HTTP method
             if route_method and route_method.upper() != call.method.upper():
