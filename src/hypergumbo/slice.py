@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
+from .paths import normalize_path, path_ends_with, get_filename
 from .ranking import compute_centrality, apply_tier_weights
 
 
@@ -211,14 +212,10 @@ def find_entry_nodes(
     # Try path suffix match (handles relative paths like "src/main.go")
     # Only if entry_spec looks like a path (contains / or \)
     if "/" in entry_spec or "\\" in entry_spec:
-        # Normalize to forward slashes for comparison
-        normalized_spec = entry_spec.replace("\\", "/")
-        # Ensure we match at a directory boundary (not partial filename)
-        suffix_to_match = "/" + normalized_spec.lstrip("/")
+        normalized_spec = normalize_path(entry_spec)
         suffix_matches = [
             n for n in nodes
-            if n.path.replace("\\", "/").endswith(suffix_to_match)
-            or n.path.replace("\\", "/") == normalized_spec
+            if path_ends_with(n.path, normalized_spec)
         ]
         if suffix_matches:
             return suffix_matches
@@ -244,7 +241,7 @@ def _is_test_file(path: str) -> bool:
     - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
     - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
     """
-    filename = path.rsplit("/", 1)[-1] if "/" in path else path
+    filename = get_filename(path)
     filename_lower = filename.lower()
 
     # Test patterns with _test suffix (any language)
@@ -271,7 +268,8 @@ def _is_test_file(path: str) -> bool:
         return True
 
     # Directory patterns - test and mock directories
-    path_parts = path.replace("\\", "/").split("/")
+    normalized = normalize_path(path)
+    path_parts = normalized.split("/")
     test_dirs = {
         "tests", "test", "spec", "__tests__",  # Test directories
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
