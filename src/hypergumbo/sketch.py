@@ -2267,6 +2267,29 @@ def _format_language_stats(
     return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"  # pragma: no cover
 
 
+def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
+    """Count all non-excluded items (files and directories) at root level.
+
+    This shared helper ensures consistent item counts between
+    _format_structure_tree and _format_structure_tree_fallback.
+
+    Args:
+        repo_root: Repository root path.
+        excludes: Patterns to exclude.
+
+    Returns:
+        Number of non-excluded items at root level.
+    """
+    from fnmatch import fnmatch
+
+    count = 0
+    for item in repo_root.iterdir():
+        if any(fnmatch(item.name, pat) for pat in excludes):
+            continue
+        count += 1
+    return count
+
+
 def _format_structure_tree_fallback(
     repo_root: Path,
     excludes: list[str],
@@ -2358,7 +2381,10 @@ def _format_structure_tree_fallback(
     # Combine dirs and files, showing dirs first (max 10 total items)
     all_items = [(d, True) for d in dirs] + [(f, False) for f in root_files]
     shown_items = all_items[:10]
-    hidden_count = len(all_items) - len(shown_items)
+    # Calculate hidden count based on TOTAL non-excluded items (not just source/config files)
+    # This ensures consistency with _format_structure_tree which counts all items
+    total_root_items = _count_root_items(repo_root, excludes)
+    hidden_count = total_root_items - len(shown_items)
 
     # Directory type annotations for common directory names
     source_dirs = {"src", "lib", "source", "app", "pkg"}
@@ -5444,6 +5470,9 @@ def generate_sketch(
     # Note: max_tokens is always set (defaults to 4000 in CLI)
     # If budget is very small, return truncated base sketch
     if max_tokens <= base_tokens:
+        # Set token_budget before early return so Representativeness Table shows correct value
+        if stats_out is not None:
+            stats_out.token_budget = max_tokens
         prog.finish()
         return truncate_to_tokens(base_sketch, max_tokens)
 
