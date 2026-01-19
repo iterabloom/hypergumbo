@@ -5960,10 +5960,13 @@ class TestEnrichSymbolsWithUsageContexts:
             ],
         )
 
-        # Patch to load our test pattern
+        # Patch to load our test pattern (return None for other framework IDs like main-functions)
+        def mock_load(fw_id: str):
+            return pattern_def if fw_id == "test-django" else None
+
         with patch(
             "hypergumbo.framework_patterns.load_framework_patterns",
-            return_value=pattern_def,
+            side_effect=mock_load,
         ):
             enriched = enrich_symbols(
                 [symbol],
@@ -6129,3 +6132,209 @@ class TestEnrichSymbolsWithUsageContexts:
         assert "concepts" in enriched[0].meta
         assert enriched[0].meta["route_path"] == "/users/"
         assert enriched[0].meta["http_method"] == "GET"
+
+
+class TestMainFunctionPatterns:
+    """Tests for language-level main() function pattern detection (ADR-0003 v1.2.x)."""
+
+    def test_main_function_pattern_match_go(self) -> None:
+        """Pattern matches Go main function."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^go$",
+        )
+        symbol = Symbol(
+            id="go:main.go:1-10:main:function",
+            name="main",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "main_function"
+        assert result["matched_symbol_name"] == "main"
+        assert result["matched_symbol_kind"] == "function"
+
+    def test_main_function_pattern_no_match_wrong_name(self) -> None:
+        """Pattern does not match function with wrong name."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^go$",
+        )
+        symbol = Symbol(
+            id="go:helper.go:1-10:helper:function",
+            name="helper",
+            kind="function",
+            language="go",
+            path="helper.go",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        assert pattern.matches(symbol) is None
+
+    def test_main_function_pattern_no_match_wrong_kind(self) -> None:
+        """Pattern does not match symbol with wrong kind."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^go$",
+        )
+        symbol = Symbol(
+            id="go:main.go:1-10:main:variable",
+            name="main",
+            kind="variable",  # Wrong kind
+            language="go",
+            path="main.go",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        assert pattern.matches(symbol) is None
+
+    def test_main_function_pattern_no_match_wrong_language(self) -> None:
+        """Pattern does not match symbol with wrong language."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^go$",
+        )
+        symbol = Symbol(
+            id="python:main.py:1-10:main:function",
+            name="main",
+            kind="function",
+            language="python",  # Wrong language for Go pattern
+            path="main.py",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        assert pattern.matches(symbol) is None
+
+    def test_main_function_pattern_match_python(self) -> None:
+        """Pattern matches Python main function."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^python$",
+        )
+        symbol = Symbol(
+            id="python:app.py:10-20:main:function",
+            name="main",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(10, 20, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "main_function"
+
+    def test_main_function_pattern_match_java(self) -> None:
+        """Pattern matches Java main method."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^method$",
+            language="^java$",
+        )
+        symbol = Symbol(
+            id="java:Main.java:5-15:main:method",
+            name="main",
+            kind="method",
+            language="java",
+            path="Main.java",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "main_function"
+
+    def test_main_functions_yaml_loads(self) -> None:
+        """main-functions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("main-functions")
+        assert pattern_def is not None
+        assert pattern_def.id == "main-functions"
+        assert pattern_def.language == "multi"
+        assert len(pattern_def.patterns) >= 10  # Go, Java, Python, C, C++, Rust, etc.
+
+    def test_enrich_symbols_with_main_function(self) -> None:
+        """enrich_symbols enriches Go main function with main_function concept."""
+        symbol = Symbol(
+            id="go:main.go:1-10:main:function",
+            name="main",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        # Use real main-functions patterns (no mock)
+        enriched = enrich_symbols([symbol], set())  # No frameworks detected
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_symbol_name_only_pattern(self) -> None:
+        """Pattern with only symbol_name (no symbol_kind or language) matches."""
+        pattern = Pattern(
+            concept="test",
+            symbol_name="^foo$",
+        )
+        symbol = Symbol(
+            id="test:file.py:1-5:foo:function",
+            name="foo",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test"
+        assert result["matched_symbol_name"] == "foo"
+
+    def test_language_filter_without_other_conditions(self) -> None:
+        """Language filter can be used with decorator patterns."""
+        pattern = Pattern(
+            concept="test",
+            decorator="^app\\.get$",
+            language="^python$",
+        )
+        symbol_python = Symbol(
+            id="python:app.py:1-5:handler:function",
+            name="handler",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 5, 0, 50),
+            meta={"decorators": [{"name": "app.get", "args": ["/test"]}]},
+        )
+        symbol_js = Symbol(
+            id="js:app.js:1-5:handler:function",
+            name="handler",
+            kind="function",
+            language="javascript",
+            path="app.js",
+            span=Span(1, 5, 0, 50),
+            meta={"decorators": [{"name": "app.get", "args": ["/test"]}]},
+        )
+        # Python symbol matches
+        assert pattern.matches(symbol_python) is not None
+        # JavaScript symbol does not match (wrong language)
+        assert pattern.matches(symbol_js) is None

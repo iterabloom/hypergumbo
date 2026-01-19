@@ -119,6 +119,11 @@ class Pattern:
     - parent_base_class: Match methods whose parent class extends a specific base
     - method_name: Match methods by name (the last part of qualified name)
 
+    Language convention patterns (v1.2.x):
+    - symbol_name: Match symbol name directly (for main() detection, etc.)
+    - language: Filter by symbol's language (AND'd with other conditions)
+    When symbol_name + symbol_kind are both specified, they're AND'd together.
+
     Usage-based patterns (v1.1.x):
     - usage: UsagePatternSpec to match against UsageContext records
     - extract: Dict of extraction expressions for extracting values from metadata
@@ -129,6 +134,8 @@ class Pattern:
         base_class: Regex pattern to match against base class names
         parent_base_class: Regex pattern to match parent class's base classes (for methods)
         method_name: Regex pattern to match method name (last part of qualified name)
+        symbol_name: Regex pattern to match symbol name directly
+        language: Regex pattern to filter by symbol's language
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types
         symbol_kind: Regex pattern to match against symbol kind field
@@ -143,6 +150,8 @@ class Pattern:
     base_class: str | None = None
     parent_base_class: str | None = None
     method_name: str | None = None
+    symbol_name: str | None = None
+    language: str | None = None
     annotation: str | None = None
     parameter_type: str | None = None
     symbol_kind: str | None = None
@@ -161,6 +170,10 @@ class Pattern:
         self._method_name_re = (
             re.compile(self.method_name) if self.method_name else None
         )
+        self._symbol_name_re = (
+            re.compile(self.symbol_name) if self.symbol_name else None
+        )
+        self._language_re = re.compile(self.language) if self.language else None
         self._annotation_re = re.compile(self.annotation) if self.annotation else None
         self._param_type_re = (
             re.compile(self.parameter_type) if self.parameter_type else None
@@ -179,6 +192,11 @@ class Pattern:
             Dict with extracted data if matched, None otherwise.
             The dict always includes 'concept' and may include 'path', 'method', etc.
         """
+        # Language filter: if specified, symbol's language must match (AND'd with other conditions)
+        if self._language_re:
+            if not symbol.language or not self._language_re.match(symbol.language):
+                return None
+
         # Get symbol metadata for matching
         decorators = symbol.meta.get("decorators", []) if symbol.meta else []
         base_classes = symbol.meta.get("base_classes", []) if symbol.meta else []
@@ -238,8 +256,31 @@ class Pattern:
                     result["matched_parameter_type"] = param_type
                     return result
 
-        # Try symbol kind match
-        if self._symbol_kind_re:
+        # Try symbol_name + symbol_kind combined match (for language conventions like main())
+        # When both are specified, both must match (AND semantics)
+        # When only symbol_name is specified, only it must match
+        if self._symbol_name_re:
+            # Check symbol_name (required)
+            if not self._symbol_name_re.match(symbol.name):
+                # symbol_name specified but doesn't match - don't match this pattern
+                pass  # Fall through to other pattern types
+            else:
+                # symbol_name matches
+                result["matched_symbol_name"] = symbol.name
+
+                # Check symbol_kind if also specified (AND condition)
+                if self._symbol_kind_re:
+                    if self._symbol_kind_re.match(symbol.kind):
+                        result["matched_symbol_kind"] = symbol.kind
+                        return result
+                    # symbol_kind specified but doesn't match
+                    # Don't match this pattern
+                else:
+                    # Only symbol_name specified, and it matches
+                    return result
+
+        # Try symbol_kind match (alone, without symbol_name or parent_base_class/method_name)
+        if self._symbol_kind_re and not self._symbol_name_re and not self._parent_base_class_re and not self._method_name_re:
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
                 return result
@@ -577,6 +618,8 @@ class FrameworkPatternDef:
                 base_class=p.get("base_class"),
                 parent_base_class=p.get("parent_base_class"),
                 method_name=p.get("method_name"),
+                symbol_name=p.get("symbol_name"),
+                language=p.get("language"),
                 annotation=p.get("annotation"),
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),
@@ -687,9 +730,10 @@ def enrich_symbols(
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
 
-    Two-phase enrichment (v1.1.x):
-    1. Definition-based: Match against decorators, base classes, annotations
-    2. Usage-based: Match against UsageContext records for call-based frameworks
+    Three-phase enrichment (v1.2.x):
+    1. Language conventions: Match main() functions and other language-level patterns
+    2. Definition-based: Match against decorators, base classes, annotations
+    3. Usage-based: Match against UsageContext records for call-based frameworks
 
     Args:
         symbols: Symbols to enrich
@@ -707,7 +751,13 @@ def enrich_symbols(
         if pattern_def:
             pattern_defs.append(pattern_def)
 
-    if not pattern_defs:
+    # Always load language convention patterns (main-functions.yaml)
+    # These are applied regardless of framework detection
+    main_patterns = load_framework_patterns("main-functions")
+    if main_patterns:
+        pattern_defs.append(main_patterns)
+
+    if not pattern_defs:  # pragma: no cover - main-functions.yaml is always loaded
         return symbols
 
     # Build symbol lookup by ID for usage-based matching

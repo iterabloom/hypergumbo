@@ -43,10 +43,12 @@ Entry Matching
 The entrypoint spec is matched flexibly:
 1. Exact node ID match (most specific)
 2. Exact file path match (all symbols in that file)
-3. Exact symbol name match
-4. Partial name match (contains)
+3. Path suffix match (relative paths match absolute paths ending with same suffix)
+4. Exact symbol name match
+5. Partial name match (contains)
 
 This lets users say `--entry login` and find `user_login`, `login_handler`, etc.
+Path suffix matching enables `--entry src/main.go` to match `/home/user/repo/src/main.go`.
 """
 from __future__ import annotations
 
@@ -180,8 +182,9 @@ def find_entry_nodes(
     Matching rules (in order of priority):
     1. Exact match on node ID
     2. Exact match on file path
-    3. Exact match on symbol name
-    4. Partial match (contains) on symbol name
+    3. Path suffix match (relative path matches absolute path ending with suffix)
+    4. Exact match on symbol name
+    5. Partial match (contains) on symbol name
 
     Args:
         nodes: All available nodes.
@@ -204,6 +207,21 @@ def find_entry_nodes(
     exact_path_matches = [n for n in nodes if n.path == entry_spec]
     if exact_path_matches:
         return exact_path_matches
+
+    # Try path suffix match (handles relative paths like "src/main.go")
+    # Only if entry_spec looks like a path (contains / or \)
+    if "/" in entry_spec or "\\" in entry_spec:
+        # Normalize to forward slashes for comparison
+        normalized_spec = entry_spec.replace("\\", "/")
+        # Ensure we match at a directory boundary (not partial filename)
+        suffix_to_match = "/" + normalized_spec.lstrip("/")
+        suffix_matches = [
+            n for n in nodes
+            if n.path.replace("\\", "/").endswith(suffix_to_match)
+            or n.path.replace("\\", "/") == normalized_spec
+        ]
+        if suffix_matches:
+            return suffix_matches
 
     # Try exact name match
     exact_name_matches = [n for n in nodes if n.name == entry_spec]

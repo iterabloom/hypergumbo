@@ -1,0 +1,87 @@
+# Language-level main() function detection (ADR-0003 v1.2.x)
+#
+# Detects idiomatic entry point functions across languages:
+# - Go: func main() in package main
+# - Java: public static void main(String[] args)
+# - Python: main() function (often called from if __name__ == "__main__")
+# - C/C++: int main(...)
+# - Rust: fn main()
+# - C#: static void Main(...)
+# - Kotlin: fun main(...)
+# - Swift: main function
+# - Dart: main function
+#
+# These are language conventions, not framework patterns. The patterns use
+# symbol_name + symbol_kind + language filters to identify main entry points.
+#
+# Note: Lower confidence (implicit via entrypoints.py handling) than framework
+# patterns because:
+# - A repo might have many main() functions (one per service)
+# - main() is sometimes not the "interesting" entry point
+# - Framework routes/handlers are often more relevant
+
+id: main-functions
+language: multi
+
+patterns:
+  # Go: func main() - must be in package main (detected by presence)
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^go$"
+
+  # Java: main method (could be main or Main depending on convention)
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^method$"
+    language: "^java$"
+
+  # Kotlin: main function
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^kotlin$"
+
+  # Python: main() function (often called from if __name__ == "__main__")
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^python$"
+
+  # C: int main(...)
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^c$"
+
+  # C++: int main(...)
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^cpp$"
+
+  # Rust: fn main()
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^rust$"
+
+  # C#: static void Main(...) - often capitalized
+  - concept: main_function
+    symbol_name: "^Main$"
+    symbol_kind: "^method$"
+    language: "^csharp$"
+
+  # Swift: main function (or @main entry point)
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^swift$"
+
+  # Dart: main function
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^dart$"
+
+linkers: []

@@ -92,6 +92,44 @@ class TestFindEntryNodes:
         assert len(matches) == 1
         assert matches[0].id == sym_a.id
 
+    def test_find_by_path_suffix(self) -> None:
+        """Match entry by path suffix (relative path matches absolute)."""
+        # Nodes have absolute paths as stored in behavior map
+        sym_a = make_symbol("func_a", path="/home/user/repo/src/auth.py")
+        sym_b = make_symbol("func_b", path="/home/user/repo/src/db.py")
+        nodes = [sym_a, sym_b]
+
+        # User provides relative path
+        matches = find_entry_nodes(nodes, "src/auth.py")
+
+        assert len(matches) == 1
+        assert matches[0].id == sym_a.id
+
+    def test_find_by_path_suffix_nested(self) -> None:
+        """Path suffix matching works for nested paths."""
+        sym_a = make_symbol("main", path="/home/user/project/src/frontend/main.go")
+        sym_b = make_symbol("main", path="/home/user/project/src/backend/main.go")
+        nodes = [sym_a, sym_b]
+
+        # Match specific nested path
+        matches = find_entry_nodes(nodes, "frontend/main.go")
+
+        assert len(matches) == 1
+        assert matches[0].id == sym_a.id
+
+    def test_find_by_path_suffix_no_partial_filename(self) -> None:
+        """Path suffix must match at directory boundary, not partial filename."""
+        sym_a = make_symbol("handler", path="/home/user/repo/src/auth.py")
+        sym_b = make_symbol("handler", path="/home/user/repo/src/unauth.py")
+        nodes = [sym_a, sym_b]
+
+        # "auth.py" should only match auth.py, not unauth.py
+        matches = find_entry_nodes(nodes, "src/auth.py")
+
+        assert len(matches) == 1
+        assert "auth.py" in matches[0].path
+        assert "unauth.py" not in matches[0].path
+
     def test_find_by_node_id(self) -> None:
         """Match entry by exact node ID."""
         sym_a = make_symbol("login", path="src/auth.py", start_line=10, end_line=20)

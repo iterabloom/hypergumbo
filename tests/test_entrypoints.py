@@ -912,6 +912,71 @@ class TestSemanticEntryDetection:
         # Both concepts map to CONTROLLER, but only one entry is created
         assert len(ctrl_eps) == 1
 
+    def test_detect_main_function_concept(self) -> None:
+        """Detect main_function concept from language convention patterns."""
+        sym = make_symbol(
+            "main",
+            kind="function",
+            path="main.go",
+            language="go",
+            meta={
+                "concepts": [
+                    {"concept": "main_function", "framework": "main-functions"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert len(entrypoints) == 1
+        assert entrypoints[0].kind == EntrypointKind.MAIN_FUNCTION
+        assert entrypoints[0].confidence == 0.80  # Lower than framework patterns
+        assert "Go main()" in entrypoints[0].label
+
+    def test_main_function_without_language_uses_unknown(self) -> None:
+        """main_function entrypoint uses 'Unknown' when language is not set."""
+        sym = Symbol(
+            id="test:main.txt:1-10:main:function",
+            name="main",
+            kind="function",
+            language="",  # Empty language
+            path="main.txt",
+            span=Span(1, 10, 0, 100),
+            meta={
+                "concepts": [
+                    {"concept": "main_function", "framework": "main-functions"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert len(entrypoints) == 1
+        assert "Unknown main()" in entrypoints[0].label
+
+    def test_duplicate_main_function_concepts_deduplicated(self) -> None:
+        """Multiple main_function concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "main",
+            kind="function",
+            path="main.py",
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "main_function", "framework": "main-functions"},
+                    {"concept": "main_function", "framework": "main-functions"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(main_eps) == 1
+
 
 class TestConnectivityBasedRanking:
     """Tests for connectivity-based entrypoint ranking."""

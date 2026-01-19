@@ -10,6 +10,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **YAML-based main() function detection (ADR-0003 v1.2.x):** Language-level main() entry points
+  are now detected via data-driven YAML patterns in `main-functions.yaml`, not hardcoded logic.
+  Supports Go, Java, Python, C, C++, Rust, C#, Kotlin, Swift, and Dart. Detected main functions
+  appear in the entrypoints list with confidence 0.80 (lower than framework patterns at 0.95).
+- **Pattern system: `symbol_name` and `language` fields:** Extended the Pattern class to support
+  matching symbols by name (regex) and filtering by language. Enables language-convention patterns
+  like main() detection that need to match by name+kind+language, not just decorators or base classes.
+- **Slice path suffix matching:** The `--entry` flag now supports relative paths that match as
+  suffixes of absolute paths. For example, `--entry src/main.go` will match a symbol with path
+  `/home/user/repo/src/main.go`. Previously required exact path match.
 - **Auto-run analysis for query commands:** Commands `search`, `routes`, `explain`, `symbols`,
   `test-coverage`, and `slice` now automatically run `hypergumbo run` if no cached results exist.
   Previously these commands failed with "Run 'hypergumbo run' first" - now they seamlessly generate

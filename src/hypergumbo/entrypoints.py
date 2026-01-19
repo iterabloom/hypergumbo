@@ -56,6 +56,8 @@ class EntrypointKind(Enum):
     HTTP_ROUTE = "http_route"
     CLI_MAIN = "cli_main"
     CLI_COMMAND = "cli_command"
+    # Language-level main() entry points (detected via YAML patterns)
+    MAIN_FUNCTION = "main_function"
     ELECTRON_MAIN = "electron_main"
     ELECTRON_PRELOAD = "electron_preload"
     ELECTRON_RENDERER = "electron_renderer"
@@ -122,17 +124,17 @@ class Entrypoint:
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
-    ADR-0003 v0.9.x introduces semantic entry detection: the FRAMEWORK_PATTERNS
-    phase enriches symbols with concept metadata (meta.concepts) based on
-    decorator/pattern matching. This function checks for entrypoint-worthy
-    concepts like "route", "task", "controller", "websocket_handler".
+    ADR-0003 introduces semantic entry detection: the FRAMEWORK_PATTERNS phase
+    enriches symbols with concept metadata (meta.concepts) based on YAML pattern
+    matching. This function checks for entrypoint-worthy concepts and maps them
+    to EntrypointKind values.
 
     Benefits:
-    - Higher confidence (0.95) since based on actual decorator/pattern matching
+    - YAML-driven: All detection is data-driven, not hardcoded
     - Eliminates false positives (e.g., React Router files won't have route concepts)
     - Framework-aware detection (concepts include framework info)
 
-    Detected concepts:
+    Detected concepts (framework patterns, confidence=0.95):
     - "route" -> HTTP_ROUTE (HTTP endpoint handler)
     - "controller" -> CONTROLLER (request handler class/method)
     - "task" -> BACKGROUND_TASK (async/background job)
@@ -145,6 +147,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
     - "graphql_schema" -> GRAPHQL_SERVER (GraphQL schema definition)
     - "lifecycle_hook" -> ANDROID_ACTIVITY/ANDROID_APPLICATION/CONTROLLER (Android lifecycle)
+
+    Detected concepts (language conventions, confidence=0.80):
+    - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
 
     Args:
         symbols: All symbols with potential concept metadata.
@@ -369,6 +374,21 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     ))
                     added_kinds.add(EntrypointKind.CONTROLLER)
 
+            # Language-level main() function concept -> MAIN_FUNCTION
+            # (ADR-0003 v1.2.x - YAML-based language convention patterns)
+            elif concept_type == "main_function":
+                if EntrypointKind.MAIN_FUNCTION in added_kinds:
+                    continue
+                # Derive label from symbol's language
+                lang = sym.language.title() if sym.language else "Unknown"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MAIN_FUNCTION,
+                    confidence=0.80,  # Lower than framework patterns
+                    label=f"{lang} main()",
+                ))
+                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
     return entrypoints
 
 
@@ -376,24 +396,34 @@ def detect_entrypoints(
     nodes: List[Symbol],
     edges: List[Edge],
 ) -> List[Entrypoint]:
-    """Detect entrypoints in the codebase using YAML-driven pattern matching.
+    """Detect entrypoints in the codebase using semantic detection.
 
-    Uses semantic detection from concept metadata enriched by YAML framework
-    patterns (ADR-0003). Supports both definition-based patterns (decorators,
-    base classes, annotations) and usage-based patterns (UsageContext for
-    call-based frameworks like Django, Express, Rails).
+    Detection sources (ADR-0003 v1.2.x):
+    1. Framework patterns (HTTP routes, CLI commands, controllers, etc.)
+       - Highest confidence (0.95)
+       - Detected via YAML patterns matching decorators, base classes, etc.
+    2. Language conventions (main() functions)
+       - Lower confidence (0.80) - may have many in a repo
+       - Detected via YAML patterns matching symbol name + kind + language
+
+    All detection is now YAML-driven via framework_patterns.py. Symbols are
+    enriched with concept metadata during the FRAMEWORK_PATTERNS phase, and
+    this function maps those concepts to entrypoint kinds.
 
     Args:
-        nodes: All symbols in the codebase.
-        edges: All edges (reserved for future use).
+        nodes: All symbols in the codebase (with concept metadata from enrichment).
+        edges: All edges (used for connectivity boost).
 
     Returns:
         List of detected entrypoints with confidence scores.
     """
     # Semantic detection from concept metadata (YAML patterns)
+    # This includes both framework patterns (routes, commands) and
+    # language conventions (main functions)
     entrypoints = _detect_from_concepts(nodes)
 
-    # Remove duplicates (same symbol detected by multiple patterns)
+    # Remove duplicates (same symbol detected by multiple strategies)
+    # Keep the first (highest confidence) entry for each symbol
     seen_ids: set[str] = set()
     unique_entrypoints: List[Entrypoint] = []
     for ep in entrypoints:
