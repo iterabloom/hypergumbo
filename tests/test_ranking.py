@@ -822,9 +822,10 @@ class TestComputeSymbolMentionCentralityBatch:
     """Tests for compute_symbol_mention_centrality_batch function."""
 
     def test_empty_files(self):
-        """Returns empty dict for empty file list."""
+        """Returns empty results for empty file list."""
         result = compute_symbol_mention_centrality_batch([], [], {})
-        assert result == {}
+        assert result.normalized_scores == {}
+        assert result.symbols_per_file == {}
 
     def test_empty_symbols(self, tmp_path):
         """Returns zeros when no symbols provided."""
@@ -832,7 +833,8 @@ class TestComputeSymbolMentionCentralityBatch:
         f.write_text("Hello world")
 
         result = compute_symbol_mention_centrality_batch([f], [], {})
-        assert result[f] == 0.0
+        assert result.normalized_scores[f] == 0.0
+        assert result.symbols_per_file[f] == set()
 
     def test_no_eligible_symbols(self, tmp_path):
         """Returns zeros when no symbols meet in-degree threshold."""
@@ -844,7 +846,7 @@ class TestComputeSymbolMentionCentralityBatch:
         result = compute_symbol_mention_centrality_batch(
             [f], [foo], {foo.id: 1}, min_in_degree=2
         )
-        assert result[f] == 0.0
+        assert result.normalized_scores[f] == 0.0
 
     def test_matches_single_file(self, tmp_path):
         """Computes centrality for single file with matches."""
@@ -860,7 +862,8 @@ class TestComputeSymbolMentionCentralityBatch:
         )
 
         # (3 + 5) / 24 chars
-        assert result[f] == pytest.approx(8 / 24)
+        assert result.normalized_scores[f] == pytest.approx(8 / 24)
+        assert result.symbols_per_file[f] == {"foo", "bar"}
 
     def test_matches_multiple_files(self, tmp_path):
         """Computes centrality for multiple files."""
@@ -881,9 +884,12 @@ class TestComputeSymbolMentionCentralityBatch:
             [f1, f2, f3], [foo, bar], in_degree, min_in_degree=2
         )
 
-        assert result[f1] == pytest.approx(3 / 7)  # "Use foo" is 7 chars
-        assert result[f2] == pytest.approx(5 / 7)  # "Use bar" is 7 chars
-        assert result[f3] == 0.0
+        assert result.normalized_scores[f1] == pytest.approx(3 / 7)  # "Use foo" is 7 chars
+        assert result.normalized_scores[f2] == pytest.approx(5 / 7)  # "Use bar" is 7 chars
+        assert result.normalized_scores[f3] == 0.0
+        assert result.symbols_per_file[f1] == {"foo"}
+        assert result.symbols_per_file[f2] == {"bar"}
+        assert result.symbols_per_file[f3] == set()
 
     def test_max_file_size_filter(self, tmp_path):
         """Skips files exceeding max size."""
@@ -898,7 +904,7 @@ class TestComputeSymbolMentionCentralityBatch:
             [f], [foo], in_degree, min_in_degree=2, max_file_size=100
         )
 
-        assert result[f] == 0.0
+        assert result.normalized_scores[f] == 0.0
 
     def test_progress_callback(self, tmp_path):
         """Progress callback is called during processing."""
@@ -935,7 +941,7 @@ class TestComputeSymbolMentionCentralityBatch:
             [f], [foo], {foo.id: 5}, min_in_degree=2
         )
 
-        assert result[f] == 0.0
+        assert result.normalized_scores[f] == 0.0
 
     def test_many_files_uses_batch_optimization(self, tmp_path):
         """With more than 5 files, uses optimized batch processing."""
@@ -957,13 +963,13 @@ class TestComputeSymbolMentionCentralityBatch:
         )
 
         # Should have computed scores for all files
-        assert len(result) == 10
+        assert len(result.normalized_scores) == 10
         # Even-numbered files should have non-zero scores
         for i in range(0, 10, 2):
-            assert result[files[i]] > 0
+            assert result.normalized_scores[files[i]] > 0
         # Odd-numbered files should have zero scores
         for i in range(1, 10, 2):
-            assert result[files[i]] == 0.0
+            assert result.normalized_scores[files[i]] == 0.0
 
     def test_many_files_with_progress_callback(self, tmp_path):
         """Progress callback called during batch processing."""
@@ -1014,13 +1020,13 @@ class TestComputeSymbolMentionCentralityBatch:
         )
 
         # All files should be in results
-        assert len(result) == 10
+        assert len(result.normalized_scores) == 10
         # Small files (0-4) should have scores
         for i in range(5):
-            assert result[files[i]] > 0
+            assert result.normalized_scores[files[i]] > 0
         # Large files (5-9) should have zero
         for i in range(5, 10):
-            assert result[files[i]] == 0.0
+            assert result.normalized_scores[files[i]] == 0.0
 
 
 class TestIsRipgrepAvailable:
@@ -1053,15 +1059,17 @@ class TestComputeCentralityWithPython:
             progress_callback=None
         )
 
-        assert result[f] == pytest.approx(5 / 16)  # "Use foo function" is 16 chars
+        assert result.normalized_scores[f] == pytest.approx(5 / 16)  # "Use foo function" is 16 chars
+        assert result.symbols_per_file[f] == {"foo"}
 
     def test_empty_files(self):
-        """Returns empty dict for no files."""
+        """Returns empty results for no files."""
         result = _compute_centrality_with_python(
             [], {"foo": 5}, max_file_size=100 * 1024,
             progress_callback=None
         )
-        assert result == {}
+        assert result.normalized_scores == {}
+        assert result.symbols_per_file == {}
 
     def test_progress_callback_called(self, tmp_path):
         """Progress callback is invoked."""
@@ -1075,3 +1083,86 @@ class TestComputeCentralityWithPython:
         )
 
         assert len(calls) >= 2  # At least start (0, 1) and end (1, 1)
+
+
+class TestCentralityResultDeduplication:
+    """Tests for de-duplicated in-degree calculation from CentralityResult."""
+
+    def test_same_symbol_in_multiple_files_counted_once(self, tmp_path):
+        """When same symbol is mentioned in multiple files, in-degree counted once."""
+        f1 = tmp_path / "readme.md"
+        f1.write_text("Use foo for processing")
+
+        f2 = tmp_path / "contributing.md"
+        f2.write_text("The foo function does X")
+
+        foo = make_symbol("foo")
+        in_degree = {foo.id: 10}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f1, f2], [foo], in_degree, min_in_degree=2
+        )
+
+        # Both files mention foo
+        assert result.symbols_per_file[f1] == {"foo"}
+        assert result.symbols_per_file[f2] == {"foo"}
+        # name_to_in_degree should have foo's in-degree
+        assert result.name_to_in_degree["foo"] == 10
+
+        # When computing de-duplicated total for both files,
+        # foo should only be counted once (10), not twice (20)
+        unique_symbols = set()
+        for f in [f1, f2]:
+            unique_symbols.update(result.symbols_per_file.get(f, set()))
+        total_in_degree = sum(
+            result.name_to_in_degree.get(sym, 0) for sym in unique_symbols
+        )
+        assert total_in_degree == 10  # Not 20
+
+    def test_different_symbols_summed(self, tmp_path):
+        """Different symbols across files have their in-degrees summed."""
+        f1 = tmp_path / "readme.md"
+        f1.write_text("Use foo for processing")
+
+        f2 = tmp_path / "contributing.md"
+        f2.write_text("The bar function does Y")
+
+        foo = make_symbol("foo")
+        bar = make_symbol("bar")
+        in_degree = {foo.id: 5, bar.id: 8}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f1, f2], [foo, bar], in_degree, min_in_degree=2
+        )
+
+        # Each file mentions different symbol
+        assert result.symbols_per_file[f1] == {"foo"}
+        assert result.symbols_per_file[f2] == {"bar"}
+
+        # De-duplicated total should be sum of both
+        unique_symbols = set()
+        for f in [f1, f2]:
+            unique_symbols.update(result.symbols_per_file.get(f, set()))
+        total_in_degree = sum(
+            result.name_to_in_degree.get(sym, 0) for sym in unique_symbols
+        )
+        assert total_in_degree == 13  # 5 + 8
+
+    def test_same_name_multiple_symbols_summed(self, tmp_path):
+        """Multiple symbols with same name have their in-degrees summed."""
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo for processing")
+
+        # Two symbols with same name (e.g., foo in different modules)
+        foo1 = make_symbol("foo", path="module1.py")
+        foo2 = make_symbol("foo", path="module2.py")
+        in_degree = {foo1.id: 3, foo2.id: 7}
+
+        result = compute_symbol_mention_centrality_batch(
+            [f], [foo1, foo2], in_degree, min_in_degree=2
+        )
+
+        # When doc mentions "foo", it documents both foo symbols
+        # So name_to_in_degree["foo"] should be sum of both
+        assert result.name_to_in_degree["foo"] == 10  # 3 + 7
+        assert result.symbols_per_file[f] == {"foo"}

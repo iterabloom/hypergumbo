@@ -3858,7 +3858,7 @@ def _format_additional_files(
     exclude_tests: bool = False,
     token_budget: int | None = None,
     include_content: bool = False,
-) -> tuple[str, list[Path], float]:
+) -> tuple[str, list[Path], int]:
     """Format additional files (non-source) as a Markdown section.
 
     Uses a README-first hybrid ordering approach:
@@ -3882,16 +3882,17 @@ def _format_additional_files(
             Called with (current, total) for each file scored.
         cached_centrality_scores: Optional pre-computed centrality scores from
             run_behavior_map(). Maps relative path strings to scores. When
-            provided, skips the expensive centrality computation in Phase 2.
+            provided, uses these for RANKING (efficiency). Centrality is always
+            recomputed to get per-file symbol data for accurate representativeness.
         exclude_tests: Whether tests are excluded (for section header).
         token_budget: Optional token budget for content. Required if include_content=True.
         include_content: If True, include file contents with dynamic truncation.
 
     Returns:
         Tuple of (Markdown formatted section, list of selected file paths,
-        mention centrality sum). The mention centrality sum represents how much
-        symbol connectivity is covered by the selected documentation files
-        (based on symbol name mentions weighted by in-degree).
+        de-duplicated in-degree sum). The in-degree sum represents how much
+        symbol connectivity is covered by the selected documentation files,
+        counting each unique symbol only once across all selected files.
     """
     from fnmatch import fnmatch
     from statistics import median
@@ -3988,20 +3989,26 @@ def _format_additional_files(
         similarity_ranked = [f for f, _ in file_scores]
 
     # Build centrality rankings
+    # Compute centrality to get per-file symbol data for accurate representativeness
+    centrality_result = compute_symbol_mention_centrality_batch(
+        files=candidate_files,
+        symbols=symbols,
+        in_degree=in_degree,
+        min_in_degree=2,
+        max_file_size=100 * 1024,
+        progress_callback=centrality_progress_callback,
+    )
+    symbols_per_file = centrality_result.symbols_per_file
+    name_to_in_degree = centrality_result.name_to_in_degree
+
+    # For RANKING: use cached scores if available (efficiency), else use computed scores
     if cached_centrality_scores is not None:
         centrality_scores: dict[Path, float] = {}
         for f in candidate_files:
             rel_str = str(f.relative_to(repo_root))
             centrality_scores[f] = cached_centrality_scores.get(rel_str, 0.0)
     else:
-        centrality_scores = compute_symbol_mention_centrality_batch(
-            files=candidate_files,
-            symbols=symbols,
-            in_degree=in_degree,
-            min_in_degree=2,
-            max_file_size=100 * 1024,
-            progress_callback=centrality_progress_callback,
-        )
+        centrality_scores = centrality_result.normalized_scores
 
     centrality_ranked = sorted(
         candidate_files,
@@ -4073,9 +4080,15 @@ def _format_additional_files(
 
     # ========== Format Output ==========
 
-    # Calculate mention centrality sum for selected files
-    # This measures how much symbol connectivity is covered by doc files
-    selected_centrality = sum(centrality_scores.get(f, 0.0) for f in selected_files)
+    # Calculate accurate de-duplicated in-degree for representativeness:
+    # 1. Collect unique symbols mentioned across ALL selected files
+    # 2. Sum in-degrees for those unique symbols (no double-counting)
+    unique_symbols_in_selected: set[str] = set()
+    for f in selected_files:
+        unique_symbols_in_selected.update(symbols_per_file.get(f, set()))
+    selected_in_degree = sum(
+        name_to_in_degree.get(sym, 0) for sym in unique_symbols_in_selected
+    )
 
     if not include_content or token_budget is None:
         # Simple list format (backward compatible)
@@ -4088,7 +4101,7 @@ def _format_additional_files(
         if remaining > 0:
             lines.append(f"- ... and {remaining} more files")
 
-        return "\n".join(lines), selected_files, selected_centrality
+        return "\n".join(lines), selected_files, selected_in_degree
 
     # ========== Content Mode with Dynamic Truncation ==========
 
@@ -4160,9 +4173,14 @@ def _format_additional_files(
         except (OSError, IOError):  # pragma: no cover
             continue
 
-    # Recalculate centrality for included files (may differ from selected due to budget)
-    included_centrality = sum(centrality_scores.get(f, 0.0) for f in included_files)
-    return "\n".join(lines), included_files, included_centrality
+    # Recalculate de-duplicated in-degree for included files (may differ from selected due to budget)
+    unique_symbols_in_included: set[str] = set()
+    for f in included_files:
+        unique_symbols_in_included.update(symbols_per_file.get(f, set()))
+    included_in_degree = sum(
+        name_to_in_degree.get(sym, 0) for sym in unique_symbols_in_included
+    )
+    return "\n".join(lines), included_files, included_in_degree
 
 
 # Test file patterns by language/framework
