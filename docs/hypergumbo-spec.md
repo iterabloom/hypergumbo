@@ -57,11 +57,16 @@ Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into
 * `-t N` limits output to approximately N tokens.
 * `--with-source` appends full source file contents after the sketch (ordered by symbol importance density, skips files under 5 LOC)
 
-🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens]`**
+🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x]`**
 Shows detailed info about a symbol (function, class, etc.) and its callers/callees.
-* `--with-source` shows source code for the symbol, callers, and callees
-* `-t N` limits source output to approximately N tokens
-* Module-level callers show only the single call line
+* `--with-source` shows source code for the symbol, callers, and callees:
+  - Symbol source shown first
+  - "Called by" list, then caller sources (ordered by in-degree descending)
+  - "Calls" list, then callee sources (ordered by in-degree descending)
+  - Module-level calls show only the single call line
+  - Deduplicates when same symbol appears as both caller and callee
+* `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
+* `-x` excludes callers/callees from test files
 
 🟩 **`hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
 Creates `.hypergumbo/` containing:
@@ -796,12 +801,12 @@ Markdown output to stdout (not a file). Designed for pasting into LLM chat inter
 | 5 | 🟩 Tests | Test file count, frameworks, coverage estimate |
 | 6 | 🟩 Configuration | Config file excerpts (heuristic + semantic) |
 | 7 | 🟩 Entry Points | CLI commands, HTTP routes |
-| 8 | ⬜ Data Models | ORM models, entities, core data structures |
+| 8 | 🟩 Data Models | ORM models, entities, core data structures |
 | 9 | 🟩 Source Files | File listing by importance density |
 | 10 | 🟩 Key Symbols | Functions, classes, types with centrality |
 | 11 | 🟩 Additional Files | README-first + hybrid round-robin |
 | 12 | 🟩 Source Content | Actual code (--with-source only) |
-| 13 | ⬜ Additional File Content | Code for semantic picks (--with-source only) |
+| 13 | 🟩 Additional File Content | Code for semantic picks (--with-source only) |
 
 **Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections. With `--with-source`, budget shifts from file listings to actual source code.
 
@@ -1571,7 +1576,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 ### Performance benchmarks
 * 🟩 Small repo (<100 files): <5 seconds end-to-end
 * 🟩 Medium repo (~500 files): <30 seconds
-* ⬜ Caching: second run on unchanged repo <2 seconds
+* 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
 ## 9.5) Error handling
 
