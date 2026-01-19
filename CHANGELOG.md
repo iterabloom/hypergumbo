@@ -112,6 +112,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Additional Files now uses mention centrality (how many high-connectivity symbols are mentioned
   in the documentation) instead of symbol definitions (which are always 0 for doc/config files).
   This gives a meaningful measure of how much of the codebase's important symbols are documented.
+- **`explain --with-source` output ordering:** Caller sources now appear immediately after the
+  "Called by" list, and callee sources after the "Calls" list (previously all sources were grouped
+  at the end). Budget pruning now correctly omits items one-at-a-time in priority order (module-level
+  first, then ascending in-degree) until the total fits, rather than greedy selection which could
+  skip important items due to size. Separate omission messages for callers vs callees.
 
 ### Changed
 - **Section header renames for clarity:**
