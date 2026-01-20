@@ -9,10 +9,6 @@ hypergumbo is a local-first CLI that generates behavior maps and sketches from s
 
 ```bash
 pip install hypergumbo
-
-# Optional but highly recommended: Install ripgrep for faster analysis. Hypergumbo uses ripgrep (if available) to accelerate symbol centrality computation during sketch generation. Without it, falls back to Python's regex (still parallelized).
-# Ubuntu/Debian
-sudo apt install ripgrep
 ```
 
 > Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.

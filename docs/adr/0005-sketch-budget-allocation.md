@@ -227,7 +227,7 @@ Two distinct centrality metrics exist:
 
 1. **Graph centrality** (used in Key Symbols): Derived from AST-based call graph and import relationships. Computed by tree-sitter parsing. Measures how "central" a symbol is based on what calls/imports it.
 
-2. **File mention centrality** (used in Additional Files): Counts how many other files textually reference symbols from each file. Computed via ripgrep, parallelized and cached.
+2. **File mention centrality** (used in Additional Files): Counts how many other files textually reference symbols from each file. Computed via parallelized Python regex with a combined alternation pattern.
 
 ## Consequences
 

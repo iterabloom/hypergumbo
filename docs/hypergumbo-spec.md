@@ -2110,6 +2110,10 @@ A multi-fidelity code understanding platform that produces typed IR and an agent
 
 *All of Spec B is future work. Pursue when there's clear demand for capabilities beyond Spec A.*
 
+### Potential Optimizations
+
+* **Ripgrep for centrality computation**: Symbol mention centrality currently uses parallelized Python regex. Ripgrep could provide ~3-10x speedup for very large repos (30k+ symbols), but symbol names containing special regex characters cause parsing errors. Would require sanitizing patterns or using literal matching mode. Not worth the complexity for the 0.1% of repos that would benefit.
+
 ## 1) Objectives
 
 * 🟪 **High-fidelity IR** — Typed call graphs via language servers (tsserver, pyright, gopls, rust-analyzer)

@@ -510,22 +510,6 @@ def compute_symbol_importance_density(
     return density_scores
 
 
-# Cache for ripgrep availability check
-_RIPGREP_AVAILABLE: bool | None = None
-
-
-def _is_ripgrep_available() -> bool:
-    """Check if ripgrep (rg) is available on the system.
-
-    Result is cached for performance.
-    """
-    global _RIPGREP_AVAILABLE
-    if _RIPGREP_AVAILABLE is None:
-        import shutil
-        _RIPGREP_AVAILABLE = shutil.which("rg") is not None
-    return _RIPGREP_AVAILABLE
-
-
 @dataclass
 class CentralityResult:
     """Result from symbol mention centrality computation.
@@ -553,8 +537,8 @@ def compute_symbol_mention_centrality_batch(
 ) -> CentralityResult:
     """Compute symbol mention centrality for multiple files efficiently.
 
-    Uses ripgrep when available for much faster searching (~10x speedup).
-    Falls back to Python regex when ripgrep is not installed.
+    Uses parallelized Python regex with a combined alternation pattern for
+    O(files) complexity instead of O(files * symbols).
 
     Args:
         files: List of file paths to scan.
@@ -599,195 +583,14 @@ def compute_symbol_mention_centrality_batch(
             name_to_in_degree=name_to_in_degree,
         )
 
-    # Try ripgrep for batch search
-    if _is_ripgrep_available() and len(files) > 5:
-        logger.debug(
-            "centrality: trying ripgrep (%d files, %d unique symbol names)",
-            len(files),
-            len(name_to_in_degree),
-        )
-        result = _compute_centrality_with_ripgrep(
-            files, name_to_in_degree, max_file_size, progress_callback
-        )
-        if result is not None:
-            logger.debug("centrality: ripgrep succeeded")
-            return result
-        logger.debug("centrality: ripgrep failed, using Python fallback")  # pragma: no cover
-    elif not _is_ripgrep_available():  # pragma: no cover
-        logger.debug("centrality: ripgrep not available, using Python fallback")
-    else:
-        logger.debug("centrality: too few files (%d), using Python directly", len(files))
-
-    # Fallback: Python regex (parallelized)
     logger.debug(
-        "centrality: Python fallback processing %d files with %d patterns",
+        "centrality: processing %d files with %d patterns",
         len(files),
         len(name_to_in_degree),
     )
     return _compute_centrality_with_python(
         files, name_to_in_degree, max_file_size, progress_callback
     )
-
-
-def _compute_centrality_with_ripgrep(
-    files: List[Path],
-    name_to_in_degree: Dict[str, int],
-    max_file_size: int,
-    progress_callback: "callable | None",
-) -> Dict[Path, float] | None:
-    """Use ripgrep for fast batch symbol search with adaptive timeout.
-
-    Uses an adaptive timeout strategy: starts at 60s, doubles on timeout
-    up to a maximum of 480s (8 minutes). Returns None if ripgrep fails
-    even with max timeout (falls back to Python).
-    """
-    import subprocess  # nosec B404 - ripgrep is a trusted binary
-    import json
-
-    # Build patterns for each symbol name with word boundaries
-    # Each pattern on its own line - ripgrep ORs them automatically with -f
-    escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
-    patterns = [rf"\b{name}\b" for name in escaped_names]
-
-    # Filter files by size first (cheaper than letting rg read them)
-    valid_files = []
-    file_sizes = {}
-    for f in files:
-        try:
-            size = f.stat().st_size
-            if size <= max_file_size:
-                valid_files.append(f)
-                file_sizes[f] = size
-        except OSError:  # pragma: no cover - rare I/O error
-            pass
-
-    if not valid_files:  # pragma: no cover - all files filtered
-        logger.debug("ripgrep: no valid files after size filter")
-        return dict.fromkeys(files, 0.0)
-
-    if progress_callback:
-        progress_callback(0, len(valid_files))
-
-    logger.debug(
-        "ripgrep: searching %d patterns across %d files",
-        len(escaped_names),
-        len(valid_files),
-    )
-
-    # Write patterns to temp file to avoid E2BIG (argument list too long)
-    # for large pattern counts. Ripgrep's -f flag reads one pattern per line.
-    import tempfile
-    pattern_file = tempfile.NamedTemporaryFile(
-        mode='w', suffix='.txt', delete=False
-    )
-    try:
-        pattern_file.write('\n'.join(patterns))
-        pattern_file.close()
-
-        # Run ripgrep with JSON output for structured parsing
-        # -f reads pattern from file (avoids command line length limits)
-        cmd = [
-            "rg",
-            "--json",  # Structured JSON output
-            "-f", pattern_file.name,  # Read pattern from file
-            "--no-filename",  # We track files separately
-        ] + [str(f) for f in valid_files]
-
-        # Adaptive timeout: 60s -> 120s -> 240s -> 480s (max)
-        timeouts = [60, 120, 240, 480]
-        result = None
-
-        for timeout in timeouts:
-            try:
-                result = subprocess.run(  # noqa: S603  # nosec B603 - trusted cmd
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                )
-                # ripgrep returns 0 on match, 1 on no match, 2 on error
-                if result.returncode == 2:  # pragma: no cover - ripgrep error
-                    stderr = result.stderr.strip() if result.stderr else "unknown error"
-                    logger.warning("ripgrep: error (exit code 2): %s", stderr)
-                    return None  # Fall back to Python
-                # Success
-                logger.debug("ripgrep: completed in %ds timeout window", timeout)
-                break
-            except subprocess.TimeoutExpired:
-                if timeout < timeouts[-1]:
-                    next_timeout = timeouts[timeouts.index(timeout) + 1]
-                    logger.info(
-                        "ripgrep: timed out after %ds, retrying with %ds timeout",
-                        timeout,
-                        next_timeout,
-                    )
-                else:
-                    logger.warning(
-                        "ripgrep: timed out after %ds (max), falling back to Python",
-                        timeout,
-                    )
-                    return None
-            except (FileNotFoundError, OSError) as e:  # pragma: no cover
-                logger.warning("ripgrep: %s, falling back to Python", e)
-                return None  # Fall back to Python
-
-        if result is None:  # pragma: no cover - should not reach here
-            return None
-
-        # Parse JSON output to count matches per file
-        file_matches: Dict[Path, set[str]] = {f: set() for f in valid_files}
-
-        for line in result.stdout.splitlines():
-            if not line.strip():  # pragma: no cover - empty lines in output
-                continue
-            try:
-                data = json.loads(line)
-                if data.get("type") == "match":
-                    match_data = data.get("data", {})
-                    path_data = match_data.get("path", {})
-                    file_path_str = path_data.get("text", "")
-                    submatches = match_data.get("submatches", [])
-
-                    if file_path_str:
-                        file_path = Path(file_path_str)
-                        for submatch in submatches:
-                            match_text = submatch.get("match", {}).get("text", "")
-                            if match_text and file_path in file_matches:
-                                file_matches[file_path].add(match_text)
-            except json.JSONDecodeError:  # pragma: no cover - malformed JSON
-                continue  # Skip malformed lines
-
-        # Calculate normalized scores and track per-file symbols
-        normalized_scores: Dict[Path, float] = {}
-        symbols_per_file: Dict[Path, set[str]] = {}
-        processed = 0
-
-        for f in files:
-            if f in file_matches:
-                matched = file_matches[f]
-                total = sum(name_to_in_degree.get(name, 0) for name in matched)
-                size = file_sizes.get(f, 1)
-                normalized_scores[f] = total / size if size > 0 else 0.0
-                symbols_per_file[f] = matched
-            else:
-                normalized_scores[f] = 0.0
-                symbols_per_file[f] = set()
-
-            processed += 1
-            if progress_callback and processed % 50 == 0:  # pragma: no cover - batched progress
-                progress_callback(processed, len(files))
-
-        if progress_callback:
-            progress_callback(len(files), len(files))
-
-        return CentralityResult(
-            normalized_scores=normalized_scores,
-            symbols_per_file=symbols_per_file,
-            name_to_in_degree=name_to_in_degree,
-        )
-    finally:
-        import os
-        os.unlink(pattern_file.name)
 
 
 def _compute_centrality_with_python(
