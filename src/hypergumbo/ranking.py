@@ -647,15 +647,6 @@ def _compute_centrality_with_ripgrep(
     # Build alternation pattern: \b(name1|name2|...)\b
     # Escape special regex chars in names
     escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
-    if len(escaped_names) > 500:  # pragma: no cover
-        # Too many patterns for command line, split into chunks
-        # For very large symbol sets, fall back to Python
-        logger.debug(
-            "ripgrep: too many patterns (%d > 500), falling back to Python",
-            len(escaped_names),
-        )
-        return None
-
     pattern = r"\b(" + "|".join(escaped_names) + r")\b"
 
     # Filter files by size first (cheaper than letting rg read them)
