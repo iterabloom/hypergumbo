@@ -644,10 +644,10 @@ def _compute_centrality_with_ripgrep(
     import subprocess  # nosec B404 - ripgrep is a trusted binary
     import json
 
-    # Build alternation pattern: \b(name1|name2|...)\b
-    # Escape special regex chars in names
+    # Build patterns for each symbol name with word boundaries
+    # Each pattern on its own line - ripgrep ORs them automatically with -f
     escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
-    pattern = r"\b(" + "|".join(escaped_names) + r")\b"
+    patterns = [rf"\b{name}\b" for name in escaped_names]
 
     # Filter files by size first (cheaper than letting rg read them)
     valid_files = []
@@ -674,14 +674,14 @@ def _compute_centrality_with_ripgrep(
         len(valid_files),
     )
 
-    # Write pattern to temp file to avoid E2BIG (argument list too long)
-    # for large pattern counts. Ripgrep's -f flag reads patterns from file.
+    # Write patterns to temp file to avoid E2BIG (argument list too long)
+    # for large pattern counts. Ripgrep's -f flag reads one pattern per line.
     import tempfile
     pattern_file = tempfile.NamedTemporaryFile(
         mode='w', suffix='.txt', delete=False
     )
     try:
-        pattern_file.write(pattern)
+        pattern_file.write('\n'.join(patterns))
         pattern_file.close()
 
         # Run ripgrep with JSON output for structured parsing
