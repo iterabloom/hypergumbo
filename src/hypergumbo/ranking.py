@@ -707,7 +707,8 @@ def _compute_centrality_with_ripgrep(
                 )
                 # ripgrep returns 0 on match, 1 on no match, 2 on error
                 if result.returncode == 2:  # pragma: no cover - ripgrep error
-                    logger.warning("ripgrep: error (exit code 2), falling back to Python")
+                    stderr = result.stderr.strip() if result.stderr else "unknown error"
+                    logger.warning("ripgrep: error (exit code 2): %s", stderr)
                     return None  # Fall back to Python
                 # Success
                 logger.debug("ripgrep: completed in %ds timeout window", timeout)
