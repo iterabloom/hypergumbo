@@ -2088,6 +2088,11 @@ For help on ALL commands:   hypergumbo --help --all"""
         version=f"%(prog)s {__version__}",
         help="Print version and exit",
     )
+    p.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging (shows ripgrep vs Python fallback decisions, etc.)",
+    )
 
     sub = p.add_subparsers(dest="command")
 
@@ -3223,6 +3228,8 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv=None) -> int:
+    import logging
+
     parser = build_parser()
 
     # Handle default sketch mode: if no subcommand given, insert "sketch"
@@ -3241,6 +3248,14 @@ def main(argv=None) -> int:
         argv = ["sketch"] + list(argv)
 
     args = parser.parse_args(argv)
+
+    # Configure logging if --debug is set
+    if getattr(args, "debug", False):
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="[%(name)s] %(levelname)s: %(message)s",
+            stream=sys.stderr,
+        )
 
     if not hasattr(args, "func"):  # pragma: no cover
         parser.print_help()  # pragma: no cover
