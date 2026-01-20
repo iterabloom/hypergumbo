@@ -674,107 +674,119 @@ def _compute_centrality_with_ripgrep(
         len(valid_files),
     )
 
-    # Run ripgrep with JSON output for structured parsing
-    # -o outputs only matches, --json gives structured output
-    cmd = [
-        "rg",
-        "--json",  # Structured JSON output
-        "-w",  # Word boundaries (equivalent to \b)
-        "--no-filename",  # We track files separately
-        pattern,
-    ] + [str(f) for f in valid_files]
-
-    # Adaptive timeout: 60s -> 120s -> 240s -> 480s (max)
-    timeouts = [60, 120, 240, 480]
-    result = None
-
-    for timeout in timeouts:
-        try:
-            result = subprocess.run(  # noqa: S603  # nosec B603 - trusted cmd
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            # ripgrep returns 0 on match, 1 on no match, 2 on error
-            if result.returncode == 2:  # pragma: no cover - ripgrep error
-                logger.warning("ripgrep: error (exit code 2), falling back to Python")
-                return None  # Fall back to Python
-            # Success
-            logger.debug("ripgrep: completed in %ds timeout window", timeout)
-            break
-        except subprocess.TimeoutExpired:
-            if timeout < timeouts[-1]:
-                next_timeout = timeouts[timeouts.index(timeout) + 1]
-                logger.info(
-                    "ripgrep: timed out after %ds, retrying with %ds timeout",
-                    timeout,
-                    next_timeout,
-                )
-            else:
-                logger.warning(
-                    "ripgrep: timed out after %ds (max), falling back to Python",
-                    timeout,
-                )
-                return None
-        except (FileNotFoundError, OSError) as e:  # pragma: no cover
-            logger.warning("ripgrep: %s, falling back to Python", e)
-            return None  # Fall back to Python
-
-    if result is None:  # pragma: no cover - should not reach here
-        return None
-
-    # Parse JSON output to count matches per file
-    file_matches: Dict[Path, set[str]] = {f: set() for f in valid_files}
-
-    for line in result.stdout.splitlines():
-        if not line.strip():  # pragma: no cover - empty lines in output
-            continue
-        try:
-            data = json.loads(line)
-            if data.get("type") == "match":
-                match_data = data.get("data", {})
-                path_data = match_data.get("path", {})
-                file_path_str = path_data.get("text", "")
-                submatches = match_data.get("submatches", [])
-
-                if file_path_str:
-                    file_path = Path(file_path_str)
-                    for submatch in submatches:
-                        match_text = submatch.get("match", {}).get("text", "")
-                        if match_text and file_path in file_matches:
-                            file_matches[file_path].add(match_text)
-        except json.JSONDecodeError:  # pragma: no cover - malformed JSON
-            continue  # Skip malformed lines
-
-    # Calculate normalized scores and track per-file symbols
-    normalized_scores: Dict[Path, float] = {}
-    symbols_per_file: Dict[Path, set[str]] = {}
-    processed = 0
-
-    for f in files:
-        if f in file_matches:
-            matched = file_matches[f]
-            total = sum(name_to_in_degree.get(name, 0) for name in matched)
-            size = file_sizes.get(f, 1)
-            normalized_scores[f] = total / size if size > 0 else 0.0
-            symbols_per_file[f] = matched
-        else:
-            normalized_scores[f] = 0.0
-            symbols_per_file[f] = set()
-
-        processed += 1
-        if progress_callback and processed % 50 == 0:  # pragma: no cover - batched progress
-            progress_callback(processed, len(files))
-
-    if progress_callback:
-        progress_callback(len(files), len(files))
-
-    return CentralityResult(
-        normalized_scores=normalized_scores,
-        symbols_per_file=symbols_per_file,
-        name_to_in_degree=name_to_in_degree,
+    # Write pattern to temp file to avoid E2BIG (argument list too long)
+    # for large pattern counts. Ripgrep's -f flag reads patterns from file.
+    import tempfile
+    pattern_file = tempfile.NamedTemporaryFile(
+        mode='w', suffix='.txt', delete=False
     )
+    try:
+        pattern_file.write(pattern)
+        pattern_file.close()
+
+        # Run ripgrep with JSON output for structured parsing
+        # -f reads pattern from file (avoids command line length limits)
+        cmd = [
+            "rg",
+            "--json",  # Structured JSON output
+            "-f", pattern_file.name,  # Read pattern from file
+            "--no-filename",  # We track files separately
+        ] + [str(f) for f in valid_files]
+
+        # Adaptive timeout: 60s -> 120s -> 240s -> 480s (max)
+        timeouts = [60, 120, 240, 480]
+        result = None
+
+        for timeout in timeouts:
+            try:
+                result = subprocess.run(  # noqa: S603  # nosec B603 - trusted cmd
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                # ripgrep returns 0 on match, 1 on no match, 2 on error
+                if result.returncode == 2:  # pragma: no cover - ripgrep error
+                    logger.warning("ripgrep: error (exit code 2), falling back to Python")
+                    return None  # Fall back to Python
+                # Success
+                logger.debug("ripgrep: completed in %ds timeout window", timeout)
+                break
+            except subprocess.TimeoutExpired:
+                if timeout < timeouts[-1]:
+                    next_timeout = timeouts[timeouts.index(timeout) + 1]
+                    logger.info(
+                        "ripgrep: timed out after %ds, retrying with %ds timeout",
+                        timeout,
+                        next_timeout,
+                    )
+                else:
+                    logger.warning(
+                        "ripgrep: timed out after %ds (max), falling back to Python",
+                        timeout,
+                    )
+                    return None
+            except (FileNotFoundError, OSError) as e:  # pragma: no cover
+                logger.warning("ripgrep: %s, falling back to Python", e)
+                return None  # Fall back to Python
+
+        if result is None:  # pragma: no cover - should not reach here
+            return None
+
+        # Parse JSON output to count matches per file
+        file_matches: Dict[Path, set[str]] = {f: set() for f in valid_files}
+
+        for line in result.stdout.splitlines():
+            if not line.strip():  # pragma: no cover - empty lines in output
+                continue
+            try:
+                data = json.loads(line)
+                if data.get("type") == "match":
+                    match_data = data.get("data", {})
+                    path_data = match_data.get("path", {})
+                    file_path_str = path_data.get("text", "")
+                    submatches = match_data.get("submatches", [])
+
+                    if file_path_str:
+                        file_path = Path(file_path_str)
+                        for submatch in submatches:
+                            match_text = submatch.get("match", {}).get("text", "")
+                            if match_text and file_path in file_matches:
+                                file_matches[file_path].add(match_text)
+            except json.JSONDecodeError:  # pragma: no cover - malformed JSON
+                continue  # Skip malformed lines
+
+        # Calculate normalized scores and track per-file symbols
+        normalized_scores: Dict[Path, float] = {}
+        symbols_per_file: Dict[Path, set[str]] = {}
+        processed = 0
+
+        for f in files:
+            if f in file_matches:
+                matched = file_matches[f]
+                total = sum(name_to_in_degree.get(name, 0) for name in matched)
+                size = file_sizes.get(f, 1)
+                normalized_scores[f] = total / size if size > 0 else 0.0
+                symbols_per_file[f] = matched
+            else:
+                normalized_scores[f] = 0.0
+                symbols_per_file[f] = set()
+
+            processed += 1
+            if progress_callback and processed % 50 == 0:  # pragma: no cover - batched progress
+                progress_callback(processed, len(files))
+
+        if progress_callback:
+            progress_callback(len(files), len(files))
+
+        return CentralityResult(
+            normalized_scores=normalized_scores,
+            symbols_per_file=symbols_per_file,
+            name_to_in_degree=name_to_in_degree,
+        )
+    finally:
+        import os
+        os.unlink(pattern_file.name)
 
 
 def _compute_centrality_with_python(
