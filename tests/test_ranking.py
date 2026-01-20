@@ -25,6 +25,7 @@ from hypergumbo.ranking import (
     compute_symbol_mention_centrality_batch,
     _is_ripgrep_available,
     _compute_centrality_with_python,
+    _compute_centrality_with_ripgrep,
 )
 
 
@@ -1166,3 +1167,132 @@ class TestCentralityResultDeduplication:
         # So name_to_in_degree["foo"] should be sum of both
         assert result.name_to_in_degree["foo"] == 10  # 3 + 7
         assert result.symbols_per_file[f] == {"foo"}
+
+
+class TestRipgrepAdaptiveTimeout:
+    """Tests for adaptive timeout behavior in ripgrep centrality computation."""
+
+    def test_first_timeout_succeeds(self, tmp_path, monkeypatch):
+        """When first timeout (60s) succeeds, no retry needed."""
+        from unittest.mock import MagicMock, patch
+        import subprocess
+
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo function")
+
+        # Mock subprocess.run to return immediately with success
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""  # No matches, but that's fine for this test
+        call_args_list = []
+
+        def mock_run(*args, **kwargs):
+            call_args_list.append((args, kwargs))
+            return mock_result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = _compute_centrality_with_ripgrep(
+                [f], {"foo": 5}, max_file_size=100 * 1024, progress_callback=None
+            )
+
+        # Should only call subprocess once (60s timeout)
+        assert len(call_args_list) == 1
+        call_kwargs = call_args_list[0][1]
+        assert call_kwargs["timeout"] == 60
+        assert result is not None
+
+    def test_timeout_retries_with_longer_timeout(self, tmp_path):
+        """When timeout occurs, retries with doubled timeout."""
+        from unittest.mock import MagicMock, patch
+        import subprocess
+
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo function")
+
+        # Mock subprocess.run to timeout first, then succeed
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+
+        call_count = [0]
+        call_args_list = []
+
+        def side_effect(*args, **kwargs):
+            call_args_list.append((args, kwargs))
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise subprocess.TimeoutExpired(cmd="rg", timeout=60)
+            return mock_result
+
+        with patch("subprocess.run", side_effect=side_effect):
+            result = _compute_centrality_with_ripgrep(
+                [f], {"foo": 5}, max_file_size=100 * 1024, progress_callback=None
+            )
+
+        # Should call subprocess twice: 60s timeout, then 120s timeout
+        assert len(call_args_list) == 2
+        first_timeout = call_args_list[0][1]["timeout"]
+        second_timeout = call_args_list[1][1]["timeout"]
+        assert first_timeout == 60
+        assert second_timeout == 120
+        assert result is not None
+
+    def test_all_timeouts_fail_returns_none(self, tmp_path):
+        """When all timeouts fail, returns None (triggers Python fallback)."""
+        from unittest.mock import patch
+        import subprocess
+
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo function")
+
+        call_args_list = []
+
+        def side_effect(*args, **kwargs):
+            call_args_list.append((args, kwargs))
+            raise subprocess.TimeoutExpired(cmd="rg", timeout=kwargs.get("timeout", 60))
+
+        with patch("subprocess.run", side_effect=side_effect):
+            result = _compute_centrality_with_ripgrep(
+                [f], {"foo": 5}, max_file_size=100 * 1024, progress_callback=None
+            )
+
+        # Should call subprocess 4 times: 60s, 120s, 240s, 480s
+        assert len(call_args_list) == 4
+        timeouts = [call[1]["timeout"] for call in call_args_list]
+        assert timeouts == [60, 120, 240, 480]
+        # Should return None to trigger Python fallback
+        assert result is None
+
+    def test_adaptive_timeout_logs_retries(self, tmp_path, caplog):
+        """Adaptive timeout logs when retrying with longer timeout."""
+        from unittest.mock import MagicMock, patch
+        import subprocess
+        import logging
+
+        f = tmp_path / "readme.md"
+        f.write_text("Use foo function")
+
+        # Mock subprocess.run to timeout once, then succeed
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise subprocess.TimeoutExpired(cmd="rg", timeout=60)
+            return mock_result
+
+        with patch("subprocess.run", side_effect=side_effect):
+            with caplog.at_level(logging.INFO, logger="hypergumbo.ranking"):
+                _compute_centrality_with_ripgrep(
+                    [f], {"foo": 5}, max_file_size=100 * 1024, progress_callback=None
+                )
+
+        # Should log the retry
+        assert any(
+            "timed out after 60s, retrying with 120s" in record.message
+            for record in caplog.records
+        )

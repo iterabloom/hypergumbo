@@ -50,6 +50,7 @@ For combined ranking with all heuristics:
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,8 @@ from typing import Dict, List
 
 from .ir import Symbol, Edge
 from .selection.filters import is_test_path
+
+logger = logging.getLogger(__name__)
 
 # Backwards compatibility alias - external code imports _is_test_path from here
 _is_test_path = is_test_path
@@ -598,13 +601,29 @@ def compute_symbol_mention_centrality_batch(
 
     # Try ripgrep for batch search
     if _is_ripgrep_available() and len(files) > 5:
+        logger.debug(
+            "centrality: trying ripgrep (%d files, %d unique symbol names)",
+            len(files),
+            len(name_to_in_degree),
+        )
         result = _compute_centrality_with_ripgrep(
             files, name_to_in_degree, max_file_size, progress_callback
         )
         if result is not None:
+            logger.debug("centrality: ripgrep succeeded")
             return result
+        logger.debug("centrality: ripgrep failed, using Python fallback")  # pragma: no cover
+    elif not _is_ripgrep_available():  # pragma: no cover
+        logger.debug("centrality: ripgrep not available, using Python fallback")
+    else:
+        logger.debug("centrality: too few files (%d), using Python directly", len(files))
 
     # Fallback: Python regex (parallelized)
+    logger.debug(
+        "centrality: Python fallback processing %d files with %d patterns",
+        len(files),
+        len(name_to_in_degree),
+    )
     return _compute_centrality_with_python(
         files, name_to_in_degree, max_file_size, progress_callback
     )
@@ -616,9 +635,11 @@ def _compute_centrality_with_ripgrep(
     max_file_size: int,
     progress_callback: "callable | None",
 ) -> Dict[Path, float] | None:
-    """Use ripgrep for fast batch symbol search.
+    """Use ripgrep for fast batch symbol search with adaptive timeout.
 
-    Returns None if ripgrep fails (falls back to Python).
+    Uses an adaptive timeout strategy: starts at 60s, doubles on timeout
+    up to a maximum of 480s (8 minutes). Returns None if ripgrep fails
+    even with max timeout (falls back to Python).
     """
     import subprocess  # nosec B404 - ripgrep is a trusted binary
     import json
@@ -629,6 +650,10 @@ def _compute_centrality_with_ripgrep(
     if len(escaped_names) > 500:  # pragma: no cover
         # Too many patterns for command line, split into chunks
         # For very large symbol sets, fall back to Python
+        logger.debug(
+            "ripgrep: too many patterns (%d > 500), falling back to Python",
+            len(escaped_names),
+        )
         return None
 
     pattern = r"\b(" + "|".join(escaped_names) + r")\b"
@@ -646,35 +671,67 @@ def _compute_centrality_with_ripgrep(
             pass
 
     if not valid_files:  # pragma: no cover - all files filtered
+        logger.debug("ripgrep: no valid files after size filter")
         return dict.fromkeys(files, 0.0)
 
     if progress_callback:
         progress_callback(0, len(valid_files))
 
+    logger.debug(
+        "ripgrep: searching %d patterns across %d files",
+        len(escaped_names),
+        len(valid_files),
+    )
+
     # Run ripgrep with JSON output for structured parsing
     # -o outputs only matches, --json gives structured output
-    try:
-        cmd = [
-            "rg",
-            "--json",  # Structured JSON output
-            "-w",  # Word boundaries (equivalent to \b)
-            "--no-filename",  # We track files separately
-            pattern,
-        ] + [str(f) for f in valid_files]
+    cmd = [
+        "rg",
+        "--json",  # Structured JSON output
+        "-w",  # Word boundaries (equivalent to \b)
+        "--no-filename",  # We track files separately
+        pattern,
+    ] + [str(f) for f in valid_files]
 
-        result = subprocess.run(  # noqa: S603  # nosec B603 - trusted cmd
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60,  # 1 minute timeout
-        )
+    # Adaptive timeout: 60s -> 120s -> 240s -> 480s (max)
+    timeouts = [60, 120, 240, 480]
+    result = None
 
-        # ripgrep returns 0 on match, 1 on no match, 2 on error
-        if result.returncode == 2:  # pragma: no cover - ripgrep error
+    for timeout in timeouts:
+        try:
+            result = subprocess.run(  # noqa: S603  # nosec B603 - trusted cmd
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            # ripgrep returns 0 on match, 1 on no match, 2 on error
+            if result.returncode == 2:  # pragma: no cover - ripgrep error
+                logger.warning("ripgrep: error (exit code 2), falling back to Python")
+                return None  # Fall back to Python
+            # Success
+            logger.debug("ripgrep: completed in %ds timeout window", timeout)
+            break
+        except subprocess.TimeoutExpired:
+            if timeout < timeouts[-1]:
+                next_timeout = timeouts[timeouts.index(timeout) + 1]
+                logger.info(
+                    "ripgrep: timed out after %ds, retrying with %ds timeout",
+                    timeout,
+                    next_timeout,
+                )
+            else:
+                logger.warning(
+                    "ripgrep: timed out after %ds (max), falling back to Python",
+                    timeout,
+                )
+                return None
+        except (FileNotFoundError, OSError) as e:  # pragma: no cover
+            logger.warning("ripgrep: %s, falling back to Python", e)
             return None  # Fall back to Python
 
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):  # pragma: no cover
-        return None  # Fall back to Python
+    if result is None:  # pragma: no cover - should not reach here
+        return None
 
     # Parse JSON output to count matches per file
     file_matches: Dict[Path, set[str]] = {f: set() for f in valid_files}
@@ -735,8 +792,20 @@ def _compute_centrality_with_python(
     max_file_size: int,
     progress_callback: "callable | None",
 ) -> CentralityResult:
-    """Compute centrality using Python regex (fallback path)."""
+    """Compute centrality using Python regex (fallback path).
+
+    Uses a single combined regex pattern for efficiency: O(files) instead of
+    O(files * symbols). The pattern matches all symbol names in one pass.
+    """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Build combined pattern ONCE: \b(name1|name2|...)\b
+    # This makes each file search O(1) instead of O(symbols)
+    escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
+    if escaped_names:
+        combined_pattern = re.compile(r'\b(' + '|'.join(escaped_names) + r')\b')
+    else:  # pragma: no cover - caller already handles empty symbols
+        combined_pattern = None
 
     def _compute_one(f: Path) -> tuple[Path, float, set[str]]:
         """Returns (path, normalized_score, matched_names)."""
@@ -751,15 +820,16 @@ def _compute_centrality_with_python(
         if not content:  # pragma: no cover - empty file
             return (f, 0.0, set())
 
-        total_in_degree = 0
-        matched_names: set[str] = set()
+        if combined_pattern is None:  # pragma: no cover - no symbols
+            return (f, 0.0, set())
 
-        for name in name_to_in_degree:
-            if name not in matched_names:
-                pattern = r'\b' + re.escape(name) + r'\b'
-                if re.search(pattern, content):
-                    total_in_degree += name_to_in_degree[name]
-                    matched_names.add(name)
+        # Find all matches in one pass (O(1) regex operation)
+        matched_names = set(combined_pattern.findall(content))
+
+        # Sum in-degrees of matched symbols
+        total_in_degree = sum(
+            name_to_in_degree.get(name, 0) for name in matched_names
+        )
 
         score = total_in_degree / len(content) if content else 0.0
         return (f, score, matched_names)
