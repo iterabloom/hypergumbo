@@ -412,6 +412,67 @@ def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - no string literal found
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a Dart function signature.
+
+    Dart function signatures look like:
+        int add(int x, int y) { ... }
+        void greet(String name) { ... }
+        void process(Database db, {bool verbose = false}) { ... }
+
+    Returns mapping like {"x": "int", "y": "int"} or {"db": "Database"}.
+    """
+    param_types: dict[str, str] = {}
+
+    # Find the formal_parameter_list child
+    params_node = _find_child_by_type(node, "formal_parameter_list")
+    if params_node is None:
+        return param_types  # pragma: no cover - no params in function
+
+    for child in params_node.children:
+        if child.type == "formal_parameter":
+            # formal_parameter contains type_identifier + identifier
+            param_type: Optional[str] = None
+            param_name: Optional[str] = None
+
+            for subchild in child.children:
+                if subchild.type == "type_identifier":
+                    param_type = _node_text(subchild, source)
+                    # Strip generics: List<T> -> List (defensive - tree-sitter usually separates generics)
+                    if "<" in param_type:  # pragma: no cover
+                        param_type = param_type.split("<")[0]
+                elif subchild.type == "identifier":
+                    # First identifier after type is the parameter name
+                    if param_type is not None and param_name is None:
+                        param_name = _node_text(subchild, source)
+
+            if param_type and param_name:
+                param_types[param_name] = param_type
+
+        elif child.type == "optional_formal_parameters":
+            # Handle optional/named parameters: {Database db, bool verbose}
+            for opt_child in child.children:
+                if opt_child.type == "formal_parameter":
+                    param_type = None
+                    param_name = None
+
+                    for subchild in opt_child.children:
+                        if subchild.type == "type_identifier":
+                            param_type = _node_text(subchild, source)
+                            if "<" in param_type:  # pragma: no cover - defensive
+                                param_type = param_type.split("<")[0]
+                        elif subchild.type == "identifier":
+                            if param_type is not None and param_name is None:
+                                param_name = _node_text(subchild, source)
+
+                    if param_type and param_name:
+                        param_types[param_name] = param_type
+
+    return param_types
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -430,12 +491,20 @@ def _extract_edges_from_file(
     # Track functions by their enclosing scope
     function_scopes: dict[int, Symbol] = {}  # line -> symbol
 
+    # Variable type tracking: variable_name -> class_name
+    # Used for resolving method calls like db.save() to Database.save
+    var_types: dict[str, str] = {}
+
     # First pass: map lines to their symbols
     for sym in file_symbols:
         if sym.kind in ("function", "method"):
             function_scopes[sym.span.start_line] = sym
 
     for node in iter_tree(tree.root_node):
+        # Track parameter types from function declarations
+        if node.type == "function_signature":
+            param_types = _extract_param_types(node, source)
+            var_types.update(param_types)
         # Import/export directive
         if node.type == "import_or_export":
             import_path = _extract_import_path(node, source)
@@ -454,35 +523,68 @@ def _extract_edges_from_file(
                 edges.append(edge)
 
         # Expression statement with function call pattern:
-        # expression_statement > identifier + selector > argument_part > arguments
+        # expression_statement > identifier + selector(s)
+        # The AST can have multiple selectors: one for method name, one for arguments
+        # Example: db.save('test') -> identifier('db') + selector('.save') + selector("('test')")
         if node.type == "expression_statement":
             children = list(node.children)
-            for i, child in enumerate(children):
-                if child.type == "identifier":
-                    callee_name = _node_text(child, source)
-                    # Check if next sibling is selector with arguments
-                    if i + 1 < len(children) and children[i + 1].type == "selector":
-                        selector = children[i + 1]
-                        has_args = any(
-                            c.type == "argument_part" or c.type == "arguments"
-                            for c in selector.children
-                        )
-                        if has_args:
-                            caller = _find_enclosing_function(node, function_scopes)
-                            if caller:
-                                callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                                if callee:
-                                    edge = Edge.create(
-                                        src=caller.id,
-                                        dst=callee.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        origin=PASS_ID,
-                                        origin_run_id=run_id,
-                                        evidence_type="function_call",
-                                        confidence=0.85,
-                                    )
-                                    edges.append(edge)
+            first_ident = None
+            method_name = None
+            has_args = False
+
+            for child in children:
+                if child.type == "identifier" and first_ident is None:
+                    first_ident = _node_text(child, source)
+                elif child.type == "selector":
+                    # Check for method name in unconditional_assignable_selector
+                    for sel_child in child.children:
+                        if sel_child.type == "unconditional_assignable_selector":
+                            for sub in sel_child.children:
+                                if sub.type == "identifier":
+                                    method_name = _node_text(sub, source)
+                                    break
+                        # Check for arguments in this or any selector
+                        if sel_child.type in ("argument_part", "arguments"):
+                            has_args = True
+                    # Also check for argument_part directly in selector children
+                    if any(c.type == "argument_part" or c.type == "arguments" for c in child.children):
+                        has_args = True
+
+            if first_ident and has_args:
+                caller = _find_enclosing_function(node, function_scopes)
+                if caller:
+                    if method_name and first_ident in var_types:
+                        # Type-inferred method call: receiver.method()
+                        class_name = var_types[first_ident]
+                        qualified_name = f"{class_name}.{method_name}"
+                        callee = local_symbols.get(qualified_name) or global_symbol_registry.get(qualified_name)
+                        if callee:
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="method_call_type_inferred",
+                                confidence=0.85,
+                            )
+                            edges.append(edge)
+                    elif not method_name:
+                        # Simple function call: func()
+                        callee = local_symbols.get(first_ident) or global_symbol_registry.get(first_ident)
+                        if callee:
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="function_call",
+                                confidence=0.85,
+                            )
+                            edges.append(edge)
 
         # Method call in selector (obj.method()) - complex AST pattern
         if node.type == "selector":  # pragma: no cover - method call detection
@@ -533,6 +635,17 @@ def _extract_edges_from_file(
                                 confidence=0.90,
                             )
                             edges.append(edge)
+
+                    # Track variable type from constructor assignment
+                    # Look for patterns like: var x = new ClassName() or final x = ClassName()
+                    # AST: initialized_variable_definition > identifier + new_expression
+                    parent = node.parent
+                    if parent and parent.type == "initialized_variable_definition":
+                        # Pattern: var x = new ClassName() or final x = new ClassName()
+                        var_name_node = _find_child_by_type(parent, "identifier")
+                        if var_name_node:
+                            var_name = _node_text(var_name_node, source)
+                            var_types[var_name] = class_name
                     break
 
         # Also detect ClassName() pattern (without new keyword) - look for type + arguments

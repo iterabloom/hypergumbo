@@ -38,7 +38,7 @@ are not yet implemented.
 
 ### Current Implementation
 
-Four analyzers implement variable type inference:
+Six analyzers implement variable type inference:
 
 | Analyzer | Constructor Tracking | Parameter Tracking | Field Tracking | Return Tracking |
 |----------|---------------------|-------------------|----------------|-----------------|
@@ -46,6 +46,8 @@ Four analyzers implement variable type inference:
 | Java     | ✅ | ✅ | ❌ | ❌ |
 | Kotlin   | ✅ | ✅ | ❌ | ❌ |
 | TypeScript | ✅ | ✅ | ❌ | ❌ |
+| C#       | ✅ | ✅ | ❌ | ❌ |
+| Dart     | ✅ | ✅ | ❌ | ❌ |
 
 All four use the same pattern:
 
@@ -89,26 +91,16 @@ different types. However:
 
 ### Analyzers Without Type Tracking
 
-Six analyzers do not currently implement type tracking:
+Four analyzers do not currently implement type tracking:
 
 | Analyzer | Should Add? | Complexity | Value | Notes |
 |----------|-------------|------------|-------|-------|
-| **C#** | ✅ Yes | Low | High | Nearly identical to Java |
-| **Dart** | ✅ Yes | Low | High | Similar to Kotlin, Flutter DI patterns |
 | **Go** | ⚠️ Maybe | Medium | Medium | Interface-based, implicit satisfaction |
 | **Rust** | ⚠️ Maybe | Medium | Medium | Trait-based, similar to Go |
 | **C/C++** | ⚠️ Maybe | High | Low-Medium | Pointers complicate things; C has no methods |
 | **OCaml** | ❌ No | N/A | Low | Functional paradigm, pattern matching not methods |
 
-#### Why C# and Dart should be prioritized
-
-Both languages:
-- Have explicit type annotations on parameters
-- Use constructor-based instantiation
-- Have popular DI frameworks (ASP.NET Core, Flutter)
-- Are structurally similar to Java/Kotlin
-
-Implementation would be ~60 lines each, following the existing pattern.
+**Note:** C# and Dart were added in PR #488, following the same pattern as Java/Kotlin.
 
 #### Why Go and Rust are more complex
 
@@ -153,11 +145,10 @@ Implementation would be ~60 lines each, following the existing pattern.
 
 ### Future Work
 
-1. **Add C# and Dart support** (low-hanging fruit)
-2. **Consider Go/Rust support** (medium effort, good value)
-3. **Add field type tracking** (`self.db: Database`)
-4. **Add return type tracking** (`def get_db() -> Database`)
-5. **Consider method-scoped tracking** (if false positives become a problem)
+1. **Consider Go/Rust support** (medium effort, good value)
+2. **Add field type tracking** (`self.db: Database`)
+3. **Add return type tracking** (`def get_db() -> Database`)
+4. **Consider method-scoped tracking** (if false positives become a problem)
 
 ## Implementation Pattern
 
@@ -208,4 +199,5 @@ def _extract_edges(...):
 
 - PR #485: Python class method calls and parameter type inference
 - PR #486: Java, Kotlin, TypeScript parameter type inference
+- PR #488: C# and Dart parameter type inference
 - gRPC stub pattern: The original motivation for constructor-based tracking

@@ -198,6 +198,61 @@ def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
     return _node_text(node, source)
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a method/constructor declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        void Process(Database db) {
+            db.Save();  // resolves to Database.Save
+        }
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only).
+    """
+    param_types: dict[str, str] = {}
+
+    # Type node types in C#
+    type_node_types = ("predefined_type", "generic_name", "array_type",
+                       "nullable_type", "qualified_name", "ref_type", "pointer_type")
+
+    # Find parameter_list node
+    params_node = _find_child_by_type(node, "parameter_list")
+    if params_node is None:
+        return param_types  # pragma: no cover - no params in method
+
+    # Extract parameter types
+    for child in params_node.children:
+        if child.type == "parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                # Type nodes
+                if subchild.type in type_node_types:
+                    param_type = _extract_type_text(subchild, source)
+                    # Strip generic parameters: List<T> -> List
+                    if "<" in param_type:
+                        param_type = param_type.split("<")[0]
+                    # Strip array brackets: int[] -> int
+                    if "[" in param_type:
+                        param_type = param_type.split("[")[0]
+                    # Strip nullable: int? -> int
+                    param_type = param_type.rstrip("?")
+                # Custom types use identifier
+                elif subchild.type == "identifier":
+                    if param_type is None:
+                        # First identifier is the type
+                        param_type = _node_text(subchild, source)
+                    else:
+                        # Second identifier is the name
+                        param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                param_types[param_name] = param_type
+
+    return param_types
+
+
 def _extract_csharp_signature(
     node: "tree_sitter.Node", source: bytes, is_constructor: bool = False
 ) -> Optional[str]:
@@ -611,6 +666,10 @@ def _extract_edges_from_file(
     """Extract call, import, and instantiation edges from a file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+
+    Type inference tracks types from:
+    - Constructor calls: var db = new Database() -> db has type Database
+    - Method/constructor parameters: void Process(Database db) -> db has type Database
     """
     try:
         source = file_path.read_bytes()
@@ -620,6 +679,8 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
+    # Track variable types for type inference: var_name -> class_name
+    var_types: dict[str, str] = {}
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the method name being called from an invocation expression."""
@@ -656,10 +717,58 @@ def _extract_edges_from_file(
                     origin_run_id=run.execution_id,
                 ))
 
+        # Method/constructor declarations - extract parameter types for type inference
+        elif node.type in ("method_declaration", "constructor_declaration"):
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
+
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
+                # Check for member_access_expression (receiver.method() pattern)
+                member_access = _find_child_by_type(node, "member_access_expression")
+                if member_access:
+                    # Extract receiver and method name
+                    identifiers = _find_children_by_type(member_access, "identifier")
+                    if len(identifiers) >= 2:
+                        receiver_name = _node_text(identifiers[0], source)
+                        method_name = _node_text(identifiers[-1], source)
+
+                        # Try type inference: receiver.method() -> ClassName.method
+                        if receiver_name in var_types:
+                            class_name = var_types[receiver_name]
+                            qualified_name = f"{class_name}.{method_name}"
+                            if qualified_name in local_symbols:
+                                callee = local_symbols[qualified_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call_type_inferred",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                continue
+                            elif qualified_name in global_symbols:
+                                callee = global_symbols[qualified_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call_type_inferred",
+                                    confidence=0.80,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                continue
+
+                # Fallback to original simple name resolution
                 callee_name = get_callee_name(node)
                 if callee_name:
                     # Check local symbols first
@@ -692,35 +801,55 @@ def _extract_edges_from_file(
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
-            if current_function is not None:
-                type_node = _find_child_by_type(node, "identifier")
-                if type_node:
-                    type_name = _node_text(type_node, source)
-                    # Check if it's a known class
-                    if type_name in local_symbols:
-                        target = local_symbols[type_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=target.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            evidence_type="object_creation",
-                            confidence=0.90,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
-                    elif type_name in global_symbols:
-                        target = global_symbols[type_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=target.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            evidence_type="object_creation",
-                            confidence=0.85,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+            type_node = _find_child_by_type(node, "identifier")
+            type_name = _node_text(type_node, source) if type_node else None
+
+            if current_function is not None and type_name:
+                # Check if it's a known class
+                if type_name in local_symbols:
+                    target = local_symbols[type_name]
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        evidence_type="object_creation",
+                        confidence=0.90,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+                elif type_name in global_symbols:
+                    target = global_symbols[type_name]
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        evidence_type="object_creation",
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+
+            # Track variable type for type inference
+            # C#: var db = new Database() or Database db = new Database()
+            if type_name and node.parent:
+                parent = node.parent
+                # Check for variable_declarator (var x = new Class())
+                if parent.type == "variable_declarator":
+                    var_name_node = _find_child_by_type(parent, "identifier")
+                    if var_name_node:
+                        var_name = _node_text(var_name_node, source)
+                        var_types[var_name] = type_name
+                # Check for equals_value_clause in a variable_declaration
+                # (alternative AST pattern - defensive code)
+                elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
+                    grandparent = parent.parent
+                    if grandparent and grandparent.type == "variable_declarator":
+                        var_name_node = _find_child_by_type(grandparent, "identifier")
+                        if var_name_node:
+                            var_name = _node_text(var_name_node, source)
+                            var_types[var_name] = type_name
 
     return edges
 

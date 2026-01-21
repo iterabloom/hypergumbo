@@ -596,3 +596,90 @@ void configure({int timeout = 30, String name = 'default'}) {
         assert len(funcs) == 1
         # Default values should be replaced with ...
         assert "= ..." in funcs[0].signature or funcs[0].signature is not None
+
+
+class TestDartTypeInference:
+    """Tests for Dart variable type inference for method call resolution."""
+
+    def test_parameter_type_inference(self, tmp_path: Path) -> None:
+        """Method calls on typed parameters are resolved to class methods."""
+        from hypergumbo.analyze.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class Database {
+  void save(String data) {
+    print('Saving: $data');
+  }
+}
+
+void processData(Database db) {
+  db.save('test');
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        # Find the type-inferred call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_edges = [e for e in call_edges if e.evidence_type == "method_call_type_inferred"]
+
+        # Should have an edge from processData to Database.save
+        assert len(inferred_edges) >= 1
+        edge = inferred_edges[0]
+        assert "processData" in edge.src
+        assert "Database.save" in edge.dst
+
+    def test_constructor_type_inference(self, tmp_path: Path) -> None:
+        """Method calls on constructor-assigned variables are resolved."""
+        from hypergumbo.analyze.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class HttpClient {
+  void send(String url) {
+    print('Sending to: $url');
+  }
+}
+
+void main() {
+  var client = new HttpClient();
+  client.send('http://example.com');
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        # Find the type-inferred call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_edges = [e for e in call_edges if e.evidence_type == "method_call_type_inferred"]
+
+        # Should have an edge from main to HttpClient.send
+        assert len(inferred_edges) >= 1
+        edge = inferred_edges[0]
+        assert "main" in edge.src
+        assert "HttpClient.send" in edge.dst
+
+    def test_optional_param_type_inference(self, tmp_path: Path) -> None:
+        """Method calls on optional typed parameters are resolved."""
+        from hypergumbo.analyze.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class Logger {
+  void log(String msg) {
+    print(msg);
+  }
+}
+
+void process({Logger logger}) {
+  logger.log('Processing');
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        # Find the type-inferred call edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_edges = [e for e in call_edges if e.evidence_type == "method_call_type_inferred"]
+
+        # Should have an edge from process to Logger.log
+        assert len(inferred_edges) >= 1
+        edge = inferred_edges[0]
+        assert "process" in edge.src
+        assert "Logger.log" in edge.dst
+

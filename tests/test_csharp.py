@@ -235,6 +235,117 @@ class TestCSharpEdgeExtraction:
             assert 0.0 <= edge.confidence <= 1.0
 
 
+class TestCSharpTypeInference:
+    """Tests for variable type inference in C#."""
+
+    def test_parameter_type_inference(self, tmp_path: Path) -> None:
+        """Method parameter types should enable method call resolution."""
+        # Service class with methods
+        (tmp_path / "Database.cs").write_text("""
+public class Database {
+    public void Save(object obj) { }
+    public void Commit() { }
+}
+""")
+        # Handler receives Database as parameter
+        (tmp_path / "Handler.cs").write_text("""
+public class Handler {
+    public void Process(Database db, string data) {
+        db.Save(data);
+        db.Commit();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        process_method = next(
+            (s for s in result.symbols if s.name == "Handler.Process"), None
+        )
+        db_save = next(
+            (s for s in result.symbols if s.name == "Database.Save"), None
+        )
+        db_commit = next(
+            (s for s in result.symbols if s.name == "Database.Commit"), None
+        )
+
+        assert process_method is not None
+        assert db_save is not None
+        assert db_commit is not None
+
+        # Should have edges from Handler.Process to Database.Save and Database.Commit
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        save_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == process_method.id
+                and e.dst == db_save.id
+            ),
+            None,
+        )
+        commit_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == process_method.id
+                and e.dst == db_commit.id
+            ),
+            None,
+        )
+
+        assert save_edge is not None, "Expected call edge for db.Save() via param type inference"
+        assert commit_edge is not None, "Expected call edge for db.Commit() via param type inference"
+        assert save_edge.evidence_type == "method_call_type_inferred"
+        assert commit_edge.evidence_type == "method_call_type_inferred"
+
+    def test_constructor_type_inference(self, tmp_path: Path) -> None:
+        """Constructor assignments should enable method call resolution."""
+        (tmp_path / "Service.cs").write_text("""
+public class Client {
+    public void Send() { }
+}
+
+public class Service {
+    public void Run() {
+        var client = new Client();
+        client.Send();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        # Find symbols
+        run_method = next(
+            (s for s in result.symbols if s.name == "Service.Run"), None
+        )
+        client_send = next(
+            (s for s in result.symbols if s.name == "Client.Send"), None
+        )
+
+        assert run_method is not None
+        assert client_send is not None
+
+        # Should have edge from Service.Run to Client.Send via constructor type inference
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == run_method.id
+                and e.dst == client_send.id
+            ),
+            None,
+        )
+
+        assert send_edge is not None, "Expected call edge for client.Send() via constructor type inference"
+
+
 class TestCSharpCrossFileResolution:
     """Tests for cross-file symbol resolution."""
 
