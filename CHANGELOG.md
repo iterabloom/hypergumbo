@@ -173,6 +173,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     in ~6 seconds
   - **Results:** Django compact output improved from 21 edges to 86 edges (4x) with same 200-node budget
   - **Default enabled:** Connectivity-aware is now the default; use `--no-connectivity` to disable
+- **Python call graph: imported class method calls and parameter type inference:** The Python
+  analyzer now detects two previously-missed call patterns:
+  1. **Imported class method calls:** `Item.model_validate(data)` where `Item` is imported via
+     `from models import Item` now produces a calls edge to `Item.model_validate`.
+  2. **Parameter type annotations:** `def handler(db: Database)` now enables resolution of
+     `db.add()` and `db.commit()` calls to `Database.add` and `Database.commit` methods.
+  Previously, type inference only worked for constructor-assigned variables (`db = Database()`).
+  This improves call graph completeness for FastAPI/Flask patterns that use dependency injection
+  and Pydantic model classmethods. Note: only works when the target class/method is defined in
+  the analyzed codebase (not inherited from external libraries like Pydantic).
 
 ### Changed
 - **Section header renames for clarity:**

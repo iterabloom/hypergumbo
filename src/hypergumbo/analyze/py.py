@@ -1375,12 +1375,67 @@ def _extract_edges(
                 if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     process_code_block([child], caller_symbol, var_types)
 
+    def _extract_param_types(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> dict[str, Symbol]:
+        """Extract type information from function parameter annotations.
+
+        Handles simple annotations like:
+        - def f(session: Session) -> session maps to Session class
+        - def f(item: Item) -> item maps to Item class
+
+        Does not currently handle:
+        - Generic types: Optional[T], List[T], etc.
+        - String annotations: "Session"
+        """
+        param_types: dict[str, Symbol] = {}
+
+        for arg in func_node.args.args + func_node.args.kwonlyargs:
+            if arg.annotation is None:
+                continue
+
+            param_name = arg.arg
+            annotation = arg.annotation
+
+            # Handle simple name annotations: param: ClassName
+            if isinstance(annotation, ast.Name):
+                type_name = annotation.id
+
+                # Check local symbols first
+                class_symbol = local_symbols.get(type_name)
+                if class_symbol and class_symbol.kind == "class":
+                    param_types[param_name] = class_symbol
+                    continue
+
+                # Check imports
+                if type_name in imports:
+                    module_name, original_name = imports[type_name]
+                    class_symbol = global_symbols.get((module_name, original_name))
+                    if class_symbol and class_symbol.kind == "class":
+                        param_types[param_name] = class_symbol
+
+            # Handle attribute annotations: param: module.ClassName
+            elif isinstance(annotation, ast.Attribute) and isinstance(
+                annotation.value, ast.Name
+            ):
+                receiver_name = annotation.value.id
+                attr_name = annotation.attr
+                if receiver_name in module_imports:
+                    module_name = module_imports[receiver_name]
+                    class_symbol = global_symbols.get((module_name, attr_name))
+                    if class_symbol and class_symbol.kind == "class":
+                        param_types[param_name] = class_symbol
+
+        return param_types
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
-                process_code_block(node.body, caller_symbol)
+                # Extract types from parameter annotations
+                param_types = _extract_param_types(node)
+                process_code_block(node.body, caller_symbol, param_types)
 
     # Process module-level code for <module> pseudo-nodes
     module_symbol = local_symbols.get("<module>")
@@ -1504,6 +1559,19 @@ def _process_call(
                     class_path = class_symbol.path
                     for (_mod, sym_name), sym in global_symbols.items():
                         if sym.path == class_path and sym_name == qualified_name:
+                            callee_symbol = sym
+                            break
+
+            # Case 2d: Imported class method calls - Item.model_validate()
+            # When Item is imported via "from app.models import Item"
+            elif receiver_name in imports:
+                module_name, original_name = imports[receiver_name]
+                class_symbol = global_symbols.get((module_name, original_name))
+                if class_symbol and class_symbol.kind == "class":
+                    # Look for ClassName.method (class method/static method)
+                    qualified_name = f"{original_name}.{attr_name}"
+                    for (_mod, sym_name), sym in global_symbols.items():
+                        if sym.path == class_symbol.path and sym_name == qualified_name:
                             callee_symbol = sym
                             break
 

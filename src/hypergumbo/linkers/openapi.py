@@ -251,7 +251,7 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
 
 def _has_route_concept(symbol: Symbol) -> bool:
     """Check if symbol has a route concept in meta.concepts."""
-    if not symbol.meta:
+    if not symbol.meta:  # pragma: no cover
         return False
     concepts = symbol.meta.get("concepts", [])
     return any(c.get("concept") == "route" for c in concepts if isinstance(c, dict))

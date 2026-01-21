@@ -2355,6 +2355,143 @@ class TestVariableMethodCalls:
         assert len(call_edges) == 0, "Should not have calls edges for unresolved constructor"
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
 
+    def test_imported_class_method_call(self, tmp_path: Path) -> None:
+        """Imported class method calls like Item.model_validate() should resolve."""
+        # Create a model class with a classmethod
+        models_file = tmp_path / "models.py"
+        models_file.write_text(
+            "class Item:\n"
+            "    @classmethod\n"
+            "    def model_validate(cls, data):\n"
+            "        return cls()\n"
+            "\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+
+        # Create a route that uses the classmethod
+        routes_file = tmp_path / "routes.py"
+        routes_file.write_text(
+            "from models import Item\n"
+            "\n"
+            "def create_item(data: dict):\n"
+            "    # Item.model_validate() is a classmethod call\n"
+            "    item = Item.model_validate(data)\n"
+            "    return item\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Should have a call edge from create_item to Item.model_validate
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        classmethod_edge = next(
+            (e for e in call_edges if "create_item" in e["src"] and "model_validate" in e["dst"]),
+            None
+        )
+        assert classmethod_edge is not None, "Expected call edge for Item.model_validate() classmethod"
+        assert "models.py" in classmethod_edge["dst"]
+
+    def test_parameter_type_annotation_inference(self, tmp_path: Path) -> None:
+        """Parameter type annotations should enable method call resolution."""
+        # Create a service class with methods
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class Database:\n"
+            "    def add(self, obj):\n"
+            "        pass\n"
+            "\n"
+            "    def commit(self):\n"
+            "        pass\n"
+        )
+
+        # Create a function with typed parameters
+        handler_file = tmp_path / "handler.py"
+        handler_file.write_text(
+            "from service import Database\n"
+            "\n"
+            "def save_item(db: Database, item: dict):\n"
+            "    # db.add() and db.commit() should resolve via param type annotation\n"
+            "    db.add(item)\n"
+            "    db.commit()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Should have call edges for both db.add() and db.commit()
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        add_edge = next(
+            (e for e in call_edges if "save_item" in e["src"] and "add" in e["dst"]),
+            None
+        )
+        assert add_edge is not None, "Expected call edge for db.add() via param type annotation"
+        assert "service.py" in add_edge["dst"]
+
+        commit_edge = next(
+            (e for e in call_edges if "save_item" in e["src"] and "commit" in e["dst"]),
+            None
+        )
+        assert commit_edge is not None, "Expected call edge for db.commit() via param type annotation"
+        assert "service.py" in commit_edge["dst"]
+
+    def test_module_qualified_param_type_annotation(self, tmp_path: Path) -> None:
+        """module.ClassName type annotations should enable method resolution."""
+        # Create a service module
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class Client:\n"
+            "    def send(self, data):\n"
+            "        pass\n"
+        )
+
+        # Create a handler using module.ClassName annotation
+        handler_file = tmp_path / "handler.py"
+        handler_file.write_text(
+            "import service\n"
+            "\n"
+            "def send_message(client: service.Client, msg: str):\n"
+            "    client.send(msg)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        send_edge = next(
+            (e for e in call_edges if "send_message" in e["src"] and "send" in e["dst"]),
+            None
+        )
+        assert send_edge is not None, "Expected call edge for client.send() via module.ClassName annotation"
+
+    def test_local_class_param_type_annotation(self, tmp_path: Path) -> None:
+        """Local class type annotations should enable method resolution."""
+        # Single file with class and function that uses it as param type
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "class LocalService:\n"
+            "    def process(self, data):\n"
+            "        pass\n"
+            "\n"
+            "def handle(svc: LocalService, data: dict):\n"
+            "    svc.process(data)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "handle" in e["src"] and "process" in e["dst"]),
+            None
+        )
+        assert process_edge is not None, "Expected call edge for svc.process() via local class annotation"
+
 
 # ============================================================================
 # Rich Metadata Extraction Tests (ADR-0003)
