@@ -3068,3 +3068,119 @@ class TestParameterMetadata:
         assert params == []
 
 
+class TestSuffixBasedModuleMatching:
+    """Tests for suffix-based module name matching.
+
+    This handles the case where imports use shorter module names than the
+    actual file paths. For example, 'from app.crud import X' should resolve
+    when the file is registered as 'backend.app.crud'.
+    """
+
+    def test_suffix_matching_resolves_nested_imports(self, tmp_path: Path) -> None:
+        """Import with shorter module name resolves via suffix matching."""
+        # Create a nested directory structure like FastAPI template:
+        # backend/app/crud.py contains create_item()
+        # backend/app/api/routes/items.py imports from app.crud
+        backend = tmp_path / "backend"
+        app = backend / "app"
+        app_api = app / "api"
+        app_routes = app_api / "routes"
+        app_routes.mkdir(parents=True)
+
+        # Create __init__.py files
+        (backend / "__init__.py").write_text("")
+        (app / "__init__.py").write_text("")
+        (app_api / "__init__.py").write_text("")
+        (app_routes / "__init__.py").write_text("")
+
+        # Create crud.py with a function
+        (app / "crud.py").write_text(
+            "def create_item(data):\n"
+            "    return data\n"
+        )
+
+        # Create items.py that imports from app.crud (shorter path)
+        (app_routes / "items.py").write_text(
+            "from app.crud import create_item\n"
+            "\n"
+            "def handler():\n"
+            "    return create_item({'name': 'test'})\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find the import edge
+        import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+
+        # The import edge should point to the actual symbol, not a placeholder
+        # Placeholder format: python:app.crud:0-0:create_item:symbol
+        # Resolved format: python:.../crud.py:1-2:create_item:function
+        import_dsts = [e["dst"] for e in import_edges]
+        # At least one should be resolved (not contain :0-0: placeholder)
+        resolved = [d for d in import_dsts if ":0-0:" not in d and "create_item" in d]
+        assert len(resolved) >= 1, f"Expected resolved import edge, got: {import_dsts}"
+
+
+class TestUnresolvedEdgeEmission:
+    """Tests for unresolved edge emission.
+
+    When Python calls can't be resolved, we emit edges to unresolved
+    placeholders (like Go does) to enable cross-language linking.
+    """
+
+    def test_unresolved_edge_for_external_module_call(self, tmp_path: Path) -> None:
+        """Calls to external modules emit unresolved edges."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "import external_lib\n"
+            "\n"
+            "def handler():\n"
+            "    return external_lib.process()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Should have an unresolved edge to external_lib.process
+        unresolved = [
+            e for e in call_edges
+            if ":unresolved" in e["dst"] and "process" in e["dst"]
+        ]
+        assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
+        edge = unresolved[0]
+
+        # Verify the edge properties
+        assert edge["meta"]["evidence_type"] == "unresolved_method_call"
+        assert edge["confidence"] == 0.50
+
+    def test_unresolved_edge_for_imported_class_method(self, tmp_path: Path) -> None:
+        """Calls to methods on imported classes emit unresolved edges."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "from external_lib import Client\n"
+            "\n"
+            "def handler():\n"
+            "    return Client.create()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Should have an unresolved edge to Client.create
+        unresolved = [
+            e for e in call_edges
+            if ":unresolved" in e["dst"] and "Client.create" in e["dst"]
+        ]
+        assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
+
+

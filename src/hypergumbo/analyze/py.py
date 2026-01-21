@@ -88,6 +88,44 @@ def _make_module_id(module_name: str) -> str:
     return f"python:{module_name}:0-0:module:module"
 
 
+def _lookup_symbol_by_module(
+    global_symbols: dict[tuple[str, str], "Symbol"],
+    module_name: str,
+    symbol_name: str,
+) -> "Symbol | None":
+    """Look up a symbol with suffix-based module matching.
+
+    When an import says 'from app.crud import X' but the file is registered
+    as 'backend.app.crud', exact lookup fails. This function handles such
+    cases by trying suffix matching.
+
+    Algorithm:
+    1. Try exact match (module_name, symbol_name)
+    2. If not found, try suffix match: any (mod, name) where
+       mod ends with '.{module_name}' and name == symbol_name
+
+    Args:
+        global_symbols: Map of (module, name) -> Symbol
+        module_name: The module name from the import statement
+        symbol_name: The symbol name being imported
+
+    Returns:
+        The matching Symbol, or None if not found.
+    """
+    # Try exact match first
+    exact = global_symbols.get((module_name, symbol_name))
+    if exact:
+        return exact
+
+    # Try suffix match: find any module ending with ".{module_name}"
+    suffix = "." + module_name
+    for (mod, name), symbol in global_symbols.items():
+        if name == symbol_name and mod.endswith(suffix):
+            return symbol
+
+    return None
+
+
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
 
@@ -1027,8 +1065,10 @@ def _extract_import_edges(
             )
             if resolved_module:
                 for alias in node.names:
-                    # Try to find the symbol in our global table
-                    symbol = global_symbols.get((resolved_module, alias.name))
+                    # Try to find the symbol in our global table (with suffix matching)
+                    symbol = _lookup_symbol_by_module(
+                        global_symbols, resolved_module, alias.name
+                    )
                     if symbol:
                         dst_id = symbol.id
                     else:
@@ -1407,10 +1447,12 @@ def _extract_edges(
                     param_types[param_name] = class_symbol
                     continue
 
-                # Check imports
+                # Check imports (with suffix matching)
                 if type_name in imports:
                     module_name, original_name = imports[type_name]
-                    class_symbol = global_symbols.get((module_name, original_name))
+                    class_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, original_name
+                    )
                     if class_symbol and class_symbol.kind == "class":
                         param_types[param_name] = class_symbol
 
@@ -1422,7 +1464,9 @@ def _extract_edges(
                 attr_name = annotation.attr
                 if receiver_name in module_imports:
                     module_name = module_imports[receiver_name]
-                    class_symbol = global_symbols.get((module_name, attr_name))
+                    class_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, attr_name
+                    )
                     if class_symbol and class_symbol.kind == "class":
                         param_types[param_name] = class_symbol
 
@@ -1473,10 +1517,10 @@ def _resolve_call_target(
         symbol = local_symbols.get(name)
         if symbol:
             return symbol
-        # Check imports
+        # Check imports (with suffix matching)
         if name in imports:
             module_name, original_name = imports[name]
-            return global_symbols.get((module_name, original_name))
+            return _lookup_symbol_by_module(global_symbols, module_name, original_name)
 
     # Attribute: module.ClassName() or obj.method()
     elif isinstance(func, ast.Attribute):
@@ -1484,10 +1528,10 @@ def _resolve_call_target(
             receiver_name = func.value.id
             attr_name = func.attr
 
-            # Check if receiver is an imported module
+            # Check if receiver is an imported module (with suffix matching)
             if receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
-                return global_symbols.get((module_name, attr_name))
+                return _lookup_symbol_by_module(global_symbols, module_name, attr_name)
 
     return None
 
@@ -1524,7 +1568,9 @@ def _process_call(
             is_instantiation = True
         elif not callee_symbol and callee_name in imports:
             module_name, original_name = imports[callee_name]
-            callee_symbol = global_symbols.get((module_name, original_name))
+            callee_symbol = _lookup_symbol_by_module(
+                global_symbols, module_name, original_name
+            )
             if callee_symbol and callee_symbol.kind == "class":
                 is_instantiation = True
 
@@ -1543,7 +1589,9 @@ def _process_call(
             # Case 2b: module.ClassName() or module.func()
             elif receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
-                callee_symbol = global_symbols.get((module_name, attr_name))
+                callee_symbol = _lookup_symbol_by_module(
+                    global_symbols, module_name, attr_name
+                )
                 if callee_symbol and callee_symbol.kind == "class":
                     is_instantiation = True
 
@@ -1556,9 +1604,8 @@ def _process_call(
                 # If not found locally, try global symbols
                 if not callee_symbol:
                     # Find methods in the file where the class is defined
-                    class_path = class_symbol.path
                     for (_mod, sym_name), sym in global_symbols.items():
-                        if sym.path == class_path and sym_name == qualified_name:
+                        if sym.path == class_symbol.path and sym_name == qualified_name:
                             callee_symbol = sym
                             break
 
@@ -1566,7 +1613,9 @@ def _process_call(
             # When Item is imported via "from app.models import Item"
             elif receiver_name in imports:
                 module_name, original_name = imports[receiver_name]
-                class_symbol = global_symbols.get((module_name, original_name))
+                class_symbol = _lookup_symbol_by_module(
+                    global_symbols, module_name, original_name
+                )
                 if class_symbol and class_symbol.kind == "class":
                     # Look for ClassName.method (class method/static method)
                     qualified_name = f"{original_name}.{attr_name}"
@@ -1594,6 +1643,38 @@ def _process_call(
                 line=call_node.lineno,
                 evidence_type=evidence_type,
             ))
+    else:
+        # Emit unresolved edge for attribute calls with known module context
+        # This enables cross-language linking and makes the graph more complete
+        func = call_node.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            receiver_name = func.value.id
+            attr_name = func.attr
+
+            # Case: module.func() where module is imported but func not found
+            if receiver_name in module_imports:
+                module_name = module_imports[receiver_name]
+                dst_id = f"python:{module_name}:0-0:{attr_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="unresolved_method_call",
+                    confidence=0.50,  # Lower confidence for unresolved
+                ))
+            # Case: imported_name.method() where imported_name not resolved
+            elif receiver_name in imports:
+                module_name, original_name = imports[receiver_name]
+                dst_id = f"python:{module_name}:0-0:{original_name}.{attr_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="unresolved_method_call",
+                    confidence=0.50,
+                ))
 
 
 def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None) -> AnalysisResult:
@@ -1675,8 +1756,10 @@ def analyze_python(
         package_name = module_name.rsplit(".__init__", 1)[0]
 
         for local_name, (resolved_module, original_name) in analysis.imports.items():
-            # Check if this import points to a known symbol
-            source_symbol = global_symbols.get((resolved_module, original_name))
+            # Check if this import points to a known symbol (with suffix matching)
+            source_symbol = _lookup_symbol_by_module(
+                global_symbols, resolved_module, original_name
+            )
             if source_symbol:
                 # Add alias: (package, local_name) -> source_symbol
                 global_symbols[(package_name, local_name)] = source_symbol
