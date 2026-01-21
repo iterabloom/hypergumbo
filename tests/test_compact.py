@@ -1428,6 +1428,34 @@ class TestSelectByCoverageForceInclude:
         assert low_centrality.id in included_ids
         assert high_centrality.id in included_ids
 
+    def test_force_include_skips_in_centrality_loop(self):
+        """Force-included symbols are skipped when iterating by centrality."""
+        # This tests the 'continue' branch on line 810-812
+        # We need force-included symbols to appear in sorted_symbols too
+        # Use language_proportional=False so all symbols are in sorted_symbols
+        symbols = [make_symbol(f"sym_{i}") for i in range(5)]
+
+        # Create edges so sym_0 has high centrality
+        edges = [make_edge(symbols[i].id, symbols[0].id) for i in range(1, 5)]
+
+        # Force include sym_0 (which also has high centrality)
+        # When iterating sorted_symbols, sym_0 will be first but already included
+        force_ids = {symbols[0].id}
+        config = CompactConfig(
+            min_symbols=2, max_symbols=3,
+            language_proportional=False,  # Ensures all symbols in sorted_symbols
+        )
+        result = select_by_coverage(
+            symbols, edges, config, force_include_ids=force_ids
+        )
+
+        included_ids = {s.id for s in result.included.symbols}
+
+        # sym_0 should be included (forced)
+        assert symbols[0].id in included_ids
+        # Other symbols should be included based on remaining budget
+        assert len(included_ids) >= 2
+
 
 class TestSelectByTokensForceInclude:
     """Tests for force_include_ids parameter in select_by_tokens."""
@@ -1507,3 +1535,379 @@ class TestTieredBehaviorMapInducedSubgraph:
         # All remaining entrypoints should reference existing nodes
         for ep in result["entrypoints"]:
             assert ep["symbol_id"] in included_ids
+
+    def test_tiered_force_include_entrypoints(self):
+        """Tiered output with force_include_entrypoints=True includes entrypoints."""
+        # Create symbols where entrypoints have low centrality
+        hub = make_symbol("hub")
+        entrypoint_syms = [make_symbol(f"entry_{i}") for i in range(3)]
+        all_symbols = [hub] + entrypoint_syms
+
+        # Hub has high centrality (called by entrypoints)
+        edges = [make_edge(ep.id, hub.id) for ep in entrypoint_syms]
+
+        entrypoints = [
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9}
+            for ep in entrypoint_syms
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": entrypoints,
+        }
+
+        # With force_include_entrypoints=True (default), entrypoints should be included
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # All entrypoints should be included
+        for ep_sym in entrypoint_syms:
+            assert ep_sym.id in included_ids
+
+
+class TestUnionFind:
+    """Tests for Union-Find data structure used in connectivity selection."""
+
+    def test_init_single_element(self):
+        """Each element starts in its own component."""
+        from hypergumbo.compact import UnionFind
+
+        uf = UnionFind(["a", "b", "c"])
+        assert uf.find("a") != uf.find("b")
+        assert uf.find("b") != uf.find("c")
+        assert uf.component_size("a") == 1
+        assert uf.component_size("b") == 1
+
+    def test_union_merges_components(self):
+        """Union merges two components."""
+        from hypergumbo.compact import UnionFind
+
+        uf = UnionFind(["a", "b", "c"])
+        uf.union("a", "b")
+        assert uf.find("a") == uf.find("b")
+        assert uf.find("a") != uf.find("c")
+        assert uf.component_size("a") == 2
+        assert uf.component_size("b") == 2
+
+    def test_union_chain(self):
+        """Chained unions form single component."""
+        from hypergumbo.compact import UnionFind
+
+        uf = UnionFind(["a", "b", "c", "d"])
+        uf.union("a", "b")
+        uf.union("b", "c")
+        uf.union("c", "d")
+        assert uf.find("a") == uf.find("d")
+        assert uf.component_size("a") == 4
+
+    def test_largest_component_size(self):
+        """Tracks largest component correctly."""
+        from hypergumbo.compact import UnionFind
+
+        uf = UnionFind(["a", "b", "c", "d", "e"])
+        assert uf.largest_component_size() == 1  # All singletons
+
+        uf.union("a", "b")
+        assert uf.largest_component_size() == 2
+
+        uf.union("c", "d")
+        assert uf.largest_component_size() == 2  # Two size-2 components
+
+        uf.union("a", "c")  # Merge to size-4
+        assert uf.largest_component_size() == 4
+
+    def test_add_element(self):
+        """Can add elements after initialization."""
+        from hypergumbo.compact import UnionFind
+
+        uf = UnionFind(["a"])
+        uf.add("b")
+        assert uf.component_size("b") == 1
+        uf.union("a", "b")
+        assert uf.component_size("a") == 2
+
+
+class TestConnectivityAwareSelection:
+    """Tests for connectivity-aware symbol selection."""
+
+    def test_bridges_preferred_over_leaves(self):
+        """Nodes that bridge components are selected before leaves."""
+        from hypergumbo.compact import select_by_connectivity
+
+        # Graph: A -- B -- C -- D
+        #             |
+        #             E
+        # If we seed with {A, D} (disconnected), B and C bridge them
+        # E is a leaf off B
+
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+        sym_d = make_symbol("d")
+        sym_e = make_symbol("e")
+        symbols = [sym_a, sym_b, sym_c, sym_d, sym_e]
+
+        edges = [
+            make_edge(sym_a.id, sym_b.id),
+            make_edge(sym_b.id, sym_c.id),
+            make_edge(sym_c.id, sym_d.id),
+            make_edge(sym_b.id, sym_e.id),
+        ]
+
+        # Seed with A and D (two isolated nodes)
+        seed_ids = {sym_a.id, sym_d.id}
+
+        # Budget for 2 more nodes
+        result = select_by_connectivity(
+            symbols, edges, seed_ids, max_additional=2
+        )
+
+        selected_ids = {s.id for s in result.included.symbols}
+
+        # Should have selected B and C to bridge A-D, not E
+        assert sym_a.id in selected_ids
+        assert sym_d.id in selected_ids
+        assert sym_b.id in selected_ids or sym_c.id in selected_ids
+        # E should not be selected (leaf, doesn't help connectivity)
+        # Unless tie-breaking picks it, which is fine
+
+    def test_component_merge_scoring(self):
+        """Merging larger components scores higher than merging smaller ones."""
+        from hypergumbo.compact import select_by_connectivity
+
+        # Two clusters:
+        # Cluster 1: A-B-C (size 3)
+        # Cluster 2: D-E (size 2)
+        # Bridge F connects both
+        # Leaf G connects only to A
+
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+        sym_d = make_symbol("d")
+        sym_e = make_symbol("e")
+        sym_f = make_symbol("f")  # Bridge
+        sym_g = make_symbol("g")  # Leaf
+        symbols = [sym_a, sym_b, sym_c, sym_d, sym_e, sym_f, sym_g]
+
+        edges = [
+            # Cluster 1
+            make_edge(sym_a.id, sym_b.id),
+            make_edge(sym_b.id, sym_c.id),
+            # Cluster 2
+            make_edge(sym_d.id, sym_e.id),
+            # Bridge F
+            make_edge(sym_c.id, sym_f.id),
+            make_edge(sym_f.id, sym_d.id),
+            # Leaf G
+            make_edge(sym_a.id, sym_g.id),
+        ]
+
+        # Seed with A, B, C, D, E (two clusters)
+        seed_ids = {sym_a.id, sym_b.id, sym_c.id, sym_d.id, sym_e.id}
+
+        # Budget for 1 more node
+        result = select_by_connectivity(
+            symbols, edges, seed_ids, max_additional=1
+        )
+
+        selected_ids = {s.id for s in result.included.symbols}
+
+        # F bridges the clusters (merge 3+2=5), G just adds 1 to cluster 1
+        # So F should be selected
+        assert sym_f.id in selected_ids
+        assert sym_g.id not in selected_ids
+
+    def test_empty_seed_builds_from_centrality(self):
+        """With empty seed, falls back to centrality for initial selection."""
+        from hypergumbo.compact import select_by_connectivity
+
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")  # Hub
+        sym_c = make_symbol("c")
+        sym_d = make_symbol("d")
+        symbols = [sym_a, sym_b, sym_c, sym_d]
+
+        # B is the hub
+        edges = [
+            make_edge(sym_a.id, sym_b.id),
+            make_edge(sym_b.id, sym_c.id),
+            make_edge(sym_b.id, sym_d.id),
+        ]
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids=set(), max_additional=2
+        )
+
+        selected_ids = {s.id for s in result.included.symbols}
+
+        # B should be selected (highest centrality)
+        assert sym_b.id in selected_ids
+
+    def test_respects_max_additional_budget(self):
+        """Stops after max_additional nodes are added."""
+        from hypergumbo.compact import select_by_connectivity
+
+        symbols = [make_symbol(f"s{i}") for i in range(10)]
+        # Chain: s0 - s1 - s2 - ... - s9
+        edges = [make_edge(symbols[i].id, symbols[i + 1].id) for i in range(9)]
+
+        seed_ids = {symbols[0].id}
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids, max_additional=3
+        )
+
+        # Should have seed + 3 = 4 nodes
+        assert len(result.included.symbols) == 4
+
+    def test_disconnected_seeds_get_connected(self):
+        """Previously-disconnected seeds become connected."""
+        from hypergumbo.compact import select_by_connectivity
+
+        # Django-like scenario: multiple entrypoints with shared utilities
+        cmd1 = make_symbol("Command1", kind="class")
+        cmd2 = make_symbol("Command2", kind="class")
+        cmd3 = make_symbol("Command3", kind="class")
+        util = make_symbol("mark_safe", kind="function")  # Shared utility
+
+        symbols = [cmd1, cmd2, cmd3, util]
+
+        edges = [
+            make_edge(cmd1.id, util.id),
+            make_edge(cmd2.id, util.id),
+            make_edge(cmd3.id, util.id),
+        ]
+
+        # Seed with commands (disconnected)
+        seed_ids = {cmd1.id, cmd2.id, cmd3.id}
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids, max_additional=1
+        )
+
+        selected_ids = {s.id for s in result.included.symbols}
+
+        # util should be selected (connects all three)
+        assert util.id in selected_ids
+
+        # Verify edges exist in result (induced subgraph)
+        result_edge_pairs = {(e.src, e.dst) for e in result.included_edges}
+        assert (cmd1.id, util.id) in result_edge_pairs
+        assert (cmd2.id, util.id) in result_edge_pairs
+        assert (cmd3.id, util.id) in result_edge_pairs
+
+    def test_returns_induced_subgraph_edges(self):
+        """Result includes only edges where both endpoints are selected."""
+        from hypergumbo.compact import select_by_connectivity
+
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")  # Not selected
+        symbols = [sym_a, sym_b, sym_c]
+
+        edges = [
+            make_edge(sym_a.id, sym_b.id),  # Both in
+            make_edge(sym_b.id, sym_c.id),  # C not in
+        ]
+
+        seed_ids = {sym_a.id, sym_b.id}
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids, max_additional=0
+        )
+
+        # Only a->b edge should be in result
+        assert len(result.included_edges) == 1
+        assert result.included_edges[0].src == sym_a.id
+        assert result.included_edges[0].dst == sym_b.id
+
+    def test_frontier_expands_via_incoming_edges(self):
+        """Frontier includes nodes that have incoming edges to selected nodes."""
+        from hypergumbo.compact import select_by_connectivity
+
+        # Graph: A <- B <- C (B calls A, C calls B)
+        # Seed with {A}, then B should be added (A's caller)
+        # Then C should be added (B's caller)
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+        sym_d = make_symbol("d")  # Unconnected
+        symbols = [sym_a, sym_b, sym_c, sym_d]
+
+        edges = [
+            make_edge(sym_b.id, sym_a.id),  # B calls A
+            make_edge(sym_c.id, sym_b.id),  # C calls B
+        ]
+
+        seed_ids = {sym_a.id}
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids, max_additional=2
+        )
+
+        selected_ids = {s.id for s in result.included.symbols}
+
+        # A (seed), B (calls A), C (calls B) should be selected
+        assert sym_a.id in selected_ids
+        assert sym_b.id in selected_ids
+        assert sym_c.id in selected_ids
+        # D is unconnected, should not be selected
+        assert sym_d.id not in selected_ids
+
+
+class TestSelectByConnectivityIntegration:
+    """Integration tests for connectivity selection with format functions."""
+
+    def test_compact_with_connectivity_produces_edges(self):
+        """Compact mode with connectivity selection produces non-zero edges."""
+        from hypergumbo.compact import (
+            format_compact_behavior_map,
+            CompactConfig,
+        )
+
+        # Django-like scenario: many entrypoints, shared utilities
+        entrypoints = [make_symbol(f"Command{i}", kind="class") for i in range(5)]
+        utilities = [make_symbol(f"util_{i}", kind="function") for i in range(3)]
+        symbols = entrypoints + utilities
+
+        # Each entrypoint calls all utilities
+        edges = []
+        for ep in entrypoints:
+            for util in utilities:
+                edges.append(make_edge(ep.id, util.id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": ep.id, "kind": "cli_command", "confidence": 0.9}
+                for ep in entrypoints
+            ],
+        }
+
+        config = CompactConfig(
+            target_coverage=0.8,
+            max_symbols=10,  # Enough for entrypoints + some utilities
+        )
+
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config,
+            force_include_entrypoints=True,
+            connectivity_aware=True,  # Enable new algorithm
+        )
+
+        # Should have edges (utilities connect entrypoints)
+        assert len(result["edges"]) > 0, "Expected edges with connectivity selection"
+
+        # Verify induced subgraph property
+        included_ids = {n["id"] for n in result["nodes"]}
+        for edge in result["edges"]:
+            assert edge["src"] in included_ids
+            assert edge["dst"] in included_ids

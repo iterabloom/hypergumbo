@@ -163,6 +163,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
      in compact/tiered selection (controlled by `force_include_entrypoints` parameter, default True).
      This ensures semantic anchors (main functions, HTTP routes, CLI commands) are preserved even
      if they have low centrality. Remaining budget is filled with highest-centrality symbols.
+- **Connectivity-aware selection for compact mode:** Compact mode now uses a greedy frontier-based
+  algorithm that prioritizes nodes which bridge disconnected components. This replaces the previous
+  centrality-only selection which produced isolated nodes with no edges between them. Key improvements:
+  - **Component-growth scoring:** Nodes that merge disconnected entrypoints score highest
+  - **Edge-count secondary:** Ties broken by number of edges added to the selected set
+  - **Centrality fallback:** Original importance used as final tiebreaker
+  - **Performance:** O(k·frontier·degree) with Union-Find, handles tensorflow (154k symbols, 505k edges)
+    in ~6 seconds
+  - **Results:** Django compact output improved from 21 edges to 86 edges (4x) with same 200-node budget
+  - **Default enabled:** Connectivity-aware is now the default; use `--no-connectivity` to disable
 
 ### Changed
 - **Section header renames for clarity:**

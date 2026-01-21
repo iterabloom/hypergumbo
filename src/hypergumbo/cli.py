@@ -683,6 +683,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_files = getattr(args, "max_files", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
+    connectivity = not getattr(args, "no_connectivity", False)
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
@@ -695,6 +696,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         max_files=max_files,
         compact=compact,
         coverage=coverage,
+        connectivity=connectivity,
         budgets=budgets,
         extra_excludes=extra_excludes,
         frameworks=frameworks,
@@ -2321,6 +2323,14 @@ Cache location:
         help="Target centrality coverage for --compact mode (0.0-1.0, default: 0.8)",
     )
     p_run.add_argument(
+        "--no-connectivity",
+        action="store_true",
+        dest="no_connectivity",
+        help="Disable connectivity-aware selection for --compact mode. "
+             "Falls back to centrality-based selection (may produce disconnected "
+             "subgraphs where entrypoints have no edges).",
+    )
+    p_run.add_argument(
         "--budgets",
         type=str,
         default=None,
@@ -2838,6 +2848,7 @@ def run_behavior_map(
     max_files: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
+    connectivity: bool = True,
     budgets: str | None = None,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
@@ -2858,6 +2869,10 @@ def run_behavior_map(
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).
+        connectivity: If True (default), use connectivity-aware selection for
+            compact mode. Prioritizes nodes that bridge disconnected entrypoints,
+            producing well-connected subgraphs instead of isolated high-centrality
+            nodes. Set False to use legacy centrality-based selection.
         budgets: Token budget output specification. Comma-separated specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
@@ -3178,7 +3193,8 @@ def run_behavior_map(
     if compact:
         config = CompactConfig(target_coverage=coverage)
         behavior_map = format_compact_behavior_map(
-            behavior_map, all_symbols, all_edges, config
+            behavior_map, all_symbols, all_edges, config,
+            connectivity_aware=connectivity,
         )
 
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
