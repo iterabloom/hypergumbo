@@ -133,3 +133,66 @@ def is_under_directory(path: str, directory: str) -> bool:
     normalized = normalize_path(path)
     parts = normalized.split("/")
     return directory.lower() in [p.lower() for p in parts[:-1]]  # Exclude filename
+
+
+def is_test_file(path: str) -> bool:
+    """Check if a path looks like a test file.
+
+    Used for filtering and deprioritizing test code in analysis results.
+
+    Matches:
+    - Files starting with test_ or ending with _test.* (py/js/ts/go)
+    - Files starting with spec_ or ending with _spec.* or .spec.*
+    - Files ending with .test.* (e.g., main.test.py, main.test.js)
+    - Go test files (*_test.go)
+    - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
+    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
+
+    Args:
+        path: File path to check
+
+    Returns:
+        True if the path appears to be a test file
+    """
+    filename = get_filename(path)
+    filename_lower = filename.lower()
+
+    # Test patterns with _test suffix (any language)
+    if filename.startswith("test_"):
+        return True
+    if "_test." in filename_lower:  # Matches _test.py, _test.js, _test.ts, _test.go
+        return True
+
+    # Test patterns with .test. suffix (e.g., main.test.py, main.test.js)
+    if ".test." in filename_lower:
+        return True
+
+    # Spec patterns
+    if filename.startswith("spec_") or "_spec." in filename_lower:
+        return True
+    if ".spec." in filename_lower:  # Matches main.spec.js, main.spec.ts
+        return True
+
+    # Mock/fake filename patterns (any language)
+    name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
+    if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
+        return True
+    if name_without_ext.startswith("mock_") or name_without_ext.startswith("fake_"):
+        return True
+
+    # Directory patterns - test and mock directories
+    normalized = normalize_path(path)
+    path_parts = normalized.split("/")
+    test_dirs = {
+        "tests", "test", "spec", "__tests__",  # Test directories
+        "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
+        "fixtures", "testdata", "testutils",  # Test support directories
+    }
+    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
+    for part in path_parts:
+        part_lower = part.lower()
+        if part_lower in test_dirs:
+            return True
+        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
+            return True
+    return False

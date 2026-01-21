@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
-from .paths import normalize_path, path_ends_with, get_filename
+from .paths import normalize_path, path_ends_with, is_test_file
 from .ranking import compute_centrality, apply_tier_weights
 
 
@@ -230,61 +230,6 @@ def find_entry_nodes(
     return partial_matches
 
 
-def _is_test_file(path: str) -> bool:
-    """Check if a path looks like a test file.
-
-    Excludes:
-    - Files starting with test_ or ending with _test.* (py/js/ts/go)
-    - Files starting with spec_ or ending with _spec.* or .spec.*
-    - Files ending with .test.* (e.g., main.test.py, main.test.js)
-    - Go test files (*_test.go)
-    - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
-    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
-    """
-    filename = get_filename(path)
-    filename_lower = filename.lower()
-
-    # Test patterns with _test suffix (any language)
-    if filename.startswith("test_"):
-        return True
-    if "_test." in filename_lower:  # Matches _test.py, _test.js, _test.ts, _test.go
-        return True
-
-    # Test patterns with .test. suffix (e.g., main.test.py, main.test.js)
-    if ".test." in filename_lower:
-        return True
-
-    # Spec patterns
-    if filename.startswith("spec_") or "_spec." in filename_lower:
-        return True
-    if ".spec." in filename_lower:  # Matches main.spec.js, main.spec.ts
-        return True
-
-    # Mock/fake filename patterns (any language)
-    name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
-    if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
-        return True
-    if name_without_ext.startswith("mock_") or name_without_ext.startswith("fake_"):
-        return True
-
-    # Directory patterns - test and mock directories
-    normalized = normalize_path(path)
-    path_parts = normalized.split("/")
-    test_dirs = {
-        "tests", "test", "spec", "__tests__",  # Test directories
-        "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
-        "fixtures", "testdata", "testutils",  # Test support directories
-    }
-    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
-    for part in path_parts:
-        part_lower = part.lower()
-        if part_lower in test_dirs:
-            return True
-        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
-            return True
-    return False
-
-
 def slice_graph(
     nodes: List[Symbol],
     edges: List[Edge],
@@ -383,7 +328,7 @@ def slice_graph(
 
     # Initialize with entry nodes
     for entry in entry_nodes:
-        if query.exclude_tests and _is_test_file(entry.path):
+        if query.exclude_tests and is_test_file(entry.path):
             continue
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
@@ -427,7 +372,7 @@ def slice_graph(
                 continue
 
             # Filter test files
-            if query.exclude_tests and _is_test_file(next_node.path):
+            if query.exclude_tests and is_test_file(next_node.path):
                 continue
 
             # Check tier limit

@@ -48,6 +48,7 @@ from enum import Enum
 from typing import List
 
 from .ir import Symbol, Edge
+from .paths import is_test_file
 
 
 class EntrypointKind(Enum):
@@ -410,12 +411,17 @@ def detect_entrypoints(
     enriched with concept metadata during the FRAMEWORK_PATTERNS phase, and
     this function maps those concepts to entrypoint kinds.
 
+    Confidence Adjustments:
+    - Test files: 50% penalty (deprioritized, not excluded)
+    - Vendor/external deps (tier >= 3): 70% penalty
+    - Connectivity: Up to +25% boost for entrypoints with many outgoing edges
+
     Args:
         nodes: All symbols in the codebase (with concept metadata from enrichment).
         edges: All edges (used for connectivity boost).
 
     Returns:
-        List of detected entrypoints with confidence scores.
+        List of detected entrypoints with confidence scores, sorted by confidence.
     """
     # Semantic detection from concept metadata (YAML patterns)
     # This includes both framework patterns (routes, commands) and
@@ -430,6 +436,25 @@ def detect_entrypoints(
         if ep.symbol_id not in seen_ids:
             seen_ids.add(ep.symbol_id)
             unique_entrypoints.append(ep)
+
+    # Build lookup from symbol_id to Symbol for penalty calculations
+    symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
+
+    # Apply penalties for test files and vendor code
+    # This deprioritizes them without removing them from the list
+    for ep in unique_entrypoints:
+        sym = symbol_lookup.get(ep.symbol_id)
+        if sym is None:
+            continue  # pragma: no cover - symbol should always exist
+
+        # Penalty for test files (50% reduction)
+        if sym.path and is_test_file(sym.path):
+            ep.confidence *= 0.5
+
+        # Penalty for vendor/external dependencies (70% reduction)
+        # Tier 3 = external deps, Tier 4 = derived/build artifacts
+        if sym.supply_chain_tier >= 3:
+            ep.confidence *= 0.3
 
     # Boost confidence based on connectivity (outgoing edges)
     # An entrypoint that calls many other functions is more "interesting"

@@ -2163,6 +2163,35 @@ Different analyzers require different execution environments:
 
 Dataflow/CFG are opt-in with explicit partial-results flags, not core requirements.
 
+#### AST-based type inference improvements (bridge to Spec B)
+
+Spec A implements basic type inference for method call resolution (see ADR-0006):
+- ✅ Constructor tracking: `db = Database()` → `db` has type `Database`
+- ✅ Parameter tracking: `def f(db: Database)` → `db` has type `Database`
+- Supported in: Python, Java, Kotlin, TypeScript, C#, Dart
+
+Future improvements to AST-based type inference (without requiring language servers):
+
+| Feature | Value | Effort | Priority |
+|---------|-------|--------|----------|
+| **Type hierarchy** | High | Medium | 1st |
+| **Return type tracking** | Medium-High | Medium | 2nd |
+| **Field type tracking** | High | Medium | 3rd |
+| **Method-scoped tracking** | Low-Medium | Medium | 4th |
+| **Generic handling** | High | High | 5th |
+
+**Type hierarchy:** Use existing inheritance edges to resolve `interface.method()` → `ConcreteClass.method()`. Data already exists; just needs to be queried during method resolution. Benefits DI-heavy codebases (Spring, ASP.NET, Angular). Applicable to 10+ languages.
+
+**Return type tracking:** Track `func() -> ReturnType` annotations; infer type when `var = func()`. Natural extension of two-pass analysis. Applicable to all typed languages.
+
+**Field type tracking:** Track `self.db: Database` declarations and assignments. Enables resolution of `self.db.save()` → `Database.save()`. Critical for OOP patterns where DI injects into fields.
+
+**Method-scoped tracking:** Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare.
+
+**Generic handling:** Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done.
+
+These improvements provide incremental call graph quality gains without the complexity of full language server integration (Spec B).
+
 #### IR vs Views architecture
 
 ```

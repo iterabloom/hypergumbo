@@ -7,7 +7,7 @@ from hypergumbo.entrypoints import (
     Entrypoint,
     EntrypointKind,
 )
-from hypergumbo.slice import _is_test_file
+from hypergumbo.paths import is_test_file
 
 
 def make_symbol(
@@ -19,6 +19,7 @@ def make_symbol(
     language: str = "python",
     decorators: list[str] | None = None,
     meta: dict | None = None,
+    supply_chain_tier: int = 1,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -36,96 +37,97 @@ def make_symbol(
         origin_run_id="uuid:test",
         stable_id=stable_id,
         meta=meta,
+        supply_chain_tier=supply_chain_tier,
     )
 
 
 
 class TestIsTestFile:
-    """Tests for _is_test_file function."""
+    """Tests for is_test_file function."""
 
     def test_python_test_prefix(self) -> None:
         """Detect Python test_ prefix."""
-        assert _is_test_file("test_main.py")
-        assert _is_test_file("src/test_utils.py")
+        assert is_test_file("test_main.py")
+        assert is_test_file("src/test_utils.py")
 
     def test_python_test_suffix(self) -> None:
         """Detect Python _test.py suffix."""
-        assert _is_test_file("main_test.py")
-        assert _is_test_file("src/utils_test.py")
+        assert is_test_file("main_test.py")
+        assert is_test_file("src/utils_test.py")
 
     def test_python_spec_patterns(self) -> None:
         """Detect Python spec patterns."""
-        assert _is_test_file("spec_main.py")
-        assert _is_test_file("main_spec.py")
+        assert is_test_file("spec_main.py")
+        assert is_test_file("main_spec.py")
 
     def test_go_test_suffix(self) -> None:
         """Detect Go _test.go suffix."""
-        assert _is_test_file("main_test.go")
-        assert _is_test_file("pkg/handlers/user_test.go")
+        assert is_test_file("main_test.go")
+        assert is_test_file("pkg/handlers/user_test.go")
 
     def test_mock_filename_suffix(self) -> None:
         """Detect *_mock.* filename patterns."""
-        assert _is_test_file("user_mock.go")
-        assert _is_test_file("service_mock.py")
-        assert _is_test_file("src/handler_mock.ts")
+        assert is_test_file("user_mock.go")
+        assert is_test_file("service_mock.py")
+        assert is_test_file("src/handler_mock.ts")
 
     def test_mock_filename_prefix(self) -> None:
         """Detect mock_*.* filename patterns."""
-        assert _is_test_file("src/mock_user.go")
-        assert _is_test_file("mock_service.py")
+        assert is_test_file("src/mock_user.go")
+        assert is_test_file("mock_service.py")
 
     def test_fake_filename_suffix(self) -> None:
         """Detect *_fake.* filename patterns."""
-        assert _is_test_file("user_fake.go")
-        assert _is_test_file("src/handler_fake.ts")
+        assert is_test_file("user_fake.go")
+        assert is_test_file("src/handler_fake.ts")
 
     def test_fake_filename_prefix(self) -> None:
         """Detect fake_*.* filename patterns."""
-        assert _is_test_file("src/fake_user.go")
-        assert _is_test_file("fake_handler.go")
+        assert is_test_file("src/fake_user.go")
+        assert is_test_file("fake_handler.go")
 
     def test_fakes_directory(self) -> None:
         """Detect files in fakes/ directory."""
-        assert _is_test_file("pkg/rtc/transport/transportfakes/fake_handler.go")
-        assert _is_test_file("internal/fakes/mock_service.go")
+        assert is_test_file("pkg/rtc/transport/transportfakes/fake_handler.go")
+        assert is_test_file("internal/fakes/mock_service.go")
 
     def test_mocks_directory(self) -> None:
         """Detect files in mocks/ directory."""
-        assert _is_test_file("pkg/mocks/user_service.go")
-        assert _is_test_file("src/mocks/api_client.ts")
+        assert is_test_file("pkg/mocks/user_service.go")
+        assert is_test_file("src/mocks/api_client.ts")
 
     def test_fixtures_directory(self) -> None:
         """Detect files in fixtures/ directory."""
-        assert _is_test_file("tests/fixtures/sample_data.json")
-        assert _is_test_file("fixtures/test_user.py")
+        assert is_test_file("tests/fixtures/sample_data.json")
+        assert is_test_file("fixtures/test_user.py")
 
     def test_testdata_directory(self) -> None:
         """Detect files in testdata/ directory."""
-        assert _is_test_file("pkg/testdata/sample.txt")
-        assert _is_test_file("testdata/config.yaml")
+        assert is_test_file("pkg/testdata/sample.txt")
+        assert is_test_file("testdata/config.yaml")
 
     def test_testutils_directory(self) -> None:
         """Detect files in testutils/ directory."""
-        assert _is_test_file("pkg/testutils/helpers.go")
-        assert _is_test_file("testutils/factory.py")
+        assert is_test_file("pkg/testutils/helpers.go")
+        assert is_test_file("testutils/factory.py")
 
     def test_regular_file_not_detected(self) -> None:
         """Regular source files are not detected as test files."""
-        assert not _is_test_file("src/main.py")
-        assert not _is_test_file("pkg/handlers/user.go")
-        assert not _is_test_file("internal/api/routes.ts")
+        assert not is_test_file("src/main.py")
+        assert not is_test_file("pkg/handlers/user.go")
+        assert not is_test_file("internal/api/routes.ts")
 
     def test_case_insensitive_directories(self) -> None:
         """Directory matching is case-insensitive."""
-        assert _is_test_file("src/MOCKS/service.go")
-        assert _is_test_file("Fixtures/data.json")
-        assert _is_test_file("TESTDATA/sample.txt")
+        assert is_test_file("src/MOCKS/service.go")
+        assert is_test_file("Fixtures/data.json")
+        assert is_test_file("TESTDATA/sample.txt")
 
     def test_compound_directory_names(self) -> None:
         """Detect directories ending with 'fakes' or 'mocks'."""
         # These hit endswith("fakes") and endswith("mocks") specifically
-        assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
-        assert _is_test_file("internal/servicemocks/client.go")
+        assert is_test_file("pkg/rtc/transport/transportfakes/handler.go")
+        assert is_test_file("internal/servicemocks/client.go")
 
 
 class TestSemanticEntryDetection:
@@ -1292,3 +1294,246 @@ class TestEntrypointSerialization:
             )
             result = ep.to_dict()
             assert result["kind"] == kind.value
+
+
+class TestEntrypointRankingPenalties:
+    """Tests for test/vendor penalty-based ranking.
+
+    Entrypoints in test files or vendor code should be deprioritized
+    (lower confidence) rather than excluded entirely. This ensures:
+    - Production code entrypoints rank higher by default
+    - Test/vendor entrypoints are still discoverable if needed
+    - The full graph data is preserved
+    """
+
+    def test_test_file_penalty(self) -> None:
+        """Entrypoints in test files receive a 50% confidence penalty."""
+        # Production main function
+        prod_main = make_symbol(
+            "main",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # Test main function
+        test_main = make_symbol(
+            "main",
+            path="tests/test_app.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        nodes = [prod_main, test_main]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Both should be detected
+        assert len(entrypoints) == 2
+
+        # Production main should have higher confidence
+        prod_ep = next(e for e in entrypoints if "src/app.py" in e.symbol_id)
+        test_ep = next(e for e in entrypoints if "tests/test_app.py" in e.symbol_id)
+
+        # Base confidence is 0.80 for main_function
+        # Test file gets 50% penalty: 0.80 * 0.5 = 0.40
+        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert test_ep.confidence == pytest.approx(0.40, rel=0.01)
+
+        # Production should rank first
+        assert entrypoints[0].symbol_id == prod_main.id
+
+    def test_vendor_tier_penalty(self) -> None:
+        """Entrypoints in vendor code (tier >= 3) receive a 70% penalty."""
+        # First-party main function (tier 1)
+        first_party = make_symbol(
+            "main",
+            path="src/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # External dependency main function (tier 3)
+        vendor = make_symbol(
+            "main",
+            path="vendor/github.com/lib/main.go",
+            language="go",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=3,
+        )
+        nodes = [first_party, vendor]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Both should be detected
+        assert len(entrypoints) == 2
+
+        # First-party should have higher confidence
+        fp_ep = next(e for e in entrypoints if "src/main.go" in e.symbol_id)
+        vendor_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
+
+        # Base confidence is 0.80 for main_function
+        # Vendor gets 70% penalty: 0.80 * 0.3 = 0.24
+        assert fp_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert vendor_ep.confidence == pytest.approx(0.24, rel=0.01)
+
+        # First-party should rank first
+        assert entrypoints[0].symbol_id == first_party.id
+
+    def test_test_and_vendor_penalties_stack(self) -> None:
+        """Both penalties apply if entrypoint is in test file AND vendor code."""
+        # First-party production code
+        prod = make_symbol(
+            "main",
+            path="src/main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # Vendor test file (both penalties)
+        vendor_test = make_symbol(
+            "main",
+            path="vendor/lib/tests/test_main.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=3,
+        )
+        nodes = [prod, vendor_test]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        prod_ep = next(e for e in entrypoints if "src/main.py" in e.symbol_id)
+        vendor_test_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
+
+        # Base 0.80 * 0.5 (test penalty) * 0.3 (vendor penalty) = 0.12
+        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert vendor_test_ep.confidence == pytest.approx(0.12, rel=0.01)
+
+    def test_http_route_test_penalty(self) -> None:
+        """HTTP routes in test files also receive test penalty."""
+        # Production route
+        prod_route = make_symbol(
+            "get_users",
+            path="src/api/routes.py",
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        # Test route (e.g., mock endpoint in tests)
+        test_route = make_symbol(
+            "mock_get_users",
+            path="tests/conftest.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "route", "path": "/test/users", "method": "GET"}]},
+        )
+        nodes = [prod_route, test_route]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        prod_ep = next(e for e in entrypoints if "src/api" in e.symbol_id)
+        test_ep = next(e for e in entrypoints if "tests/" in e.symbol_id)
+
+        # Base confidence is 0.95 for HTTP routes
+        # Test file gets 50% penalty: 0.95 * 0.5 = 0.475
+        assert prod_ep.confidence == pytest.approx(0.95, rel=0.01)
+        assert test_ep.confidence == pytest.approx(0.475, rel=0.01)
+
+        # Production route should rank first
+        assert entrypoints[0].symbol_id == prod_route.id
+
+    def test_derived_artifact_penalty(self) -> None:
+        """Entrypoints in derived artifacts (tier 4) also receive vendor penalty."""
+        # First-party source
+        source = make_symbol(
+            "main",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # Transpiled output (tier 4)
+        derived = make_symbol(
+            "main",
+            path="dist/main.js",
+            language="javascript",
+            start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=4,
+        )
+        nodes = [source, derived]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        source_ep = next(e for e in entrypoints if "src/main.ts" in e.symbol_id)
+        derived_ep = next(e for e in entrypoints if "dist/main.js" in e.symbol_id)
+
+        # Derived (tier 4) should also get the vendor penalty (tier >= 3)
+        assert source_ep.confidence > derived_ep.confidence
+        assert derived_ep.confidence == pytest.approx(0.80 * 0.3, rel=0.01)
+
+    def test_connectivity_boost_still_applies_after_penalty(self) -> None:
+        """Connectivity boost is applied after penalties."""
+        # Test file main with high connectivity
+        test_main = make_symbol(
+            "main",
+            path="tests/test_main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # Create edges to give it connectivity
+        edges = [
+            Edge.create(
+                src=test_main.id,
+                dst=f"python:tests/helper.py:{i}-{i+1}:func{i}:function",
+                edge_type="calls",
+                line=i,
+                origin="test",
+                origin_run_id="test",
+            )
+            for i in range(10)  # 10 outgoing edges
+        ]
+        nodes = [test_main]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+
+        # Base 0.80 * 0.5 (test penalty) = 0.40
+        # Plus connectivity boost: log(1 + 10) / 10 ≈ 0.24
+        # Total: 0.40 + 0.24 = 0.64 (capped at 0.25 boost)
+        # Actually: 0.40 + min(0.25, log(11)/10) = 0.40 + 0.24 = 0.64
+        assert ep.confidence > 0.40  # Should be boosted
+        assert ep.confidence < 0.80  # But still penalized
+
+    def test_ranking_order_respects_penalties(self) -> None:
+        """Final ranking correctly orders by penalized confidence."""
+        # High-confidence production route
+        prod_route = make_symbol(
+            "api_handler",
+            path="src/api.py",
+            meta={"concepts": [{"concept": "route", "path": "/api", "method": "GET"}]},
+            supply_chain_tier=1,
+        )
+        # Low-confidence test main
+        test_main = make_symbol(
+            "main",
+            path="tests/test_main.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # Medium-confidence vendor route
+        vendor_route = make_symbol(
+            "health_check",
+            path="vendor/lib/health.py",
+            start_line=20,
+            meta={"concepts": [{"concept": "route", "path": "/health", "method": "GET"}]},
+            supply_chain_tier=3,
+        )
+        nodes = [test_main, vendor_route, prod_route]  # Intentionally scrambled
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Expected order after penalties:
+        # 1. prod_route: 0.95 (no penalty)
+        # 2. test_main: 0.80 * 0.5 = 0.40
+        # 3. vendor_route: 0.95 * 0.3 = 0.285
+        assert len(entrypoints) == 3
+        assert entrypoints[0].symbol_id == prod_route.id
+        assert entrypoints[1].symbol_id == test_main.id
+        assert entrypoints[2].symbol_id == vendor_route.id
