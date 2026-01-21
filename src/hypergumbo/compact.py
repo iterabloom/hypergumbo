@@ -311,6 +311,7 @@ def select_by_coverage(
     symbols: List[Symbol],
     edges: List[Edge],
     config: CompactConfig,
+    force_include_ids: set | None = None,
 ) -> CompactResult:
     """Select symbols by centrality coverage with residual summarization.
 
@@ -322,10 +323,16 @@ def select_by_coverage(
         symbols: All symbols to consider.
         edges: Edges for centrality computation.
         config: Compact configuration.
+        force_include_ids: Optional set of symbol IDs that must be included
+            (e.g., entrypoint symbol_ids). These are included first, then
+            remaining budget is filled with highest-centrality symbols.
 
     Returns:
         CompactResult with included symbols and omitted summary.
     """
+    if force_include_ids is None:
+        force_include_ids = set()
+
     if not symbols:
         return CompactResult(
             included=IncludedSummary(
@@ -385,8 +392,25 @@ def select_by_coverage(
     # Select by coverage from the (possibly pre-filtered) candidates
     included: List[Symbol] = []
     included_centrality = 0.0
+    included_ids: set = set()
 
+    # First, force-include any must-include symbols (e.g., entrypoints)
+    # These are semantically important and should always be included
+    if force_include_ids:
+        symbol_by_id = {s.id: s for s in symbols}
+        for sid in force_include_ids:
+            if sid in symbol_by_id and sid not in included_ids:
+                sym = symbol_by_id[sid]
+                included.append(sym)
+                included_centrality += centrality.get(sym.id, 0)
+                included_ids.add(sid)
+
+    # Then fill remaining budget with highest-centrality symbols
     for sym in sorted_symbols:
+        # Skip if already included (force-included)
+        if sym.id in included_ids:
+            continue
+
         # Check if we've met all stopping conditions
         coverage = included_centrality / total_centrality
         at_min = len(included) >= config.min_symbols
@@ -400,9 +424,9 @@ def select_by_coverage(
 
         included.append(sym)
         included_centrality += centrality.get(sym.id, 0)
+        included_ids.add(sym.id)
 
-    # Compute omitted symbols
-    included_ids = {s.id for s in included}
+    # Compute omitted symbols (included_ids already built above)
     omitted = [s for s in symbols if s.id not in included_ids]
 
     # Compute summaries
@@ -440,6 +464,7 @@ def format_compact_behavior_map(
     symbols: List[Symbol],
     edges: List[Edge],
     config: CompactConfig,
+    force_include_entrypoints: bool = True,
 ) -> dict:
     """Format a behavior map in compact mode.
 
@@ -450,11 +475,23 @@ def format_compact_behavior_map(
         symbols: Symbol objects (for analysis).
         edges: Edge objects (for centrality).
         config: Compact configuration.
+        force_include_entrypoints: If True, always include entrypoint symbols
+            in the selection. This ensures semantic anchors are preserved.
+            Default True.
 
     Returns:
         Modified behavior map with compact output.
     """
-    result = select_by_coverage(symbols, edges, config)
+    # Extract entrypoint symbol_ids to force-include them
+    force_include_ids: set = set()
+    if force_include_entrypoints:
+        symbol_ids = {s.id for s in symbols}
+        for ep in behavior_map.get("entrypoints", []):
+            sid = ep.get("symbol_id")
+            if sid and sid in symbol_ids:
+                force_include_ids.add(sid)
+
+    result = select_by_coverage(symbols, edges, config, force_include_ids)
 
     # Create compact output
     compact_map = dict(behavior_map)
@@ -462,11 +499,18 @@ def format_compact_behavior_map(
     compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
     compact_map["nodes_summary"] = result.to_dict()
 
-    # Keep edges that connect included nodes
+    # Keep only edges where BOTH endpoints exist in the included set
+    # Using AND (not OR) ensures the induced subgraph has valid connectivity
     included_ids = {s.id for s in result.included.symbols}
     compact_map["edges"] = [
         e for e in behavior_map.get("edges", [])
-        if e.get("src") in included_ids or e.get("dst") in included_ids
+        if e.get("src") in included_ids and e.get("dst") in included_ids
+    ]
+
+    # Filter entrypoints to only those whose symbol_id exists in included nodes
+    compact_map["entrypoints"] = [
+        ep for ep in behavior_map.get("entrypoints", [])
+        if ep.get("symbol_id") in included_ids
     ]
 
     return compact_map
@@ -494,6 +538,7 @@ def select_by_tokens(
     exclude_examples: bool = True,
     language_proportional: bool = True,
     min_per_language: int = 1,
+    force_include_ids: set | None = None,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -516,10 +561,15 @@ def select_by_tokens(
             multi-language projects have representation from each.
         min_per_language: Minimum symbols per language (floor guarantee).
             Only used when language_proportional=True. Default 1.
+        force_include_ids: Optional set of symbol IDs that must be included
+            (e.g., entrypoint symbol_ids). These are included first, then
+            remaining budget is filled with highest-centrality symbols.
 
     Returns:
         CompactResult with symbols fitting the budget.
     """
+    if force_include_ids is None:
+        force_include_ids = set()
     if not symbols:
         return CompactResult(
             included=IncludedSummary(
@@ -595,8 +645,29 @@ def select_by_tokens(
     included_centrality = 0.0
     tokens_used = 0
     seen_names: set[str] = set()  # For deduplication
+    included_ids: set = set()
 
+    # First, force-include any must-include symbols (e.g., entrypoints)
+    # These are semantically important and should always be included
+    if force_include_ids:
+        symbol_by_id = {s.id: s for s in symbols}
+        for sid in force_include_ids:
+            if sid in symbol_by_id and sid not in included_ids:
+                sym = symbol_by_id[sid]
+                node_dict = sym.to_dict()
+                node_tokens = estimate_node_tokens(node_dict)
+                included.append(sym)
+                included_centrality += centrality.get(sym.id, 0)
+                tokens_used += node_tokens
+                seen_names.add(sym.name)
+                included_ids.add(sid)
+
+    # Then fill remaining budget with highest-centrality symbols
     for sym in sorted_symbols:
+        # Skip if already included (force-included)
+        if sym.id in included_ids:
+            continue
+
         # Skip duplicate names if deduplication is enabled
         if deduplicate_names and sym.name in seen_names:
             continue
@@ -611,9 +682,9 @@ def select_by_tokens(
         included_centrality += centrality.get(sym.id, 0)
         tokens_used += node_tokens
         seen_names.add(sym.name)
+        included_ids.add(sym.id)
 
-    # Compute omitted symbols
-    included_ids = {s.id for s in included}
+    # Compute omitted symbols (included_ids already built above)
     omitted = [s for s in symbols if s.id not in included_ids]
 
     # Compute summaries
@@ -650,6 +721,7 @@ def format_tiered_behavior_map(
     symbols: List[Symbol],
     edges: List[Edge],
     target_tokens: int,
+    force_include_entrypoints: bool = True,
 ) -> dict:
     """Format a behavior map for a specific token tier.
 
@@ -658,11 +730,25 @@ def format_tiered_behavior_map(
         symbols: Symbol objects.
         edges: Edge objects.
         target_tokens: Target token budget.
+        force_include_entrypoints: If True, always include entrypoint symbols
+            in the selection. This ensures semantic anchors are preserved.
+            Default True.
 
     Returns:
         Behavior map formatted for the token tier.
     """
-    result = select_by_tokens(symbols, edges, target_tokens)
+    # Extract entrypoint symbol_ids to force-include them
+    force_include_ids: set = set()
+    if force_include_entrypoints:
+        symbol_ids = {s.id for s in symbols}
+        for ep in behavior_map.get("entrypoints", []):
+            sid = ep.get("symbol_id")
+            if sid and sid in symbol_ids:
+                force_include_ids.add(sid)
+
+    result = select_by_tokens(
+        symbols, edges, target_tokens, force_include_ids=force_include_ids
+    )
 
     # Create tiered output
     tiered_map = dict(behavior_map)
@@ -671,11 +757,18 @@ def format_tiered_behavior_map(
     tiered_map["nodes"] = [s.to_dict() for s in result.included.symbols]
     tiered_map["nodes_summary"] = result.to_dict()
 
-    # Keep edges that connect included nodes
+    # Keep only edges where BOTH endpoints exist in the included set
+    # Using AND (not OR) ensures the induced subgraph has valid connectivity
     included_ids = {s.id for s in result.included.symbols}
     tiered_map["edges"] = [
         e for e in behavior_map.get("edges", [])
-        if e.get("src") in included_ids or e.get("dst") in included_ids
+        if e.get("src") in included_ids and e.get("dst") in included_ids
+    ]
+
+    # Filter entrypoints to only those whose symbol_id exists in included nodes
+    tiered_map["entrypoints"] = [
+        ep for ep in behavior_map.get("entrypoints", [])
+        if ep.get("symbol_id") in included_ids
     ]
 
     return tiered_map

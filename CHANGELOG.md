@@ -150,6 +150,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   at the end). Budget pruning now correctly omits items one-at-a-time in priority order (module-level
   first, then ascending in-degree) until the total fits, rather than greedy selection which could
   skip important items due to size. Separate omission messages for callers vs callees.
+- **Compact mode produces valid induced subgraphs:** Fixed `--compact` and tiered behavior maps to
+  produce structurally valid output that downstream commands can use. Three critical bugs were fixed:
+  1. **Edge filter changed from OR to AND:** Previously kept edges where *either* endpoint existed;
+     now only keeps edges where *both* endpoints exist. This was causing 99%+ of compact file size
+     to be wasted on unusable edges with dangling references (e.g., tensorflow compact was 248MB
+     but only 0.05MB of edges were actually usable).
+  2. **Entrypoints filtered to resolvable IDs:** Entrypoints are now filtered to only include those
+     whose `symbol_id` exists in the included nodes. Previously all entrypoints were copied verbatim,
+     causing `slice --list-entries` to report "No entrypoints detected" on compact output.
+  3. **Force-include entrypoints in selection:** Entrypoint symbols are now automatically included
+     in compact/tiered selection (controlled by `force_include_entrypoints` parameter, default True).
+     This ensures semantic anchors (main functions, HTTP routes, CLI commands) are preserved even
+     if they have low centrality. Remaining budget is filled with highest-centrality symbols.
 
 ### Changed
 - **Section header renames for clarity:**

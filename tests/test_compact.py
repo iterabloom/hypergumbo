@@ -472,30 +472,32 @@ class TestFormatCompactBehaviorMap:
         assert len(result["nodes"]) <= 1
 
     def test_edges_filtered(self):
-        """Only edges connecting included nodes are kept."""
+        """Only edges where BOTH endpoints are included are kept."""
         sym_a = make_symbol("a")
         sym_b = make_symbol("b")
         sym_c = make_symbol("c")
 
-        # Edge a->b (a will be included)
-        # Edge b->c (c will be omitted)
+        # Edge a->b (both in included set when max=2)
+        # Edge b->c (c will be omitted, so this edge should be dropped)
         edge_ab = make_edge(sym_a.id, sym_b.id)
         edge_bc = make_edge(sym_b.id, sym_c.id)
 
         behavior_map = {
             "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
             "edges": [edge_ab.to_dict(), edge_bc.to_dict()],
+            "entrypoints": [],
         }
 
-        config = CompactConfig(min_symbols=1, max_symbols=1)
+        config = CompactConfig(min_symbols=2, max_symbols=2)
         result = format_compact_behavior_map(
-            behavior_map, [sym_a, sym_b, sym_c], [edge_ab, edge_bc], config
+            behavior_map, [sym_a, sym_b, sym_c], [edge_ab, edge_bc], config,
+            force_include_entrypoints=False,
         )
 
-        # Should have filtered edges to only those involving included nodes
+        # Edges should only exist where BOTH endpoints are in included set
         included_ids = {n["id"] for n in result["nodes"]}
         for edge in result["edges"]:
-            assert edge["src"] in included_ids or edge["dst"] in included_ids
+            assert edge["src"] in included_ids and edge["dst"] in included_ids
 
 
 class TestStopWords:
@@ -763,7 +765,7 @@ class TestFormatTieredBehaviorMap:
         assert result["tier_tokens"] == 16000
 
     def test_edges_filtered(self):
-        """Only edges connecting included nodes are kept."""
+        """Only edges where BOTH endpoints are included are kept."""
         sym_a = make_symbol("a")
         sym_b = make_symbol("b")
         sym_c = make_symbol("c")
@@ -774,18 +776,20 @@ class TestFormatTieredBehaviorMap:
         behavior_map = {
             "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
             "edges": [edge_ab.to_dict(), edge_bc.to_dict()],
+            "entrypoints": [],
         }
 
         # Small budget to force truncation
         result = format_tiered_behavior_map(
             behavior_map, [sym_a, sym_b, sym_c], [edge_ab, edge_bc],
-            target_tokens=500
+            target_tokens=500,
+            force_include_entrypoints=False,
         )
 
-        # Edges should only connect to included nodes
+        # Edges should only exist where BOTH endpoints are in included set
         included_ids = {n["id"] for n in result["nodes"]}
         for edge in result["edges"]:
-            assert edge["src"] in included_ids or edge["dst"] in included_ids
+            assert edge["src"] in included_ids and edge["dst"] in included_ids
 
 
 class TestGenerateTierFilename:
@@ -1156,3 +1160,350 @@ class TestSelectByTokensFiltering:
 
         # Omitted should include filtered example symbol
         assert result.omitted.count >= 1
+
+
+# ============================================================================
+# Tests for induced subgraph fixes (edge AND filter, entrypoint filtering)
+# ============================================================================
+
+
+class TestInducedSubgraphEdgeFilter:
+    """Tests for the edge filter using AND (both endpoints must exist)."""
+
+    def test_edges_require_both_endpoints(self):
+        """Only edges where BOTH src and dst exist are kept."""
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+
+        # a->b, b->c, a->c
+        edge_ab = make_edge(sym_a.id, sym_b.id)
+        edge_bc = make_edge(sym_b.id, sym_c.id)
+        edge_ac = make_edge(sym_a.id, sym_c.id)
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
+            "edges": [edge_ab.to_dict(), edge_bc.to_dict(), edge_ac.to_dict()],
+            "entrypoints": [],
+        }
+
+        # Only include a and b (not c)
+        config = CompactConfig(min_symbols=2, max_symbols=2)
+        result = format_compact_behavior_map(
+            behavior_map, [sym_a, sym_b, sym_c], [edge_ab, edge_bc, edge_ac], config,
+            force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # Only edge a->b should be kept (both endpoints exist)
+        # Edges b->c and a->c should NOT be kept (c doesn't exist)
+        for edge in result["edges"]:
+            assert edge["src"] in included_ids, f"Edge src {edge['src']} not in included nodes"
+            assert edge["dst"] in included_ids, f"Edge dst {edge['dst']} not in included nodes"
+
+    def test_no_dangling_edges_in_compact(self):
+        """Compact output should have no dangling edge references."""
+        # Create a hub-spoke pattern where hub has many callers
+        hub = make_symbol("hub")
+        spokes = [make_symbol(f"spoke_{i}") for i in range(10)]
+        edges = [make_edge(spoke.id, hub.id) for spoke in spokes]
+
+        behavior_map = {
+            "nodes": [hub.to_dict()] + [s.to_dict() for s in spokes],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # Only include hub (max 1 symbol)
+        config = CompactConfig(min_symbols=1, max_symbols=1)
+        result = format_compact_behavior_map(
+            behavior_map, [hub] + spokes, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        # With only hub included, NO edges should exist
+        # (all edges are spoke->hub, but spokes aren't included)
+        assert len(result["edges"]) == 0, "Should have no edges when only one endpoint exists"
+
+
+class TestEntrypointFiltering:
+    """Tests for entrypoint filtering to only resolvable symbol_ids."""
+
+    def test_entrypoints_filtered_to_included_nodes(self):
+        """Only entrypoints with symbol_id in included nodes are kept."""
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
+            "edges": [],
+            "entrypoints": [
+                {"symbol_id": sym_a.id, "kind": "http_route", "confidence": 0.9},
+                {"symbol_id": sym_b.id, "kind": "cli_command", "confidence": 0.9},
+                {"symbol_id": sym_c.id, "kind": "main_function", "confidence": 0.8},
+            ],
+        }
+
+        # Only include a and b (not c)
+        config = CompactConfig(min_symbols=2, max_symbols=2)
+        result = format_compact_behavior_map(
+            behavior_map, [sym_a, sym_b, sym_c], [], config,
+            force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # Only entrypoints for included nodes should remain
+        for ep in result["entrypoints"]:
+            assert ep["symbol_id"] in included_ids, \
+                f"Entrypoint {ep['symbol_id']} references non-existent node"
+
+    def test_no_dangling_entrypoints(self):
+        """Compact output should have no entrypoints referencing missing nodes."""
+        # Create many entrypoints, but compact to few nodes
+        symbols = [make_symbol(f"sym_{i}") for i in range(20)]
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "main_function", "confidence": 0.8}
+            for s in symbols
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": entrypoints,
+        }
+
+        # Only include 5 symbols
+        config = CompactConfig(min_symbols=1, max_symbols=5)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, [], config,
+            force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # All remaining entrypoints should reference existing nodes
+        assert len(result["entrypoints"]) <= len(included_ids)
+        for ep in result["entrypoints"]:
+            assert ep["symbol_id"] in included_ids
+
+
+class TestForceIncludeEntrypoints:
+    """Tests for force-including entrypoints in selection."""
+
+    def test_entrypoints_force_included(self):
+        """Entrypoint symbols are always included when force_include_entrypoints=True."""
+        # Create symbols where entrypoint has low centrality
+        entrypoint_sym = make_symbol("main")
+        high_centrality_sym = make_symbol("utils")
+        caller = make_symbol("caller")
+
+        # Make utils have higher centrality
+        edges = [make_edge(caller.id, high_centrality_sym.id)]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [entrypoint_sym, high_centrality_sym, caller]],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": entrypoint_sym.id, "kind": "main_function", "confidence": 0.8},
+            ],
+        }
+
+        # With max_symbols=1 and force_include=True, entrypoint should be included
+        config = CompactConfig(min_symbols=1, max_symbols=1)
+        result = format_compact_behavior_map(
+            behavior_map,
+            [entrypoint_sym, high_centrality_sym, caller],
+            edges,
+            config,
+            force_include_entrypoints=True,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+        assert entrypoint_sym.id in included_ids, "Entrypoint should be force-included"
+
+    def test_entrypoints_not_force_included_when_disabled(self):
+        """Entrypoints follow normal selection when force_include_entrypoints=False."""
+        # Create symbols where entrypoint has low centrality
+        entrypoint_sym = make_symbol("main")
+        high_centrality_sym = make_symbol("utils")
+        caller = make_symbol("caller")
+
+        # Make utils have higher centrality
+        edges = [make_edge(caller.id, high_centrality_sym.id)]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [entrypoint_sym, high_centrality_sym, caller]],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": entrypoint_sym.id, "kind": "main_function", "confidence": 0.8},
+            ],
+        }
+
+        # With max_symbols=1 and force_include=False, high centrality sym should win
+        config = CompactConfig(min_symbols=1, max_symbols=1)
+        result = format_compact_behavior_map(
+            behavior_map,
+            [entrypoint_sym, high_centrality_sym, caller],
+            edges,
+            config,
+            force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+        # High centrality symbol should be selected over low-centrality entrypoint
+        assert high_centrality_sym.id in included_ids
+
+    def test_all_entrypoints_preserved_when_within_budget(self):
+        """All entrypoints are included if budget allows."""
+        # Create 5 entrypoint symbols
+        entrypoint_syms = [make_symbol(f"main_{i}") for i in range(5)]
+        other_syms = [make_symbol(f"helper_{i}") for i in range(10)]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in entrypoint_syms + other_syms],
+            "edges": [],
+            "entrypoints": [
+                {"symbol_id": s.id, "kind": "main_function", "confidence": 0.8}
+                for s in entrypoint_syms
+            ],
+        }
+
+        # Budget of 10 should include all 5 entrypoints + 5 others
+        config = CompactConfig(min_symbols=10, max_symbols=10)
+        result = format_compact_behavior_map(
+            behavior_map,
+            entrypoint_syms + other_syms,
+            [],
+            config,
+            force_include_entrypoints=True,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # All entrypoints should be included
+        for ep_sym in entrypoint_syms:
+            assert ep_sym.id in included_ids, f"Entrypoint {ep_sym.name} should be included"
+
+
+class TestSelectByCoverageForceInclude:
+    """Tests for force_include_ids parameter in select_by_coverage."""
+
+    def test_force_include_ids_respected(self):
+        """Symbols in force_include_ids are always included."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(10)]
+        force_ids = {symbols[7].id, symbols[9].id}  # Force include last two
+
+        config = CompactConfig(min_symbols=2, max_symbols=5)
+        result = select_by_coverage(symbols, [], config, force_include_ids=force_ids)
+
+        included_ids = {s.id for s in result.included.symbols}
+
+        # Force-included symbols should be present
+        assert symbols[7].id in included_ids
+        assert symbols[9].id in included_ids
+
+    def test_force_include_fills_remaining_budget(self):
+        """After force-including, remaining budget is filled with centrality-ranked symbols."""
+        low_centrality = make_symbol("low")
+        high_centrality = make_symbol("high")
+        caller = make_symbol("caller")
+
+        # Make high have higher centrality
+        edges = [make_edge(caller.id, high_centrality.id)]
+
+        # Force include low, then fill with high-centrality
+        force_ids = {low_centrality.id}
+        config = CompactConfig(min_symbols=2, max_symbols=3)
+        result = select_by_coverage(
+            [low_centrality, high_centrality, caller], edges, config,
+            force_include_ids=force_ids,
+        )
+
+        included_ids = {s.id for s in result.included.symbols}
+
+        # Both should be included: low (forced) and high (centrality)
+        assert low_centrality.id in included_ids
+        assert high_centrality.id in included_ids
+
+
+class TestSelectByTokensForceInclude:
+    """Tests for force_include_ids parameter in select_by_tokens."""
+
+    def test_force_include_ids_respected(self):
+        """Symbols in force_include_ids are always included."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(10)]
+        force_ids = {symbols[0].id, symbols[1].id}
+
+        result = select_by_tokens(
+            symbols, [], target_tokens=10000,
+            force_include_ids=force_ids,
+        )
+
+        included_ids = {s.id for s in result.included.symbols}
+
+        # Force-included symbols should be present
+        assert symbols[0].id in included_ids
+        assert symbols[1].id in included_ids
+
+
+class TestTieredBehaviorMapInducedSubgraph:
+    """Tests for induced subgraph in tiered behavior maps."""
+
+    def test_tiered_edges_require_both_endpoints(self):
+        """Tiered output only keeps edges where both endpoints exist."""
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        sym_c = make_symbol("c")
+
+        edge_ab = make_edge(sym_a.id, sym_b.id)
+        edge_bc = make_edge(sym_b.id, sym_c.id)
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
+            "edges": [edge_ab.to_dict(), edge_bc.to_dict()],
+            "entrypoints": [],
+        }
+
+        # Small token budget to force truncation
+        result = format_tiered_behavior_map(
+            behavior_map, [sym_a, sym_b, sym_c], [edge_ab, edge_bc],
+            target_tokens=500,
+            force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # All remaining edges should have both endpoints in included set
+        for edge in result["edges"]:
+            assert edge["src"] in included_ids
+            assert edge["dst"] in included_ids
+
+    def test_tiered_entrypoints_filtered(self):
+        """Tiered output filters entrypoints to only resolvable ones."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(10)]
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "main_function", "confidence": 0.8}
+            for s in symbols
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": entrypoints,
+        }
+
+        # Small budget to force truncation
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [],
+            target_tokens=500,
+            force_include_entrypoints=False,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # All remaining entrypoints should reference existing nodes
+        for ep in result["entrypoints"]:
+            assert ep["symbol_id"] in included_ids
