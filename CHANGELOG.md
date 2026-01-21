@@ -43,6 +43,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Symbol-specific slice output naming:** `hypergumbo slice` now generates output filenames that
   include the entry symbol name when using defaults (e.g., `slice.main.json` instead of `slice.json`).
   This prevents accidental overwrites when slicing different symbols in the same session.
+- **Shared SymbolResolver framework:** Cross-file symbol resolution now uses a centralized
+  `SymbolResolver` class (`symbol_resolution.py`) instead of per-analyzer implementations. The
+  resolver provides suffix-based module matching (finding `backend.app.crud` when looking for
+  `app.crud`), Go-style path hints for disambiguation, and lazy index building for performance.
+  Currently integrated with the Python analyzer; designed for reuse across all language analyzers.
 - **README-first hybrid ranking for Additional Files:** The Additional Files section now uses a
   smarter ordering algorithm:
   - README always appears first (truncated if it exceeds the token budget)

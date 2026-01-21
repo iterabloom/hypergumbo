@@ -60,10 +60,13 @@ import hashlib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+
+if TYPE_CHECKING:
+    from ..symbol_resolution import SymbolResolver
 
 
 def find_python_files(
@@ -92,6 +95,8 @@ def _lookup_symbol_by_module(
     global_symbols: dict[tuple[str, str], "Symbol"],
     module_name: str,
     symbol_name: str,
+    *,
+    resolver: "SymbolResolver | None" = None,
 ) -> "Symbol | None":
     """Look up a symbol with suffix-based module matching.
 
@@ -99,31 +104,25 @@ def _lookup_symbol_by_module(
     as 'backend.app.crud', exact lookup fails. This function handles such
     cases by trying suffix matching.
 
-    Algorithm:
-    1. Try exact match (module_name, symbol_name)
-    2. If not found, try suffix match: any (mod, name) where
-       mod ends with '.{module_name}' and name == symbol_name
+    This is a thin wrapper around the shared SymbolResolver. For repeated
+    lookups, pass a pre-built resolver for better performance (cached indexes).
 
     Args:
         global_symbols: Map of (module, name) -> Symbol
         module_name: The module name from the import statement
         symbol_name: The symbol name being imported
+        resolver: Optional pre-built SymbolResolver for cached lookups.
 
     Returns:
         The matching Symbol, or None if not found.
     """
-    # Try exact match first
-    exact = global_symbols.get((module_name, symbol_name))
-    if exact:
-        return exact
+    if resolver is not None:
+        result = resolver.lookup(module_name, symbol_name)
+        return result.symbol
 
-    # Try suffix match: find any module ending with ".{module_name}"
-    suffix = "." + module_name
-    for (mod, name), symbol in global_symbols.items():
-        if name == symbol_name and mod.endswith(suffix):
-            return symbol
-
-    return None
+    # Fallback: use the shared lookup_symbol function (creates new resolver)
+    from ..symbol_resolution import lookup_symbol
+    return lookup_symbol(global_symbols, module_name, symbol_name)
 
 
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
@@ -1039,6 +1038,7 @@ def _extract_import_edges(
     file_path: str,
     importing_module: str,
     global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None" = None,
 ) -> list[Edge]:
     """Extract import edges from AST.
 
@@ -1051,6 +1051,7 @@ def _extract_import_edges(
         file_path: Path to the importing file
         importing_module: The fully qualified name of the importing module
         global_symbols: Map of (module, name) -> Symbol for cross-file resolution
+        resolver: Optional SymbolResolver for efficient cross-file lookups
 
     Returns list of import edges.
     """
@@ -1067,7 +1068,7 @@ def _extract_import_edges(
                 for alias in node.names:
                     # Try to find the symbol in our global table (with suffix matching)
                     symbol = _lookup_symbol_by_module(
-                        global_symbols, resolved_module, alias.name
+                        global_symbols, resolved_module, alias.name, resolver=resolver
                     )
                     if symbol:
                         dst_id = symbol.id
@@ -1355,6 +1356,7 @@ def _extract_edges(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], Symbol],
     module_imports: dict[str, str] | None = None,
+    resolver: "SymbolResolver | None" = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -1375,6 +1377,7 @@ def _extract_edges(
         imports: Symbol imports (from X import Y)
         global_symbols: All symbols across the project
         module_imports: Module imports (import X, import X as Y)
+        resolver: Optional SymbolResolver for efficient cross-file lookups
     """
     if module_imports is None:  # pragma: no cover
         module_imports = {}
@@ -1398,7 +1401,8 @@ def _extract_edges(
                 for target in node.targets:
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
-                            node.value, local_symbols, imports, global_symbols, module_imports
+                            node.value, local_symbols, imports, global_symbols,
+                            module_imports, resolver
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
@@ -1407,7 +1411,7 @@ def _extract_edges(
             if isinstance(node, ast.Call):
                 _process_call(
                     node, caller_symbol, local_symbols, imports, global_symbols,
-                    module_imports, var_types, edges
+                    module_imports, var_types, edges, resolver
                 )
 
             # Recurse into child nodes (but not into nested function defs)
@@ -1451,7 +1455,7 @@ def _extract_edges(
                 if type_name in imports:
                     module_name, original_name = imports[type_name]
                     class_symbol = _lookup_symbol_by_module(
-                        global_symbols, module_name, original_name
+                        global_symbols, module_name, original_name, resolver=resolver
                     )
                     if class_symbol and class_symbol.kind == "class":
                         param_types[param_name] = class_symbol
@@ -1465,7 +1469,7 @@ def _extract_edges(
                 if receiver_name in module_imports:
                     module_name = module_imports[receiver_name]
                     class_symbol = _lookup_symbol_by_module(
-                        global_symbols, module_name, attr_name
+                        global_symbols, module_name, attr_name, resolver=resolver
                     )
                     if class_symbol and class_symbol.kind == "class":
                         param_types[param_name] = class_symbol
@@ -1500,6 +1504,7 @@ def _resolve_call_target(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], Symbol],
     module_imports: dict[str, str],
+    resolver: "SymbolResolver | None" = None,
 ) -> Symbol | None:
     """Resolve the target of a call expression to a Symbol.
 
@@ -1520,7 +1525,9 @@ def _resolve_call_target(
         # Check imports (with suffix matching)
         if name in imports:
             module_name, original_name = imports[name]
-            return _lookup_symbol_by_module(global_symbols, module_name, original_name)
+            return _lookup_symbol_by_module(
+                global_symbols, module_name, original_name, resolver=resolver
+            )
 
     # Attribute: module.ClassName() or obj.method()
     elif isinstance(func, ast.Attribute):
@@ -1531,7 +1538,9 @@ def _resolve_call_target(
             # Check if receiver is an imported module (with suffix matching)
             if receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
-                return _lookup_symbol_by_module(global_symbols, module_name, attr_name)
+                return _lookup_symbol_by_module(
+                    global_symbols, module_name, attr_name, resolver=resolver
+                )
 
     return None
 
@@ -1545,6 +1554,7 @@ def _process_call(
     module_imports: dict[str, str],
     var_types: dict[str, Symbol],
     edges: list[Edge],
+    resolver: "SymbolResolver | None" = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -1569,7 +1579,7 @@ def _process_call(
         elif not callee_symbol and callee_name in imports:
             module_name, original_name = imports[callee_name]
             callee_symbol = _lookup_symbol_by_module(
-                global_symbols, module_name, original_name
+                global_symbols, module_name, original_name, resolver=resolver
             )
             if callee_symbol and callee_symbol.kind == "class":
                 is_instantiation = True
@@ -1590,7 +1600,7 @@ def _process_call(
             elif receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
                 callee_symbol = _lookup_symbol_by_module(
-                    global_symbols, module_name, attr_name
+                    global_symbols, module_name, attr_name, resolver=resolver
                 )
                 if callee_symbol and callee_symbol.kind == "class":
                     is_instantiation = True
@@ -1614,7 +1624,7 @@ def _process_call(
             elif receiver_name in imports:
                 module_name, original_name = imports[receiver_name]
                 class_symbol = _lookup_symbol_by_module(
-                    global_symbols, module_name, original_name
+                    global_symbols, module_name, original_name, resolver=resolver
                 )
                 if class_symbol and class_symbol.kind == "class":
                     # Look for ClassName.method (class method/static method)
@@ -1764,6 +1774,10 @@ def analyze_python(
                 # Add alias: (package, local_name) -> source_symbol
                 global_symbols[(package_name, local_name)] = source_symbol
 
+    # Create resolver for efficient lookups in Pass 2 (with cached indexes)
+    from ..symbol_resolution import SymbolResolver
+    resolver = SymbolResolver(global_symbols)
+
     # Second pass: extract edges with cross-file resolution
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -1780,7 +1794,7 @@ def analyze_python(
         # Extract call edges
         call_edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
-            analysis.module_imports
+            analysis.module_imports, resolver
         )
         for edge in call_edges:
             edge.origin = PASS_ID
@@ -1789,7 +1803,7 @@ def analyze_python(
 
         # Extract import edges
         import_edges = _extract_import_edges(
-            analysis.tree, str(py_file), module_name, global_symbols
+            analysis.tree, str(py_file), module_name, global_symbols, resolver
         )
         for edge in import_edges:
             edge.origin = PASS_ID
