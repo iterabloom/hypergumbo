@@ -1,9 +1,22 @@
 """Unified symbol resolution with pluggable matching strategies.
 
 This module provides a shared framework for cross-file symbol resolution
-across all language analyzers. It addresses the common problem where import
-statements use different module names than the file-path-derived keys in
-the symbol registry.
+across all language analyzers. It supports three registry formats used by
+different language analyzers:
+
+Registry Formats
+----------------
+1. **SymbolResolver**: For `dict[tuple[str, str], Symbol]` (Python)
+   - Keys are (module_name, symbol_name) tuples
+   - Suffix matching on module names: finds `backend.app.crud` for `app.crud`
+
+2. **NameResolver**: For `dict[str, Symbol]` (JS/TS, Java, C#, Kotlin, Rust)
+   - Keys are simple or qualified names ("foo" or "MyClass.foo")
+   - Suffix matching on names: finds `MyClass.doWork` for `doWork`
+
+3. **ListNameResolver**: For `dict[str, list[Symbol]]` (Go)
+   - Keys are names, values are lists (multiple symbols can share a name)
+   - Disambiguates using path hints from import statements
 
 Problem Example
 ---------------
@@ -11,31 +24,25 @@ A Python file at `backend/app/crud.py` is registered with module name
 `backend.app.crud`, but imports say `from app.crud import X`. The exact
 lookup `(app.crud, X)` fails, but suffix matching finds `(backend.app.crud, X)`.
 
-Supported Strategies
---------------------
-1. **Exact match**: O(1) lookup, always tried first
-2. **Suffix match**: Finds `backend.app.crud` when looking for `app.crud`
-3. **Path hint match**: Go-style disambiguation using import path hints
-4. **Multiple candidates**: When same name exists in multiple modules
+Similarly, in Java, a method `doWork` might be registered as `MyClass.doWork`,
+but a call site only knows `doWork`. Suffix matching resolves this.
 
 Usage
 -----
 ```python
-from hypergumbo.symbol_resolution import SymbolResolver
+from hypergumbo.symbol_resolution import SymbolResolver, NameResolver, ListNameResolver
 
-# Build resolver from global symbol table
+# Python: (module, name) keyed registry
 resolver = SymbolResolver(global_symbols)
-
-# Simple lookup (exact + suffix fallback)
 result = resolver.lookup("app.crud", "create_item")
-if result.symbol:
-    print(f"Found: {result.symbol.id}, confidence adjustment: {result.confidence}")
 
-# Go-style with path hints
-result = resolver.lookup(
-    "pb", "RegisterService",
-    path_hints={"pb": "google.golang.org/grpc"}
-)
+# JS/Java/etc: name-keyed registry
+resolver = NameResolver(global_symbols)
+result = resolver.lookup("doWork")  # Finds "MyClass.doWork"
+
+# Go: list-valued registry with disambiguation
+resolver = ListNameResolver(global_symbols)
+result = resolver.lookup("Register", path_hint="grpc")
 ```
 
 Design Rationale
@@ -45,8 +52,8 @@ Design Rationale
 - **Strategy composition**: Multiple strategies can be combined per lookup
 - **Language agnostic**: Core logic works for any language; strategies adapt
 
-This replaces per-analyzer implementations like Python's `_lookup_symbol_by_module`
-with a shared, tested, optimizable component.
+This replaces per-analyzer implementations with a shared, tested, optimizable
+component.
 """
 
 from __future__ import annotations
@@ -357,6 +364,246 @@ class SymbolResolver:
         self._name_index = None
 
 
+class NameResolver:
+    """Symbol resolver for string-keyed registries (dict[str, Symbol]).
+
+    Used by JS/TS, Java, C#, Kotlin, Rust, and other analyzers where symbols
+    are indexed by their name or qualified name (e.g., "MyClass.method").
+
+    Suffix matching helps find "ClassName.method" when looking up "method",
+    or "pkg.ClassName.method" when looking up "ClassName.method".
+
+    Example
+    -------
+    ```python
+    from hypergumbo.symbol_resolution import NameResolver
+
+    # Registry keyed by name/qualified name
+    global_symbols = {"MyClass.doWork": symbol, "utils.helper": symbol2}
+    resolver = NameResolver(global_symbols)
+
+    # Exact lookup
+    result = resolver.lookup("MyClass.doWork")  # Found with confidence 1.0
+
+    # Suffix matching: "doWork" finds "MyClass.doWork"
+    result = resolver.lookup("doWork")  # Found with confidence 0.85
+    ```
+    """
+
+    # Confidence multipliers for different match types
+    CONFIDENCE_EXACT = 1.0
+    CONFIDENCE_SUFFIX = 0.85
+    CONFIDENCE_PATH_HINT = 0.90
+    CONFIDENCE_AMBIGUOUS = 0.70
+
+    def __init__(self, registry: dict[str, Symbol]) -> None:
+        """Initialize resolver with a string-keyed symbol registry.
+
+        Args:
+            registry: Dict mapping symbol_name -> Symbol.
+                      Keys can be simple names ("foo") or qualified ("Class.foo").
+        """
+        self.registry = registry
+        self._suffix_index: dict[str, list[str]] | None = None
+
+    def lookup(
+        self,
+        name: str,
+        *,
+        allow_suffix: bool = True,
+        path_hint: str | None = None,
+    ) -> LookupResult:
+        """Look up a symbol by name with optional suffix matching.
+
+        Tries strategies in order:
+        1. Exact match on name
+        2. Suffix matching (if allow_suffix=True)
+
+        Args:
+            name: The symbol name to look up.
+            allow_suffix: Whether to try suffix matching as fallback.
+            path_hint: Optional path substring to prefer among candidates.
+
+        Returns:
+            LookupResult with the found symbol and match metadata.
+        """
+        # Strategy 1: Exact match (O(1))
+        if name in self.registry:
+            return LookupResult(
+                symbol=self.registry[name],
+                confidence=self.CONFIDENCE_EXACT,
+            )
+
+        # Strategy 2: Suffix matching
+        if allow_suffix:
+            result = self._lookup_suffix(name, path_hint)
+            if result.found or result.candidates:
+                return result
+
+        return LookupResult(symbol=None)
+
+    def _lookup_suffix(self, name: str, path_hint: str | None) -> LookupResult:
+        """Look up symbol using suffix matching.
+
+        Finds any key that ends with '.{name}' or equals '{name}'.
+        For example, looking for 'doWork' matches 'MyClass.doWork'.
+
+        Args:
+            name: The symbol name suffix to match.
+            path_hint: Optional path substring to prefer among candidates.
+
+        Returns:
+            LookupResult with suffix match or None.
+        """
+        self._ensure_suffix_index()
+        assert self._suffix_index is not None
+
+        candidates_keys = self._suffix_index.get(name, [])
+        if not candidates_keys:
+            return LookupResult(symbol=None)
+
+        candidates = [self.registry[key] for key in candidates_keys]
+
+        # Try path hint disambiguation if multiple candidates
+        if path_hint and len(candidates) > 1:
+            for candidate in candidates:
+                if path_hint in candidate.path:
+                    return LookupResult(
+                        symbol=candidate,
+                        confidence=self.CONFIDENCE_PATH_HINT,
+                        match_type="path_hint",
+                        candidates=candidates,
+                    )
+
+        if len(candidates) == 1:
+            return LookupResult(
+                symbol=candidates[0],
+                confidence=self.CONFIDENCE_SUFFIX,
+                match_type="suffix",
+                candidates=candidates,
+            )
+
+        # Multiple - ambiguous, return first
+        return LookupResult(
+            symbol=candidates[0],
+            confidence=self.CONFIDENCE_AMBIGUOUS,
+            match_type="suffix_ambiguous",
+            candidates=candidates,
+        )
+
+    def _ensure_suffix_index(self) -> None:
+        """Build suffix index lazily on first use.
+
+        The suffix index maps each possible name suffix to all keys that
+        have that suffix. For key "pkg.ClassName.method", we index:
+        - "method" -> ["pkg.ClassName.method"]
+        - "ClassName.method" -> ["pkg.ClassName.method"]
+        - "pkg.ClassName.method" -> ["pkg.ClassName.method"]
+        """
+        if self._suffix_index is not None:
+            return
+
+        self._suffix_index = {}
+        for key in self.registry.keys():
+            parts = key.split(".")
+            for i in range(len(parts)):
+                suffix = ".".join(parts[i:])
+                if suffix not in self._suffix_index:
+                    self._suffix_index[suffix] = []
+                self._suffix_index[suffix].append(key)
+
+    def clear_indexes(self) -> None:
+        """Clear cached indexes."""
+        self._suffix_index = None
+
+
+class ListNameResolver:
+    """Symbol resolver for list-valued registries (dict[str, list[Symbol]]).
+
+    Used by Go and other analyzers where multiple symbols can share the same
+    name. This resolver handles disambiguation among candidates using path
+    hints derived from import statements.
+
+    Example
+    -------
+    ```python
+    from hypergumbo.symbol_resolution import ListNameResolver
+
+    # Registry with multiple symbols per name
+    global_symbols = {
+        "Register": [grpc_symbol, http_symbol],
+        "Init": [pkg1_init, pkg2_init],
+    }
+    resolver = ListNameResolver(global_symbols)
+
+    # Lookup with path hint for disambiguation
+    result = resolver.lookup("Register", path_hint="grpc")
+    # Returns grpc_symbol with confidence 0.90
+    ```
+    """
+
+    # Confidence multipliers for different match types
+    CONFIDENCE_EXACT = 1.0
+    CONFIDENCE_PATH_HINT = 0.90
+    CONFIDENCE_AMBIGUOUS = 0.70
+
+    def __init__(self, registry: dict[str, list[Symbol]]) -> None:
+        """Initialize resolver with a list-valued symbol registry.
+
+        Args:
+            registry: Dict mapping symbol_name -> list of Symbol objects.
+        """
+        self.registry = registry
+
+    def lookup(
+        self,
+        name: str,
+        *,
+        path_hint: str | None = None,
+    ) -> LookupResult:
+        """Look up a symbol by name with disambiguation.
+
+        Args:
+            name: The symbol name to look up.
+            path_hint: Optional path substring to prefer among candidates.
+
+        Returns:
+            LookupResult with the found symbol and match metadata.
+        """
+        candidates = self.registry.get(name, [])
+
+        if not candidates:
+            return LookupResult(symbol=None)
+
+        if len(candidates) == 1:
+            return LookupResult(
+                symbol=candidates[0],
+                confidence=self.CONFIDENCE_EXACT,
+                candidates=candidates,
+            )
+
+        # Multiple candidates - try to disambiguate with path hint
+        if path_hint:
+            # Extract directory hint from path (e.g., "grpc" from "/path/to/grpc/server.go")
+            dir_hint = path_hint.rstrip("/").rsplit("/", 1)[-1] if "/" in path_hint else path_hint
+            for candidate in candidates:
+                if dir_hint in candidate.path:
+                    return LookupResult(
+                        symbol=candidate,
+                        confidence=self.CONFIDENCE_PATH_HINT,
+                        match_type="path_hint",
+                        candidates=candidates,
+                    )
+
+        # Ambiguous - return first with low confidence
+        return LookupResult(
+            symbol=candidates[0],
+            confidence=self.CONFIDENCE_AMBIGUOUS,
+            match_type="ambiguous",
+            candidates=candidates,
+        )
+
+
 def lookup_symbol(
     registry: dict[tuple[str, str], Symbol],
     module: str,
@@ -382,4 +629,30 @@ def lookup_symbol(
     """
     resolver = SymbolResolver(registry)
     result = resolver.lookup(module, name, path_hints=path_hints, allow_suffix=allow_suffix)
+    return result.symbol
+
+
+def lookup_name(
+    registry: dict[str, Symbol],
+    name: str,
+    *,
+    allow_suffix: bool = True,
+    path_hint: str | None = None,
+) -> Symbol | None:
+    """Convenience function for one-off name lookups.
+
+    For repeated lookups, prefer creating a NameResolver instance
+    to benefit from index caching.
+
+    Args:
+        registry: The symbol registry (string-keyed).
+        name: Symbol name to look up.
+        allow_suffix: Whether to try suffix matching.
+        path_hint: Optional path substring to prefer.
+
+    Returns:
+        The found Symbol, or None.
+    """
+    resolver = NameResolver(registry)
+    result = resolver.lookup(name, allow_suffix=allow_suffix, path_hint=path_hint)
     return result.symbol

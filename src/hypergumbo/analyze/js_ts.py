@@ -59,6 +59,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..symbol_resolution import NameResolver, ListNameResolver
 from .base import (
     AnalysisResult,
     find_child_by_field,
@@ -1806,11 +1807,14 @@ def _extract_edges(
     global_classes: dict[str, Symbol],
     line_offset: int = 0,
     namespace_imports: dict[str, str] | None = None,
+    resolver: NameResolver | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
     Uses global symbol registries to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+    Optionally uses NameResolver for suffix-based matching and confidence tracking.
 
     Handles:
     - Direct calls: helper(), ClassName()
@@ -1826,6 +1830,10 @@ def _extract_edges(
     """
     if namespace_imports is None:
         namespace_imports = {}
+    if resolver is None:
+        resolver = NameResolver(global_symbols)
+    if method_resolver is None:
+        method_resolver = ListNameResolver(global_methods)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -1908,21 +1916,24 @@ def _extract_edges(
                             edges.append(edge)
                             break
                 else:
-                    # Regular function call
+                    # Regular function call - use resolver for suffix matching
                     current_function = _get_enclosing_function(node, source, file_path, global_symbols)
-                    if current_function and func_name in global_symbols:
-                        callee_symbol = global_symbols[func_name]
-                        edge = Edge.create(
-                            src=current_function.id,
-                            dst=callee_symbol.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1 + line_offset,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_call_direct",
-                            confidence=0.85,
-                        )
-                        edges.append(edge)
+                    if current_function:
+                        lookup_result = resolver.lookup(func_name)
+                        if lookup_result.found:
+                            # Scale confidence by resolver's confidence multiplier
+                            edge_confidence = 0.85 * lookup_result.confidence
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_direct",
+                                confidence=edge_confidence,
+                            )
+                            edges.append(edge)
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":

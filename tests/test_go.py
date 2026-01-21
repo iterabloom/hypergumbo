@@ -898,42 +898,6 @@ class TestImportPathToDirHint:
         assert result is None
 
 
-class TestResolveCallee:
-    """Tests for _resolve_callee helper function."""
-
-    def test_fallback_when_no_match(self, tmp_path: Path) -> None:
-        """Returns first candidate when import hint doesn't match any."""
-        from hypergumbo.analyze.go import _resolve_callee
-        from hypergumbo.ir import Symbol, Span
-
-        # Create two candidates in different directories
-        sym1 = Symbol(
-            id="go:/path/a/foo.go:1-1:Func:function",
-            name="Func",
-            kind="function",
-            language="go",
-            path="/path/a/foo.go",
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
-            origin="test",
-            origin_run_id="test",
-        )
-        sym2 = Symbol(
-            id="go:/path/b/foo.go:1-1:Func:function",
-            name="Func",
-            kind="function",
-            language="go",
-            path="/path/b/foo.go",
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
-            origin="test",
-            origin_run_id="test",
-        )
-
-        # Import hint that doesn't match any candidate
-        result = _resolve_callee("Func", [sym1, sym2], "github.com/nonexistent/pkg")
-        # Should return first candidate as fallback
-        assert result == sym1
-
-
 class TestGoImportPathResolution:
     """Tests for import path disambiguation (Bug #1 from bakeoff report)."""
 

@@ -69,6 +69,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import (
     AnalysisResult,
     is_grammar_available,
@@ -810,11 +811,13 @@ def _extract_edges(
     global_symbols: dict[str, Symbol],
     class_symbols: dict[str, Symbol],
     imports: dict[str, str] | None = None,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+    Optionally uses NameResolver for suffix-based matching and confidence tracking.
 
     Handles:
     - Direct method calls: method(), this.method()
@@ -828,6 +831,8 @@ def _extract_edges(
     """
     if imports is None:
         imports = {}
+    if resolver is None:
+        resolver = NameResolver(global_symbols)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -928,14 +933,16 @@ def _extract_edges(
                     if receiver_name is None or receiver_name == "this":
                         if current_class:
                             candidate = f"{current_class}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found:
+                                # Scale confidence by resolver's confidence multiplier
+                                edge_confidence = 0.95 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=current_method.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.95,
+                                    confidence=edge_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -946,14 +953,15 @@ def _extract_edges(
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
                         candidate = f"{receiver_name}.{method_name}"
-                        if candidate in global_symbols:
-                            target_sym = global_symbols[candidate]
+                        lookup_result = resolver.lookup(candidate)
+                        if lookup_result.found:
+                            edge_confidence = 0.95 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
-                                dst=target_sym.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                confidence=0.95,
+                                confidence=edge_confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_static",
@@ -965,14 +973,15 @@ def _extract_edges(
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
                         candidate = f"{type_class_name}.{method_name}"
-                        if candidate in global_symbols:
-                            target_sym = global_symbols[candidate]
+                        lookup_result = resolver.lookup(candidate)
+                        if lookup_result.found:
+                            edge_confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
-                                dst=target_sym.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                confidence=0.85,
+                                confidence=edge_confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_type_inferred",

@@ -53,6 +53,7 @@ from .base import (
     node_text,
 )
 from .registry import register_analyzer
+from ..symbol_resolution import ListNameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -386,34 +387,6 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
-def _resolve_callee(
-    callee_name: str,
-    candidates: list[Symbol],
-    import_path_hint: str | None,
-) -> Symbol | None:
-    """Resolve the best callee from a list of candidates using import path hint.
-
-    When multiple symbols have the same name (e.g., RegisterCheckoutServiceServer
-    in multiple genproto directories), use the import path to pick the right one.
-    """
-    if not candidates:
-        return None  # pragma: no cover - defensive
-
-    if len(candidates) == 1:
-        return candidates[0]
-
-    # Multiple candidates - try to disambiguate using import path
-    if import_path_hint:
-        dir_hint = _import_path_to_dir_hint(import_path_hint)
-        if dir_hint:
-            for candidate in candidates:
-                if dir_hint in candidate.path:
-                    return candidate
-
-    # Fallback: return first candidate (legacy behavior)
-    return candidates[0]
-
-
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -421,6 +394,7 @@ def _extract_edges_from_file(
     global_symbols: dict[str, list[Symbol]],
     run: AnalysisRun,
     import_aliases: dict[str, str] | None = None,
+    resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -429,6 +403,8 @@ def _extract_edges_from_file(
     """
     if import_aliases is None:
         import_aliases = {}
+    if resolver is None:
+        resolver = ListNameResolver(global_symbols)
 
     try:
         source = file_path.read_bytes()
@@ -513,42 +489,43 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
-                        # Check global symbols with disambiguation
-                        elif callee_name in global_symbols:
-                            candidates = global_symbols[callee_name]
-                            callee = _resolve_callee(callee_name, candidates, import_path_hint)
-                            if callee:
+                        # Check global symbols with disambiguation via ListNameResolver
+                        else:
+                            lookup_result = resolver.lookup(callee_name, path_hint=import_path_hint)
+                            if lookup_result.found:
+                                # Scale base confidence by resolver's confidence multiplier
+                                edge_confidence = 0.80 * lookup_result.confidence
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=callee.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="function_call",
-                                    confidence=0.80,
+                                    confidence=edge_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
-                        # Bug #2 fix: Create edge for external/unresolved method calls
-                        # This enables linkers to potentially match across languages
-                        elif func_node.type == "selector_expression":
-                            # For s.Method() where Method is external, create unresolved edge
-                            # Use the import path if available to make the ID more specific
-                            if import_path_hint:
-                                # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
-                                dst_id = f"go:{import_path_hint}:0-0:{callee_name}:unresolved"
-                            else:
-                                # Fallback: use "external" as the path
-                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="unresolved_method_call",
-                                confidence=0.50,  # Lower confidence for unresolved
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                            # Bug #2 fix: Create edge for external/unresolved method calls
+                            # This enables linkers to potentially match across languages
+                            elif func_node.type == "selector_expression":
+                                # For s.Method() where Method is external, create unresolved edge
+                                # Use the import path if available to make the ID more specific
+                                if import_path_hint:
+                                    # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
+                                    dst_id = f"go:{import_path_hint}:0-0:{callee_name}:unresolved"
+                                else:
+                                    # Fallback: use "external" as the path
+                                    dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="unresolved_method_call",
+                                    confidence=0.50,  # Lower confidence for unresolved
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
 
     return edges
 
