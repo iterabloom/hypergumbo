@@ -185,14 +185,55 @@ def _extract_kotlin_signature(
     return signature
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a function declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        fun process(client: Client) {
+            client.send()  // resolves to Client.send
+        }
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only).
+    """
+    param_types: dict[str, str] = {}
+
+    for child in node.children:
+        if child.type == "function_value_parameters":
+            for subchild in child.children:
+                if subchild.type == "parameter":
+                    param_name = None
+                    param_type = None
+                    for pc in subchild.children:
+                        if pc.type == "identifier" and param_name is None:
+                            param_name = _node_text(pc, source)
+                        elif pc.type in ("user_type", "nullable_type", "function_type"):
+                            type_text = _node_text(pc, source)
+                            # Extract base type name (strip nullable ?, generics <>, etc.)
+                            if type_text:
+                                # Remove nullable suffix
+                                type_text = type_text.rstrip("?")
+                                # Remove generic parameters
+                                if "<" in type_text:  # pragma: no cover
+                                    type_text = type_text.split("<")[0]
+                                param_type = type_text
+                    if param_name and param_type:
+                        param_types[param_name] = param_type
+
+    return param_types
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
-    Note on type inference: Variable method calls (e.g., obj.method()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (val obj = MyClass()) but NOT from function returns (val obj = getMyClass()).
-    This covers ~90% of real-world cases with minimal complexity.
+    Type inference tracks types from:
+    - Constructor calls: val obj = MyClass() -> obj has type MyClass
+    - Function parameters: fun process(client: Client) -> client has type Client
+
+    Type inference does NOT track types from function returns (val obj = getMyClass()).
     """
 
     symbols: list[Symbol] = field(default_factory=list)
@@ -421,6 +462,13 @@ def _extract_edges_from_file(
                     # Only track if type_name looks like a class (capitalized)
                     if type_name and type_name[0].isupper():
                         var_types[var_name] = type_name
+
+        # Function declarations - extract parameter types for type inference
+        elif node.type == "function_declaration":
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
 
         # Detect function calls
         elif node.type == "call_expression":

@@ -406,6 +406,63 @@ def _extract_jsts_signature(
     return sig
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a function declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        function process(client: Client) {
+            client.send();  // resolves to Client.send
+        }
+
+    Only works for TypeScript code with explicit type annotations.
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only).
+    """
+    param_types: dict[str, str] = {}
+
+    # Find parameters node - structure varies by function type
+    params_node = None
+    if node.type == "function_declaration":
+        params_node = _find_child_by_field(node, "parameters")
+    elif node.type == "arrow_function":
+        params_node = _find_child_by_field(node, "parameters")
+    elif node.type in ("method_definition", "function"):
+        params_node = _find_child_by_field(node, "parameters")
+
+    if not params_node:
+        return param_types
+
+    for child in params_node.children:
+        if child.type in ("required_parameter", "optional_parameter"):
+            param_name = None
+            param_type = None
+
+            for subchild in child.children:
+                if subchild.type == "identifier" and param_name is None:
+                    param_name = _node_text(subchild, source)
+                elif subchild.type == "type_annotation":
+                    # type_annotation contains type_identifier or other type nodes
+                    for type_child in subchild.children:
+                        if type_child.type == "type_identifier":
+                            param_type = _node_text(type_child, source)
+                            break
+                        elif type_child.type == "generic_type":  # pragma: no cover
+                            # Extract base type from generic: Array<T> -> Array
+                            for gc in type_child.children:
+                                if gc.type == "type_identifier":
+                                    param_type = _node_text(gc, source)
+                                    break
+                            break
+
+            if param_name and param_type:
+                param_types[param_name] = param_type
+
+    return param_types
+
+
 def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Find route path from a .route('/path') call in a chained expression.
 
@@ -1761,8 +1818,11 @@ def _extract_edges(
     - Namespace calls: alias.func(), alias.Class() (via namespace_imports)
     - Object instantiation: new ClassName()
 
-    Note: Type inference only tracks types from direct constructor calls
-    (client = new Client()), not from function returns (client = getClient()).
+    Type inference tracks types from:
+    - Constructor calls: const client = new Client() -> client has type Client
+    - Function parameters (TypeScript): function process(client: Client) -> client has type Client
+
+    Type inference does NOT track types from function returns (const client = getClient()).
     """
     if namespace_imports is None:
         namespace_imports = {}
@@ -1790,6 +1850,13 @@ def _extract_edges(
                     )
                     edges.append(edge)
                     break
+
+        # Function/method declarations - extract parameter types for type inference
+        elif node.type in ("function_declaration", "method_definition", "arrow_function"):
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
 
         # Call expressions
         elif node.type == "call_expression":

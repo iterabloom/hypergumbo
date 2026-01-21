@@ -524,6 +524,69 @@ fun main() {
         assert call_edge.evidence_type == "ast_call_type_inferred"
         assert call_edge.confidence == 0.85
 
+    def test_parameter_type_inference(self, tmp_path: Path) -> None:
+        """Function parameter types should enable method call resolution."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "App.kt"
+        kt_file.write_text("""
+class Database {
+    fun save(obj: Any) { }
+    fun commit() { }
+}
+
+fun process(db: Database, data: String) {
+    db.save(data)
+    db.commit()
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        assert result.run is not None
+
+        # Find symbols
+        process_func = next(
+            (s for s in result.symbols if s.name == "process"), None
+        )
+        db_save = next(
+            (s for s in result.symbols if "save" in s.name and "Database" in s.id), None
+        )
+        db_commit = next(
+            (s for s in result.symbols if "commit" in s.name and "Database" in s.id), None
+        )
+
+        assert process_func is not None
+        assert db_save is not None
+        assert db_commit is not None
+
+        # Should have edges from process to Database.save and Database.commit
+        save_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == process_func.id
+                and e.dst == db_save.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        commit_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == process_func.id
+                and e.dst == db_commit.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+
+        assert save_edge is not None, "Expected call edge for db.save() via param type inference"
+        assert commit_edge is not None, "Expected call edge for db.commit() via param type inference"
+        assert save_edge.evidence_type == "ast_call_type_inferred"
+        assert commit_edge.evidence_type == "ast_call_type_inferred"
+
 
 class TestKotlinThisMethodCalls:
     """Tests for this.method() call resolution."""

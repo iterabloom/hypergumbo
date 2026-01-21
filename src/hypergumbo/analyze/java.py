@@ -205,6 +205,71 @@ def _extract_java_signature(
     return signature
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a method/constructor declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        void process(Client client) {
+            client.send();  // resolves to Client.send
+        }
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only, not qualified).
+    """
+    param_types: dict[str, str] = {}
+
+    # Find formal_parameters node
+    params_node = None
+    for child in node.children:
+        if child.type == "formal_parameters":
+            params_node = child
+            break
+
+    if params_node is None:  # pragma: no cover
+        return param_types
+
+    # Extract parameter types
+    for child in params_node.children:
+        if child.type == "formal_parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                    # Extract just the base type name (e.g., "Client" from "Client<T>")
+                    param_type = _extract_type_text(subchild, source)
+                    # Strip generic parameters for lookup
+                    if "<" in param_type:
+                        param_type = param_type.split("<")[0]
+                    # Strip array brackets
+                    if "[" in param_type:
+                        param_type = param_type.split("[")[0]
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                param_types[param_name] = param_type
+        elif child.type == "spread_parameter":  # pragma: no cover
+            # Varargs: String... args - rarely used
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                    param_type = _extract_type_text(subchild, source)
+                    if "<" in param_type:
+                        param_type = param_type.split("<")[0]
+                elif subchild.type == "variable_declarator":
+                    for vchild in subchild.children:
+                        if vchild.type == "identifier":
+                            param_name = _node_text(vchild, source)
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                param_types[param_name] = param_type
+
+    return param_types
+
+
 def _has_native_modifier(node: "tree_sitter.Node", source: bytes) -> bool:
     """Check if a method declaration has the 'native' modifier."""
     for child in node.children:
@@ -757,8 +822,9 @@ def _extract_edges(
     - Variable method calls: variable.method() (with type inference)
     - Object instantiation: new ClassName()
 
-    Note: Type inference only tracks types from direct constructor calls
-    (stub = new Client()), not from factory methods (stub = Client.create()).
+    Type inference tracks types from:
+    - Constructor calls: stub = new Client() -> stub has type Client
+    - Method/constructor parameters: void process(Client client) -> client has type Client
     """
     if imports is None:
         imports = {}
@@ -820,6 +886,15 @@ def _extract_edges(
                                                     evidence_type="ast_implements",
                                                 )
                                                 edges.append(edge)
+
+        # Method/constructor declarations - extract parameter types for type inference
+        elif node.type in ("method_declaration", "constructor_declaration"):
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            # Note: This is file-scoped, not method-scoped, but variable name collisions
+            # across methods are rare in practice
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
 
         # Method invocations
         elif node.type == "method_invocation":

@@ -3333,6 +3333,75 @@ function run() {
         )
         assert inst_edge is not None, "Expected instantiates edge for namespace.EmailClient"
 
+    def test_parameter_type_inference_typescript(self, tmp_path: Path) -> None:
+        """TypeScript function parameter types should enable method call resolution."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Service class with methods
+        service_file = tmp_path / "service.ts"
+        service_file.write_text("""
+class Database {
+    save(obj: any): void { }
+    commit(): void { }
+}
+""")
+
+        # Handler receives Database as parameter with type annotation
+        handler_file = tmp_path / "handler.ts"
+        handler_file.write_text("""
+function process(db: Database, data: string): void {
+    db.save(data);
+    db.commit();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        process_func = next(
+            (s for s in result.symbols if s.name == "process"), None
+        )
+        db_save = next(
+            (s for s in result.symbols if "save" in s.name and "Database" in s.id), None
+        )
+        db_commit = next(
+            (s for s in result.symbols if "commit" in s.name and "Database" in s.id), None
+        )
+
+        assert process_func is not None
+        assert db_save is not None
+        assert db_commit is not None
+
+        # Should have edges from process to Database.save and Database.commit
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        save_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == process_func.id
+                and e.dst == db_save.id
+            ),
+            None,
+        )
+        commit_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == process_func.id
+                and e.dst == db_commit.id
+            ),
+            None,
+        )
+
+        assert save_edge is not None, "Expected call edge for db.save() via param type inference"
+        assert commit_edge is not None, "Expected call edge for db.commit() via param type inference"
+        # Both should use type inference evidence
+        assert save_edge.evidence_type == "ast_method_type_inferred"
+        assert commit_edge.evidence_type == "ast_method_type_inferred"
+
 
 # ============================================================================
 # TypeScript Decorator Metadata Tests (Phase 4)

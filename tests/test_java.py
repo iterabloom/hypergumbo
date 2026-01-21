@@ -1513,6 +1513,79 @@ public class Main {
         assert call_edge is not None
 
 
+class TestParameterTypeInference:
+    """Tests for parameter type inference in Java."""
+
+    def test_parameter_type_inference_basic(self, tmp_path: Path) -> None:
+        """Method parameter types should enable method call resolution."""
+        from hypergumbo.analyze.java import analyze_java
+
+        # Service class with methods
+        (tmp_path / "Database.java").write_text("""
+public class Database {
+    public void save(Object obj) { }
+    public void commit() { }
+}
+""")
+        # Handler receives Database as parameter
+        (tmp_path / "Handler.java").write_text("""
+public class Handler {
+    public void process(Database db, String data) {
+        db.save(data);
+        db.commit();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        handler_process = next(
+            (s for s in result.symbols if "process" in s.name and "Handler" in s.id), None
+        )
+        db_save = next(
+            (s for s in result.symbols if "save" in s.name and "Database" in s.id), None
+        )
+        db_commit = next(
+            (s for s in result.symbols if "commit" in s.name and "Database" in s.id), None
+        )
+
+        assert handler_process is not None
+        assert db_save is not None
+        assert db_commit is not None
+
+        # Should have edges from Handler.process to Database.save and Database.commit
+        save_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == handler_process.id
+                and e.dst == db_save.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        commit_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == handler_process.id
+                and e.dst == db_commit.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+
+        assert save_edge is not None, "Expected call edge for db.save() via param type inference"
+        assert commit_edge is not None, "Expected call edge for db.commit() via param type inference"
+        # Both should use type inference evidence
+        assert save_edge.evidence_type == "ast_call_type_inferred"
+        assert commit_edge.evidence_type == "ast_call_type_inferred"
+
+
 # ============================================================================
 # Java Annotation Metadata Tests (Phase 5)
 # ============================================================================
