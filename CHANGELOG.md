@@ -87,6 +87,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Additional Files).
 
 ### Fixed
+- **Compact mode produces edges for repos with many entrypoints:** Repos like redis with 100+
+  main() functions previously produced 0 edges in compact mode because all budget slots were
+  consumed by entrypoints, leaving no room for bridge nodes. Now entrypoints are capped to
+  `max_symbols // 2` (keeping highest-confidence entries), ensuring the remaining budget can
+  be used by connectivity-aware selection to add nodes that connect the subgraph.
 - **Sketch file content truncation:** Files in Source Files Content and Additional Files Content
   sections are now budgeted accurately, including START/END markers and code fences (~130 chars
   overhead per file). Previously files could be truncated mid-content.

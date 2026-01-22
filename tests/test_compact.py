@@ -1387,6 +1387,47 @@ class TestForceIncludeEntrypoints:
         for ep_sym in entrypoint_syms:
             assert ep_sym.id in included_ids, f"Entrypoint {ep_sym.name} should be included"
 
+    def test_entrypoints_capped_when_exceeding_budget(self):
+        """When entrypoints exceed max_symbols/2, they are capped to leave room for bridges."""
+        # Create 20 entrypoint symbols (simulating many main() functions)
+        entrypoint_syms = [make_symbol(f"main_{i}") for i in range(20)]
+        helper_syms = [make_symbol(f"helper_{i}") for i in range(30)]
+
+        # Set confidence so main_0 through main_4 have highest confidence
+        behavior_map = {
+            "nodes": [s.to_dict() for s in entrypoint_syms + helper_syms],
+            "edges": [],
+            "entrypoints": [
+                {"symbol_id": s.id, "kind": "main_function", "confidence": 0.9 - i * 0.01}
+                for i, s in enumerate(entrypoint_syms)
+            ],
+        }
+
+        # With max_symbols=10, only 5 entrypoints (max_symbols // 2) should be forced
+        # This leaves room for 5 bridge/helper nodes
+        config = CompactConfig(min_symbols=10, max_symbols=10)
+        result = format_compact_behavior_map(
+            behavior_map,
+            entrypoint_syms + helper_syms,
+            [],
+            config,
+            force_include_entrypoints=True,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+        entrypoints_included = [s for s in entrypoint_syms if s.id in included_ids]
+
+        # Should have capped entrypoints to 5 (max_symbols // 2)
+        assert len(entrypoints_included) <= 5, (
+            f"Expected at most 5 entrypoints, got {len(entrypoints_included)}"
+        )
+
+        # The highest-confidence entrypoints should be included (main_0 through main_4)
+        for i in range(5):
+            assert entrypoint_syms[i].id in included_ids, (
+                f"Entrypoint main_{i} (high confidence) should be included"
+            )
+
 
 class TestSelectByCoverageForceInclude:
     """Tests for force_include_ids parameter in select_by_coverage."""

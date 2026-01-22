@@ -891,10 +891,26 @@ def format_compact_behavior_map(
     force_include_ids: set = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
+        entrypoints_with_ids = []
         for ep in behavior_map.get("entrypoints", []):
             sid = ep.get("symbol_id")
             if sid and sid in symbol_ids:
-                force_include_ids.add(sid)
+                entrypoints_with_ids.append(ep)
+
+        # Cap entrypoints to leave room for bridge nodes in connectivity mode
+        # Without this cap, repos with many entrypoints (e.g., 158 main() functions)
+        # leave no room for nodes that connect them, resulting in 0 edges.
+        # Use at least 1 to handle edge case where max_symbols is very small.
+        max_forced = max(1, config.max_symbols // 2)
+        if len(entrypoints_with_ids) > max_forced:
+            # Sort by confidence (descending) and take top entries
+            sorted_eps = sorted(
+                entrypoints_with_ids,
+                key=lambda ep: (-ep.get("confidence", 0), ep.get("symbol_id", ""))
+            )
+            entrypoints_with_ids = sorted_eps[:max_forced]
+
+        force_include_ids = {ep.get("symbol_id") for ep in entrypoints_with_ids}
 
     if connectivity_aware:
         # Use connectivity-aware selection
