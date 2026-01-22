@@ -229,6 +229,59 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     assert "os" in import_edge["dst"]
 
 
+def test_run_detects_submodule_import_calls(tmp_path: Path) -> None:
+    """Running analysis should detect calls through submodule imports.
+
+    This tests the pattern:
+        from app import crud
+        crud.create_user()
+
+    Where crud is a submodule (app/crud.py), not a symbol in app/__init__.py.
+    """
+    # Create package structure: app/crud.py
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "__init__.py").write_text("")
+    (app_dir / "crud.py").write_text(
+        "def create_user():\n"
+        "    pass\n"
+    )
+
+    # Create main module that imports submodule and calls function
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from app import crud\n"
+        "\n"
+        "def run():\n"
+        "    crud.create_user()\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have call edge from run -> create_user
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+    # Find the edge from run to create_user
+    run_to_create_user = [
+        e for e in call_edges
+        if "run" in e["src"] and "create_user" in e["dst"]
+    ]
+    assert len(run_to_create_user) == 1, (
+        f"Expected 1 edge from run to create_user, got {len(run_to_create_user)}. "
+        f"All call edges: {call_edges}"
+    )
+
+    # The target should be the resolved function in crud.py, not unresolved
+    edge = run_to_create_user[0]
+    assert "crud.py" in edge["dst"], f"Expected resolved target in crud.py, got: {edge['dst']}"
+    assert "unresolved" not in edge["dst"], f"Target should be resolved: {edge['dst']}"
+
+
 def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
     """extract_nodes should detect intra-file calls."""
     py_file = tmp_path / "app.py"

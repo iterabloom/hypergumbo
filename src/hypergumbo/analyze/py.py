@@ -1634,6 +1634,15 @@ def _process_call(
                             callee_symbol = sym
                             break
 
+                # Case 2e: Imported submodule calls - crud.create_user()
+                # When crud is imported via "from app import crud" (crud is a module)
+                # and we call crud.create_user(), we need to look up (app.crud, create_user)
+                if not callee_symbol:
+                    submodule_name = f"{module_name}.{original_name}"
+                    callee_symbol = _lookup_symbol_by_module(
+                        global_symbols, submodule_name, attr_name, resolver=resolver
+                    )
+
     # Emit edge if we resolved the callee
     if callee_symbol:
         if is_instantiation:
