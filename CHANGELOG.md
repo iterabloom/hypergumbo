@@ -287,9 +287,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **pytest-xdist for parallel tests:** Added pytest-xdist dependency. Run `pytest -n auto` for
   parallel execution (~2 min vs ~5 min sequential). Not enabled by default to preserve debug-ability.
 
-## [1.0.0] - 2026-01-12
+## [1.0.0] - 2026-01-12 (not released to PyPI)
 
-First stable release. Major focus on memory optimization, framework detection improvements,
+> **Note:** This version was tagged in the codebase but never published to PyPI. It marks a
+> milestone with breaking changes relative to v0.9.1. The next PyPI release will be v1.1.0+.
+
+Major focus on memory optimization, framework detection improvements,
 and completing the migration to YAML-driven semantic analysis.
 
 ### Fixed

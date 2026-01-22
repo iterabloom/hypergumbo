@@ -409,7 +409,7 @@ Single file: `hypergumbo.results.json`
 ### Top-level structure
 ```json
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.1",
   "confidence_model": "hypergumbo-evidence-v1",
   "stable_id_scheme": "hypergumbo-stableid-v1",
   "shape_id_scheme": "hypergumbo-shapeid-v1",
@@ -1140,7 +1140,7 @@ Code is classified into four tiers based on its relationship to the project:
 
 ### Classification Algorithm
 
-Classification happens at discovery time, before analysis. Signals are checked in order; first match wins.
+🟩 Classification happens at discovery time, before analysis. Signals are checked in order; first match wins.
 
 #### 1. Derived artifact detection (tier 4)
 
@@ -1249,6 +1249,8 @@ packages/*/src/          # JS monorepo source dirs
 
 #### Analysis scope flags
 
+🟩 Implemented:
+
 ```bash
 # Default: analyze tiers 1-3, skip tier 4 (derived)
 hypergumbo run .
@@ -1257,15 +1259,13 @@ hypergumbo run .
 hypergumbo run . --first-party-only
 # Equivalent to: --max-tier 1
 
-# Include readable external dependencies
-hypergumbo run . --include-deps
-# Equivalent to: --max-tier 3 (default)
-
-# Analyze everything except derived (rarely needed)
+# Explicit tier control (default is 3)
 hypergumbo run . --max-tier 3
 ```
 
 #### Slice tier filtering
+
+🟩 Implemented:
 
 ```bash
 # Slice stops at first-party boundary
@@ -1280,7 +1280,9 @@ hypergumbo slice --entry main --max-tier 3
 
 #### Sketch prioritization
 
-The `--first-party-priority` flag (default: true) applies tier-based weighting to Key Symbols ranking:
+🟩 Implemented:
+
+The `--no-first-party-priority` flag disables tier-based weighting for Key Symbols ranking:
 
 ```bash
 # Key Symbols prioritizes first-party (default)
@@ -1431,7 +1433,7 @@ Tier and Role compose for analysis decisions:
 | Extract symbols | analysis_tiers | ANALYZABLE only |
 | Additional Files | Tiers 1-2 | CONFIG + DOCUMENTATION |
 
-**Status:** 🟪 Proposed (ADR-0004). Current implementation uses scattered constants (`LANGUAGE_EXTENSIONS`, `SOURCE_EXTENSIONS`, etc.) that would be unified under this taxonomy.
+**Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
 ## 8.7) Entrypoint Detection
 
@@ -1507,6 +1509,8 @@ The framework pattern system supports multiple detection strategies:
 | **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
 | **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
 | **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
+
+**Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
 
 See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
 
@@ -1709,7 +1713,7 @@ Minimal working example for a tiny FastAPI app:
 
 ```json
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.1",
   "confidence_model": "hypergumbo-evidence-v1",
   "view": "behavior_map",
   "generated_at": "2024-01-15T10:30:00Z",
@@ -1920,13 +1924,11 @@ Spec A is designed to enable future enhancements without breaking changes:
 
 ### Example timeline
 
-* 2024-01: v0.1.0 ships
-* 2024-06: v0.2.0 ships (backward-compatible)
-  - v0.1 enters "previous minor" (security only)
-* 2025-01: v1.0.0 ships (breaking changes)
-  - v0.1 unsupported (>12 months old)
-  - v0.2 enters "previous major" (18-month clock starts)
-* 2026-07: v0.2 unsupported (18 months after v1.0)
+* 2025-12: v0.5.0 ships (initial public release)
+* 2026-01-09: v0.9.1 ships (schema 0.2.0, YAML patterns)
+* Future: v1.1.0+ ships (first v1.x stable release)
+  - v0.x enters "previous major" (18-month clock starts)
+* 18 months after v1.x release: v0.x unsupported
 
 ## Appendix D: Telemetry & Privacy
 
@@ -2113,7 +2115,7 @@ A multi-fidelity code understanding platform that produces typed IR and an agent
 
 ### Potential Optimizations
 
-* **Ripgrep for centrality computation**: Symbol mention centrality currently uses parallelized Python regex. Ripgrep could provide ~3-10x speedup for very large repos (30k+ symbols), but symbol names containing special regex characters cause parsing errors. Would require sanitizing patterns or using literal matching mode. Not worth the complexity for the 0.1% of repos that would benefit.
+* **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
 
 ## 1) Objectives
 
