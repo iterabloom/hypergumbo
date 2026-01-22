@@ -191,3 +191,33 @@ jobs:
           git add coverage.json
           git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
           git push origin badges --force || echo "Push failed - may need write permissions"
+
+  # Final gate job - ensures workflow completes even when jobs are skipped
+  # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
+  ci-complete:
+    needs: [changes, lint, audit, verify-generated, pytest, dco]
+    if: always()
+    runs-on: codeberg-small-lazy
+    steps:
+      - name: Check job results
+        run: |
+          echo "Job results:"
+          echo "  changes: ${{ needs.changes.result }}"
+          echo "  lint: ${{ needs.lint.result }}"
+          echo "  audit: ${{ needs.audit.result }}"
+          echo "  verify-generated: ${{ needs.verify-generated.result }}"
+          echo "  pytest: ${{ needs.pytest.result }}"
+          echo "  dco: ${{ needs.dco.result }}"
+
+          # Fail if any required job failed (skipped is OK)
+          if [[ "${{ needs.changes.result }}" == "failure" ]] || \
+             [[ "${{ needs.lint.result }}" == "failure" ]] || \
+             [[ "${{ needs.audit.result }}" == "failure" ]] || \
+             [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
+             [[ "${{ needs.pytest.result }}" == "failure" ]] || \
+             [[ "${{ needs.dco.result }}" == "failure" ]]; then
+            echo "❌ One or more jobs failed"
+            exit 1
+          fi
+
+          echo "✅ All required jobs passed or were skipped"
