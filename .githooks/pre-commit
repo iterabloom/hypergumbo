@@ -4,6 +4,7 @@
 # This hook runs:
 # - Ruff: Python linting (pycodestyle, pyflakes, security rules)
 # - Bandit: Security-focused static analysis
+# - yamllint: YAML syntax validation
 # - Schema check: Verify docs/schema.json is up-to-date with dataclasses
 #
 # To bypass this hook (not recommended): git commit --no-verify
@@ -13,6 +14,7 @@ set -euo pipefail
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 echo "🔍 Running pre-commit checks..."
@@ -53,6 +55,22 @@ else
     echo -e "${RED}Bandit found security issues:${NC}"
     bandit -r src/ -c pyproject.toml
     exit 1
+fi
+
+# Run yamllint (optional - skip if not installed)
+echo -n "  yamllint (YAML syntax)... "
+if command -v yamllint &> /dev/null; then
+    if yamllint -c .yamllint.yaml src/hypergumbo/frameworks/ 2>/dev/null; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        echo -e "${RED}yamllint found issues:${NC}"
+        yamllint -c .yamllint.yaml src/hypergumbo/frameworks/
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (not installed)${NC}"
 fi
 
 # Check schema freshness (fast check - just JSON comparison)

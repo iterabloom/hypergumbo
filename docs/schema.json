@@ -616,6 +616,132 @@
         "pass",
         "version"
       ]
+    },
+    "UsagePatternSpec": {
+      "type": "object",
+      "description": "Specification for matching usage contexts (call-based frameworks)",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Regex pattern to match context kind (call, data_value, export, macro)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Regex pattern to match context_name (function called, var defined, etc.)"
+        },
+        "position": {
+          "type": "string",
+          "description": "Regex pattern to match position (args[1], :get, default, etc.)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Pattern": {
+      "type": "object",
+      "description": "A pattern to match against symbol metadata or usage contexts",
+      "properties": {
+        "concept": {
+          "type": "string",
+          "description": "The concept type this pattern identifies (route, model, task, etc.)"
+        },
+        "decorator": {
+          "type": "string",
+          "description": "Regex pattern to match against decorator names"
+        },
+        "base_class": {
+          "type": "string",
+          "description": "Regex pattern to match against base class names"
+        },
+        "parent_base_class": {
+          "type": "string",
+          "description": "Regex pattern to match parent class's base classes (for methods)"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Regex pattern to match method name (last part of qualified name)"
+        },
+        "symbol_name": {
+          "type": "string",
+          "description": "Regex pattern to match symbol name directly"
+        },
+        "language": {
+          "type": "string",
+          "description": "Regex pattern to filter by symbol's language"
+        },
+        "annotation": {
+          "type": "string",
+          "description": "Regex pattern to match against Java annotations"
+        },
+        "parameter_type": {
+          "type": "string",
+          "description": "Regex pattern to match against parameter types"
+        },
+        "symbol_kind": {
+          "type": "string",
+          "description": "Regex pattern to match against symbol kind field"
+        },
+        "extract_path": {
+          "type": "string",
+          "description": "JSONPath-like expression to extract route path from metadata"
+        },
+        "extract_method": {
+          "type": "string",
+          "description": "How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)"
+        },
+        "prefix_from_parent": {
+          "type": "string",
+          "description": "Concept name to look up on parent class for path prefix (v1.3.x)"
+        },
+        "usage": {
+          "$ref": "#/$defs/UsagePatternSpec",
+          "description": "UsagePatternSpec for matching against UsageContext records"
+        },
+        "extract": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Dict of extraction expressions for usage-based patterns"
+        }
+      },
+      "required": [
+        "concept"
+      ],
+      "additionalProperties": false
+    },
+    "FrameworkPatternDef": {
+      "type": "object",
+      "description": "Framework pattern definition (YAML file structure)",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique framework identifier (e.g., 'fastapi', 'spring')"
+        },
+        "language": {
+          "type": "string",
+          "description": "Primary language for this framework"
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Pattern"
+          },
+          "description": "List of patterns to match"
+        },
+        "linkers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Linkers that should be activated when this framework is detected"
+        }
+      },
+      "required": [
+        "id",
+        "language",
+        "patterns"
+      ],
+      "additionalProperties": false
     }
   }
 }

@@ -2641,8 +2641,13 @@ export class UsersController {
         assert route_handlers[0].name == "UsersController.create"
 
     def test_nestjs_get_with_path(self, tmp_path: Path) -> None:
-        """NestJS @Get(':id') with @Controller('users') should combine to full path."""
+        """NestJS @Get(':id') with @Controller('users') should combine to full path.
+
+        Route path combination is now handled by enrichment (via prefix_from_parent)
+        rather than at the analyzer level.
+        """
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2658,6 +2663,8 @@ export class UsersController {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
@@ -2667,7 +2674,11 @@ export class UsersController {
         assert handler.name == "UsersController.findOne"
         assert handler.meta is not None
         # Full route = controller prefix + method path: /users/:id
-        assert handler.meta.get("route_path") == "/users/:id"
+        # Path comes from enrichment concepts, not meta["route_path"]
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None, f"Expected route concept, got {concepts}"
+        assert route_concept["path"] == "/users/:id"
 
     def test_nestjs_all_http_methods(self, tmp_path: Path) -> None:
         """NestJS should detect all HTTP method decorators."""
@@ -2708,8 +2719,9 @@ export class ResourceController {
         assert "DELETE" in stable_ids
 
     def test_nestjs_controller_no_path_method_with_path(self, tmp_path: Path) -> None:
-        """NestJS @Controller() with no path + @Get(':id') gives just method path."""
+        """NestJS @Controller() with no path + @Get('users/:id') gives just method path."""
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2725,6 +2737,8 @@ export class UsersController {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
@@ -2732,11 +2746,15 @@ export class UsersController {
         assert len(route_handlers) == 1
         handler = route_handlers[0]
         # Controller has no path, so just method path
-        assert handler.meta.get("route_path") == "/users/:id"
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "users/:id"
 
     def test_nestjs_controller_with_path_method_no_path(self, tmp_path: Path) -> None:
         """NestJS @Controller('users') + @Get() gives just controller path."""
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2752,18 +2770,24 @@ export class UsersController {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # Method has no path, so just controller path
-        assert handler.meta.get("route_path") == "/users"
+        # Method has no path, so just controller path from prefix_from_parent
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/users"
 
     def test_nestjs_path_normalization(self, tmp_path: Path) -> None:
         """NestJS paths are normalized (no double slashes)."""
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "api.controller.ts"
         ts_file.write_text("""
@@ -2779,18 +2803,24 @@ export class ApiController {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # Paths normalized: /api/users (no double slashes)
-        assert handler.meta.get("route_path") == "/api/users"
+        # Paths normalized: /api/users (no double slashes, leading slash added)
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/api/users"
 
     def test_nestjs_no_controller_decorator(self, tmp_path: Path) -> None:
         """Class without @Controller - method path only."""
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "service.ts"
         ts_file.write_text("""
@@ -2803,18 +2833,24 @@ class UsersService {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # No controller, just method path
-        assert handler.meta.get("route_path") == "/users"
+        # No controller, just method path (no prefix_from_parent combination)
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "users"
 
     def test_nestjs_non_exported_class_with_controller(self, tmp_path: Path) -> None:
         """Non-exported class with @Controller - decorator as child of class_declaration."""
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "internal.controller.ts"
         ts_file.write_text("""
@@ -2828,14 +2864,19 @@ class InternalController {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # Combined path: /internal/status
-        assert handler.meta.get("route_path") == "/internal/status"
+        # Combined path: /internal/status (from prefix_from_parent)
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/internal/status"
 
 
 # ============================================================================

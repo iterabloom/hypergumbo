@@ -80,6 +80,8 @@ dev = [
   "bandit>=1.8",
   "pip-audit>=2.7",
   "jsonschema>=4.18",  # For schema validation tests (4.18+ uses referencing)
+  "yamllint>=1.35",  # YAML syntax linting
+  "check-jsonschema>=0.29",  # Validate YAML against JSON schema
   # Note: sentence-transformers not in dev deps due to 1GB+ torch dependency
   # Embedding tests skip gracefully when unavailable
 ]

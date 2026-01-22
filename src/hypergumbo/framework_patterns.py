@@ -128,6 +128,12 @@ class Pattern:
     - usage: UsagePatternSpec to match against UsageContext records
     - extract: Dict of extraction expressions for extracting values from metadata
 
+    Path inheritance (v1.3.x):
+    - prefix_from_parent: Inherit path prefix from parent class's concept
+      Example: NestJS @Get(':id') on method inherits prefix from @Controller('/users')
+      on class, resulting in combined path '/users/:id'. The value is the concept
+      name to look up on the parent class (e.g., "controller").
+
     Attributes:
         concept: The concept type this pattern identifies (route, model, task, etc.)
         decorator: Regex pattern to match against decorator names
@@ -141,6 +147,7 @@ class Pattern:
         symbol_kind: Regex pattern to match against symbol kind field
         extract_path: JSONPath-like expression to extract route path from metadata
         extract_method: How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)
+        prefix_from_parent: Concept name to look up on parent class for path prefix
         usage: UsagePatternSpec for matching against UsageContext (v1.1.x)
         extract: Dict of extraction expressions for usage-based patterns (v1.1.x)
     """
@@ -157,6 +164,7 @@ class Pattern:
     symbol_kind: str | None = None
     extract_path: str | None = None
     extract_method: str | None = None
+    prefix_from_parent: str | None = None
     usage: UsagePatternSpec | None = None
     extract: dict[str, str] | None = None
 
@@ -625,6 +633,7 @@ class FrameworkPatternDef:
                 symbol_kind=p.get("symbol_kind"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
+                prefix_from_parent=p.get("prefix_from_parent"),
                 usage=usage_spec,
                 extract=p.get("extract"),
             ))
@@ -723,6 +732,114 @@ def match_usage_patterns(
     return results
 
 
+def _combine_route_paths(prefix: str | None, suffix: str | None) -> str | None:
+    """Combine a route prefix and suffix into a full path.
+
+    Handles normalization:
+    - Ensures single leading slash
+    - Avoids double slashes at join point
+    - Returns None if both are None/empty
+
+    Examples:
+        _combine_route_paths("/users", ":id") -> "/users/:id"
+        _combine_route_paths("/users", "/:id") -> "/users/:id"
+        _combine_route_paths("/users/", ":id") -> "/users/:id"
+        _combine_route_paths("users", "profile") -> "/users/profile"
+        _combine_route_paths(None, ":id") -> "/:id"
+        _combine_route_paths("/users", None) -> "/users"
+        _combine_route_paths(None, None) -> None
+
+    Args:
+        prefix: Route prefix from parent (e.g., from @Controller)
+        suffix: Route suffix from method (e.g., from @Get)
+
+    Returns:
+        Combined path, or None if both inputs are None/empty.
+    """
+    # Normalize prefix: strip leading/trailing slashes
+    if prefix:
+        prefix = prefix.strip("/")
+    else:
+        prefix = ""  # pragma: no cover - prefix always has value when called
+
+    # Normalize suffix: strip leading/trailing slashes
+    if suffix:
+        suffix = suffix.strip("/")
+    else:
+        suffix = ""  # pragma: no cover - suffix always has value when called
+
+    # Combine with leading slash
+    if prefix and suffix:
+        return f"/{prefix}/{suffix}"
+    elif prefix:
+        return f"/{prefix}"
+    elif suffix:  # pragma: no cover - only suffix path
+        return f"/{suffix}"
+    else:  # pragma: no cover - both empty after strip
+        return None
+
+
+def _build_class_symbol_lookup(
+    symbols: list["Symbol"],
+) -> dict[tuple[str, str], "Symbol"]:
+    """Build a lookup from (file_path, class_name) to class Symbol.
+
+    Used for finding parent class symbols during enrichment.
+
+    Args:
+        symbols: All symbols from analysis
+
+    Returns:
+        Dict mapping (path, name) to class Symbol
+    """
+    lookup: dict[tuple[str, str], "Symbol"] = {}
+    for sym in symbols:
+        if sym.kind == "class":
+            lookup[(sym.path, sym.name)] = sym
+    return lookup
+
+
+def _get_parent_class_name(symbol: "Symbol") -> str | None:
+    """Extract parent class name from a method symbol.
+
+    Parses the qualified name (e.g., "UserController.findOne" -> "UserController").
+
+    Args:
+        symbol: A method symbol
+
+    Returns:
+        Parent class name, or None if not a method or can't be determined.
+    """
+    if symbol.kind not in ("method", "function"):
+        return None  # pragma: no cover - only called for method/function symbols
+
+    # Try canonical_name first, fall back to name
+    name = symbol.canonical_name or symbol.name
+    if "." in name:
+        return name.rsplit(".", 1)[0]
+    return None
+
+
+def _get_concept_path_from_symbol(symbol: "Symbol", concept_name: str) -> str | None:
+    """Get the path from a specific concept on a symbol.
+
+    Args:
+        symbol: The symbol to check
+        concept_name: The concept to look for (e.g., "controller")
+
+    Returns:
+        The path from the concept, or None if not found.
+    """
+    if not symbol.meta:
+        return None
+
+    concepts = symbol.meta.get("concepts", [])
+    for concept in concepts:
+        if concept.get("concept") == concept_name:
+            return concept.get("path")
+    return None  # pragma: no cover - concept not found on parent
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -730,10 +847,11 @@ def enrich_symbols(
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
 
-    Three-phase enrichment (v1.2.x):
+    Four-phase enrichment (v1.3.x):
     1. Language conventions: Match main() functions and other language-level patterns
     2. Definition-based: Match against decorators, base classes, annotations
-    3. Usage-based: Match against UsageContext records for call-based frameworks
+    3. Parent path inheritance: Combine paths from parent concepts (prefix_from_parent)
+    4. Usage-based: Match against UsageContext records for call-based frameworks
 
     Args:
         symbols: Symbols to enrich
@@ -765,8 +883,16 @@ def enrich_symbols(
     if not pattern_defs:  # pragma: no cover - main-functions.yaml is always loaded
         return symbols
 
-    # Build symbol lookup by ID for usage-based matching
+    # Build lookups for parent resolution
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
+    class_lookup = _build_class_symbol_lookup(symbols)
+
+    # Collect patterns that use prefix_from_parent (for phase 3)
+    patterns_with_prefix: list[tuple[Pattern, str]] = []  # (pattern, framework_id)
+    for pattern_def in pattern_defs:
+        for pattern in pattern_def.patterns:
+            if pattern.prefix_from_parent:
+                patterns_with_prefix.append((pattern, pattern_def.id))
 
     # Phase 1: Definition-based matching (decorators, base classes, annotations)
     for symbol in symbols:
@@ -777,7 +903,50 @@ def enrich_symbols(
                 symbol.meta = {}
             symbol.meta["concepts"] = matches
 
-    # Phase 2: Usage-based matching (v1.1.x)
+    # Phase 2: Parent path inheritance (v1.3.x prefix_from_parent)
+    # After all symbols have their concepts, resolve parent prefixes
+    if patterns_with_prefix:
+        for symbol in symbols:
+            if not symbol.meta or "concepts" not in symbol.meta:
+                continue
+
+            for concept in symbol.meta["concepts"]:
+                # Find the pattern that produced this concept
+                matched_pattern = None
+                for pattern, fw_id in patterns_with_prefix:
+                    if (
+                        pattern.concept == concept.get("concept")
+                        and fw_id == concept.get("framework")
+                    ):
+                        matched_pattern = pattern
+                        break
+
+                if not matched_pattern or not matched_pattern.prefix_from_parent:
+                    continue
+
+                # Find parent class symbol
+                parent_class_name = _get_parent_class_name(symbol)
+                if not parent_class_name:
+                    continue
+
+                parent_symbol = class_lookup.get((symbol.path, parent_class_name))
+                if not parent_symbol:
+                    continue  # pragma: no cover - parent class not found in file
+
+                # Get the path from the parent's matching concept
+                parent_path = _get_concept_path_from_symbol(
+                    parent_symbol, matched_pattern.prefix_from_parent
+                )
+
+                # Only combine if there's a parent path to add
+                # If parent has no path, leave the method path unchanged
+                if parent_path:
+                    method_path = concept.get("path")
+                    combined_path = _combine_route_paths(parent_path, method_path)
+                    if combined_path:
+                        concept["path"] = combined_path
+
+    # Phase 3: Usage-based matching (v1.1.x)
     if usage_contexts:
         for ctx in usage_contexts:
             # Skip if no symbol reference (inline handlers not yet supported)

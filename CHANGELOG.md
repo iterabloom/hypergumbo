@@ -17,6 +17,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Pattern system: `symbol_name` and `language` fields:** Extended the Pattern class to support
   matching symbols by name (regex) and filtering by language. Enables language-convention patterns
   like main() detection that need to match by name+kind+language, not just decorators or base classes.
+- **Pattern system: `prefix_from_parent` field (v1.3.x):** Route patterns can now inherit path
+  prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"`
+  to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`. This enables
+  YAML-driven path combination instead of per-analyzer hardcoded logic.
+- **Framework pattern types in unified schema:** `docs/schema.json` now includes type definitions
+  for Pattern, UsagePatternSpec, and FrameworkPatternDef, enabling schema validation of framework
+  YAML files with `check-jsonschema`.
+- **YAML linting in pre-commit hooks:** Added `yamllint` validation for framework YAML files in
+  `.githooks/pre-commit`. Uses relaxed rules (120-char lines, flexible quoting) via `.yamllint.yaml`.
 - **YAML-based test function detection (ADR-0003 v1.2.x):** Test functions across 10+ languages/frameworks
   are now detected via `test-frameworks.yaml`. Supports pytest, unittest, Go testing, JUnit, xUnit,
   NUnit, MSTest, Rust #[test], RSpec, PHPUnit, XCTest, and jest/mocha/vitest. Patterns use naming
@@ -107,7 +116,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **NestJS route paths now combine controller + method paths:** Previously NestJS routes only
   extracted the method decorator path (e.g., `:id` from `@Get(':id')`), missing the controller
   prefix. Now `@Controller('/users')` + `@Get(':id')` correctly produces `/users/:id`. This
-  fixes the issue where routes displayed as method descriptors instead of full HTTP paths.
+  logic is now YAML-driven via `prefix_from_parent: "controller"` in the pattern definition,
+  rather than hardcoded in the analyzer.
 - **Overview totals match `-x` semantics:** When using `-x/--exclude-tests`, the Overview section
   now shows adjusted totals (e.g., "2 files (2 non-test + 0 test)") instead of showing all files
   with the `[IGNORING TESTS]` marker. The total now equals the non-test count, making the semantics

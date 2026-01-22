@@ -1671,6 +1671,110 @@ class TestNestJSPatterns:
         assert route_concept["path"] == "users"
         assert route_concept["framework"] == "nestjs"
 
+    def test_nestjs_prefix_from_parent_integration(self) -> None:
+        """Integration test: routes inherit path prefix from parent controller.
+
+        Tests the prefix_from_parent feature (v1.3.x) where NestJS method routes
+        combine the @Controller path prefix with the @Get/@Post path.
+        """
+        clear_pattern_cache()
+
+        # Controller class with @Controller('/users')
+        controller = Symbol(
+            id="test:users.controller.ts:5:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(5, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Controller", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with @Get(':id') inside the controller class
+        method = Symbol(
+            id="test:users.controller.ts:10:UsersController.findOne:method",
+            name="UsersController.findOne",
+            kind="method",
+            language="typescript",
+            path="users.controller.ts",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Get", "args": [":id"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"nestjs"})
+
+        assert len(enriched) == 2
+
+        # Check controller has its path
+        ctrl_concepts = enriched[0].meta.get("concepts", [])
+        ctrl_concept = next(
+            (c for c in ctrl_concepts if c.get("concept") == "controller"), None
+        )
+        assert ctrl_concept is not None
+        assert ctrl_concept["path"] == "/users"
+
+        # Check method route has combined path: /users + :id = /users/:id
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/users/:id"
+        assert route_concept["framework"] == "nestjs"
+
+    def test_nestjs_prefix_from_parent_no_controller_path(self) -> None:
+        """Routes work without controller path prefix."""
+        clear_pattern_cache()
+
+        # Controller without path argument
+        controller = Symbol(
+            id="test:app.controller.ts:5:AppController:class",
+            name="AppController",
+            kind="class",
+            language="typescript",
+            path="app.controller.ts",
+            span=Span(5, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Controller", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with @Get('health')
+        method = Symbol(
+            id="test:app.controller.ts:10:AppController.health:method",
+            name="AppController.health",
+            kind="method",
+            language="typescript",
+            path="app.controller.ts",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Get", "args": ["health"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"nestjs"})
+
+        # Check method route has just its own path (no prefix)
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["path"] == "health"
+
 
 class TestSpringPatterns:
     """Tests for Spring Framework pattern matching."""
