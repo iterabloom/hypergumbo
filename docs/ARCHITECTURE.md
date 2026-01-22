@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d88ac1e0655c
+  commit: fd72350c5707
   hypergumbo: 1.0.0
   python: 3.12.3
 -->
@@ -13,13 +13,13 @@ GENERATION METADATA (for drift detection):
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **114** Python modules (70 analyzers, 16 linkers)
-- **1827** symbols (functions, classes, methods)
-- **6624** edges by type:
-  - calls: 3301
-  - imports: 2022
-  - instantiates: 1151
-  - uses: 79
+- **115** Python modules (70 analyzers, 16 linkers)
+- **1893** symbols (functions, classes, methods)
+- **8218** edges by type:
+  - calls: 4712
+  - imports: 2085
+  - instantiates: 1268
+  - uses: 82
   - message_queue: 39
   - event_publishes: 26
   - other: 6
@@ -32,9 +32,9 @@ hypergumbo analyzed its own source code and found:
 hypergumbo hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels.
 
 ## Overview
-Python (90%), Markdown (6%), Yaml (3%)
-341 files    (206 non-test + 135 test)
-~133,305 LOC (~67,531 non-test + ~65,774 test)
+Python (90%), Markdown (6%), Yaml (2%)
+344 files    (208 non-test + 136 test)
+~138,746 LOC (~70,571 non-test + ~68,175 test)
 
 ## Structure
 
@@ -47,17 +47,16 @@ hypergumbo/
 │   ├── hypergumbo-spec.md
 │   └── [and 20 other items]
 ├── scripts
-│   ├── auto-pr
+│   ├── compute_probe_embeddings.py
 │   └── [and 16 other items]
 ├── src
 │   └── hypergumbo
-│       ├── catalog.py
+│       ├── cli.py
 │       ├── ir.py
-│       ├── limits.py
-│       └── [and 28 other items]
+│       └── [and 30 other items]
 ├── tests
 │   ├── test_sketch.py
-│   └── [and 134 other items]
+│   └── [and 135 other items]
 ├── package.json
 ├── pyproject.toml
 └── [and 20 other items]
@@ -71,13 +70,12 @@ hypergumbo/
 
 ## Tests
 
-136 test files · pytest, unittest
+137 test files · pytest, unittest
 
-*~92% estimated coverage (1340/1453 functions called by tests)*
+*~93% estimated coverage (1401/1509 functions called by tests)*
 
 ## Configuration
 
-```
 pyproject.toml: name: hypergumbo; version: 1.0.0; license: { text =
 LICENSE: AGPL
 
@@ -108,50 +106,55 @@ LICENSE: AGPL
   > "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only", ]
   > "tree-sitter>=0.21", "tree-sitter-javascript>=0.21", "tree-sitter-typescript>=0.21",
   > "tree-sitter-ruby>=0.21", "tree-sitter-kotlin>=1.0", "tree-sitter-swift>=0.0.1",
-```
+
+## Entry Points
+
+- `main` (Python main()) — `scripts/compute_probe_embeddings.py`
+- `main` (Python main()) — `src/hypergumbo/cli.py`
 
 ## Data Models
 
-- `Limits` (Python @dataclass) — `src/hypergumbo/limits.py`
-- `Pass` (Python @dataclass) — `src/hypergumbo/catalog.py`
-- `Pack` (Python @dataclass) — `src/hypergumbo/catalog.py`
-- `Catalog` (Python @dataclass) — `src/hypergumbo/catalog.py`
-- `SketchStats` (Python @dataclass) — `src/hypergumbo/sketch.py`
-- `CompactConfig` (Python @dataclass) — `src/hypergumbo/compact.py`
-- `IncludedSummary` (Python @dataclass) — `src/hypergumbo/compact.py`
-- `OmittedSummary` (Python @dataclass) — `src/hypergumbo/compact.py`
-- `UsagePatternSpec` (Python @dataclass) — `src/hypergumbo/framework_patterns.py`
-- `Pattern` (Python @dataclass) — `src/hypergumbo/framework_patterns.py`
-- `FrameworkPatternDef` (Python @dataclass) — `src/hypergumbo/framework_patterns.py`
-- `DataModel` (Python @dataclass) — `src/hypergumbo/datamodels.py`
-- `SliceQuery` (Python @dataclass) — `src/hypergumbo/slice.py`
-- `Entrypoint` (Python @dataclass) — `src/hypergumbo/entrypoints.py`
-- `GrammarSpec` (Python @dataclass) — `src/hypergumbo/build_grammars.py`
-- `LLMConfig` (Python @dataclass) — `src/hypergumbo/llm_assist.py`
-- `LLMResult` (Python @dataclass) — `src/hypergumbo/llm_assist.py`
-- `LanguageStats` (Python @dataclass) — `src/hypergumbo/profile.py`
-- `RepoProfile` (Python @dataclass) — `src/hypergumbo/profile.py`
-- `PassConfig` (Python @dataclass) — `src/hypergumbo/plan.py`
-- `PackConfig` (Python @dataclass) — `src/hypergumbo/plan.py`
-- `Rule` (Python @dataclass) — `src/hypergumbo/plan.py`
-- `CapsulePlan` (Python @dataclass) — `src/hypergumbo/plan.py`
-- `LanguageSpec` (Python @dataclass) — `src/hypergumbo/taxonomy.py`
+- `Symbol` (Python @dataclass) — `src/hypergumbo/ir.py`
 - `Span` (Python @dataclass) — `src/hypergumbo/ir.py`
 - `AnalysisRun` (Python @dataclass) — `src/hypergumbo/ir.py`
-- `Symbol` (Python @dataclass) — `src/hypergumbo/ir.py`
 - `Edge` (Python @dataclass) — `src/hypergumbo/ir.py`
-- `UsageContext` (Python @dataclass) — `src/hypergumbo/ir.py`
-- `SupplyChainConfig` (Python @dataclass) — `src/hypergumbo/supply_chain.py`
+- `LanguageSpec` (Python @dataclass) — `src/hypergumbo/taxonomy.py`
+- `Pass` (Python @dataclass) — `src/hypergumbo/catalog.py`
+- `LinkerContext` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
+- `LinkerResult` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
+- `LinkerRequirement` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
+- `LookupResult` (Python @dataclass) — `src/hypergumbo/symbol_resolution.py`
+- `Entrypoint` (Python @dataclass) — `src/hypergumbo/entrypoints.py`
 - `FileClassification` (Python @dataclass) — `src/hypergumbo/supply_chain.py`
-- `PhpAnalysisResult` (Python @dataclass) — `src/hypergumbo/analyze/php.py`
+- `EventPattern` (Python @dataclass) — `src/hypergumbo/linkers/event_sourcing.py`
+- `LLMConfig` (Python @dataclass) — `src/hypergumbo/llm_assist.py`
+- `GrpcPattern` (Python @dataclass) — `src/hypergumbo/linkers/grpc.py`
+- `UsageContext` (Python @dataclass) — `src/hypergumbo/ir.py`
+- `WebSocketPattern` (Python @dataclass) — `src/hypergumbo/linkers/websocket.py`
+- `Pack` (Python @dataclass) — `src/hypergumbo/catalog.py`
 - `AnalysisResult` (Python @dataclass) — `src/hypergumbo/analyze/base.py`
+- `DataModel` (Python @dataclass) — `src/hypergumbo/datamodels.py`
+- `Limits` (Python @dataclass) — `src/hypergumbo/limits.py`
+- `LinkerActivation` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
+- `RepoProfile` (Python @dataclass) — `src/hypergumbo/profile.py`
 - `FileAnalysis` (Python @dataclass) — `src/hypergumbo/analyze/base.py`
-- ... and 149 more data models
+- `CapsulePlan` (Python @dataclass) — `src/hypergumbo/plan.py`
+- `IncludedSummary` (Python @dataclass) — `src/hypergumbo/compact.py`
+- `LLMResult` (Python @dataclass) — `src/hypergumbo/llm_assist.py`
+- `OmittedSummary` (Python @dataclass) — `src/hypergumbo/compact.py`
+- `SupplyChainConfig` (Python @dataclass) — `src/hypergumbo/supply_chain.py`
+- `PassConfig` (Python @dataclass) — `src/hypergumbo/plan.py`
+- `PhpAnalysisResult` (Python @dataclass) — `src/hypergumbo/analyze/php.py`
+- `SketchStats` (Python @dataclass) — `src/hypergumbo/sketch.py`
+- `Catalog` (Python @dataclass) — `src/hypergumbo/catalog.py`
+- `CompactConfig` (Python @dataclass) — `src/hypergumbo/compact.py`
+- ... and 151 more data models
 
 ## Source Files
 
 - `src/hypergumbo/schema.py`
 - `src/hypergumbo/user_config.py`
+- `src/hypergumbo/symbol_resolution.py`
 - `src/hypergumbo/limits.py`
 - `src/hypergumbo/catalog.py`
 - `src/hypergumbo/ranking.py`
@@ -208,9 +211,7 @@ LICENSE: AGPL
 - `src/hypergumbo/analyze/go.py`
 - `src/hypergumbo/analyze/elm.py`
 - `src/hypergumbo/analyze/json_config.py`
-- `src/hypergumbo/analyze/py.py`
-- `src/hypergumbo/analyze/html.py`
-- ... and 196 more files
+- ... and 199 more files
 
 ## Key Symbols
 
@@ -221,6 +222,8 @@ LICENSE: AGPL
 - `Span` (class) ★ — Source code location with line and column info.
 - `AnalysisRun` (class) — Provenance tracking for an analysis pass execution.
 - `Edge` (class) — A relationship between two symbols (e.g., function calls).
+- `Edge.create(cls, src: str, dst: str, edge_type: str, line: int, origin…` (method)
+  (... +1 more, top score: 0.38)
 
 ### `src/hypergumbo/analyze/base.py`
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
@@ -228,19 +231,22 @@ LICENSE: AGPL
 - `find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find a child node by field name.
 - `find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find the first child node of a given type.
 
+### `src/hypergumbo/symbol_resolution.py`
+- `NameResolver` (class) — Symbol resolver for string-keyed registries (dict[str, Symbol]).
+- `NameResolver.lookup(self, name: str, allow_suffix: bool=…, path_hint: str | No…` (method)
+- `LookupResult` (class) — Result of a symbol lookup operation.
+
 ### `src/hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
 
 ### `src/hypergumbo/analyze/js_ts.py`
 - `analyze_javascript(repo_root: Path, max_files: int | None=…) -> JsAnalysisRes…` (function) — Analyze all JavaScript/TypeScript/Svelte/Vue files in a repository.
 - `_find_name_in_children(node: 'tree_sitter.Node', source: bytes) -> Optional[str]` (function) — Find identifier name in node's children.
-- `_make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind…` (function) — Generate location-based ID.
 
 ### `src/hypergumbo/linkers/registry.py`
 - `LinkerContext` (class) — Context passed to all linkers.
 - `LinkerResult` (class) — Result from running a linker.
 - `LinkerRequirement` (class) — A requirement for a linker to produce useful edges.
-- `register_linker(name: str, priority: int=…, description: str=…, requiremen…` (function) — Decorator to register a linker function.
 
 ### `src/hypergumbo/taxonomy.py`
 - `LanguageSpec` (class) — Specification for a language/file type.
@@ -251,25 +257,23 @@ LICENSE: AGPL
 
 ### `src/hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
-- `Pack` (class) — A bundle of passes for a specific use case.
 
 ### `src/hypergumbo/sketch.py`
 - `ConfigExtractionMode` (class) — Mode for extracting config file content.
 - `_extract_config_info(repo_root: Path, max_chars: int=…, mode: ConfigExtractionM…` (function) — Extract key metadata from config files via extractive summarization.
 - `_section_header(title: str, exclude_tests: bool=…) -> str` (function) — Generate a section header with optional [IGNORING TESTS] marker.
-- `_extract_readme_description_heuristic(readme_path: Path, max_chars: int=…) -> Optional[str]` (function) — Extract description from README using heuristic parsing.
 
 ### `src/hypergumbo/analyze/rust.py`
 - `analyze_rust(repo_root: Path) -> RustAnalysisResult` (function) — Analyze all Rust files in a repository.
 - `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
 - `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
 
-### `src/hypergumbo/analyze/julia.py`
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-- `analyze_julia(repo_root: Path) -> JuliaAnalysisResult` (function) — Analyze all Julia files in a repository.
-
 ### `src/hypergumbo/analyze/dart.py`
 - `analyze_dart(repo_root: Path) -> DartAnalysisResult` (function) — Analyze Dart files in a repository.
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
+
+### `src/hypergumbo/analyze/julia.py`
+- `analyze_julia(repo_root: Path) -> JuliaAnalysisResult` (function) — Analyze all Julia files in a repository.
 
 ### `src/hypergumbo/analyze/elixir.py`
 - `analyze_elixir(repo_root: Path) -> ElixirAnalysisResult` (function) — Analyze all Elixir files in a repository.
@@ -280,24 +284,18 @@ LICENSE: AGPL
 ### `src/hypergumbo/analyze/php.py`
 - `analyze_php(repo_root: Path) -> PhpAnalysisResult` (function) — Analyze all PHP files in a repository.
 
-### `src/hypergumbo/analyze/groovy.py`
-- `analyze_groovy(repo_root: Path) -> GroovyAnalysisResult` (function) — Analyze all Groovy files in a repository.
-
 ### `src/hypergumbo/analyze/kotlin.py`
 - `analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult` (function) — Analyze all Kotlin files in a repository.
+
+### `src/hypergumbo/analyze/groovy.py`
+- `analyze_groovy(repo_root: Path) -> GroovyAnalysisResult` (function) — Analyze all Groovy files in a repository.
 
 ### `src/hypergumbo/cli.py`
 - `main(argv=…) -> int` (function)
 - `run_behavior_map(repo_root: Path, out_path: Path | None=…, max_tier: int | …` (function) — Run the behavior_map analysis for a repo and write JSON to out_path.
 - `_print_output_summary(command: str, artifacts: list[Path] | None=…, stdout_outpu…` (function) — Print consistent output summary at end of command execution.
 
-### `src/hypergumbo/analyze/go.py`
-- `analyze_go(repo_root: Path, max_files: int | None=…) -> AnalysisResult` (function) — Analyze all Go files in a repository.
-
-### `src/hypergumbo/analyze/c.py`
-- `analyze_c(repo_root: Path) -> CAnalysisResult` (function) — Analyze all C files in a repository.
-
-(... and 1696 more symbols across 108 other files)
+(... and 1770 more symbols across 110 other files)
 
 The following symbols, for brevity shown only once above, would have appeared multiple times:
 - `_node_text` - we omitted 7 appearances of `_node_text`
@@ -306,62 +304,64 @@ The following symbols, for brevity shown only once above, would have appeared mu
 ## Additional Files
 
 - `README.md`
-- `docs/USE-CASES.md`
-- `docs/LANGUAGES.md`
 - `docs/adr/0001-portable-agent-instructions.md`
-- `docs/example-output.md`
-- `docs/future/registry-factory-vision.md`
-- `docs/LINKERS.md`
-- `docs/GOVERNANCE.md`
-- `docs/example-output-with-source.md`
-- `AGENTS.md`
-- `docs/adr/0003-call-patterns-extension.md`
-- `src/hypergumbo/frameworks/micronaut.yaml`
-- `docs/history/planning-v1.md`
-- `docs/adr/0004-file-taxonomy.md`
-- `docs/ARCHITECTURE.md`
-- `docs/MAINTAINER_AGENT_SPEC.md`
-- `docs/schema.json`
+- `docs/LANGUAGES.md`
 - `docs/adr/0003-architectural-analysis-and-revision-plan.md`
-- `docs/adr/0005-sketch-budget-allocation.md`
-- `docs/RELEASE_SOP.md`
-- `docs/adr/0003-usage-context-patterns.md`
-- `docs/history/capsule-system-v1.md`
-- `CHANGELOG.md`
-- `docs/history/validation-gates-v1.md`
-- `docs/hypergumbo-spec.md`
+- `docs/example-output.md`
+- `AGENTS.md`
+- `docs/LINKERS.md`
 - `CONTRIBUTING.md`
-- `src/hypergumbo/frameworks/tornado.yaml`
-- `src/hypergumbo/frameworks/cli-rust.yaml`
-- `src/hypergumbo/frameworks/hapi.yaml`
-- `src/hypergumbo/frameworks/fastify.yaml`
-- `src/hypergumbo/frameworks/cli.yaml`
-- `docs/adr/0002-test-dependency-handling.md`
-- `src/hypergumbo/frameworks/main-functions.yaml`
+- `docs/example-output-with-source.md`
+- `src/hypergumbo/frameworks/micronaut.yaml`
+- `docs/adr/0003-call-patterns-extension.md`
+- `docs/future/registry-factory-vision.md`
+- `docs/history/planning-v1.md`
+- `docs/GOVERNANCE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/history/capsule-system-v1.md`
+- `docs/schema.json`
+- `docs/MAINTAINER_AGENT_SPEC.md`
+- `docs/adr/0005-sketch-budget-allocation.md`
 - `docs/CACHE.md`
-- `src/hypergumbo/frameworks/electron.yaml`
+- `docs/adr/0003-usage-context-patterns.md`
+- `docs/adr/0006-variable-type-inference.md`
+- `docs/USE-CASES.md`
+- `docs/history/validation-gates-v1.md`
+- `CHANGELOG.md`
+- `docs/adr/0004-file-taxonomy.md`
+- `ALLOWED_WEBSITES.md`
+- `src/hypergumbo/frameworks/cli-rust.yaml`
+- `docs/hypergumbo-spec.md`
+- `src/hypergumbo/frameworks/fastify.yaml`
+- `src/hypergumbo/frameworks/tornado.yaml`
+- `docs/adr/0002-test-dependency-handling.md`
+- `src/hypergumbo/frameworks/hapi.yaml`
 - `src/hypergumbo/frameworks/vapor.yaml`
-- `pyproject.toml`
+- `src/hypergumbo/frameworks/cli.yaml`
 - `src/hypergumbo/frameworks/ktor.yaml`
-- `src/hypergumbo/frameworks/nestjs.yaml`
+- `src/hypergumbo/frameworks/main-functions.yaml`
 - `src/hypergumbo/frameworks/cli-js.yaml`
-- `src/hypergumbo/frameworks/sinatra.yaml`
+- `src/hypergumbo/frameworks/electron.yaml`
+- `pyproject.toml`
+- `src/hypergumbo/frameworks/nestjs.yaml`
 - `src/hypergumbo/frameworks/android.yaml`
-- `src/hypergumbo/frameworks/nextjs.yaml`
+- `docs/RELEASE_SOP.md`
 - `docs/CITATIONS.md`
-- `src/hypergumbo/frameworks/go-web.yaml`
+- `src/hypergumbo/frameworks/sinatra.yaml`
 - `src/hypergumbo/frameworks/graphql.yaml`
 - `src/hypergumbo/frameworks/flask.yaml`
 - `src/hypergumbo/frameworks/rust-web.yaml`
 - `src/hypergumbo/frameworks/express.yaml`
+- `src/hypergumbo/frameworks/go-web.yaml`
+- `src/hypergumbo/frameworks/nextjs.yaml`
 - `src/hypergumbo/frameworks/jax-rs.yaml`
 - `src/hypergumbo/frameworks/rails.yaml`
 - `src/hypergumbo/frameworks/slim.yaml`
-- `src/hypergumbo/frameworks/phoenix.yaml`
-- `src/hypergumbo/frameworks/cli-go.yaml`
-- `src/hypergumbo/frameworks/django.yaml`
-- `src/hypergumbo/frameworks/plug.yaml`
 - `src/hypergumbo/frameworks/laravel.yaml`
+- `src/hypergumbo/frameworks/cli-go.yaml`
+- `src/hypergumbo/frameworks/phoenix.yaml`
+- `src/hypergumbo/frameworks/plug.yaml`
+- `src/hypergumbo/frameworks/django.yaml`
 - `src/hypergumbo/frameworks/celery.yaml`
 - `docs/EXPERIMENTAL_GRAMMARS.md`
 - `src/hypergumbo/frameworks/fastapi.yaml`
@@ -375,20 +375,22 @@ The following symbols, for brevity shown only once above, would have appeared mu
 - `src/hypergumbo/frameworks/koa.yaml`
 - `GEMINI.md`
 - `src/hypergumbo/frameworks/aiohttp.yaml`
-- `ALLOWED_WEBSITES.md`
-- `src/hypergumbo/frameworks/spring-boot.yaml`
 - `SECURITY.md`
-- `src/hypergumbo/frameworks/config-conventions.yaml`
+- `src/hypergumbo/frameworks/spring-boot.yaml`
 - `docs/INTEL_MAC.md`
-- ... and 4 more files
+- `src/hypergumbo/frameworks/config-conventions.yaml`
+- `src/hypergumbo/frameworks/graphql-ruby.yaml`
+- `src/hypergumbo/frameworks/test-frameworks.yaml`
+- `src/hypergumbo/frameworks/graphql-python.yaml`
+- ... and 1 more files
 
 
 [hypergumbo sketch] Generated 5
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/eaa6e96fb79cce1e/hypergumbo.results.16k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/eaa6e96fb79cce1e/hypergumbo.results.4k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/eaa6e96fb79cce1e/hypergumbo.results.64k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/eaa6e96fb79cce1e/hypergumbo.results.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/eaa6e96fb79cce1e/sketch.4000.md
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.16k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.4k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.64k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/sketch.4000.md
   Output: stdout
   Embeddings cached: /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/embeddings
 ```
@@ -409,7 +411,7 @@ Source Files
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ANALYZERS                               │
 │  Pure language processors - NO framework knowledge              │
-│  Output: 1827 Symbols + 6624 Edges + UsageContexts              │
+│  Output: 1893 Symbols + 8218 Edges + UsageContexts              │
 │  Rich metadata: decorators, base_classes, parameters            │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -453,15 +455,16 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 342 | ir.py |
+| `Symbol` | class | 343 | ir.py |
 | `Span` | class | 339 | ir.py |
-| `iter_tree` | function | 174 | base.py |
+| `iter_tree` | function | 188 | base.py |
 | `find_files` | function | 161 | discovery.py |
-| `node_text` | function | 136 | base.py |
-| `Edge` | class | 136 | ir.py |
+| `Edge.create` | method | 157 | ir.py |
+| `node_text` | function | 142 | base.py |
+| `Edge` | class | 142 | ir.py |
+| `NameResolver` | class | 121 | symbol_resolution.py |
 | `AnalysisRun` | class | 96 | ir.py |
-| `LanguageSpec` | class | 75 | taxonomy.py |
-| `Pass` | class | 66 | catalog.py |
+| `NameResolver.lookup` | method | 78 | symbol_resolution.py |
 
 ## Module Reference
 
@@ -487,6 +490,7 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`slice`**: Graph slicing for LLM context extraction.
 - **`supply_chain`**: Supply chain classification for code analysis.
+- **`symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
 - **`taxonomy`**: File taxonomy classification (ADR-0004).
 - **`user_config`**: User configuration management for hypergumbo.
 

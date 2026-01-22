@@ -50,7 +50,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - `NameResolver`: For `dict[str, Symbol]` (JS/TS, Java, C# name-keyed registries)
   - `ListNameResolver`: For `dict[str, list[Symbol]]` (Go's list-valued registry)
   All resolvers provide suffix-based matching, path hints for disambiguation, lazy index building,
-  and confidence tracking. Integrated with Go, JavaScript/TypeScript, Java, and Python analyzers.
+  and confidence tracking. Now integrated with 45+ analyzers including Go, JavaScript/TypeScript,
+  Java, Python, Kotlin, Swift, Dart, Scala, Zig, Ruby, PHP, Rust, Elixir, Erlang, Haskell, Clojure,
+  Common Lisp, Scheme, Lua, Julia, Perl, R, GLSL, WGSL, HLSL, COBOL, Fish, GDScript, and more.
+  Shader languages (GLSL, WGSL, HLSL), COBOL, Fish shell, and GDScript all use two-pass analysis
+  with NameResolver for cross-file call resolution.
 - **README-first hybrid ranking for Additional Files:** The Additional Files section now uses a
   smarter ordering algorithm:
   - README always appears first (truncated if it exceeds the token budget)

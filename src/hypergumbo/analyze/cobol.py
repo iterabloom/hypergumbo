@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo.symbol_resolution import NameResolver
 
 from .base import iter_tree
 
@@ -218,20 +219,39 @@ def _extract_symbols_from_file(
     return symbols
 
 
+def _make_file_id(rel_path: str) -> str:  # pragma: no cover - fallback for file-level code
+    """Generate ID for a COBOL file node (used as fallback edge source)."""
+    return f"cobol:{rel_path}:1-1:file:file"
+
+
 def _extract_edges_from_file(
-    rel_path: str, source_bytes: bytes, tree, symbol_names: set[str]
+    rel_path: str,
+    source_bytes: bytes,
+    tree,
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract edges from a parsed COBOL file."""
-    edges = []
+    """Extract edges from a parsed COBOL file.
+
+    Args:
+        rel_path: Relative path to the file
+        source_bytes: File contents
+        tree: Parsed tree-sitter tree
+        local_symbols: Dict mapping paragraph/section names to Symbols (for caller lookup)
+        resolver: NameResolver for callee lookup
+        run: Analysis run for provenance
+    """
+    edges: list[Edge] = []
 
     root = tree.root_node
 
     # Find current paragraph for each statement
-    current_paragraph = None
+    current_paragraph_name: str | None = None
     for proc_div in _find_all_descendants(root, {"procedure_division"}):
         for node in proc_div.children:
             if node.type == "paragraph_header":
-                current_paragraph = _extract_text(node, source_bytes).rstrip(".").strip()
+                current_paragraph_name = _extract_text(node, source_bytes).rstrip(".").strip()
 
             # Find PERFORM statements
             for perform in _find_all_descendants(node, {"perform_statement_call_proc"}):
@@ -239,19 +259,36 @@ def _extract_edges_from_file(
                 if procedure_node:
                     label_node = _find_child(procedure_node, "label")
                     if label_node:
-                        target = _extract_text(label_node, source_bytes).strip()
-                        source = current_paragraph or f"{rel_path}:file:"
+                        target_name = _extract_text(label_node, source_bytes).strip()
+
+                        # Get caller symbol ID
+                        if current_paragraph_name:
+                            caller_sym = local_symbols.get(current_paragraph_name.upper())
+                            src_id = caller_sym.id if caller_sym else _make_file_id(rel_path)
+                        else:  # pragma: no cover - file-level PERFORM is rare
+                            src_id = _make_file_id(rel_path)  # pragma: no cover
+
+                        # Try to resolve the callee
+                        result = resolver.lookup(target_name.upper())
+                        if result.symbol is not None:
+                            dst_id = result.symbol.id
+                            confidence = 0.85 * result.confidence
+                        else:  # pragma: no cover - unresolvable external paragraph
+                            dst_id = f"cobol:external:{target_name}:paragraph"  # pragma: no cover
+                            confidence = 0.70  # pragma: no cover
+
                         edges.append(
                             Edge.create(
-                                src=source,
-                                dst=target,
+                                src=src_id,
+                                dst=dst_id,
                                 edge_type="calls",
                                 line=perform.start_point[0] + 1,
                                 origin=PASS_ID,
+                                origin_run_id=run.execution_id,
                                 evidence_type="ast_perform",
+                                confidence=confidence,
                             )
                         )
-                        # Store call_type in meta for the last edge added
                         edges[-1].meta = {
                             "file": rel_path,
                             "call_type": "perform",
@@ -262,19 +299,36 @@ def _extract_edges_from_file(
                 string_node = _find_child(call, "string")
                 if string_node:
                     # Remove quotes from program name
-                    target = _extract_text(string_node, source_bytes).strip().strip('"\'')
-                    source = current_paragraph or f"{rel_path}:file:"
+                    target_name = _extract_text(string_node, source_bytes).strip().strip('"\'')
+
+                    # Get caller symbol ID
+                    if current_paragraph_name:
+                        caller_sym = local_symbols.get(current_paragraph_name.upper())
+                        src_id = caller_sym.id if caller_sym else _make_file_id(rel_path)
+                    else:  # pragma: no cover - file-level CALL is rare
+                        src_id = _make_file_id(rel_path)  # pragma: no cover
+
+                    # Try to resolve the callee (program name)
+                    result = resolver.lookup(target_name.upper())
+                    if result.symbol is not None:
+                        dst_id = result.symbol.id
+                        confidence = 0.85 * result.confidence
+                    else:
+                        dst_id = f"cobol:external:{target_name}:program"
+                        confidence = 0.70
+
                     edges.append(
                         Edge.create(
-                            src=source,
-                            dst=target,
+                            src=src_id,
+                            dst=dst_id,
                             edge_type="calls",
                             line=call.start_point[0] + 1,
                             origin=PASS_ID,
+                            origin_run_id=run.execution_id,
                             evidence_type="ast_call",
+                            confidence=confidence,
                         )
                     )
-                    # Store call_type in meta for the last edge added
                     edges[-1].meta = {
                         "file": rel_path,
                         "call_type": "call",
@@ -327,6 +381,8 @@ def analyze_cobol(repo_root: Path) -> COBOLAnalysisResult:
 
     # Pass 1: Extract symbols
     file_trees: dict[Path, tuple[bytes, object]] = {}
+    file_local_symbols: dict[str, dict[str, Symbol]] = {}
+
     for file_path in cobol_files:
         try:
             source_bytes = file_path.read_bytes()
@@ -336,16 +392,31 @@ def analyze_cobol(repo_root: Path) -> COBOLAnalysisResult:
             rel_path = str(file_path.relative_to(repo_root))
             file_symbols = _extract_symbols_from_file(rel_path, source_bytes, tree, run)
             symbols.extend(file_symbols)
+
+            # Build local symbol map for this file (paragraphs, sections, programs)
+            local_symbols: dict[str, Symbol] = {}
+            for sym in file_symbols:
+                if sym.kind in ("paragraph", "section", "program"):
+                    local_symbols[sym.name.upper()] = sym
+            file_local_symbols[rel_path] = local_symbols
+
         except (OSError, IOError):  # pragma: no cover
             continue
 
-    # Build symbol name set for edge resolution
-    symbol_names = {s.name for s in symbols}
+    # Build resolver from all callable symbols (paragraphs, sections, programs)
+    global_symbols: dict[str, Symbol] = {}
+    for sym in symbols:
+        if sym.kind in ("paragraph", "section", "program"):
+            global_symbols[sym.name.upper()] = sym
+    resolver = NameResolver(global_symbols)
 
     # Pass 2: Extract edges
     for file_path, (source_bytes, tree) in file_trees.items():
         rel_path = str(file_path.relative_to(repo_root))
-        file_edges = _extract_edges_from_file(rel_path, source_bytes, tree, symbol_names)
+        local_symbols = file_local_symbols.get(rel_path, {})
+        file_edges = _extract_edges_from_file(
+            rel_path, source_bytes, tree, local_symbols, resolver, run
+        )
         edges.extend(file_edges)
 
     # Update run stats

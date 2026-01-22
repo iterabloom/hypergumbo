@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -207,10 +208,10 @@ def _detect_binding(node: "tree_sitter.Node", source: bytes) -> Optional[dict]:
     return None  # pragma: no cover - no bindings found
 
 
-def _find_containing_function(
-    node: "tree_sitter.Node", function_by_pos: dict[tuple[int, int], str]
-) -> Optional[str]:
-    """Walk up parents to find the containing function's symbol ID."""
+def _find_containing_function_wgsl(
+    node: "tree_sitter.Node", function_by_pos: dict[tuple[int, int], Symbol]
+) -> Optional[Symbol]:
+    """Walk up parents to find the containing function Symbol."""
     current = node.parent
     while current is not None:
         pos_key = (current.start_byte, current.end_byte)
@@ -220,28 +221,22 @@ def _find_containing_function(
     return None  # pragma: no cover - defensive
 
 
-def _process_wgsl_tree(
+def _extract_wgsl_symbols(
     root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
-    edges: list[Edge],
-    function_registry: dict[str, str],
+    function_by_pos: dict[tuple[int, int], Symbol],
 ) -> None:
-    """Process WGSL AST tree to extract symbols and edges.
+    """Extract symbols from WGSL AST tree (pass 1).
 
     Args:
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
-        edges: List to append edges to
-        function_registry: Registry mapping function names to symbol IDs
+        function_by_pos: Dict to track function symbols by byte position
     """
-    # Track function nodes by byte position for parent walking
-    # (node.parent returns new Python object, so id() doesn't work)
-    function_by_pos: dict[tuple[int, int], str] = {}
-
     for node in iter_tree(root):
         # Function definitions (fn name(...) { ... })
         if node.type == "function_declaration":
@@ -284,8 +279,7 @@ def _process_wgsl_tree(
                     signature=_extract_wgsl_signature(node, source),
                 )
                 symbols.append(sym)
-                function_registry[func_name.lower()] = symbol_id
-                function_by_pos[(node.start_byte, node.end_byte)] = symbol_id
+                function_by_pos[(node.start_byte, node.end_byte)] = sym
 
         # Struct definitions (struct Name { ... })
         elif node.type == "struct_declaration":
@@ -376,27 +370,53 @@ def _process_wgsl_tree(
                     )
                     symbols.append(sym)
 
+
+def _extract_wgsl_edges(
+    root: "tree_sitter.Node",
+    source: bytes,
+    function_by_pos: dict[tuple[int, int], Symbol],
+    edges: list[Edge],
+    resolver: NameResolver,
+) -> None:
+    """Extract call edges from WGSL AST tree (pass 2).
+
+    Args:
+        root: Root tree-sitter node to process
+        source: Source file bytes
+        function_by_pos: Dict mapping byte positions to function Symbols
+        edges: List to append edges to
+        resolver: NameResolver for callee lookup
+    """
+    for node in iter_tree(root):
         # Function calls (WGSL uses type_constructor_or_function_call_expression)
-        elif node.type == "type_constructor_or_function_call_expression":
+        if node.type == "type_constructor_or_function_call_expression":
             # Find containing function by walking up parents
-            current_function = _find_containing_function(node, function_by_pos)
+            caller = _find_containing_function_wgsl(node, function_by_pos)
             # Extract function name from type_declaration child
             func_name = None
             for child in node.children:
                 if child.type == "type_declaration":
                     func_name = _get_identifier(child, source)
                     break
-            if func_name and current_function:
+            if func_name and caller:
                 start_line = node.start_point[0] + 1
-                dst_id = function_registry.get(func_name.lower(), f"wgsl:builtin:{func_name}")
+
+                # Try to resolve the callee
+                result = resolver.lookup(func_name.lower())
+                if result.symbol is not None:
+                    dst_id = result.symbol.id
+                    confidence = 0.85 * result.confidence
+                else:
+                    dst_id = f"wgsl:builtin:{func_name}"
+                    confidence = 0.70
 
                 edge = Edge(
-                    id=_make_edge_id(current_function, dst_id, "calls"),
-                    src=current_function,
+                    id=_make_edge_id(caller.id, dst_id, "calls"),
+                    src=caller.id,
                     dst=dst_id,
                     edge_type="calls",
                     line=start_line,
-                    confidence=0.90 if func_name.lower() in function_registry else 0.70,
+                    confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static",
                 )
@@ -405,6 +425,8 @@ def _process_wgsl_tree(
 
 def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
     """Analyze WGSL files in the repository.
+
+    Uses two-pass analysis for cross-file call resolution.
 
     Args:
         repo_root: Path to the repository root
@@ -428,9 +450,6 @@ def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
-    # Function registry for cross-file resolution: name -> symbol_id
-    function_registry: dict[str, str] = {}
-
     # Create parser - try language pack first, then standalone
     try:
         try:
@@ -449,26 +468,39 @@ def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
 
     wgsl_files = list(find_wgsl_files(repo_root))
 
+    # Collect file data for two-pass processing
+    file_data: list[tuple[Path, bytes, "tree_sitter.Tree"]] = []
+    file_function_by_pos: dict[str, dict[tuple[int, int], Symbol]] = {}
+
+    # Pass 1: Extract all symbols from all files
     for wgsl_path in wgsl_files:
         try:
             rel_path = str(wgsl_path.relative_to(repo_root))
             source = wgsl_path.read_bytes()
             tree = parser.parse(source)
             files_analyzed += 1
+            file_data.append((wgsl_path, source, tree))
 
-            # Process this file using iterative traversal
-            _process_wgsl_tree(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                function_registry,
-            )
+            function_by_pos: dict[tuple[int, int], Symbol] = {}
+            _extract_wgsl_symbols(tree.root_node, source, rel_path, symbols, function_by_pos)
+            file_function_by_pos[rel_path] = function_by_pos
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
             warnings_list.append(f"Failed to parse {wgsl_path}: {e}")  # pragma: no cover
+
+    # Build resolver from all function symbols
+    global_symbols: dict[str, Symbol] = {}
+    for sym in symbols:
+        if sym.kind == "function":
+            global_symbols[sym.name.lower()] = sym
+    resolver = NameResolver(global_symbols)
+
+    # Pass 2: Extract call edges using resolver
+    for wgsl_path, source, tree in file_data:
+        rel_path = str(wgsl_path.relative_to(repo_root))
+        function_by_pos = file_function_by_pos.get(rel_path, {})
+        _extract_wgsl_edges(tree.root_node, source, function_by_pos, edges, resolver)
 
     duration_ms = int((time.time() - start_time) * 1000)
 

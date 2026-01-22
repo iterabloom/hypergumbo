@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -160,14 +161,16 @@ def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) ->
 def _get_enclosing_function_gdscript(
     node: "tree_sitter.Node",
     source: bytes,
-) -> Optional[str]:
-    """Walk up parent chain to find enclosing function name."""
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up parent chain to find enclosing function Symbol."""
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
             name_node = _find_child_by_type(current, "name")
             if name_node:
-                return _node_text(name_node, source).strip()
+                func_name = _node_text(name_node, source).strip()
+                return local_symbols.get(func_name)
         current = current.parent
     return None  # pragma: no cover - no enclosing function found
 
@@ -207,15 +210,15 @@ def _make_gd_symbol(
     )
 
 
-def _extract_symbols_and_edges(
+def _extract_gdscript_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
     run_id: str,
-) -> tuple[list[Symbol], list[Edge]]:
-    """Extract all symbols and edges from a parsed GDScript file."""
+    local_symbols: dict[str, Symbol],
+) -> list[Symbol]:
+    """Extract symbols from a parsed GDScript file (pass 1)."""
     symbols: list[Symbol] = []
-    edges: list[Edge] = []
 
     for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
@@ -223,7 +226,9 @@ def _extract_symbols_and_edges(
             if name_node:
                 func_name = _node_text(name_node, source).strip()
                 sig = _extract_function_signature(node, source)
-                symbols.append(_make_gd_symbol(node, func_name, "function", file_path, run_id, signature=sig))
+                sym = _make_gd_symbol(node, func_name, "function", file_path, run_id, signature=sig)
+                symbols.append(sym)
+                local_symbols[func_name] = sym
 
         elif node.type == "variable_statement":
             name_node = _find_child_by_type(node, "name")
@@ -249,7 +254,21 @@ def _extract_symbols_and_edges(
                 class_name = _node_text(name_node, source).strip()
                 symbols.append(_make_gd_symbol(node, class_name, "class", file_path, run_id))
 
-        elif node.type == "call":
+    return symbols
+
+
+def _extract_gdscript_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+) -> list[Edge]:
+    """Extract edges from a parsed GDScript file (pass 2)."""
+    edges: list[Edge] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type == "call":
             ident_node = _find_child_by_type(node, "identifier")
             if ident_node:
                 called_name = _node_text(ident_node, source).strip()
@@ -264,30 +283,45 @@ def _extract_symbols_and_edges(
                                 edges.append(Edge(
                                     id=_make_edge_id(),
                                     src=_make_file_id(file_path),
-                                    dst=f"gdscript:?:?:{path_str}:file",
+                                    dst=f"gdscript:{path_str}:file",
                                     edge_type="imports",
                                     line=node.start_point[0] + 1,
+                                    confidence=0.9,
+                                    origin=PASS_ID,
                                 ))
                                 break
                 else:
                     # Check if inside a function for call edge
-                    enclosing_func = _get_enclosing_function_gdscript(node, source)
-                    if enclosing_func:
+                    caller = _get_enclosing_function_gdscript(node, source, local_symbols)
+                    if caller:
                         # Skip built-in functions like print
                         if called_name not in ("print", "push_error", "push_warning", "printerr"):
+                            # Try to resolve the callee
+                            result = resolver.lookup(called_name)
+                            if result.symbol is not None:
+                                dst_id = result.symbol.id
+                                confidence = 0.85 * result.confidence
+                            else:
+                                dst_id = f"gdscript:external:{called_name}:function"
+                                confidence = 0.70
+
                             edges.append(Edge(
                                 id=_make_edge_id(),
-                                src=_make_file_id(file_path),
-                                dst=f"gdscript:?:?:{called_name}:function",
+                                src=caller.id,
+                                dst=dst_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
+                                confidence=confidence,
+                                origin=PASS_ID,
                             ))
 
-    return symbols, edges
+    return edges
 
 
 def analyze_gdscript(repo_root: Path) -> GDScriptAnalysisResult:
     """Analyze all GDScript files in the repository.
+
+    Uses two-pass analysis for cross-file call resolution.
 
     Args:
         repo_root: Path to the repository root.
@@ -309,20 +343,42 @@ def analyze_gdscript(repo_root: Path) -> GDScriptAnalysisResult:
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
+    # Collect file data for two-pass processing
+    file_data: list[tuple[Path, bytes, object]] = []
+    file_local_symbols: dict[str, dict[str, Symbol]] = {}
+
+    # Pass 1: Extract all symbols from all files
     for file_path in find_gdscript_files(repo_root):
         try:
             source = file_path.read_bytes()
             tree = parser.parse(source)
+            files_analyzed += 1
+            file_data.append((file_path, source, tree))
 
             rel_path = str(file_path.relative_to(repo_root))
-            symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
+            local_symbols: dict[str, Symbol] = {}
 
+            symbols = _extract_gdscript_symbols(tree, source, rel_path, run_id, local_symbols)
             all_symbols.extend(symbols)
-            all_edges.extend(edges)
-            files_analyzed += 1
+            file_local_symbols[rel_path] = local_symbols
 
         except (OSError, IOError):  # pragma: no cover - defensive
             continue  # Skip files we can't read
+
+    # Build resolver from all function symbols
+    global_symbols: dict[str, Symbol] = {}
+    for sym in all_symbols:
+        if sym.kind == "function":
+            global_symbols[sym.name] = sym
+    resolver = NameResolver(global_symbols)
+
+    # Pass 2: Extract edges using resolver
+    for file_path, source, tree in file_data:
+        rel_path = str(file_path.relative_to(repo_root))
+        local_symbols = file_local_symbols.get(rel_path, {})
+
+        edges = _extract_gdscript_edges(tree, source, rel_path, local_symbols, resolver)
+        all_edges.extend(edges)
 
     duration_ms = int((time.time() - start_time) * 1000)
 

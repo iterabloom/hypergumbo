@@ -113,8 +113,13 @@ class TestAnalyzeCOBOL:
         perform_edges = [e for e in result.edges if e.meta.get("call_type") == "perform"]
         assert len(perform_edges) >= 2
         targets = [e.dst for e in perform_edges]
-        assert "INIT-PARA" in targets
-        assert "CALC-PARA" in targets
+        # Targets are now full symbol IDs (resolved or external)
+        assert any("INIT-PARA" in t for t in targets)
+        assert any("CALC-PARA" in t for t in targets)
+        # Verify resolved calls have higher confidence
+        for edge in perform_edges:
+            if "external" not in edge.dst:
+                assert edge.confidence > 0.70  # Resolved has higher confidence
 
     def test_detects_call_edges(self, tmp_path: Path) -> None:
         """Should detect CALL statements to external programs."""
@@ -133,8 +138,13 @@ class TestAnalyzeCOBOL:
         call_edges = [e for e in result.edges if e.meta.get("call_type") == "call"]
         assert len(call_edges) >= 2
         targets = [e.dst for e in call_edges]
-        assert "SUB-PROG" in targets
-        assert "UTIL-PROG" in targets
+        # External calls have format cobol:external:{name}:program
+        assert any("SUB-PROG" in t for t in targets)
+        assert any("UTIL-PROG" in t for t in targets)
+        # External calls have lower confidence (0.70)
+        for edge in call_edges:
+            if "external" in edge.dst:
+                assert edge.confidence == 0.70
 
     def test_handles_cpy_copybooks(self, tmp_path: Path) -> None:
         """Should analyze COBOL copybook files when they have full program structure."""
@@ -179,6 +189,35 @@ class TestAnalyzeCOBOL:
         names = [p.name for p in programs]
         assert "MAIN-PROG" in names
         assert "UTIL-PROG" in names
+
+    def test_cross_file_call_resolution(self, tmp_path: Path) -> None:
+        """Should resolve CALL to programs defined in other files."""
+        # Define a called program
+        (tmp_path / "subprog.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SUB-PROG.
+       PROCEDURE DIVISION.
+           DISPLAY "SUBPROGRAM".
+           STOP RUN.
+""")
+        # Define caller that CALLs the subprogram
+        (tmp_path / "caller.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. CALLER-PROG.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           CALL "SUB-PROG".
+           STOP RUN.
+""")
+
+        result = analyze_cobol(tmp_path)
+
+        call_edges = [e for e in result.edges if e.meta.get("call_type") == "call"]
+        assert len(call_edges) >= 1
+        # Should resolve to actual symbol, not external
+        sub_prog_call = next(e for e in call_edges if "SUB-PROG" in e.dst)
+        assert "external" not in sub_prog_call.dst
+        assert sub_prog_call.confidence > 0.70  # Resolved has higher confidence
 
     def test_empty_repo_returns_empty_result(self, tmp_path: Path) -> None:
         """Should return empty result for repo with no COBOL files."""

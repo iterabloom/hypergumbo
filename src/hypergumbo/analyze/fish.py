@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -102,7 +103,7 @@ class _FileContext:
     run_id: str
     symbols: list[Symbol]
     edges: list[Edge]
-    current_function: Optional[str]
+    local_symbols: dict[str, Symbol] = field(default_factory=dict)
 
 
 def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
@@ -136,20 +137,22 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
 def _get_enclosing_function_fish(
     node: "tree_sitter.Node",
     source: bytes,
-) -> Optional[str]:
-    """Walk up parent chain to find enclosing function name."""
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up parent chain to find enclosing function Symbol."""
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
             words = _find_children_by_type(current, "word")
             if words:
-                return _node_text(words[0], source)
+                func_name = _node_text(words[0], source)
+                return local_symbols.get(func_name)
         current = current.parent  # pragma: no cover - loop until function found
     return None  # pragma: no cover - no enclosing function found
 
 
 def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a function definition."""
+    """Process a function definition (pass 1: symbol extraction)."""
     words = _find_children_by_type(node, "word")
     if not words:
         return  # pragma: no cover
@@ -172,11 +175,13 @@ def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
     if func_name:
         signature = f"({', '.join(arguments)})" if arguments else "()"
-        ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
+        sym = _make_symbol(ctx, node, func_name, "function", signature=signature)
+        ctx.symbols.append(sym)
+        ctx.local_symbols[func_name] = sym
 
 
-def _process_command(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a command."""
+def _process_command_symbols(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+    """Process a command for symbol extraction (pass 1)."""
     words = _find_children_by_type(node, "word")
     if not words:
         return  # pragma: no cover
@@ -204,7 +209,20 @@ def _process_command(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         if var_name and is_global:
             ctx.symbols.append(_make_symbol(ctx, node, var_name, "variable"))
 
-    elif cmd_name == "source":
+
+def _process_command_edges(
+    ctx: _FileContext,
+    node: "tree_sitter.Node",
+    resolver: NameResolver,
+) -> None:
+    """Process a command for edge extraction (pass 2)."""
+    words = _find_children_by_type(node, "word")
+    if not words:
+        return  # pragma: no cover - defensive
+
+    cmd_name = _node_text(words[0], ctx.source)
+
+    if cmd_name == "source":
         # source path
         # Get the source path - could be word or concatenation
         source_path = None
@@ -235,32 +253,52 @@ def _process_command(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                 )
             )
 
-    else:
+    elif cmd_name not in ("alias", "set"):
         # Check if inside a function for call edge
-        enclosing_func = _get_enclosing_function_fish(node, ctx.source)
-        if enclosing_func:
+        caller = _get_enclosing_function_fish(node, ctx.source, ctx.local_symbols)
+        if caller:
+            # Try to resolve the callee
+            result = resolver.lookup(cmd_name)
+            if result.symbol is not None:
+                dst_id = result.symbol.id
+                confidence = 0.85 * result.confidence
+            else:
+                dst_id = f"fish:external:{cmd_name}:function"
+                confidence = 0.70
+
             # This is a function/command call inside a function body
             ctx.edges.append(
                 Edge(
                     id=f"edge:fish:{uuid.uuid4().hex[:12]}",
-                    src=f"fish:{ctx.rel_path}:{enclosing_func}",
-                    dst=f"fish:?:{cmd_name}:function",
+                    src=caller.id,
+                    dst=dst_id,
                     edge_type="calls",
                     line=node.start_point[0] + 1,
-                    confidence=0.7,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=ctx.run_id,
                 )
             )
 
 
-def _process_tree(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
-    """Process a tree-sitter tree iteratively."""
+def _extract_fish_symbols(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
+    """Extract symbols from a tree-sitter tree (pass 1)."""
     for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
             _process_function(ctx, node)
         elif node.type == "command":
-            _process_command(ctx, node)
+            _process_command_symbols(ctx, node)
+
+
+def _extract_fish_edges(
+    ctx: _FileContext,
+    tree: "tree_sitter.Tree",
+    resolver: NameResolver,
+) -> None:
+    """Extract edges from a tree-sitter tree (pass 2)."""
+    for node in iter_tree(tree.root_node):
+        if node.type == "command":
+            _process_command_edges(ctx, node, resolver)
 
 
 def analyze_fish(repo_root: Path) -> FishAnalysisResult:
@@ -268,6 +306,8 @@ def analyze_fish(repo_root: Path) -> FishAnalysisResult:
 
     Returns a FishAnalysisResult with symbols for functions, aliases, and variables,
     plus edges for source statements and function calls.
+
+    Uses two-pass analysis for cross-file call resolution.
     """
     if not is_fish_tree_sitter_available():
         warnings.warn("Fish analysis skipped: tree-sitter-fish unavailable")
@@ -286,6 +326,11 @@ def analyze_fish(repo_root: Path) -> FishAnalysisResult:
     run_id = str(uuid.uuid4())
     start_time = time.time()
 
+    # Collect file data for two-pass processing
+    file_data: list[tuple[Path, bytes, object]] = []
+    file_local_symbols: dict[str, dict[str, Symbol]] = {}
+
+    # Pass 1: Extract all symbols from all files
     for file_path in find_fish_files(repo_root):
         try:
             source = file_path.read_bytes()
@@ -294,9 +339,11 @@ def analyze_fish(repo_root: Path) -> FishAnalysisResult:
 
         tree = parser.parse(source)
         files_analyzed += 1
+        file_data.append((file_path, source, tree))
 
         rel_path = str(file_path.relative_to(repo_root))
         file_stable_id = f"fish:{rel_path}:file:"
+        local_symbols: dict[str, Symbol] = {}
 
         ctx = _FileContext(
             source=source,
@@ -305,10 +352,36 @@ def analyze_fish(repo_root: Path) -> FishAnalysisResult:
             run_id=run_id,
             symbols=symbols,
             edges=edges,
-            current_function=None,
+            local_symbols=local_symbols,
         )
 
-        _process_tree(ctx, tree)
+        _extract_fish_symbols(ctx, tree)
+        file_local_symbols[rel_path] = local_symbols
+
+    # Build resolver from all function symbols
+    global_symbols: dict[str, Symbol] = {}
+    for sym in symbols:
+        if sym.kind == "function":
+            global_symbols[sym.name] = sym
+    resolver = NameResolver(global_symbols)
+
+    # Pass 2: Extract edges using resolver
+    for file_path, source, tree in file_data:
+        rel_path = str(file_path.relative_to(repo_root))
+        file_stable_id = f"fish:{rel_path}:file:"
+        local_symbols = file_local_symbols.get(rel_path, {})
+
+        ctx = _FileContext(
+            source=source,
+            rel_path=rel_path,
+            file_stable_id=file_stable_id,
+            run_id=run_id,
+            symbols=[],  # Don't collect symbols again
+            edges=edges,
+            local_symbols=local_symbols,
+        )
+
+        _extract_fish_edges(ctx, tree, resolver)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return FishAnalysisResult(

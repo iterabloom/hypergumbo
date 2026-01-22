@@ -246,6 +246,7 @@ Hypergumbo supports 67 languages via tree-sitter grammars. All are included in t
 * `metrics.py` — analysis statistics computation
 * `limits.py` — error tracking and analysis gaps
 * `supply_chain.py` — file classification by dependency tier (1-4)
+* `symbol_resolution.py` — shared cross-file call resolution (NameResolver, SymbolResolver)
 
 **Language analyzers (examples):**
 * `analyze/py.py` — Python AST parser
