@@ -171,6 +171,66 @@ proc main() =
         assert any("os" in dst for dst in imported)
 
 
+class TestNimCallResolution:
+    """Tests for Nim call resolution."""
+
+    def test_proc_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges for proc calls."""
+        (temp_repo / "math.nim").write_text('''
+proc double(x: int): int =
+  x * 2
+
+proc quadruple(x: int): int =
+  double(double(x))
+''')
+
+        result = analyze_nim(temp_repo)
+
+        # Should have call edges from quadruple to double
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        quad_calls = [e for e in call_edges if "quadruple" in e.src]
+        assert len(quad_calls) >= 1
+        assert any("double" in e.dst for e in quad_calls)
+
+    def test_external_proc_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external proc calls with lower confidence."""
+        (temp_repo / "io_test.nim").write_text('''
+proc printHello() =
+  echo("Hello")
+''')
+
+        result = analyze_nim(temp_repo)
+
+        # Should have call edge to external echo
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("echo" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "test.nim").write_text('''
+proc internalProc() =
+  discard
+
+proc caller() =
+  internalProc()
+''')
+
+        result = analyze_nim(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the edge from caller to internalProc
+        resolved_call = next((e for e in call_edges if "internalProc" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence (usually 1.0)
+        assert resolved_call.confidence > 0.70
+
+
 class TestNimAnalysisUnavailable:
     """Tests for handling unavailable tree-sitter."""
 

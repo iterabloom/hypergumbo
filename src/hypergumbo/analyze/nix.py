@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -235,21 +236,78 @@ def _is_in_inputs_block(node: "tree_sitter.Node", source: bytes) -> bool:
     return False  # pragma: no cover - defensive
 
 
-def _process_nix_tree(
+def _find_enclosing_function_nix(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function Symbol by walking up parents.
+
+    In Nix, functions are defined via bindings with function_expression values.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "binding":
+            # Check if this binding defines a function
+            name = _get_attrpath_name(current, source)
+            if name:
+                sym = local_symbols.get(name)
+                if sym and sym.kind == "function":
+                    return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_call_target_name_nix(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the target name from an apply_expression (function call).
+
+    Nix function application: `funcName arg` or `funcName arg1 arg2`
+    The first child of apply_expression is the function being called.
+    """
+    # In nested apply like `f a b`, the structure is:
+    # apply_expression: (apply_expression: f a) b
+    # We want to find the innermost function name
+    current = node
+    while current.type == "apply_expression":
+        first_child = None
+        for child in current.children:
+            if child.is_named:
+                first_child = child
+                break
+        if first_child is None:
+            return None  # pragma: no cover - defensive
+        if first_child.type == "apply_expression":
+            current = first_child
+        elif first_child.type == "variable_expression":
+            # Found the function name
+            return _get_identifier(first_child, source)
+        elif first_child.type == "select_expression":  # pragma: no cover - Nix AST edge case
+            # e.g., pkgs.mkShell - get the last identifier
+            last_ident = None
+            for child in first_child.children:
+                if child.type == "identifier":
+                    last_ident = _node_text(child, source)
+            return last_ident
+        else:
+            return None  # pragma: no cover - defensive
+    return None  # pragma: no cover - defensive
+
+
+def _extract_nix_symbols(
     root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
-    edges: list[Edge],
+    symbol_registry: dict[str, Symbol],
 ) -> None:
-    """Process Nix AST tree to extract symbols and edges.
+    """Extract symbols from Nix AST tree (pass 1).
 
     Args:
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
-        edges: List to append edges to
+        symbol_registry: Registry mapping function names to Symbol objects
     """
     for node in iter_tree(root):
         # Process bindings
@@ -309,28 +367,9 @@ def _process_nix_tree(
                     signature=signature,
                 )
                 symbols.append(sym)
-
-        # Detect import expressions
-        elif node.type == "apply_expression":
-            text = _node_text(node, source)
-            if text.strip().startswith("import"):
-                target = _find_import_target(node, source)
-                if target:
-                    start_line = node.start_point[0] + 1
-                    src_id = f"nix:{rel_path}:{start_line}:import"
-                    dst_id = f"nix:external:{target}"
-
-                    edge = Edge(
-                        id=_make_edge_id(src_id, dst_id, "imports"),
-                        src=src_id,
-                        dst=dst_id,
-                        edge_type="imports",
-                        line=start_line,
-                        confidence=0.80,
-                        origin=PASS_ID,
-                        evidence_type="static",
-                    )
-                    edges.append(edge)
+                # Register functions for call resolution
+                if kind == "function":
+                    symbol_registry[name] = sym
 
         # Detect top-level function (module/overlay pattern)
         elif node.type == "function_expression" and node.parent and node.parent.type == "source_code":
@@ -360,10 +399,83 @@ def _process_nix_tree(
                 signature=_extract_nix_signature(node, source),
             )
             symbols.append(sym)
+            symbol_registry[name] = sym
+
+
+def _extract_nix_edges(
+    root: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    edges: list[Edge],
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+) -> None:
+    """Extract edges from Nix AST tree (pass 2).
+
+    Args:
+        root: Root tree-sitter node to process
+        source: Source file bytes
+        rel_path: Relative path to file
+        edges: List to append edges to
+        local_symbols: Local symbol registry for finding enclosing functions
+        resolver: NameResolver for callee resolution
+    """
+    for node in iter_tree(root):
+        if node.type == "apply_expression":
+            text = _node_text(node, source)
+            # Handle import expressions
+            if text.strip().startswith("import"):
+                target = _find_import_target(node, source)
+                if target:
+                    start_line = node.start_point[0] + 1
+                    src_id = f"nix:{rel_path}:{start_line}:import"
+                    dst_id = f"nix:external:{target}"
+
+                    edge = Edge(
+                        id=_make_edge_id(src_id, dst_id, "imports"),
+                        src=src_id,
+                        dst=dst_id,
+                        edge_type="imports",
+                        line=start_line,
+                        confidence=0.80,
+                        origin=PASS_ID,
+                        evidence_type="static",
+                    )
+                    edges.append(edge)
+            else:
+                # Handle function calls
+                target_name = _get_call_target_name_nix(node, source)
+                if target_name:
+                    caller = _find_enclosing_function_nix(node, source, local_symbols)
+                    if caller:
+                        # Use resolver for callee resolution
+                        lookup_result = resolver.lookup(target_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            dst_id = lookup_result.symbol.id
+                            confidence = 0.85 * lookup_result.confidence
+                        else:
+                            # External/builtin function
+                            dst_id = f"nix:external:{target_name}:function"
+                            confidence = 0.70
+
+                        edges.append(Edge(
+                            id=_make_edge_id(caller.id, dst_id, "calls"),
+                            src=caller.id,
+                            dst=dst_id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=confidence,
+                            origin=PASS_ID,
+                            evidence_type="static",
+                        ))
 
 
 def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:
     """Analyze Nix files in the repository.
+
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges (imports + calls) using NameResolver
 
     Args:
         repo_root: Path to the repository root
@@ -388,6 +500,12 @@ def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
+    # Global symbol registry for cross-file resolution
+    global_symbol_registry: dict[str, Symbol] = {}
+
+    # Store parsed files for pass 2
+    parsed_files: list[tuple[str, bytes, object]] = []
+
     # Create parser
     try:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_nix.language()))
@@ -400,6 +518,7 @@ def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:
 
     nix_files = list(find_nix_files(repo_root))
 
+    # Pass 1: Extract symbols from all files
     for nix_path in nix_files:
         try:
             rel_path = str(nix_path.relative_to(repo_root))
@@ -407,18 +526,38 @@ def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Process this file
-            _process_nix_tree(
+            # Extract symbols
+            _extract_nix_symbols(
                 tree.root_node,
                 source,
                 rel_path,
                 symbols,
-                edges,
+                global_symbol_registry,
             )
+
+            # Store for pass 2
+            parsed_files.append((rel_path, source, tree))
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
             warnings_list.append(f"Failed to parse {nix_path}: {e}")  # pragma: no cover
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract edges using resolver
+    for rel_path, source, tree in parsed_files:
+        # Build local symbol map for this file (functions only)
+        local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+
+        _extract_nix_edges(
+            tree.root_node,  # type: ignore
+            source,
+            rel_path,
+            edges,
+            local_symbols,
+            resolver,
+        )
 
     duration_ms = int((time.time() - start_time) * 1000)
 

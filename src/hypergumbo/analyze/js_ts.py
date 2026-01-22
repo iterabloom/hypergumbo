@@ -1809,6 +1809,7 @@ def _extract_edges(
     namespace_imports: dict[str, str] | None = None,
     resolver: NameResolver | None = None,
     method_resolver: ListNameResolver | None = None,
+    class_resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -1830,10 +1831,12 @@ def _extract_edges(
     """
     if namespace_imports is None:
         namespace_imports = {}
-    if resolver is None:
+    if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
-    if method_resolver is None:
+    if method_resolver is None:  # pragma: no cover - defensive
         method_resolver = ListNameResolver(global_methods)
+    if class_resolver is None:  # pragma: no cover - defensive
+        class_resolver = NameResolver(global_classes)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -1956,17 +1959,17 @@ def _extract_edges(
                         # Case 1: this.method()
                         if is_this_call and current_class_name:
                             full_name = f"{current_class_name}.{method_name}"
-                            if full_name in global_symbols:
-                                target_sym = global_symbols[full_name]
+                            lookup_result = resolver.lookup(full_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_this",
-                                    confidence=0.95,
+                                    confidence=0.95 * lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -1975,18 +1978,18 @@ def _extract_edges(
                         elif obj_name and obj_name in namespace_imports:
                             # This is a namespace call: alias.func() or alias.Class()
                             # Resolve via global symbols using method_name directly
-                            if method_name in global_symbols:
-                                target_sym = global_symbols[method_name]
-                                is_class = target_sym.kind == "class"
+                            lookup_result = resolver.lookup(method_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                is_class = lookup_result.symbol.kind == "class"
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="instantiates" if is_class else "calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                    confidence=0.90,
+                                    confidence=0.90 * lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -1995,48 +1998,49 @@ def _extract_edges(
                         elif obj_name and obj_name in var_types:
                             type_class_name = var_types[obj_name]
                             full_name = f"{type_class_name}.{method_name}"
-                            if full_name in global_symbols:
-                                target_sym = global_symbols[full_name]
+                            lookup_result = resolver.lookup(full_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
-                                    confidence=0.85,
+                                    confidence=0.85 * lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
 
                         # Case 4: Fallback - method name match with low confidence
-                        if not edge_added and method_name in global_methods:
-                            for target_sym in global_methods[method_name]:
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=target_sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1 + line_offset,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_method_inferred",
-                                    confidence=0.60,
-                                )
-                                edges.append(edge)
+                        if not edge_added:
+                            lookup_result = method_resolver.lookup(method_name)
+                            if lookup_result.found and lookup_result.candidates:
+                                for target_sym in lookup_result.candidates:
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=target_sym.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_method_inferred",
+                                        confidence=0.60 * lookup_result.confidence,
+                                    )
+                                    edges.append(edge)
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
             current_function = _get_enclosing_function(node, source, file_path, global_symbols)
             class_name = None
             target_sym = None
+            lookup_confidence = 1.0  # Default for exact match
 
             for child in node.children:
                 if child.type == "identifier":
                     # new ClassName()
                     class_name = _node_text(child, source)
-                    if class_name in global_classes:
-                        target_sym = global_classes[class_name]
                     break
                 elif child.type == "member_expression":
                     # new namespace.ClassName()
@@ -2049,9 +2053,14 @@ def _extract_edges(
                             cls_name = _node_text(mc, source)
                     if ns_name and ns_name in namespace_imports and cls_name:
                         class_name = cls_name
-                        if cls_name in global_classes:
-                            target_sym = global_classes[cls_name]
                     break
+
+            # Resolve class via class_resolver
+            if class_name:
+                lookup_result = class_resolver.lookup(class_name)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    target_sym = lookup_result.symbol
+                    lookup_confidence = lookup_result.confidence
 
             # Emit instantiates edge
             if current_function and target_sym:
@@ -2063,7 +2072,7 @@ def _extract_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_new",
-                    confidence=0.95,
+                    confidence=0.95 * lookup_confidence,
                 )
                 edges.append(edge)
 
@@ -2403,12 +2412,16 @@ def analyze_javascript(
             global_classes[sym.name] = sym
 
     # Pass 2: Extract edges using global symbol registry
+    resolver = NameResolver(global_symbols)
+    method_resolver = ListNameResolver(global_methods)
+    class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
             global_symbols, global_methods, global_classes, pf.line_offset,
-            pf.namespace_imports or {}
+            pf.namespace_imports or {},
+            resolver, method_resolver, class_resolver
         )
         all_edges.extend(edges)
 

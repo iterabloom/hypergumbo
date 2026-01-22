@@ -812,6 +812,7 @@ def _extract_edges(
     class_symbols: dict[str, Symbol],
     imports: dict[str, str] | None = None,
     resolver: NameResolver | None = None,
+    class_resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -833,6 +834,8 @@ def _extract_edges(
         imports = {}
     if resolver is None:
         resolver = NameResolver(global_symbols)
+    if class_resolver is None:
+        class_resolver = NameResolver(class_symbols)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -994,21 +997,21 @@ def _extract_edges(
                     # class or variable but might still match a symbol via imports.
                     # In practice, this is rarely hit since Case 2 handles most static
                     # calls and Case 3 handles most instance calls.
-                    if not edge_added and receiver_name:  # pragma: no cover
+                    if not edge_added and receiver_name and resolver:  # pragma: no cover
                         candidates = [f"{receiver_name}.{method_name}"]
                         # Try imported class name
                         if receiver_name in imports:
                             full_class = imports[receiver_name].split(".")[-1]
                             candidates.insert(0, f"{full_class}.{method_name}")
                         for candidate in candidates:
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_method.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.80,
+                                    confidence=0.80 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -1025,19 +1028,20 @@ def _extract_edges(
             for child in node.children:
                 if child.type == "type_identifier":
                     type_name = _node_text(child, source)
-                    if current_method and type_name in class_symbols:
-                        target_sym = class_symbols[type_name]
-                        edge = Edge.create(
-                            src=current_method.id,
-                            dst=target_sym.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            confidence=0.95,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_new",
-                        )
-                        edges.append(edge)
+                    if current_method:
+                        lookup_result = class_resolver.lookup(type_name)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edge = Edge.create(
+                                src=current_method.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="instantiates",
+                                line=node.start_point[0] + 1,
+                                confidence=0.95 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_new",
+                            )
+                            edges.append(edge)
                     break
 
             # Track variable type for type inference

@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo.symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -354,7 +355,7 @@ def _extract_edges_from_tree(
     source: bytes,
     rel_path: str,
     edges: list[Edge],
-    symbol_table: dict[str, Symbol],
+    resolver: NameResolver,
     run: "AnalysisRun",
 ) -> None:
     """Extract edges from an AST using iterative traversal.
@@ -384,7 +385,8 @@ def _extract_edges_from_tree(
                                 break
 
                 qualified_name = f"{container}.{name}" if (container and is_method) else name
-                func_sym = symbol_table.get(qualified_name)
+                lookup_result = resolver.lookup(qualified_name)
+                func_sym = lookup_result.symbol if lookup_result.found else None
 
                 # Process children with updated function context
                 for child in reversed(node.children):
@@ -453,11 +455,12 @@ def _extract_edges_from_tree(
             if current_function_sym:
                 call_name = _get_call_name(node, source)
                 if call_name:
-                    # Try to resolve the target
-                    target_sym = symbol_table.get(call_name)
-                    if target_sym:
-                        dst_id = target_sym.id
-                        confidence = 0.9
+                    # Try to resolve the target using NameResolver
+                    base_confidence = 0.9
+                    lookup_result = resolver.lookup(call_name)
+                    if lookup_result.found and lookup_result.symbol:
+                        dst_id = lookup_result.symbol.id
+                        confidence = base_confidence * lookup_result.confidence
                     else:
                         # Create placeholder ID for unresolved call
                         dst_id = f"zig:{rel_path}:0-0:{call_name}:function"
@@ -538,6 +541,7 @@ def analyze_zig(root: Path) -> ZigAnalysisResult:
         )
 
     # Pass 2: Extract edges (imports and calls)
+    resolver = NameResolver(symbol_table)
     for file_path in find_zig_files(root):
         try:
             source = file_path.read_bytes()
@@ -549,7 +553,7 @@ def analyze_zig(root: Path) -> ZigAnalysisResult:
 
         # Extract edges from this file using iterative traversal
         _extract_edges_from_tree(
-            tree.root_node, source, rel_path, edges, symbol_table, run
+            tree.root_node, source, rel_path, edges, resolver, run
         )
 
     run.files_analyzed = files_analyzed

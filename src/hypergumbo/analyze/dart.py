@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -478,15 +479,12 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a parsed Dart file."""
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
-
-    # Build local symbol map for this file (name -> symbol)
-    local_symbols = {s.name: s for s in file_symbols}
 
     # Track functions by their enclosing scope
     function_scopes: dict[int, Symbol] = {}  # line -> symbol
@@ -557,8 +555,10 @@ def _extract_edges_from_file(
                         # Type-inferred method call: receiver.method()
                         class_name = var_types[first_ident]
                         qualified_name = f"{class_name}.{method_name}"
-                        callee = local_symbols.get(qualified_name) or global_symbol_registry.get(qualified_name)
-                        if callee:
+                        lookup_result = resolver.lookup(qualified_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -567,13 +567,15 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="method_call_type_inferred",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
                     elif not method_name:
                         # Simple function call: func()
-                        callee = local_symbols.get(first_ident) or global_symbol_registry.get(first_ident)
-                        if callee:
+                        lookup_result = resolver.lookup(first_ident)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -582,7 +584,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_call",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
 
@@ -600,8 +602,10 @@ def _extract_edges_from_file(
                         if has_args:
                             caller = _find_enclosing_function(node, function_scopes)
                             if caller:
-                                callee = local_symbols.get(method_name) or global_symbol_registry.get(method_name)
-                                if callee:
+                                lookup_result = resolver.lookup(method_name)
+                                if lookup_result.found and lookup_result.symbol:
+                                    callee = lookup_result.symbol
+                                    confidence = 0.80 * lookup_result.confidence
                                     edge = Edge.create(
                                         src=caller.id,
                                         dst=callee.id,
@@ -610,7 +614,7 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         evidence_type="method_call",
-                                        confidence=0.80,
+                                        confidence=confidence,
                                     )
                                     edges.append(edge)
 
@@ -622,8 +626,10 @@ def _extract_edges_from_file(
                     class_name = _node_text(child, source)
                     caller = _find_enclosing_function(node, function_scopes)
                     if caller:
-                        callee = local_symbols.get(class_name) or global_symbol_registry.get(class_name)
-                        if callee:
+                        lookup_result = resolver.lookup(class_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.90 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -632,7 +638,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="constructor_call",
-                                confidence=0.90,
+                                confidence=confidence,
                             )
                             edges.append(edge)
 
@@ -659,8 +665,10 @@ def _extract_edges_from_file(
                     if i + 1 < len(children) and children[i + 1].type == "arguments":
                         caller = _find_enclosing_function(node, function_scopes)
                         if caller:
-                            callee = local_symbols.get(class_name) or global_symbol_registry.get(class_name)
-                            if callee:
+                            lookup_result = resolver.lookup(class_name)
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.90 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -669,7 +677,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="constructor_call",
-                                    confidence=0.90,
+                                    confidence=confidence,
                                 )
                                 edges.append(edge)
                     break
@@ -757,6 +765,7 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -764,7 +773,7 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -444,8 +445,11 @@ def _extract_edges_from_file(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file."""
+    if resolver is None:
+        resolver = NameResolver(global_symbols)
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -505,19 +509,20 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
-                        # Check global symbols
-                        elif callee_name in global_symbols:
-                            callee = global_symbols[callee_name]
-                            edges.append(Edge.create(
-                                src=current_method.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="method_call",
-                                confidence=0.80,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                        # Check global symbols via resolver
+                        else:
+                            lookup_result = resolver.lookup(callee_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                edges.append(Edge.create(
+                                    src=current_method.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call",
+                                    confidence=0.80 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
 
         # Detect bare method calls (identifier nodes that are method names)
         elif node.type == "identifier":
@@ -538,19 +543,21 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                elif callee_name in global_symbols:
-                    callee = global_symbols[callee_name]
-                    if callee.kind == "method" and callee.id != current_method.id:
-                        edges.append(Edge.create(
-                            src=current_method.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="bare_method_call",
-                            confidence=0.70,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                else:
+                    lookup_result = resolver.lookup(callee_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        callee = lookup_result.symbol
+                        if callee.kind == "method" and callee.id != current_method.id:
+                            edges.append(Edge.create(
+                                src=current_method.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="bare_method_call",
+                                confidence=0.70 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
     return edges
 
@@ -612,6 +619,7 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             global_symbols[symbol.name] = symbol
 
     # Pass 2: Extract edges from files with symbols
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
@@ -620,7 +628,7 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            rb_file, parser, analysis.symbol_by_name, global_symbols, run
+            rb_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
         )
         all_edges.extend(edges)
 

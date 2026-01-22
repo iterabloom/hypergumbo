@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -280,6 +281,50 @@ def _process_with_clause(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                 )
 
 
+def _get_call_target_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the target name from a procedure_call_statement or function_call.
+
+    Returns the simple name (last identifier) for resolution.
+    """
+    # For procedure_call_statement: first child is identifier or selected_component
+    # For function_call: first child is identifier or selected_component
+    for child in node.children:
+        if child.type == "identifier":
+            return _node_text(child, source)
+        elif child.type == "selected_component":
+            # Get the last identifier (e.g., "Put_Line" from "Ada.Text_IO.Put_Line")
+            last_ident = None
+            for sub in child.children:
+                if sub.type == "identifier":
+                    last_ident = _node_text(sub, source)
+            return last_ident
+    return None  # pragma: no cover - defensive
+
+
+def _find_enclosing_subprogram(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function/procedure Symbol by walking up parents."""
+    current = node.parent
+    while current is not None:
+        if current.type == "subprogram_body":
+            # Find the function/procedure name
+            func_spec = _find_child_by_type(current, "function_specification")
+            proc_spec = _find_child_by_type(current, "procedure_specification")
+            spec = func_spec or proc_spec
+            if spec:
+                name_node = _find_child_by_type(spec, "identifier")
+                if name_node:
+                    name = _node_text(name_node, source)
+                    sym = local_symbols.get(name)
+                    if sym:
+                        return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a single tree-sitter node (non-recursive dispatch)."""
     if node.type == "package_declaration":
@@ -294,15 +339,17 @@ def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         _process_type_declaration(ctx, node)
     elif node.type == "object_declaration":
         _process_object_declaration(ctx, node)
-    elif node.type == "with_clause":
-        _process_with_clause(ctx, node)
 
 
 def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
     """Analyze Ada files in a repository.
 
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges (imports + calls) using NameResolver
+
     Returns an AdaAnalysisResult with symbols for packages, functions, procedures,
-    types, and constants, plus edges for with clauses (imports).
+    types, and constants, plus edges for with clauses (imports) and calls.
     """
     if not is_ada_tree_sitter_available():
         warnings.warn("Ada analysis skipped: tree-sitter-ada unavailable")
@@ -321,6 +368,13 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
     run_id = str(uuid.uuid4())
     start_time = time.time()
 
+    # Global symbol registry for cross-file resolution
+    global_symbol_registry: dict[str, Symbol] = {}
+
+    # Store parsed files for pass 2
+    parsed_files: list[tuple[str, bytes, object, str]] = []
+
+    # Pass 1: Extract symbols from all files
     for file_path in find_ada_files(repo_root):
         try:
             source = file_path.read_bytes()
@@ -339,11 +393,99 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
             file_stable_id=file_stable_id,
             run_id=run_id,
             symbols=symbols,
+            edges=[],  # Don't collect edges in pass 1
+        )
+
+        # Extract symbols only
+        for node in iter_tree(tree.root_node):
+            if node.type in ("package_declaration", "package_body", "subprogram_declaration",
+                             "subprogram_body", "full_type_declaration", "object_declaration"):
+                _process_node(ctx, node)
+
+        # Register symbols globally
+        for sym in symbols:
+            if sym.path == rel_path:
+                global_symbol_registry[sym.name] = sym
+
+        # Store for pass 2
+        parsed_files.append((rel_path, source, tree, file_stable_id))
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract edges (imports + calls)
+    for rel_path, source, tree, file_stable_id in parsed_files:
+        # Build local symbol map for this file (functions/procedures only)
+        local_symbols = {s.name: s for s in symbols
+                         if s.path == rel_path and s.kind in ("function", "procedure")}
+
+        ctx = _FileContext(
+            source=source,
+            rel_path=rel_path,
+            file_stable_id=file_stable_id,
+            run_id=run_id,
+            symbols=[],  # Not adding symbols in pass 2
             edges=edges,
         )
 
-        for node in iter_tree(tree.root_node):
-            _process_node(ctx, node)
+        for node in iter_tree(tree.root_node):  # type: ignore
+            # Process imports (with_clause)
+            if node.type == "with_clause":
+                _process_with_clause(ctx, node)
+
+            # Process procedure calls
+            elif node.type == "procedure_call_statement":
+                target_name = _get_call_target_name(node, source)
+                if target_name:
+                    caller = _find_enclosing_subprogram(node, source, local_symbols)
+                    if caller:
+                        # Use resolver for callee resolution
+                        lookup_result = resolver.lookup(target_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            dst_id = lookup_result.symbol.id
+                            confidence = 0.85 * lookup_result.confidence
+                        else:
+                            # External procedure (e.g., Ada.Text_IO.Put_Line)
+                            dst_id = f"ada:external:{target_name}:procedure"
+                            confidence = 0.70
+
+                        edges.append(Edge(
+                            id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                            src=caller.id,
+                            dst=dst_id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
+
+            # Process function calls
+            elif node.type == "function_call":
+                target_name = _get_call_target_name(node, source)
+                if target_name:
+                    caller = _find_enclosing_subprogram(node, source, local_symbols)
+                    if caller:
+                        # Use resolver for callee resolution
+                        lookup_result = resolver.lookup(target_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            dst_id = lookup_result.symbol.id
+                            confidence = 0.85 * lookup_result.confidence
+                        else:
+                            # External function
+                            dst_id = f"ada:external:{target_name}:function"
+                            confidence = 0.70
+
+                        edges.append(Edge(
+                            id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                            src=caller.id,
+                            dst=dst_id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
 
     duration_ms = int((time.time() - start_time) * 1000)
     return AdaAnalysisResult(

@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -214,18 +215,14 @@ def _find_enclosing_lua_function(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Optional[Symbol]:
     """Find the function that contains this node by walking up the parent chain."""
     current = node.parent
     while current:
         if current.type == "function_declaration":
             name, _ = _get_function_name(current, source)
-            # Check local symbols first, then global
             if name in local_symbols:
                 return local_symbols[name]
-            if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                return global_symbol_registry[name]  # pragma: no cover
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -235,7 +232,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Lua file.
@@ -295,10 +292,12 @@ def _extract_edges_from_file(
             elif callee_name:
                 # Regular function call
                 # Find the caller (enclosing function)
-                caller = _find_enclosing_lua_function(node, source, local_symbols, global_symbol_registry)
+                caller = _find_enclosing_lua_function(node, source, local_symbols)
                 if caller:
-                    # Try to resolve callee
-                    callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
+                    # Resolve callee via global resolver
+                    lookup_result = resolver.lookup(callee_name)
+                    callee = lookup_result.symbol if lookup_result.found else None
+                    confidence = 0.85 * lookup_result.confidence if lookup_result.found else 0.50
                     if callee:
                         edge = Edge.create(
                             src=caller.id,
@@ -308,7 +307,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="function_call",
-                            confidence=0.85,
+                            confidence=confidence,
                         )
                         edges.append(edge)
                     else:
@@ -409,6 +408,7 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -416,7 +416,7 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

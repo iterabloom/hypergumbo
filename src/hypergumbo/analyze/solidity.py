@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -290,8 +291,11 @@ def _extract_edges_from_file(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges (calls, imports) from a Solidity file."""
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -327,8 +331,8 @@ def _extract_edges_from_file(
             )
             if func_node and current_function:
                 call_name = _node_text(func_node, source)
-                # Try to resolve the called function
-                target = local_symbols.get(call_name) or global_symbols.get(call_name)
+                # Try to resolve the called function - local first
+                target = local_symbols.get(call_name)
                 if target:
                     edge = Edge.create(
                         src=current_function.id,
@@ -340,6 +344,20 @@ def _extract_edges_from_file(
                         origin_run_id=run.execution_id,
                     )
                     edges.append(edge)
+                else:
+                    # Try global symbols via resolver
+                    lookup_result = resolver.lookup(call_name)
+                    if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover - suffix fallback
+                        edge = Edge.create(
+                            src=current_function.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=0.90 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        )
+                        edges.append(edge)
 
     return edges
 
@@ -391,10 +409,11 @@ def analyze_solidity(repo_root: Path) -> SolidityAnalysisResult:
         global_symbols.update(analysis.symbol_by_name)
 
     # Pass 2: Extract edges with cross-file resolution
+    resolver = NameResolver(global_symbols)
     all_edges: list[Edge] = []
     for sol_file in sol_files:
         local_symbols = file_analyses[sol_file].symbol_by_name
-        edges = _extract_edges_from_file(sol_file, parser, local_symbols, global_symbols, run)
+        edges = _extract_edges_from_file(sol_file, parser, local_symbols, global_symbols, run, resolver)
         all_edges.extend(edges)
 
     # Update run with timing

@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -218,28 +219,43 @@ def _process_interface_declaration(ctx: _FileContext, node: "tree_sitter.Node") 
     ctx.symbols.append(_make_symbol(ctx, node, iface_name, "interface"))
 
 
-def _process_tree(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
-    """Process a tree-sitter tree iteratively."""
-    for node in iter_tree(tree.root_node):
-        if node.type == "module_declaration":
-            _process_module_declaration(ctx, node)
-        elif node.type == "import_declaration":
-            _process_import_declaration(ctx, node)
-        elif node.type == "function_declaration":
-            _process_function_declaration(ctx, node)
-        elif node.type == "struct_declaration":
-            _process_struct_declaration(ctx, node)
-        elif node.type == "class_declaration":
-            _process_class_declaration(ctx, node)
-        elif node.type == "interface_declaration":
-            _process_interface_declaration(ctx, node)
+def _find_enclosing_function_d(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function Symbol by walking up parents."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                name = _node_text(name_node, source)
+                sym = local_symbols.get(name)
+                if sym:
+                    return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_call_target_name_d(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the target name from a call_expression."""
+    # First child that is identifier is the function name
+    for child in node.children:
+        if child.type == "identifier":
+            return _node_text(child, source)
+    return None  # pragma: no cover - defensive
 
 
 def analyze_d(repo_root: Path) -> DAnalysisResult:
     """Analyze D language files in a repository.
 
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges (imports + calls) using NameResolver
+
     Returns a DAnalysisResult with symbols for modules, functions, structs,
-    classes, and interfaces, plus edges for imports.
+    classes, and interfaces, plus edges for imports and calls.
     """
     if not is_d_tree_sitter_available():
         warnings.warn("D analysis skipped: tree-sitter-d unavailable")
@@ -258,6 +274,13 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
     run_id = str(uuid.uuid4())
     start_time = time.time()
 
+    # Global symbol registry for cross-file resolution
+    global_symbol_registry: dict[str, Symbol] = {}
+
+    # Store parsed files for pass 2
+    parsed_files: list[tuple[str, bytes, object, str]] = []
+
+    # Pass 1: Extract symbols from all files
     for file_path in find_d_files(repo_root):
         try:
             source = file_path.read_bytes()
@@ -276,10 +299,79 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
             file_stable_id=file_stable_id,
             run_id=run_id,
             symbols=symbols,
+            edges=[],  # Don't collect edges in pass 1
+        )
+
+        # Extract symbols only
+        for node in iter_tree(tree.root_node):
+            if node.type == "module_declaration":
+                _process_module_declaration(ctx, node)
+            elif node.type == "function_declaration":
+                _process_function_declaration(ctx, node)
+            elif node.type == "struct_declaration":
+                _process_struct_declaration(ctx, node)
+            elif node.type == "class_declaration":
+                _process_class_declaration(ctx, node)
+            elif node.type == "interface_declaration":
+                _process_interface_declaration(ctx, node)
+
+        # Register symbols globally
+        for sym in symbols:
+            if sym.path == rel_path:
+                global_symbol_registry[sym.name] = sym
+
+        # Store for pass 2
+        parsed_files.append((rel_path, source, tree, file_stable_id))
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract edges (imports + calls)
+    for rel_path, source, tree, file_stable_id in parsed_files:
+        # Build local symbol map for this file (functions only)
+        local_symbols = {s.name: s for s in symbols
+                         if s.path == rel_path and s.kind == "function"}
+
+        ctx = _FileContext(
+            source=source,
+            rel_path=rel_path,
+            file_stable_id=file_stable_id,
+            run_id=run_id,
+            symbols=[],  # Not adding symbols in pass 2
             edges=edges,
         )
 
-        _process_tree(ctx, tree)
+        for node in iter_tree(tree.root_node):  # type: ignore
+            # Process imports
+            if node.type == "import_declaration":
+                _process_import_declaration(ctx, node)
+
+            # Process function calls
+            elif node.type == "call_expression":
+                target_name = _get_call_target_name_d(node, source)
+                if target_name:
+                    caller = _find_enclosing_function_d(node, source, local_symbols)
+                    if caller:
+                        # Use resolver for callee resolution
+                        lookup_result = resolver.lookup(target_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            dst_id = lookup_result.symbol.id
+                            confidence = 0.85 * lookup_result.confidence
+                        else:
+                            # External function (e.g., writeln from std.stdio)
+                            dst_id = f"d:external:{target_name}:function"
+                            confidence = 0.70
+
+                        edges.append(Edge(
+                            id=f"edge:d:{uuid.uuid4().hex[:12]}",
+                            src=caller.id,
+                            dst=dst_id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
 
     duration_ms = int((time.time() - start_time) * 1000)
     return DAnalysisResult(

@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -285,18 +286,14 @@ def _find_enclosing_function_haskell(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Optional[Symbol]:
     """Find the function that contains this node by walking up parents."""
     current = node.parent
     while current:
         if current.type in ("function", "bind"):
             name = _get_function_name(current, source)
-            # Check local symbols first, then global
             if name in local_symbols:
                 return local_symbols[name]
-            if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                return global_symbol_registry[name]  # pragma: no cover
         current = current.parent
     return None  # pragma: no cover - no enclosing function
 
@@ -306,7 +303,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Haskell file.
@@ -359,12 +356,14 @@ def _extract_edges_from_file(
                 if callee_name and callee_name not in ("print", "putStrLn", "return"):
                     # Find the caller (enclosing function)
                     caller = _find_enclosing_function_haskell(
-                        node, source, local_symbols, global_symbol_registry
+                        node, source, local_symbols
                     )
                     if caller:
-                        # Try to resolve callee
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                        # Try to resolve callee via resolver only
+                        lookup_result = resolver.lookup(callee_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -373,7 +372,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_application",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
                         else:
@@ -474,6 +473,7 @@ def analyze_haskell(repo_root: Path) -> HaskellAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -481,7 +481,7 @@ def analyze_haskell(repo_root: Path) -> HaskellAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -180,29 +181,29 @@ def _determine_function_kind(is_global: bool, is_device: bool, is_host: bool) ->
 def _get_enclosing_cuda_function(
     node: "tree_sitter.Node",
     source: bytes,
-    rel_path: str,
-    symbol_registry: dict[str, str],
-) -> Optional[str]:
-    """Walk up to find the enclosing function definition's symbol ID."""
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Walk up to find the enclosing function definition's Symbol."""
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
             func_name = _get_function_name(current, source)
-            if func_name and func_name.lower() in symbol_registry:
-                return symbol_registry[func_name.lower()]
+            if func_name:
+                sym = local_symbols.get(func_name.lower())
+                if sym:
+                    return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
 
-def _process_cuda_tree(
+def _extract_cuda_symbols(
     root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
-    edges: list[Edge],
-    symbol_registry: dict[str, str],
+    symbol_registry: dict[str, Symbol],
 ) -> None:
-    """Process CUDA AST tree to extract symbols and edges.
+    """Extract symbols from CUDA AST tree (pass 1).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
 
@@ -211,8 +212,7 @@ def _process_cuda_tree(
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
-        edges: List to append edges to
-        symbol_registry: Registry mapping function names to symbol IDs
+        symbol_registry: Registry mapping function names to Symbol objects
     """
     for node in iter_tree(root_node):
         if node.type == "function_definition":
@@ -249,9 +249,29 @@ def _process_cuda_tree(
                     meta={"is_kernel": is_global} if is_global else None,
                 )
                 symbols.append(sym)
-                symbol_registry[func_name.lower()] = symbol_id
+                symbol_registry[func_name.lower()] = sym
 
-        elif node.type == "call_expression":
+
+def _extract_cuda_edges(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    edges: list[Edge],
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+) -> None:
+    """Extract edges from CUDA AST tree (pass 2).
+
+    Uses NameResolver for callee resolution to enable cross-file symbol lookup.
+
+    Args:
+        root_node: Root tree-sitter node to process
+        source: Source file bytes
+        edges: List to append edges to
+        local_symbols: Local symbol registry for finding enclosing functions
+        resolver: NameResolver for callee resolution
+    """
+    for node in iter_tree(root_node):
+        if node.type == "call_expression":
             # Check for kernel launch syntax <<<...>>> (parsed as kernel_call_syntax)
             is_kernel_launch = any(child.type == "kernel_call_syntax" for child in node.children)
 
@@ -267,26 +287,29 @@ def _process_cuda_tree(
                             func_node = child  # pragma: no cover
                             break  # pragma: no cover
 
-            current_function_id = _get_enclosing_cuda_function(node, source, rel_path, symbol_registry)
-            if func_node and current_function_id:
+            caller = _get_enclosing_cuda_function(node, source, local_symbols)
+            if func_node and caller:
                 called_name = _node_text(func_node, source)
                 edge_type = "kernel_launch" if is_kernel_launch else "calls"
                 start_line = node.start_point[0] + 1
 
-                # Create a destination ID - either from registry or synthetic
-                if called_name.lower() in symbol_registry:
-                    dst_id = symbol_registry[called_name.lower()]
+                # Use resolver for callee resolution
+                lookup_result = resolver.lookup(called_name.lower())
+                if lookup_result.found and lookup_result.symbol:
+                    dst_id = lookup_result.symbol.id
+                    confidence = 0.90 * lookup_result.confidence
                 else:
                     # Synthetic ID for unknown functions (like CUDA API)
                     dst_id = f"cuda:external:{called_name}:function"
+                    confidence = 0.70
 
                 edge = Edge(
-                    id=_make_edge_id(current_function_id, dst_id, edge_type),
-                    src=current_function_id,
+                    id=_make_edge_id(caller.id, dst_id, edge_type),
+                    src=caller.id,
                     dst=dst_id,
                     edge_type=edge_type,
                     line=start_line,
-                    confidence=0.90 if called_name.lower() in symbol_registry else 0.70,
+                    confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="cuda_kernel_launch" if is_kernel_launch else "cuda_call",
                 )
@@ -295,6 +318,10 @@ def _process_cuda_tree(
 
 def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
     """Analyze CUDA files in the repository.
+
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges using NameResolver for cross-file resolution
 
     Args:
         repo_root: Path to the repository root
@@ -319,8 +346,8 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
-    # Symbol registry for cross-file resolution: name -> symbol_id
-    symbol_registry: dict[str, str] = {}
+    # Global symbol registry for cross-file resolution: name -> Symbol
+    global_symbol_registry: dict[str, Symbol] = {}
 
     # Create parser
     try:
@@ -334,6 +361,10 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
 
     cuda_files = list(find_cuda_files(repo_root))
 
+    # Store parsed trees for pass 2
+    parsed_files: list[tuple[str, bytes, object]] = []
+
+    # Pass 1: Extract symbols from all files
     for cuda_path in cuda_files:
         try:
             rel_path = str(cuda_path.relative_to(repo_root))
@@ -341,19 +372,37 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Process this file
-            _process_cuda_tree(
+            # Extract symbols
+            _extract_cuda_symbols(
                 tree.root_node,
                 source,
                 rel_path,
                 symbols,
-                edges,
-                symbol_registry,
+                global_symbol_registry,
             )
+
+            # Store for pass 2
+            parsed_files.append((rel_path, source, tree))
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
             warnings_list.append(f"Failed to parse {cuda_path}: {e}")  # pragma: no cover
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract edges using resolver
+    for rel_path, source, tree in parsed_files:
+        # Build local symbol map for this file
+        local_symbols = {s.name.lower(): s for s in symbols if s.path == rel_path}
+
+        _extract_cuda_edges(
+            tree.root_node,  # type: ignore
+            source,
+            edges,
+            local_symbols,
+            resolver,
+        )
 
     duration_ms = int((time.time() - start_time) * 1000)
 

@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -305,7 +306,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract import and reference edges from a parsed Agda file.
@@ -439,6 +440,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
+    resolver = NameResolver(global_symbol_registry)
     all_edges: list[Edge] = []
 
     for fa in file_analyses:
@@ -447,7 +449,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

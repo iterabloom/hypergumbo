@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -331,7 +332,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elm file.
@@ -377,8 +378,10 @@ def _extract_edges_from_file(
                         callee_name_node = _find_child_by_type(value_qid, "lower_case_identifier")
                         if callee_name_node:
                             callee_name = _node_text(callee_name_node, source)
-                            callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                            if callee:
+                            lookup_result = resolver.lookup(callee_name)
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.85 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -387,7 +390,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="function_call",
-                                    confidence=0.85,
+                                    confidence=confidence,
                                 )
                                 edges.append(edge)
 
@@ -473,6 +476,7 @@ def analyze_elm(repo_root: Path) -> ElmAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -480,7 +484,7 @@ def analyze_elm(repo_root: Path) -> ElmAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

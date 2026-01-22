@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -281,9 +282,11 @@ def _find_enclosing_defn(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Symbol | None:
-    """Find the enclosing defn/defn- function for a given node."""
+    """Find the enclosing defn/defn- function for a given node.
+
+    Uses local_symbols only since the enclosing function must be in the same file.
+    """
     current = node.parent
     while current:
         if current.type == "list_lit":
@@ -294,7 +297,7 @@ def _find_enclosing_defn(
                 if first_sym in ("defn", "defn-") and len(inner) > 1:
                     if inner[1].type == "sym_lit":
                         def_name = _get_sym_name(inner[1], source)
-                        sym = local_symbols.get(def_name) or global_symbol_registry.get(def_name)
+                        sym = local_symbols.get(def_name)
                         if sym:
                             return sym
         current = current.parent
@@ -306,7 +309,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Clojure file.
@@ -374,20 +377,21 @@ def _extract_edges_from_file(
 
                 # Handle function calls (not def forms)
                 elif not _is_def_form(first_sym):
-                    caller = _find_enclosing_defn(node, source, local_symbols, global_symbol_registry)
+                    caller = _find_enclosing_defn(node, source, local_symbols)
                     if caller:
                         callee_name = first_sym
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                        # Use resolver for all callee lookups
+                        lookup_result = resolver.lookup(callee_name)
+                        if lookup_result.found and lookup_result.symbol:
                             edge = Edge.create(
                                 src=caller.id,
-                                dst=callee.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_call",
-                                confidence=0.85,
+                                confidence=0.85 * lookup_result.confidence,
                             )
                             edges.append(edge)
 
@@ -475,6 +479,7 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
+    resolver = NameResolver(global_symbol_registry)
     all_edges: list[Edge] = []
 
     for fa in file_analyses:
@@ -483,7 +488,7 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -223,15 +224,14 @@ def _get_enclosing_fortran_symbol(
     return None  # pragma: no cover - defensive
 
 
-def _process_fortran_tree(
+def _extract_fortran_symbols(
     root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
-    edges: list[Edge],
-    symbol_registry: dict[str, str],
+    symbol_registry: dict[str, Symbol],
 ) -> None:
-    """Process Fortran AST tree to extract symbols and edges.
+    """Extract symbols from Fortran AST tree (pass 1).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
 
@@ -240,8 +240,7 @@ def _process_fortran_tree(
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
-        edges: List to append edges to
-        symbol_registry: Registry mapping symbol names to IDs
+        symbol_registry: Registry mapping symbol names to Symbol objects
     """
     for node in iter_tree(root_node):
         # Module definitions
@@ -276,7 +275,7 @@ def _process_fortran_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name] = symbol_id
+                symbol_registry[name] = sym
 
         # Program definitions
         elif node.type == "program":
@@ -310,7 +309,7 @@ def _process_fortran_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name] = symbol_id
+                symbol_registry[name] = sym
 
         # Function definitions
         elif node.type == "function":
@@ -343,7 +342,7 @@ def _process_fortran_tree(
                     signature=signature,
                 )
                 symbols.append(sym)
-                symbol_registry[name] = symbol_id
+                symbol_registry[name] = sym
 
         # Subroutine definitions
         elif node.type == "subroutine":
@@ -376,7 +375,7 @@ def _process_fortran_tree(
                     signature=signature,
                 )
                 symbols.append(sym)
-                symbol_registry[name] = symbol_id
+                symbol_registry[name] = sym
 
         # Derived type definitions
         elif node.type == "derived_type_definition":
@@ -405,20 +404,51 @@ def _process_fortran_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name] = symbol_id
+                symbol_registry[name] = sym
 
+
+def _extract_fortran_edges(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    edges: list[Edge],
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+) -> None:
+    """Extract edges from Fortran AST tree (pass 2).
+
+    Uses NameResolver for callee resolution to enable cross-file symbol lookup.
+
+    Args:
+        root_node: Root tree-sitter node to process
+        source: Source file bytes
+        edges: List to append edges to
+        local_symbols: Local symbol registry for finding enclosing functions
+        resolver: NameResolver for callee resolution
+    """
+    # Build local ID registry for _get_enclosing_fortran_symbol
+    local_id_registry: dict[str, str] = {name: sym.id for name, sym in local_symbols.items()}
+
+    for node in iter_tree(root_node):
         # Use statements (imports)
-        elif node.type == "use_statement":
+        if node.type == "use_statement":
             mod_name = None
             for child in node.children:
                 if child.type == "module_name":
                     mod_name = _node_text(child, source).lower()
                     break
 
-            current_symbol = _get_enclosing_fortran_symbol(node, source, symbol_registry)
+            current_symbol = _get_enclosing_fortran_symbol(node, source, local_id_registry)
             if mod_name and current_symbol:
                 start_line = node.start_point[0] + 1
-                dst_id = symbol_registry.get(mod_name, f"fortran:external:{mod_name}")
+                # Use resolver for callee resolution
+                lookup_result = resolver.lookup(mod_name)
+                if lookup_result.found and lookup_result.symbol:
+                    dst_id = lookup_result.symbol.id
+                    confidence = 0.90 * lookup_result.confidence
+                else:
+                    # External module not in our codebase
+                    dst_id = f"fortran:external:{mod_name}"
+                    confidence = 0.70
 
                 edge = Edge(
                     id=_make_edge_id(current_symbol, dst_id, "imports"),
@@ -426,7 +456,7 @@ def _process_fortran_tree(
                     dst=dst_id,
                     edge_type="imports",
                     line=start_line,
-                    confidence=0.90 if mod_name in symbol_registry else 0.70,
+                    confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static",
                 )
@@ -440,10 +470,18 @@ def _process_fortran_tree(
                     call_name = _node_text(child, source).lower()
                     break
 
-            current_symbol = _get_enclosing_fortran_symbol(node, source, symbol_registry)
+            current_symbol = _get_enclosing_fortran_symbol(node, source, local_id_registry)
             if call_name and current_symbol:
                 start_line = node.start_point[0] + 1
-                dst_id = symbol_registry.get(call_name, f"fortran:external:{call_name}")
+                # Use resolver for callee resolution
+                lookup_result = resolver.lookup(call_name)
+                if lookup_result.found and lookup_result.symbol:
+                    dst_id = lookup_result.symbol.id
+                    confidence = 0.90 * lookup_result.confidence
+                else:
+                    # External subroutine not in our codebase
+                    dst_id = f"fortran:external:{call_name}"
+                    confidence = 0.70
 
                 edge = Edge(
                     id=_make_edge_id(current_symbol, dst_id, "calls"),
@@ -451,7 +489,7 @@ def _process_fortran_tree(
                     dst=dst_id,
                     edge_type="calls",
                     line=start_line,
-                    confidence=0.90 if call_name in symbol_registry else 0.70,
+                    confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static",
                 )
@@ -460,6 +498,10 @@ def _process_fortran_tree(
 
 def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
     """Analyze Fortran files in the repository.
+
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges using NameResolver for cross-file resolution
 
     Args:
         repo_root: Path to the repository root
@@ -484,8 +526,8 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
-    # Symbol registry for cross-file resolution: name -> symbol_id
-    symbol_registry: dict[str, str] = {}
+    # Global symbol registry for cross-file resolution: name -> Symbol
+    global_symbol_registry: dict[str, Symbol] = {}
 
     # Create parser
     try:
@@ -499,6 +541,10 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
 
     fortran_files = list(find_fortran_files(repo_root))
 
+    # Store parsed trees for pass 2
+    parsed_files: list[tuple[str, bytes, object]] = []
+
+    # Pass 1: Extract symbols from all files
     for fortran_path in fortran_files:
         try:
             rel_path = str(fortran_path.relative_to(repo_root))
@@ -506,19 +552,37 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Process this file
-            _process_fortran_tree(
+            # Extract symbols
+            _extract_fortran_symbols(
                 tree.root_node,
                 source,
                 rel_path,
                 symbols,
-                edges,
-                symbol_registry,
+                global_symbol_registry,
             )
+
+            # Store for pass 2
+            parsed_files.append((rel_path, source, tree))
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
             warnings_list.append(f"Failed to parse {fortran_path}: {e}")  # pragma: no cover
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract edges using resolver
+    for rel_path, source, tree in parsed_files:
+        # Build local symbol map for this file
+        local_symbols = {s.name: s for s in symbols if s.path == rel_path}
+
+        _extract_fortran_edges(
+            tree.root_node,  # type: ignore
+            source,
+            edges,
+            local_symbols,
+            resolver,
+        )
 
     duration_ms = int((time.time() - start_time) * 1000)
 

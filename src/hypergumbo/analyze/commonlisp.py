@@ -53,6 +53,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -334,16 +335,18 @@ def _find_enclosing_defun(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Symbol | None:
-    """Find the enclosing defun for a given node."""
+    """Find the enclosing defun for a given node.
+
+    Uses local_symbols only - the caller is always in the same file.
+    """
     current = node.parent
     while current:
         if current.type == "defun":
             info = _extract_defun_info(current, source)
             if info:
                 name = info[0]
-                sym = local_symbols.get(name) or global_symbol_registry.get(name)
+                sym = local_symbols.get(name)
                 if sym:
                     return sym
         # Also check for list_lit containing uppercase DEFUN
@@ -354,7 +357,7 @@ def _find_enclosing_defun(
             if def_info:
                 kind, name, _ = def_info
                 if kind in ("function", "macro", "method", "generic"):
-                    sym = local_symbols.get(name) or global_symbol_registry.get(name)
+                    sym = local_symbols.get(name)
                     if sym:
                         return sym
         current = current.parent
@@ -366,7 +369,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Common Lisp file.
@@ -422,11 +425,13 @@ def _extract_edges_from_file(
 
                 # Handle function calls (not special forms or def forms)
                 elif first_sym not in def_forms:
-                    caller = _find_enclosing_defun(node, source, local_symbols, global_symbol_registry)
+                    caller = _find_enclosing_defun(node, source, local_symbols)
                     if caller:
                         callee_name = first_sym
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                        lookup_result = resolver.lookup(callee_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -435,7 +440,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_call",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
 
@@ -522,6 +527,7 @@ def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -529,7 +535,7 @@ def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

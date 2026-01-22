@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -314,28 +315,38 @@ def _analyze_file(
 
 def _resolve_calls(
     file_analyses: list[FileAnalysis],
-    symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Resolve call sites to known symbols (pass 2).
 
     Creates edges for calls where both caller and callee are in the registry.
+    Uses NameResolver for flexible symbol lookup with confidence tracking.
     """
     edges: list[Edge] = []
+    base_confidence = 0.90
 
     for file_analysis in file_analyses:
         for caller_name, callee_name, line, _col in file_analysis.calls:
-            caller_sym = symbol_registry.get(caller_name)
-            callee_sym = symbol_registry.get(callee_name)
+            caller_result = resolver.lookup(caller_name)
+            callee_result = resolver.lookup(callee_name)
 
-            if caller_sym and callee_sym:
+            if caller_result.found and callee_result.found:
+                caller_sym = caller_result.symbol
+                callee_sym = callee_result.symbol
+                assert caller_sym is not None
+                assert callee_sym is not None
+                # Combine base confidence with resolver confidence
+                confidence = base_confidence * min(
+                    caller_result.confidence, callee_result.confidence
+                )
                 edge = Edge(
                     id=_make_edge_id(caller_sym.id, callee_sym.id, "calls"),
                     src=caller_sym.id,
                     dst=callee_sym.id,
                     edge_type="calls",
                     line=line,
-                    confidence=0.90,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_call_direct",
@@ -397,7 +408,8 @@ def analyze_llvm_ir(repo_root: Path) -> LLVMIRAnalysisResult:
             continue
 
     # Pass 2: Resolve calls to symbols
-    edges = _resolve_calls(file_analyses, symbol_registry, run_id)
+    resolver = NameResolver(symbol_registry)
+    edges = _resolve_calls(file_analyses, resolver, run_id)
 
     # Collect all symbols
     all_symbols: list[Symbol] = []

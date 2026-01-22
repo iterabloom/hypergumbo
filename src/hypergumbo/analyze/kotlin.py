@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -401,6 +402,7 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     imports: dict[str, str],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -409,6 +411,8 @@ def _extract_edges_from_file(
     - Navigation calls: Object.method(), instance.method()
     - Type inference from constructor assignments: val x = ClassName()
     """
+    if resolver is None:
+        resolver = NameResolver(global_symbols)
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -505,14 +509,14 @@ def _extract_edges_from_file(
                         enclosing_class = _get_enclosing_class(node, source)
                         if enclosing_class:
                             candidate = f"{enclosing_class}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.90,
+                                    confidence=0.90 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_this",
@@ -526,14 +530,14 @@ def _extract_edges_from_file(
                         # Case 2: Object.method() - static/object call
                         if receiver_name in class_symbols:
                             candidate = f"{receiver_name}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.95,
+                                    confidence=0.95 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_static",
@@ -544,14 +548,14 @@ def _extract_edges_from_file(
                         elif receiver_name in var_types:
                             type_class_name = var_types[receiver_name]
                             candidate = f"{type_class_name}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.85,
+                                    confidence=0.85 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_type_inferred",
@@ -561,14 +565,14 @@ def _extract_edges_from_file(
                         # Case 4: Fallback - try qualified name directly
                         if not edge_added:  # pragma: no cover
                             candidate = f"{receiver_name}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.75,
+                                    confidence=0.75 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -592,19 +596,20 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    # Check global symbols
-                    elif callee_name in global_symbols:
-                        callee = global_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="function_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                    # Check global symbols via resolver
+                    else:
+                        lookup_result = resolver.lookup(callee_name)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.80 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
     return edges
 
@@ -664,6 +669,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
             global_symbols[symbol.name] = symbol
 
     # Pass 2: Extract edges
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -672,7 +678,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
 
         edges = _extract_edges_from_file(
             kt_file, parser, analysis.symbol_by_name, global_symbols,
-            analysis.imports, run
+            analysis.imports, run, resolver
         )
         all_edges.extend(edges)
 

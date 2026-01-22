@@ -225,3 +225,63 @@ py_binary(name = "app", srcs = ["app.py"])
         assert result.run is not None
         assert result.run.pass_id == "starlark-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestStarlarkCallResolution:
+    """Tests for Starlark call resolution."""
+
+    def test_function_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges when functions call other functions."""
+        (temp_repo / "defs.bzl").write_text('''
+def helper(name):
+    return name + "_helper"
+
+def create_target(name):
+    actual = helper(name)
+    native.py_library(name = actual, srcs = [])
+''')
+
+        result = analyze_starlark(temp_repo)
+
+        # Should have call edges from create_target to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        create_calls = [e for e in call_edges if "create_target" in e.src]
+        assert len(create_calls) >= 1
+        assert any("helper" in e.dst for e in create_calls)
+
+    def test_external_function_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external function calls with lower confidence."""
+        (temp_repo / "defs.bzl").write_text('''
+def my_rule(name):
+    native.genrule(name = name, cmd = "echo hello")
+''')
+
+        result = analyze_starlark(temp_repo)
+
+        # Should have call edge to external native
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "defs.bzl").write_text('''
+def internal_helper():
+    pass
+
+def caller():
+    internal_helper()
+''')
+
+        result = analyze_starlark(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the resolved edge from caller to internal_helper
+        resolved_call = next((e for e in call_edges if "internal_helper" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence
+        assert resolved_call.confidence > 0.70

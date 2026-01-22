@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..symbol_resolution import ListNameResolver, NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -413,11 +414,20 @@ def _extract_edges(
     global_symbols: dict[str, Symbol],
     global_methods: dict[str, list[Symbol]],
     global_classes: dict[str, Symbol],
+    symbol_resolver: NameResolver | None = None,
+    method_resolver: ListNameResolver | None = None,
+    class_resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed PHP tree (pass 2).
 
     Uses global symbol registries to resolve cross-file references.
     """
+    if symbol_resolver is None:  # pragma: no cover - defensive
+        symbol_resolver = NameResolver(global_symbols)
+    if method_resolver is None:  # pragma: no cover - defensive
+        method_resolver = ListNameResolver(global_methods)
+    if class_resolver is None:  # pragma: no cover - defensive
+        class_resolver = NameResolver(global_classes)
     edges: list[Edge] = []
 
     for node in iter_tree(tree.root_node):
@@ -427,19 +437,20 @@ def _extract_edges(
             if func_node and func_node.type == "name":
                 callee_name = _node_text(func_node, source)
                 current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
-                if current_function and callee_name in global_symbols:
-                    target_sym = global_symbols[callee_name]
-                    edge = Edge.create(
-                        src=current_function.id,
-                        dst=target_sym.id,
-                        edge_type="calls",
-                        line=node.start_point[0] + 1,
-                        confidence=0.95,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="ast_call_direct",
-                    )
-                    edges.append(edge)
+                if current_function:
+                    lookup_result = symbol_resolver.lookup(callee_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edge = Edge.create(
+                            src=current_function.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=0.95 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_call_direct",
+                        )
+                        edges.append(edge)
 
         # Method calls: $this->method() or $obj->method()
         elif node.type == "member_call_expression":
@@ -458,34 +469,36 @@ def _extract_edges(
                     if is_this_call and current_class_name:
                         # Try to resolve to a method in the same class
                         full_name = f"{current_class_name}.{method_name}"
-                        if full_name in global_symbols:
-                            target_sym = global_symbols[full_name]
+                        lookup_result = symbol_resolver.lookup(full_name)
+                        if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,
-                                dst=target_sym.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                confidence=0.95,
+                                confidence=0.95 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_method_this",
                             )
                             edges.append(edge)
-                    elif method_name in global_methods:
+                    else:
                         # Try to resolve to any method with this name
-                        # Use lower confidence since we can't be sure of the type
-                        for target_sym in global_methods[method_name]:
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=target_sym.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                confidence=0.60,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_method_inferred",
-                            )
-                            edges.append(edge)
+                        lookup_result = method_resolver.lookup(method_name)
+                        if lookup_result.found and lookup_result.candidates:
+                            # Use lower confidence since we can't be sure of the type
+                            for target_sym in lookup_result.candidates:
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=target_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    confidence=0.60 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_inferred",
+                                )
+                                edges.append(edge)
 
         # Static method calls: ClassName::method()
         elif node.type == "scoped_call_expression":
@@ -503,14 +516,14 @@ def _extract_edges(
                         class_name = current_class_name
 
                     full_name = f"{class_name}.{method_name}"
-                    if full_name in global_symbols:
-                        target_sym = global_symbols[full_name]
+                    lookup_result = symbol_resolver.lookup(full_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
-                            dst=target_sym.id,
+                            dst=lookup_result.symbol.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            confidence=0.95,
+                            confidence=0.95 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_static_call",
@@ -525,14 +538,14 @@ def _extract_edges(
                 for child in node.children:
                     if child.type == "name":
                         class_name = _node_text(child, source)
-                        if class_name in global_classes:
-                            target_sym = global_classes[class_name]
+                        lookup_result = class_resolver.lookup(class_name)
+                        if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,
-                                dst=target_sym.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="instantiates",
                                 line=node.start_point[0] + 1,
-                                confidence=0.95,
+                                confidence=0.95 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_new",
@@ -654,11 +667,15 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
             global_classes[sym.name] = sym
 
     # Pass 2: Extract edges using global symbol registry
+    symbol_resolver = NameResolver(global_symbols)
+    method_resolver = ListNameResolver(global_methods)
+    class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
-            global_symbols, global_methods, global_classes
+            global_symbols, global_methods, global_classes,
+            symbol_resolver, method_resolver, class_resolver
         )
         all_edges.extend(edges)
 

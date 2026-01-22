@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -464,7 +465,7 @@ def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     local_methods: dict[str, Symbol],
-    global_methods: dict[str, Symbol],
+    method_resolver: NameResolver,
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge.
@@ -509,7 +510,7 @@ def _extract_edges_from_file(
             if selector and current_method is not None:
                 line = node.start_point[0] + 1
 
-                # Try local match first
+                # Try local match first (same-file, higher confidence)
                 if selector in local_methods:
                     callee = local_methods[selector]
                     edges.append(Edge.create(
@@ -522,18 +523,20 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
-                elif selector in global_methods:
-                    callee = global_methods[selector]
-                    edges.append(Edge.create(
-                        src=current_method.id,
-                        dst=callee.id,
-                        edge_type="calls",
-                        line=line,
-                        evidence_type="cross_file_message_send",
-                        confidence=0.75,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                    ))
+                else:
+                    # Try cross-file resolution via resolver
+                    lookup_result = method_resolver.lookup(selector)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edges.append(Edge.create(
+                            src=current_method.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="calls",
+                            line=line,
+                            evidence_type="cross_file_message_send",
+                            confidence=0.75 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
 
     return edges
 
@@ -585,11 +588,12 @@ def analyze_objc(root: Path) -> ObjCAnalysisResult:
             global_methods[selector] = sym
 
     # Pass 2: Extract edges using global symbol knowledge
+    method_resolver = NameResolver(global_methods)
     all_edges: list[Edge] = []
 
     for objc_file, analysis in file_analyses.items():
         edges = _extract_edges_from_file(
-            objc_file, parser, analysis.methods_by_name, global_methods, run
+            objc_file, parser, analysis.methods_by_name, method_resolver, run
         )
         all_edges.extend(edges)
 
