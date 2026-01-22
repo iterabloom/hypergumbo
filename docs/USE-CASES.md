@@ -13,6 +13,7 @@ That's it. Paste the output into ChatGPT, Claude, or any LLM. You get:
 - Detected frameworks
 - Key symbols ranked by importance
 - Entry points (routes, CLI commands, main functions)
+- Source code for important files
 
 First run takes 10-60 seconds (analyzing). Subsequent runs are instant (cached).
 
@@ -33,10 +34,10 @@ Exclude test files for cleaner output:
 hypergumbo . -x
 ```
 
-Include actual source code after the summary:
+Omit source code (just the summary):
 
 ```bash
-hypergumbo . --with-source
+hypergumbo . --no-source
 ```
 
 ---
@@ -55,7 +56,7 @@ hypergumbo search "handle" --kind function
 
 # Understand a symbol (what calls it, what it calls)
 hypergumbo explain "processPayment"
-hypergumbo explain "UserService" --with-source
+hypergumbo explain "UserService" --no-source  # Omit source code
 
 # Browse symbols by connectivity
 hypergumbo symbols
@@ -114,8 +115,8 @@ Paste into LLM: "I'm new to this codebase. Where should I start?"
 # List all routes
 hypergumbo routes
 
-# Get details on one
-hypergumbo explain "get_user" --with-source
+# Get details on one (includes source by default)
+hypergumbo explain "get_user"
 ```
 
 ### Find Untested Code
@@ -128,10 +129,10 @@ hypergumbo test-coverage --max-tests 0  # Only untested
 ### Prepare Context for AI Coding
 
 ```bash
-hypergumbo . -t 8000 --with-source > context.md
+hypergumbo . -t 8000 > context.md
 ```
 
-Then paste `context.md` into Claude Code, Cursor, or Copilot.
+Then paste `context.md` into Claude Code, Cursor, or Copilot. Source code is included by default.
 
 ---
 
@@ -175,7 +176,7 @@ hypergumbo run .
 | Overview for LLM | `hypergumbo .` |
 | More detail | `hypergumbo . -t 8000` |
 | Skip tests | `hypergumbo . -x` |
-| With source code | `hypergumbo . --with-source` |
+| Without source code | `hypergumbo . --no-source` |
 | List routes | `hypergumbo routes` |
 | Search symbols | `hypergumbo search "X"` |
 | Explain a symbol | `hypergumbo explain "X"` |

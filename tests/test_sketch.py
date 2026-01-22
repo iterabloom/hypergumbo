@@ -3540,9 +3540,9 @@ class TestCLISketch:
 
         assert result == 0
 
-        # Check that sketch was cached
+        # Check that sketch was cached (source included by default)
         cache_dir = _get_results_cache_dir(tmp_path)
-        sketch_file = cache_dir / "sketch.4000.md"
+        sketch_file = cache_dir / "sketch.4000.withsource.md"
         assert sketch_file.exists()
 
         # Cached sketch should not include the summary line
@@ -3561,9 +3561,9 @@ class TestCLISketch:
 
         assert result == 0
 
-        # Check that sketch was cached with correct filename
+        # Check that sketch was cached with correct filename (source included by default)
         cache_dir = _get_results_cache_dir(tmp_path)
-        sketch_file = cache_dir / "sketch.4000.notests.md"
+        sketch_file = cache_dir / "sketch.4000.notests.withsource.md"
         assert sketch_file.exists()
 
 

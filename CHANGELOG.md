@@ -225,6 +225,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tests section always present:** The `## Tests` section is now always included in the sketch,
   showing "No test files detected" when no tests are found. Previously the section was omitted
   entirely for repos without tests.
+- **Source code included by default (sketch and explain):** The `--with-source` flag is now the
+  default behavior for both `hypergumbo sketch` and `hypergumbo explain`. Source code is included
+  automatically. Use `--no-source` to omit source code from output. The `--with-source` flag is
+  retained for backward compatibility but is now a no-op.
 
 ### Added (continued)
 - **ADR-0004: File Taxonomy (Tier + Role):** Two-dimensional file classification system implemented.

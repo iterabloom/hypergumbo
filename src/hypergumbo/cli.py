@@ -2221,7 +2221,14 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         "--with-source",
         action="store_true",
         dest="with_source",
-        help="Append full source file contents after the sketch (uses remaining token budget)",
+        default=True,
+        help="Include source file contents (default: enabled)",
+    )
+    p_sketch.add_argument(
+        "--no-source",
+        action="store_false",
+        dest="with_source",
+        help="Omit source file contents from sketch output",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
@@ -2593,7 +2600,14 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--with-source",
         action="store_true",
         dest="with_source",
-        help="Show source code for symbol, callers, and callees",
+        default=True,
+        help="Show source code for symbol, callers, and callees (default: enabled)",
+    )
+    p_explain.add_argument(
+        "--no-source",
+        action="store_false",
+        dest="with_source",
+        help="Omit source code from explain output",
     )
     p_explain.add_argument(
         "-t",
@@ -2601,7 +2615,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         type=int,
         default=None,
         dest="tokens",
-        help="Token budget for --with-source (omits low-priority sources when exceeded)",
+        help="Token budget for source code (omits low-priority sources when exceeded)",
     )
     p_explain.set_defaults(func=cmd_explain)
 
