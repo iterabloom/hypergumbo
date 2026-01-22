@@ -104,6 +104,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   (e.g., no production functions to measure), the Tests section now simply omits the coverage
   line instead of showing a confusing hint about running tests. Coverage estimation is shown
   when available; otherwise, only the test count and framework detection are displayed.
+- **NestJS route paths now combine controller + method paths:** Previously NestJS routes only
+  extracted the method decorator path (e.g., `:id` from `@Get(':id')`), missing the controller
+  prefix. Now `@Controller('/users')` + `@Get(':id')` correctly produces `/users/:id`. This
+  fixes the issue where routes displayed as method descriptors instead of full HTTP paths.
 - **Overview totals match `-x` semantics:** When using `-x/--exclude-tests`, the Overview section
   now shows adjusted totals (e.g., "2 files (2 non-test + 0 test)") instead of showing all files
   with the `[IGNORING TESTS]` marker. The total now equals the non-test count, making the semantics

@@ -2641,7 +2641,7 @@ export class UsersController {
         assert route_handlers[0].name == "UsersController.create"
 
     def test_nestjs_get_with_path(self, tmp_path: Path) -> None:
-        """NestJS @Get(':id') should extract route path."""
+        """NestJS @Get(':id') with @Controller('users') should combine to full path."""
         from hypergumbo.analyze.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -2666,7 +2666,8 @@ export class UsersController {
         handler = route_handlers[0]
         assert handler.name == "UsersController.findOne"
         assert handler.meta is not None
-        assert handler.meta.get("route_path") == ":id"
+        # Full route = controller prefix + method path: /users/:id
+        assert handler.meta.get("route_path") == "/users/:id"
 
     def test_nestjs_all_http_methods(self, tmp_path: Path) -> None:
         """NestJS should detect all HTTP method decorators."""
@@ -2705,6 +2706,136 @@ export class ResourceController {
         assert "PUT" in stable_ids
         assert "PATCH" in stable_ids
         assert "DELETE" in stable_ids
+
+    def test_nestjs_controller_no_path_method_with_path(self, tmp_path: Path) -> None:
+        """NestJS @Controller() with no path + @Get(':id') gives just method path."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get } from '@nestjs/common';
+
+@Controller()
+export class UsersController {
+    @Get('users/:id')
+    findOne() {
+        return {};
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Controller has no path, so just method path
+        assert handler.meta.get("route_path") == "/users/:id"
+
+    def test_nestjs_controller_with_path_method_no_path(self, tmp_path: Path) -> None:
+        """NestJS @Controller('users') + @Get() gives just controller path."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Get()
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Method has no path, so just controller path
+        assert handler.meta.get("route_path") == "/users"
+
+    def test_nestjs_path_normalization(self, tmp_path: Path) -> None:
+        """NestJS paths are normalized (no double slashes)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "api.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get } from '@nestjs/common';
+
+@Controller('/api/')
+export class ApiController {
+    @Get('/users/')
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Paths normalized: /api/users (no double slashes)
+        assert handler.meta.get("route_path") == "/api/users"
+
+    def test_nestjs_no_controller_decorator(self, tmp_path: Path) -> None:
+        """Class without @Controller - method path only."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text("""
+class UsersService {
+    @Get('users')
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # No controller, just method path
+        assert handler.meta.get("route_path") == "/users"
+
+    def test_nestjs_non_exported_class_with_controller(self, tmp_path: Path) -> None:
+        """Non-exported class with @Controller - decorator as child of class_declaration."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "internal.controller.ts"
+        ts_file.write_text("""
+@Controller('internal')
+class InternalController {
+    @Get('status')
+    getStatus() {
+        return {};
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Combined path: /internal/status
+        assert handler.meta.get("route_path") == "/internal/status"
 
 
 # ============================================================================

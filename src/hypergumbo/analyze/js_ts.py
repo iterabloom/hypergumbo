@@ -1206,6 +1206,124 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _get_enclosing_class_node(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """Walk up the tree to find the enclosing class_declaration node.
+
+    Returns the class node if inside a class, or None if not.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "class_declaration":
+            return current
+        current = current.parent
+    return None  # pragma: no cover - method outside class
+
+
+def _get_class_route_prefix(
+    node: "tree_sitter.Node", source: bytes, decorator_names: set[str]
+) -> str | None:
+    """Extract route prefix from class-level decorator (e.g., @Controller('/users')).
+
+    This handles the common pattern in web frameworks where a class-level decorator
+    provides a route prefix that combines with method-level route paths:
+    - NestJS: @Controller('/users') + @Get(':id') -> /users/:id
+    - Spring Boot: @RequestMapping("/api") + @GetMapping("/users") -> /api/users
+    - ASP.NET: [Route("api")] + [HttpGet("{id}")] -> api/{id}
+
+    Args:
+        node: The method node to find enclosing class for
+        source: Source bytes for text extraction
+        decorator_names: Set of decorator names to look for (e.g., {"Controller"})
+
+    Returns:
+        The route prefix string if found, or None.
+    """
+    class_node = _get_enclosing_class_node(node)
+    if class_node is None:
+        return None  # pragma: no cover - method outside class
+
+    parent = class_node.parent
+    if parent is None:
+        return None  # pragma: no cover - class at AST root
+
+    # Helper to extract path from a decorator node
+    def extract_path_from_decorator(dec_node: "tree_sitter.Node") -> str | None:
+        for child in dec_node.children:
+            if child.type == "call_expression":
+                for call_child in child.children:
+                    if call_child.type == "identifier":
+                        dec_name = _node_text(call_child, source)
+                        if dec_name in decorator_names:
+                            # Extract the first argument as the path
+                            for args_child in child.children:
+                                if args_child.type == "arguments":
+                                    for arg in args_child.children:
+                                        if arg.type == "string":
+                                            return _node_text(arg, source).strip("'\"")
+                            # Decorator found but no path argument
+                            return ""
+        return None  # pragma: no cover - decorator doesn't match pattern
+
+    # Pattern 1: TypeScript export statement with decorator as child
+    # @Controller('users') export class Foo { } -> export_statement contains both
+    if parent.type == "export_statement":
+        for child in parent.children:
+            if child.type == "decorator":
+                result = extract_path_from_decorator(child)
+                if result is not None:
+                    return result
+
+    # Pattern 2: Non-exported class with decorator as child of class_declaration
+    # @Controller('users') class Foo { } -> class_declaration contains decorator
+    for child in class_node.children:
+        if child.type == "decorator":
+            result = extract_path_from_decorator(child)
+            if result is not None:
+                return result
+
+    return None
+
+
+def _combine_route_paths(prefix: str | None, suffix: str | None) -> str | None:
+    """Combine a route prefix and suffix into a full path.
+
+    Handles normalization:
+    - Ensures single leading slash
+    - Avoids double slashes at join point
+    - Returns None if both are None/empty
+
+    Examples:
+        _combine_route_paths("/users", ":id") -> "/users/:id"
+        _combine_route_paths("/users", "/:id") -> "/users/:id"
+        _combine_route_paths("/users/", ":id") -> "/users/:id"
+        _combine_route_paths("users", "profile") -> "/users/profile"
+        _combine_route_paths(None, ":id") -> "/:id"
+        _combine_route_paths("/users", None) -> "/users"
+        _combine_route_paths(None, None) -> None
+    """
+    # Normalize prefix
+    if prefix:
+        prefix = prefix.strip("/")
+    else:
+        prefix = ""
+
+    # Normalize suffix
+    if suffix:
+        suffix = suffix.strip("/")
+    else:
+        suffix = ""
+
+    # Combine
+    if prefix and suffix:
+        return f"/{prefix}/{suffix}"
+    elif prefix:
+        return f"/{prefix}"
+    elif suffix:
+        return f"/{suffix}"
+    else:
+        return None
+
+
 def _ts_value_to_python(node: "tree_sitter.Node", source: bytes) -> str | int | float | bool | list | None:
     """Convert a tree-sitter AST node to a Python value representation.
 
@@ -1680,18 +1798,27 @@ def _extract_symbols(
                 current_class_name = _get_class_context(node, source)
                 full_name = f"{current_class_name}.{name}" if current_class_name else name
 
-                http_method, route_path = _detect_nestjs_decorator(node, source)
+                http_method, method_route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
+
+                # For NestJS routes, combine controller prefix with method path
+                # e.g., @Controller('/users') + @Get(':id') -> /users/:id
+                full_route_path: str | None = None
+                if http_method:
+                    controller_prefix = _get_class_route_prefix(
+                        node, source, {"Controller"}
+                    )
+                    full_route_path = _combine_route_paths(controller_prefix, method_route_path)
 
                 # Build meta with decorators and route_path
                 meta: dict[str, object] | None = None
                 decorators = _extract_decorators(node, source)
-                if decorators or route_path:
+                if decorators or full_route_path:
                     meta = {}
                     if decorators:
                         meta["decorators"] = decorators
-                    if route_path:
-                        meta["route_path"] = route_path
+                    if full_route_path:
+                        meta["route_path"] = full_route_path
 
                 signature = _extract_jsts_signature(node, source)
 
