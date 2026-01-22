@@ -7,11 +7,11 @@ Version Distinction
 -------------------
 **SCHEMA_VERSION vs Tool Version:**
 
-- **SCHEMA_VERSION** (defined here): The output format version, embedded in
-  every JSON output as `schema_version`. It only increments when there are
-  breaking changes to the output schema (new required fields, changed field
-  types, removed fields, etc.). Consumers can use this to check compatibility
-  with their parsers.
+- **SCHEMA_VERSION** (defined here): The schema documentation version, embedded
+  in every JSON output as `schema_version`. It increments for significant changes
+  to `docs/schema.json`, including: breaking changes to the behavior map output
+  format (minor bump), and non-breaking additions like new type definitions or
+  optional fields (patch bump). Consumers can use this to check compatibility.
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
@@ -46,7 +46,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.2.1"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v1"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"

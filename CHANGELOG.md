@@ -3,7 +3,7 @@
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Released **tool** is at: v1.0.0
-- Released **schema** is at: v0.2.0
+- Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** (output format) is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version only changes when the JSON output format has breaking changes.
 
@@ -213,6 +213,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   only `module.Class.method()` patterns were detected, not `from X import Class; Class.method()`.
 
 ### Changed
+- **Schema version 0.2.1:** Added framework pattern type definitions (Pattern, UsagePatternSpec,
+  FrameworkPatternDef) to `docs/schema.json`. The schema version now tracks significant changes
+  to the entire schema documentation, not just the behavior map output format.
 - **Section header renames for clarity:**
   - "Source Content" → "Source Files Content"
   - "Additional File Content" → "Additional Files Content"
