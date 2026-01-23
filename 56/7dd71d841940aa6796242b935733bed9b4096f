@@ -1,0 +1,9 @@
+Original commit body from ed4f4e1:
+
+- Add CI, PyPI, License, and Coverage badges to README
+- Modify CI to run pytest with coverage and capture output
+- Add step to update coverage.json on badges branch after each push
+- Create initial badges branch with 100% coverage badge
+
+The coverage badge is dynamically updated via shields.io endpoint
+pointing to coverage.json on the badges branch.
