@@ -1,0 +1,12 @@
+Original commit body from 48b4fe1:
+
+The Make analyzer was emitting a separate symbol for each variable
+assignment line (e.g., ASFLAGS := x, ASFLAGS += y, ASFLAGS += z
+produced 3 symbols). Now it only emits one symbol per variable name
+(the first definition), which is the standard behavior for other
+language analyzers.
+
+This fixes the Key Symbols section showing duplicate entries like:
+- `ASFLAGS` (variable) ★
+- `ASFLAGS` (variable) ★
+- `ASFLAGS` (variable) ★
