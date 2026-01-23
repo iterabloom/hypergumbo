@@ -1,0 +1,9 @@
+Original commit body from 5b7632e:
+
+Use ThreadPoolExecutor to compute symbol mention centrality scores
+for Additional Files in parallel. This speeds up the ranking of
+non-source files (docs, configs, templates) by parallelizing both
+the file I/O and regex matching across up to 8 worker threads.
+
+The computation for each file is independent, making this an
+ideal candidate for parallel execution.
