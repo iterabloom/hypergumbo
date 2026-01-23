@@ -1,0 +1,14 @@
+Original commit body from 7cbf5a7:
+
+Add verbose source code viewing capabilities:
+
+- explain --verbose (-v): Shows source code for queried symbol, callers,
+  and callees. Module-level calls show only the single call line.
+  Supports -t/--tokens budget to limit output.
+
+- sketch --with-source: Appends full source file contents after the
+  regular sketch, ordered by symbol importance density. Respects
+  token budget.
+
+Also updates 5W1H semantic probes with detailed descriptions for
+improved "Additional Files" ranking in sketch output.
