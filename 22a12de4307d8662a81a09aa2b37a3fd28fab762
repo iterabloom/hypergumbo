@@ -1,0 +1,11 @@
+Original commit body from e82cd9d:
+
+Add _detect_ruby_frameworks() and _detect_elixir_frameworks() functions
+to enable AUTO mode to detect frameworks from Gemfile and mix.exs files.
+Previously RUBY_FRAMEWORKS and ELIXIR_FRAMEWORKS dictionaries existed
+but were never used because detection functions were missing.
+
+Ruby frameworks detected: Rails, Sinatra, Grape, Hanami, Roda, Padrino,
+graphql-ruby, thor/gli/dry-cli (CLI), rspec, minitest.
+
+Elixir frameworks detected: Phoenix, Plug, Ecto, Absinthe, ex_unit.
