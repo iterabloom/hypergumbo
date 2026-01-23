@@ -1,0 +1,16 @@
+Original commit body from a95d517:
+
+Framework detection now scans up to 3 directory levels deep to find
+dependency manifests in subdirectories. This enables AUTO mode to
+detect frameworks in monorepos and non-standard layouts where manifests
+aren't at the repo root (e.g., backend/pyproject.toml, frontend/package.json).
+
+The 12.11 bakeoff experiment showed a 100% detection gap - AUTO mode
+found 0 entrypoints while --frameworks all found 51, because repos like
+full-stack-fastapi-template have pyproject.toml in backend/ subdirectory.
+
+This change closes that gap by:
+- Adding _find_manifest_files() helper for recursive file discovery
+- Updating all _detect_*_frameworks() functions to use recursive scanning
+- Skipping common non-project directories (node_modules, vendor, venv)
+- Adding comprehensive tests for subdirectory detection
