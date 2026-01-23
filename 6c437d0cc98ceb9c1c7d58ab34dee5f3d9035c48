@@ -1,0 +1,11 @@
+Original commit body from 7ae5dff:
+
+- Add batch centrality function that uses ripgrep when available (~10x faster)
+- Falls back to Python regex with ThreadPoolExecutor when ripgrep unavailable
+- Add separate "centrality" progress phase after embedding phase
+- Update docs with optional ripgrep installation instructions
+- Add comprehensive tests for new batch function
+
+This addresses the 60-second gap after embeddings complete where no
+progress updates were shown. Users now see "Computing symbol centrality"
+progress during this phase.
