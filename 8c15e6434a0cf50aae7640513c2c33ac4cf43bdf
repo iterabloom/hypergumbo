@@ -1,0 +1,14 @@
+Original commit body from b9e6c34:
+
+Go web frameworks (Gin, Echo, Fiber) use method calls (r.GET, e.POST)
+for route registration, not decorators. This is the same pattern as
+Django and Express - function/method calls rather than decorators.
+
+These cannot be migrated to the current YAML pattern system which only
+matches decorator/base_class metadata on symbols. The UsageContext model
+in ADR-0003 proposes a future solution for call-based patterns.
+
+Changes:
+- Added clarifying comments to Go analyzer
+- Updated go-web.yaml to note decorator patterns are placeholders
+- Updated spec v1.0.x status
