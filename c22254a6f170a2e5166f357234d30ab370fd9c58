@@ -1,0 +1,8 @@
+Original commit body from 5f480b4:
+
+- Add pytest-xdist>=3 to dev dependencies
+- Update AGENTS.md workflow to use `pytest -n auto` by default
+- Update find-uncovered script to auto-detect xdist and use parallel execution
+- Test suite runs in ~2 min (parallel) vs ~5 min (sequential)
+
+60% speedup for test execution.
