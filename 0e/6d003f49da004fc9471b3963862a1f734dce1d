@@ -1,0 +1,15 @@
+Original commit body from 57fd50b:
+
+Git push options (-o description=) cannot contain newline characters.
+The previous fix escaped newlines to \n, but Forgejo stored them
+literally instead of decoding them.
+
+This fix adds an API PATCH call after PR creation to set the body
+with actual newlines. This ensures ${PullRequestDescription} in
+SQUASH_TEMPLATE.md contains properly formatted text.
+
+The flow is now:
+1. Push with escaped \n in description (to satisfy git)
+2. Find the created PR via API
+3. PATCH the PR body with actual newlines via API
+4. Squash merge uses template with proper formatting
