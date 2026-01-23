@@ -228,6 +228,9 @@ Individual commits are preserved in the history."
 	pr_title="${pr_title//$'\r'/ }"
 	pr_desc="${pr_desc//$'\r'/}"
 
+	# Git push options can't contain newlines; escape for Forgejo to decode
+	local push_desc="${pr_desc//$'\n'/\\n}"
+
 	local sha
 	while IFS= read -r line; do
 	  sha=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
@@ -241,7 +244,7 @@ Individual commits are preserved in the history."
 		if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 			push origin "HEAD:refs/for/$base_branch/$tip_branch" \
 			-o title="$pr_title" \
-			-o description="$pr_desc" \
+			-o description="$push_desc" \
 			-o force-push=true 2>&1; then
 			push_success=true
 			break
@@ -292,6 +295,17 @@ except Exception:
 
 	PR_NUM=$(echo "$PR_INDEX" | head -n1)
 	HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+
+	# Update PR body with actual newlines (git push -o can't include them)
+	if [[ -n "$pr_desc" ]]; then
+		local json_body
+		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$pr_desc")
+		curl -s -X PATCH \
+			-H "Authorization: token $TOKEN" \
+			-H "Content-Type: application/json" \
+			-d "$json_body" \
+			"$API_BASE/pulls/$PR_NUM" >/dev/null
+	fi
 
 	# Gate file
 	echo "$PR_NUM" >.git/PR_PENDING
@@ -495,11 +509,14 @@ do_pr() {
 	local attempt=1
 	local push_success=false
 
+	# Git push options can't contain newlines; escape for Forgejo to decode
+	local PUSH_DESC="${DESC//$'\n'/\\n}"
+
 	while [[ $attempt -le $max_attempts ]]; do
 		if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 			push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
 			-o title="$TITLE" \
-			-o description="$DESC" \
+			-o description="$PUSH_DESC" \
 			-o force-push=true 2>&1; then
 			push_success=true
 			break
@@ -550,6 +567,17 @@ except Exception:
 
 	PR_NUM=$(echo "$PR_INDEX" | head -n1)
 	HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+
+	# Update PR body with actual newlines (git push -o can't include them)
+	if [[ -n "$DESC" ]]; then
+		local json_body
+		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$DESC")
+		curl -s -X PATCH \
+			-H "Authorization: token $TOKEN" \
+			-H "Content-Type: application/json" \
+			-d "$json_body" \
+			"$API_BASE/pulls/$PR_NUM" >/dev/null
+	fi
 
 	# Gate file
 	echo "$PR_NUM" >.git/PR_PENDING
