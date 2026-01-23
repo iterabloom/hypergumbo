@@ -1,0 +1,9 @@
+Original commit body from 2b04784:
+
+Pre-compute symbol mention centrality scores during run_behavior_map()
+and store them in sketch_precomputed for faster sketch generation.
+
+- Add centrality computation to run_behavior_map when include_sketch_precomputed=True
+- Update _format_additional_files to accept and use cached centrality scores
+- Update generate_sketch to pass cached centrality from behavior map
+- Add test for cached centrality path
