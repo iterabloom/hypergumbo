@@ -1,0 +1,19 @@
+Original commit body from 02ab5e6:
+
+Two changes work together to fix commit body loss during squash merge:
+
+1. Add SQUASH_TEMPLATE.md with ${PullRequestTitle} and ${PullRequestDescription}
+   placeholders. Forgejo uses this template when performing squash merges,
+   including the full PR description in the final commit message.
+
+2. Fix auto-pr script to preserve newlines in commit descriptions:
+   - Remove `tr '\n' ' ' | sed` pipeline that collapsed body to single line
+   - Remove explicit newline stripping in do_pr()
+   - Remove newline stripping in flush_queue()
+   - Properly escape newlines (\n) when storing in JSON queue file
+
+Before: Squash commits had only subject + trailers (~118 chars)
+After: Squash commits include full PR description with formatting
+
+This restores the detailed commit history that was lost when we switched
+from merge to squash in commit 8f6c03de.
