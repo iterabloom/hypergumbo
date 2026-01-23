@@ -1,0 +1,27 @@
+Original commit body from 731e4ec:
+
+Three critical bugs were causing --compact and tiered behavior maps
+to produce structurally broken output that downstream commands
+(slice, explain, test-coverage) couldn't use:
+
+1. Edge filter used OR instead of AND - kept edges where *either*
+   endpoint existed, not where *both* exist. This caused 99%+ of
+   compact file size to be wasted on unusable dangling edges
+   (e.g., tensorflow compact was 248MB, only 0.05MB usable).
+
+2. Entrypoints copied verbatim without filtering - all entrypoints
+   were kept even when their symbol_id referenced truncated nodes,
+   causing `slice --list-entries` to report "No entrypoints detected".
+
+3. Entrypoints not prioritized in selection - semantic anchors like
+   main() functions and HTTP routes could be dropped if they had
+   low centrality, breaking the semantic usefulness of compact output.
+
+Fixes:
+- Edge filter now uses AND (both endpoints must exist)
+- Entrypoints filtered to only resolvable symbol_ids
+- New force_include_entrypoints parameter (default True) ensures
+  entrypoints are always included, with remaining budget filled
+  by highest-centrality symbols
+
+Added 14 new tests for induced subgraph invariants.
