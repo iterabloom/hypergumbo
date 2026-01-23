@@ -1,0 +1,12 @@
+Original commit body from 7472c6d:
+
+NestJS (decorator-based): Added deprecation warning - can migrate to YAML patterns
+Express (call-based): Removed misleading warning - cannot migrate to YAML patterns
+
+Express uses function calls (app.get, router.post) which cannot be matched
+by the current YAML pattern system (decorator/base_class metadata only).
+See ADR-0003 usage-context-patterns.md for future UsageContext approach.
+
+Updated tests to verify:
+- Express routes detected without deprecation warning
+- NestJS decorators emit deprecation warning (deduplicated)
