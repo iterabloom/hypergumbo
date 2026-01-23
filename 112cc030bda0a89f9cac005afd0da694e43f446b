@@ -1,0 +1,6 @@
+Original commit body from 7154ce1:
+
+Expand from 10 to 19 probe patterns with clear category comments
+(canonical, one-liners, tagline-led, problem-first, etc.) for better
+semantic diversity in README description extraction. Regenerated
+embeddings to match.
