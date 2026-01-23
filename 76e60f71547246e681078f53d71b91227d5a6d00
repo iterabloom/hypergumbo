@@ -1,0 +1,5 @@
+Original commit body from 9e6e491:
+
+Document recent additions:
+- Common Lisp analyzer (defun, defclass, defmacro, etc.)
+- README extraction improvements from experiment 13.1
