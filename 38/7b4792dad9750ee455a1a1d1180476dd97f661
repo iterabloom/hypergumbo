@@ -1,0 +1,8 @@
+Original commit body from 49d130b:
+
+Entrypoint detection now applies confidence penalties:
+- 50% penalty for test files (reduces noise from test helpers)
+- 70% penalty for vendor/external dependencies (tier >= 3)
+
+Also refactors is_test_file from slice.py to paths.py for shared use,
+and adds future type inference work to the spec.
