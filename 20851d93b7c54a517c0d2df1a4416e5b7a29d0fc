@@ -1,0 +1,13 @@
+Original commit body from 345186c:
+
+All stdout-only commands now print "[hypergumbo <cmd>] Output: stdout"
+to stderr after completion. This provides consistent feedback about
+where output was written, complementing the artifact summary already
+added to the run command.
+
+Commands updated:
+- search
+- routes
+- explain
+- test-coverage
+- catalog
