@@ -6,10 +6,16 @@ set -euo pipefail
 #
 # Usage:
 #   auto-pr [title] [description]   Push and create PR (queues as vPR on failure)
+#   auto-pr --squash                Force squash merge (discouraged)
 #   auto-pr list                    Show queued vPRs
 #   auto-pr flush                   Flush all vPRs as single atomic PR
 #   auto-pr status                  Show queue status and next steps
 #   auto-pr --help                  Show help
+#
+# Merge Strategy:
+#   Default: fast-forward merge (preserves commit bodies + DCO sign-offs)
+#   If diverged: prompts to rebase first
+#   --squash: fallback that preserves body via git notes, adds [from <sha>] to subject
 #
 # vPR (Virtual PR): A logical PR queued locally when remote is unavailable.
 # Multiple vPRs are flushed as a single atomic PR to avoid race conditions.
@@ -20,6 +26,7 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
+FORCE_SQUASH=false
 
 # ------------------------------------------------------------------
 # Load secrets from .env if present
@@ -141,6 +148,110 @@ show_status() {
 		echo "  • View queue:       ./scripts/auto-pr list"
 		echo "  • Flush to remote:  ./scripts/auto-pr flush"
 	fi
+}
+
+# ------------------------------------------------------------------
+# Merge helper: tries fast-forward, falls back to squash if --squash
+# Arguments: $1=API_BASE, $2=PR_NUM, $3=TOKEN, $4=TITLE, $5=DESC, $6=ORIG_SHA
+# ------------------------------------------------------------------
+do_merge() {
+	local api_base="$1" pr_num="$2" token="$3" title="$4" desc="$5" orig_sha="$6"
+	local merge_http_code merge_response
+
+	if [[ "$FORCE_SQUASH" == "true" ]]; then
+		# User explicitly requested squash (discouraged)
+		echo "⚠️  Squash merge requested (commit body will be preserved via git notes)"
+
+		# Build squash payload with [from <sha>] in subject
+		local short_sha="${orig_sha:0:7}"
+		local squash_title="$title [from $short_sha]"
+		local merge_payload
+		merge_payload=$(python3 -c "
+import json, sys
+payload = {
+    'do': 'squash',
+    'delete_branch_after_merge': True
+}
+print(json.dumps(payload))
+")
+
+		merge_http_code=$(curl -s -o /tmp/merge_response.json -w "%{http_code}" -X POST \
+			-H "Authorization: token $token" \
+			-H "Content-Type: application/json" \
+			-d "$merge_payload" \
+			"$api_base/pulls/$pr_num/merge")
+
+		if [[ "$merge_http_code" == "200" || "$merge_http_code" == "204" ]] || \
+		   curl -s -H "Authorization: token $token" "$api_base/pulls/$pr_num" | \
+		   python3 -c "import sys,json; exit(0 if json.load(sys.stdin).get('merged') else 1)" 2>/dev/null; then
+			echo "✅ Squash merged!"
+
+			# Fetch the new squash commit and attach a git note with original body
+			git fetch origin "$BASE_BRANCH" --quiet
+			local new_sha
+			new_sha=$(git rev-parse "origin/$BASE_BRANCH")
+
+			if [[ -n "$desc" ]]; then
+				echo "📝 Attaching git note with original commit body..."
+				git notes add -f -m "Original commit body from $orig_sha:
+
+$desc" "$new_sha" 2>/dev/null || true
+
+				# Try to push notes (may fail if no notes ref exists yet)
+				git push origin refs/notes/commits --quiet 2>/dev/null || \
+				git push origin refs/notes/* --quiet 2>/dev/null || true
+				echo "   Note attached to $new_sha"
+			fi
+			return 0
+		else
+			echo "❌ Squash merge failed (HTTP $merge_http_code)"
+			return 1
+		fi
+	fi
+
+	# Default: try fast-forward merge (preserves original commits with bodies + DCO)
+	echo "🚀 Attempting fast-forward merge (preserves commit bodies)..."
+
+	local merge_payload
+	merge_payload='{"do": "fast-forward-only", "delete_branch_after_merge": true}'
+
+	merge_http_code=$(curl -s -o /tmp/merge_response.json -w "%{http_code}" -X POST \
+		-H "Authorization: token $token" \
+		-H "Content-Type: application/json" \
+		-d "$merge_payload" \
+		"$api_base/pulls/$pr_num/merge")
+
+	if [[ "$merge_http_code" == "200" || "$merge_http_code" == "204" ]]; then
+		echo "✅ Fast-forward merged! (commit bodies preserved)"
+		return 0
+	fi
+
+	# Check if it's a divergence error (405 or specific error message)
+	merge_response=$(cat /tmp/merge_response.json 2>/dev/null || echo "{}")
+	if echo "$merge_response" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
+		echo ""
+		echo "❌ Fast-forward not possible: branch has diverged from $BASE_BRANCH"
+		echo ""
+		echo "Please rebase and retry:"
+		echo "  git fetch origin $BASE_BRANCH"
+		echo "  git rebase origin/$BASE_BRANCH"
+		echo "  ./scripts/auto-pr"
+		echo ""
+		echo "Or, if you must squash (loses commit body details):"
+		echo "  ./scripts/auto-pr --squash"
+		return 1
+	fi
+
+	# Check if PR was actually merged despite error code
+	if curl -s -H "Authorization: token $token" "$api_base/pulls/$pr_num" | \
+	   python3 -c "import sys,json; exit(0 if json.load(sys.stdin).get('merged') else 1)" 2>/dev/null; then
+		echo "✅ Verified: PR was successfully merged!"
+		return 0
+	fi
+
+	echo "❌ Merge failed (HTTP $merge_http_code)"
+	echo "Response: $merge_response"
+	return 1
 }
 
 # Flush all vPRs as a single atomic PR
@@ -350,50 +461,12 @@ except Exception:
 		sleep 10
 	done
 
-	# Merge using squash to preserve DCO sign-off
-	# Regular merge commits created via API lack DCO sign-off, causing CI failures
-	# when those commits are later included in PRs to main. Squash avoids this.
+	# Merge PR using fast-forward (default) or squash (if --squash flag)
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
-	# Build merge payload with commit message
-	local merge_payload
-	merge_payload=$(python3 -c "
-import json, sys
-title = sys.argv[1]
-body = sys.argv[2]
-# Combine title and body for the merge commit message
-message = title
-if body.strip():
-    message += '\n\n' + body
-payload = {
-    'do': 'squash',
-    'delete_branch_after_merge': True,
-    'merge_message_field': message
-}
-print(json.dumps(payload))
-" "$TITLE" "$DESC")
-
-	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-		-H "Authorization: token $TOKEN" \
-		-H "Content-Type: application/json" \
-		-d "$merge_payload" \
-		"$API_BASE/pulls/$PR_NUM/merge")
-
-	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
-		echo "✅ Successfully Merged!"
-	else
-		echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
-		sleep 2
-		PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" |
-			python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
-
-		if [[ "$PR_STATE" == "True" ]]; then
-			echo "✅ Verified: PR was successfully merged!"
-		else
-			echo "❌ Merge failed (HTTP $MERGE_HTTP_CODE)"
-			exit 1
-		fi
+	if ! do_merge "$API_BASE" "$PR_NUM" "$TOKEN" "$pr_title" "$pr_desc" "$tip_sha"; then
+		exit 1
 	fi
 
 	# Cleanup
@@ -638,57 +711,17 @@ except Exception:
 		sleep 10
 	done
 
-	# Merge using squash to preserve DCO sign-off
-	# Regular merge commits created via API lack DCO sign-off, causing CI failures
-	# when those commits are later included in PRs to main. Squash avoids this.
+	# Merge PR using fast-forward (default) or squash (if --squash flag)
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
-	# Build merge payload with commit message
-	local merge_payload
-	merge_payload=$(python3 -c "
-import json, sys
-title = sys.argv[1]
-body = sys.argv[2]
-# Combine title and body for the merge commit message
-message = title
-if body.strip():
-    message += '\n\n' + body
-payload = {
-    'do': 'squash',
-    'delete_branch_after_merge': True,
-    'merge_message_field': message
-}
-print(json.dumps(payload))
-" "$TITLE" "$DESC")
-
-	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-		-H "Authorization: token $TOKEN" \
-		-H "Content-Type: application/json" \
-		-d "$merge_payload" \
-		"$API_BASE/pulls/$PR_NUM/merge")
-
-	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
-		echo "✅ Successfully Merged!"
-		echo "---------------------------------------------------"
-		echo "🧹 Cleaning up local branch..."
-		cleanup_local "$BRANCH" "$BASE_BRANCH"
-	else
-		echo "⚠️  Got HTTP $MERGE_HTTP_CODE, verifying PR state..."
-		sleep 2
-		PR_STATE=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls/$PR_NUM" |
-			python3 -c "import sys,json; print(json.load(sys.stdin).get('merged', False))")
-
-		if [[ "$PR_STATE" == "True" ]]; then
-			echo "✅ Verified: PR was successfully merged!"
-			echo "---------------------------------------------------"
-			echo "🧹 Cleaning up local branch..."
-			cleanup_local "$BRANCH" "$BASE_BRANCH"
-		else
-			echo "❌ Merge failed (HTTP $MERGE_HTTP_CODE)"
-			exit 1
-		fi
+	if ! do_merge "$API_BASE" "$PR_NUM" "$TOKEN" "$TITLE" "$DESC" "$LOCAL_SHA"; then
+		exit 1
 	fi
+
+	echo "---------------------------------------------------"
+	echo "🧹 Cleaning up local branch..."
+	cleanup_local "$BRANCH" "$BASE_BRANCH"
 }
 
 # ------------------------------------------------------------------
@@ -732,6 +765,29 @@ cleanup_local() {
 # ------------------------------------------------------------------
 # Main dispatch
 # ------------------------------------------------------------------
+
+# Parse global flags
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--squash)
+		FORCE_SQUASH=true
+		echo "⚠️  WARNING: --squash is discouraged. Commit bodies will be preserved via git notes,"
+		echo "   but the squash commit itself will only have the subject line."
+		echo ""
+		read -p "Continue with squash merge? [y/N] " -n 1 -r REPLY
+		echo ""
+		if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+			echo "Aborted. Use default (fast-forward) merge instead."
+			exit 0
+		fi
+		shift
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
 case "${1:-}" in
 list | queue)
 	list_queue
@@ -745,13 +801,22 @@ status)
 help | --help | -h)
 	echo "auto-pr: Push PRs with offline resilience via vPR queue"
 	echo ""
-	echo "Usage: auto-pr [command] [args]"
+	echo "Usage: auto-pr [options] [command] [args]"
+	echo ""
+	echo "Options:"
+	echo "  --squash      Force squash merge (discouraged; use only if fast-forward fails)"
+	echo "                Commit body is preserved via git notes, subject includes [from <sha>]"
 	echo ""
 	echo "Commands:"
-	echo "  (default)     Push branch as PR (queues as vPR if offline)"
+	echo "  (default)     Push branch as PR (uses fast-forward merge by default)"
 	echo "  list          Show queued vPRs"
 	echo "  flush         Push all vPRs as single atomic PR"
 	echo "  status        Show queue status and recommended next steps"
+	echo ""
+	echo "Merge Strategy:"
+	echo "  Default: fast-forward merge (preserves commit bodies and DCO sign-offs)"
+	echo "  If branch has diverged: you'll be prompted to rebase first"
+	echo "  --squash: emergency fallback (preserves body via git notes)"
 	echo ""
 	echo "Arguments (for default command):"
 	echo "  [title]       PR title (default: last commit message)"
