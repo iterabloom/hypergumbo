@@ -1,0 +1,24 @@
+Original commit body from a88d941:
+
+PR #403 updated sketch_embeddings.py:extract_config_embedding but the
+actual code path uses sketch.py:_extract_config_embedding, which was
+still doing per-file model.encode() calls inside the loop.
+
+Changes:
+- Refactored sketch.py:_extract_config_embedding to batch encode:
+  - PASS 1a: Collect all chunks from all files (no embedding)
+  - PASS 1b: Single model.encode() call for all chunks
+  - PASS 1c: Process results per-file
+- Removed 818 lines of dead code from sketch_embeddings.py:
+  - extract_config_embedding() - never called
+  - extract_config_hybrid() - never called
+  - _collect_config_content() - only used by dead code
+  - _discover_config_files_embedding() - only used by dead code
+  - _collect_config_content_with_discovery() - only used by dead code
+  - _compute_log_sample_size() - duplicated in sketch.py
+  - _compute_stride() - duplicated in sketch.py
+  - _build_context_chunk() - duplicated in sketch.py
+- Updated sketch_embeddings.py docstring to reflect actual exports
+
+This eliminates the per-file embedding delays visible as "1/15, 2/15..."
+progress updates during config extraction.
