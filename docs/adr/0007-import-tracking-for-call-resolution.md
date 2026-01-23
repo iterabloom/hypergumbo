@@ -225,7 +225,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 | fsharp.py | `module` abbreviations | ML family; `module M = List` then `M.map` | ✅ Done |
 | groovy.py | `import` | Same as Java | ✅ Done |
 | haskell.py | `import qualified as` | `import qualified Data.Map as M` then `M.lookup` | ✅ Done |
-| lean.py | `import` | Qualified names in theorem prover | |
+| lean.py | `import` | Qualified names in theorem prover | Blocked (grammar) |
 | nim.py | `import as` | `import strutils as su` then `su.strip()` | ✅ Done |
 | ocaml.py | `module` aliases | ML family; `module L = List` then `L.map` | ✅ Done |
 | solidity.py | `import {X as Y}` | `import {IERC20 as Token} from "..."` | ✅ Done |
@@ -240,7 +240,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 | fortran.py | `use, only:` | `use linear_algebra, only: solve` | ✅ Done |
 | julia.py | `import as` | `import Pkg as P` then `P.add()` | ✅ Done |
 | r_lang.py | `pkg::func` | Qualified calls `dplyr::filter()` | ✅ Done |
-| vhdl.py | `library`, `use` | `use ieee.std_logic_1164.all;` (Ada-like package system) | |
+| vhdl.py | `library`, `use` | `use ieee.std_logic_1164.all;` (Ada-like package system) | N/A (no aliasing) |
 | zig.py | `@import` | `const std = @import("std");` then `std.debug.print()` | ✅ Done |
 
 **Phase 3B: Import tracking DOESN'T MATTER (dynamic or textual)**
