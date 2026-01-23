@@ -1,0 +1,16 @@
+Original commit body from 4d8c7d2:
+
+When a module is imported via "from app import crud" and then used as
+"crud.create_user()", the call was incorrectly resolved as unresolved.
+
+Root cause: `from X import Y` is always stored in symbol_imports, but
+when Y is a submodule (not a symbol defined in X), the call resolution
+failed to find it.
+
+Fix: Added Case 2e in _process_call() to try submodule lookup when the
+imported name isn't found as a class symbol. If we have "from app import
+crud" and call "crud.create_user()", we now try looking up (app.crud,
+create_user) which correctly resolves to the function.
+
+This fixes the P1 issue from bakeoff 12.15 where FastAPI routes calling
+crud.create_user() emitted unresolved edges instead of proper call edges.
