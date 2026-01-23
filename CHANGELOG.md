@@ -9,6 +9,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+- **Commit body preservation in squash merge:** Fixed auto-pr to preserve newlines in commit
+  descriptions, and added Forgejo SQUASH_TEMPLATE.md to include PR descriptions in merge commits.
+
 ### Added
 - **YAML-based main() function detection (ADR-0003 v1.2.x):** Language-level main() entry points
   are now detected via data-driven YAML patterns in `main-functions.yaml`, not hardcoded logic.
