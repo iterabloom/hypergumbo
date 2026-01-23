@@ -1,0 +1,9 @@
+Original commit body from 1207c47:
+
+Update the README with a real example of hypergumbo analyzing itself:
+- Changed first code snippet to show pip install, git clone, hypergumbo hypergumbo/
+- Updated Output section with actual sketch output
+- Added docs/example-output.md with full terminal output including
+  Representativeness Table
+- Added docs/example-output-with-source.md showing --with-source output
+- Added links to both full output files below the example snippet
