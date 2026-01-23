@@ -1,0 +1,6 @@
+Original commit body from cb0536c:
+
+Without this, the sketch Overview showed "No source files detected" for
+Common Lisp repos even though the analyzer found symbols.
+
+Adds *.lisp, *.lsp, *.cl, *.asd extensions to the profile language mapping.
