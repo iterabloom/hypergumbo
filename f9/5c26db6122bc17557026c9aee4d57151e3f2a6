@@ -1,0 +1,16 @@
+Original commit body from 0659ba2:
+
+Extends parameter type inference (already in Python) to three more
+language analyzers. Method calls on typed parameters now resolve:
+
+- Java: void process(Client c) { c.send(); } → Client.send
+- Kotlin: fun handle(db: Database) { db.save() } → Database.save
+- TypeScript: function run(svc: Service) { svc.call() } → Service.call
+
+Previously type inference only worked for constructor-assigned variables.
+This improves call graph completeness for dependency injection patterns
+(Spring, Dagger, FastAPI deps, etc.).
+
+Each analyzer now extracts parameter types from function/method
+declarations and adds them to the var_types dict used for method
+call resolution.
