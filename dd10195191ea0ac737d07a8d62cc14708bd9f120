@@ -1,0 +1,6 @@
+Original commit body from 51df8d4:
+
+Data Models is a framework-afforded concept like Entry Points, showing
+ORM models, entities, and core data structures. Detection via framework
+decorators (@dataclass, models.Model, BaseModel, etc.), naming conventions,
+and type annotation analysis.
