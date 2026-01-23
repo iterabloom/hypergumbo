@@ -1,0 +1,8 @@
+Original commit body from a3f450c:
+
+- Add §8.6 "File Role Classification (Proposed)" subsection explaining
+  the Tier + Role two-dimensional classification model
+- Add LOC definition note in profile output section clarifying what
+  counts as lines of code (excludes lock files, proposes excluding data)
+- Link to ADR-0004 for full design details
+- Use 🟪 status to indicate proposed/needs-implementation state
