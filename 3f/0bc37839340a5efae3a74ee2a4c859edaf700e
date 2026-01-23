@@ -1,0 +1,14 @@
+Original commit body from bd1d772:
+
+Changed the "How Representative Is This Sketch?" table to compare against
+4x and 16x token budgets instead of just 2x. This provides more useful
+insight into how coverage improves with larger budgets.
+
+With 2x, large files often still don't fit, so the table would show
+minimal improvement. With 4x/16x, users can see the trajectory - at what
+budget do the important files start fitting?
+
+Example for a 4,000 token budget:
+- 4,000t → 16,000t (4x) → 64,000t (16x)
+
+This helps users decide if they should increase their token budget.
