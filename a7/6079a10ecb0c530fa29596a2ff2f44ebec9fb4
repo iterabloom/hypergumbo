@@ -1,0 +1,13 @@
+Original commit body from ae61fd8:
+
+Forgejo/Gitea looks for merge message templates in the .gitea/
+directory, not .forgejo/. Added template to both locations for
+compatibility.
+
+This is the second part of the commit body preservation fix.
+With the template in the correct location, squash merge commits
+should now include the full PR description.
+
+Template variables used:
+- ${PullRequestTitle} - The PR title becomes the commit subject
+- ${PullRequestDescription} - The PR body becomes the commit body
