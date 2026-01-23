@@ -218,7 +218,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 | Analyzer | Import Syntax | Why It Matters | Status |
 |----------|---------------|----------------|--------|
 | ada.py | `with`, `use`, renames | Package renames: `package TIO renames Ada.Text_IO;` | ✅ Done |
-| agda.py | `import`, `open` | Qualified names in dependent type proofs | |
+| agda.py | `import`, `open` | Qualified names in dependent type proofs | ✅ Done |
 | clojure.py | `require :as` | `(require '[clojure.string :as str])` then `(str/join ...)` | ✅ Done |
 | d_lang.py | `import x = y` | `import io = std.stdio;` then `io.writeln()` | ✅ Done |
 | elm.py | `import as` | `import Dict as D` then `D.get` | ✅ Done |
