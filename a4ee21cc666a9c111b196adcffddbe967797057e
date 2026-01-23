@@ -1,0 +1,24 @@
+Original commit body from 8271cba:
+
+Source Files are now sorted by symbol importance density (sum of raw
+in-degrees / LOC), surfacing the most interconnected files first.
+
+All Files section is renamed to Additional Files and uses hybrid ordering:
+- Top N files (configurable, default 3) by semantic similarity to 5W1H
+  probes using ModernBERT embeddings
+- Remaining files by symbol mention centrality (word-boundary matching)
+
+New functions in ranking.py:
+- compute_raw_in_degree: raw edge counts for symbols
+- compute_file_loc: line count for files
+- compute_symbol_importance_density: in-degree sum / LOC
+- compute_symbol_mention_centrality: symbol mentions in non-source files
+
+New embedding infrastructure in sketch_embeddings.py:
+- 5W1H probes for semantic file ranking
+- File embedding using 3 random 800-char samples from first third
+- Cache support in .hypergumbo_cache/ directory
+- ModernBERT with 256-dim truncation
+
+Analysis is now run earlier in generate_sketch to enable density-based
+source file ordering.
