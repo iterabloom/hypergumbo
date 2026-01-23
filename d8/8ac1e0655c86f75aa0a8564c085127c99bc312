@@ -1,0 +1,5 @@
+Original commit body from 5753a31:
+
+Remove -x flag from generate-architecture so tests are included in the
+self-analysis sketch. Tests are part of the codebase architecture and
+provide useful context about test coverage and organization.
