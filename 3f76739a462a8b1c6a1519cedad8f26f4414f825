@@ -1,0 +1,16 @@
+Original commit body from 1f7bd90:
+
+Documents how the sketch command decides:
+- Section order (Header → Overview → Structure → ... → Source Content)
+- Budget allocation strategy (waterfall with percentages)
+- Ordering within sections (confidence, centrality, density, etc.)
+- Cutoff logic (minimums, ceilings, guarantees)
+
+Key design decisions documented:
+- Entry Points before Source Files (higher signal first)
+- Structure section uses tree format built from important files
+- Key Symbols has minimum guarantee of 5 symbols
+- Domain Vocabulary section removed (low value)
+
+Also adds entrypoint confidence tiers to spec (0.99 declared,
+0.95 decorator, 0.85 structural, 0.70 naming).
