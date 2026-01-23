@@ -1,0 +1,10 @@
+Original commit body from b970dc4:
+
+- Add symbol_kind pattern type to Pattern class for matching by symbol.kind field
+- Add route patterns to rails.yaml and laravel.yaml using symbol_kind
+- This allows DSL-style route definitions (get '/users', Route::get()) to be matched
+- Enhance FastAPI, Flask, Express YAMLs with additional non-route concepts:
+  - FastAPI: auth, security, middleware, error_handler, lifecycle, SQLModel
+  - Flask: serializer (Marshmallow), middleware, auth, command, websocket_handler
+  - Express: websocket_handler, websocket_emitter, websocket_namespace
+- Add comprehensive tests for new pattern matching capabilities
