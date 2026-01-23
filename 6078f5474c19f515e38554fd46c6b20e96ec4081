@@ -1,0 +1,12 @@
+Original commit body from aabd35e:
+
+- Remove gate structure (B0/B1/B1.5/B2 decision matrices)
+- Remove month-by-month milestone planning
+- Remove success criteria and validation protocols
+- Remove risk tables and pivot matrices
+- Keep ambitious infrastructure vision (typed IR, context router, registry)
+- Keep architecture diagrams and capability descriptions
+- Update linkers section to reflect Spec A implementation
+- Reduce Spec B from ~1870 lines to ~364 lines
+
+The vision remains; the bureaucracy is gone.
