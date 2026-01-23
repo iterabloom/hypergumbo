@@ -1,0 +1,11 @@
+Original commit body from 8ea5922:
+
+The run command should capture the full behavior map for maximum
+flexibility. Test filtering is better done at query time:
+
+- `sketch -x` for ephemeral analysis (speed matters)
+- `symbols -x`, `explain -x`, `slice -x` for filtered views
+
+Having -x on run causes permanent data loss in the results file,
+breaks test-coverage command, and is redundant with downstream
+filtering options.
