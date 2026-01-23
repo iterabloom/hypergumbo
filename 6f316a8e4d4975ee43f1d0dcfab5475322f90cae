@@ -1,0 +1,18 @@
+Original commit body from 356020e:
+
+Add UsageContext emission for Go web frameworks:
+- Extract route calls (r.GET, e.POST, app.Get, r.Post, etc.)
+- Capture handler references, route paths, HTTP methods
+- Support Gin/Echo (UPPERCASE) and Fiber/Chi (lowercase) patterns
+
+Update go-web.yaml with usage-based patterns:
+- Add UsagePatternSpec patterns for route detection
+- Keep definition-based patterns for middleware, models, gRPC
+
+Fix UsagePatternSpec.matches() to use search() instead of match():
+- Allows patterns to match anywhere in the string
+- Patterns can use ^ and $ anchors for exact matching
+
+Update docs:
+- Fix hypergumbo-spec.md status emojis for Go (now uses UsageContext)
+- Add Go UsageContext entry to CHANGELOG.md
