@@ -1,0 +1,6 @@
+Original commit body from 2527a78:
+
+- Add _collect_important_files() to intelligently sample files for structure tree
+- Files are prioritized by: config files, test files, entry points, high centrality, data models
+- Structure section is updated after analysis with tree-formatted output
+- max_root_dirs limit prevents overwhelming output with too many directories
