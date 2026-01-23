@@ -1,0 +1,9 @@
+Original commit body from d4edf00:
+
+Bytes literals (like b'hello') are now serialized as their repr() string
+instead of causing TypeError during JSON serialization. This is a follow-up
+to the complex number fix - tensorflow also contains bytes literals.
+
+Both non-JSON-serializable types are now handled:
+- Complex numbers (1+2j) -> "(1+2j)"
+- Bytes literals (b'hello') -> "b'hello'"
