@@ -1,0 +1,14 @@
+Original commit body from 1d342ec:
+
+Experiment 13.1 revealed 3 structural issues with README extraction:
+
+1. Case-sensitive README finding missed repos using `Readme.md` (e.g., Express)
+   - Fix: Use iterdir() with case-insensitive matching, prioritize by extension
+
+2. Link reference definitions matched probes (e.g., Hugo's `[bep]: https://...`)
+   - Fix: Filter lines matching `[...]: https://...` pattern
+
+3. GitHub callout syntax matched probes (e.g., Lodash's `> [!IMPORTANT]`)
+   - Fix: Filter lines matching `> [!NOTE]`, `> [!IMPORTANT]`, etc.
+
+Results: Effective extraction rate improved from 60% to 80% on 10 diverse repos.
