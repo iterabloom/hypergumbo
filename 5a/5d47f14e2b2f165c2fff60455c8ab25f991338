@@ -1,0 +1,11 @@
+Original commit body from b4c5818:
+
+- Add _estimate_file_block_tokens() to accurately estimate tokens for
+  file content blocks including START/END markers and code fences
+- Use accurate estimation for both Source Content and Additional File
+  Content sections to prevent mid-file truncation
+- Ensure sketch output always ends with a newline (standard for text files)
+
+Previously, token estimation only counted file content, not the ~130 chars
+of overhead from markers. This caused files to be included that pushed the
+sketch over budget, resulting in mid-file truncation by truncate_to_tokens().
