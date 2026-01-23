@@ -1,0 +1,28 @@
+Original commit body from 1163bfa:
+
+Expand semantic entry detection to recognize additional concept types from
+FRAMEWORK_PATTERNS enrichment. This enables higher-confidence entrypoint
+detection based on actual framework patterns rather than path heuristics.
+
+New concept types detected:
+- controller -> EntrypointKind.CONTROLLER (generic controller)
+- task -> EntrypointKind.BACKGROUND_TASK (async/background jobs)
+- scheduled_task -> EntrypointKind.SCHEDULED_TASK (cron jobs)
+- websocket_handler/websocket_gateway -> EntrypointKind.WEBSOCKET_HANDLER
+- event_handler -> EntrypointKind.EVENT_HANDLER
+- command -> EntrypointKind.CLI_COMMAND
+- liveview -> EntrypointKind.CONTROLLER (Phoenix LiveView)
+- graphql_resolver/graphql_schema -> EntrypointKind.GRAPHQL_SERVER
+
+Key changes:
+- Add 5 new EntrypointKind enum values for concept-based detection
+- Expand _detect_from_concepts() to handle all entrypoint-worthy concepts
+- Framework-aware labels when framework info is available in concept
+- Deduplicate entries when same kind appears multiple times
+- Add comprehensive tests for all new concept types
+
+Benefits:
+- Higher confidence (0.95) based on actual decorator/pattern matching
+- Eliminates false positives (e.g., React Router won't have route concepts)
+- Framework-aware labels improve user understanding
+- Gradual migration path with path heuristics as fallback (Option A)
