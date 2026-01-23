@@ -235,6 +235,38 @@ import Data.Nat
         assert any("Data.Nat" in e.dst for e in import_edges)
 
 
+class TestAgdaImportAliases:
+    """Tests for Agda import alias tracking (ADR-0007)."""
+
+    def test_extract_renaming_aliases(self, tmp_path: Path) -> None:
+        """Extract aliases from renaming directive."""
+        from hypergumbo.analyze.agda import (
+            _extract_edges_from_file,
+            _make_file_id,
+        )
+        from hypergumbo.symbol_resolution import NameResolver
+        import tree_sitter
+        import tree_sitter_agda
+
+        source = b"""module Example where
+open import Data.List renaming (map to listMap)
+"""
+        language = tree_sitter.Language(tree_sitter_agda.language())
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(source)
+
+        resolver = NameResolver({})
+        edges, aliases = _extract_edges_from_file(
+            tree, source, "Example.agda", [], resolver, "test-run"
+        )
+
+        # Should have import edge
+        assert len(edges) >= 1
+        # Should have extracted renaming alias
+        assert "listMap" in aliases
+        assert aliases["listMap"] == "Data.List.map"
+
+
 class TestAgdaPostulateDetection:
     """Tests for Agda postulate detection."""
 

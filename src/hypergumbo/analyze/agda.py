@@ -95,6 +95,7 @@ class FileAnalysis:
     source: bytes
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
+    import_aliases: dict[str, str] = field(default_factory=dict)  # alias → module_path
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -301,6 +302,38 @@ def _extract_symbols_from_file(
     return symbols
 
 
+def _extract_renamings(
+    directive_node: "tree_sitter.Node",
+    source: bytes,
+    module_name: str,
+) -> dict[str, str]:
+    """Extract renaming aliases from an import directive.
+
+    Agda renaming syntax:
+        open import Data.List renaming (map to listMap; filter to listFilter)
+
+    The import_directive node contains:
+    - renaming keyword
+    - ( ... ) with pairs of "original_name to new_name"
+
+    Returns dict mapping alias (new_name) to qualified path (module.original).
+    """
+    aliases: dict[str, str] = {}
+
+    for child in directive_node.children:
+        if child.type == "renaming":
+            # This is a renaming node inside import_directive
+            # Structure: id (original), 'to', id (alias)
+            ids = [c for c in child.children if c.type == "id"]
+            if len(ids) >= 2:
+                original_name = _node_text(ids[0], source).strip()
+                alias_name = _node_text(ids[1], source).strip()
+                # Map alias to qualified path: Module.original_name
+                aliases[alias_name] = f"{module_name}.{original_name}"
+
+    return aliases
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -308,13 +341,17 @@ def _extract_edges_from_file(
     file_symbols: list[Symbol],
     resolver: NameResolver,
     run_id: str,
-) -> list[Edge]:
+) -> tuple[list[Edge], dict[str, str]]:
     """Extract import and reference edges from a parsed Agda file.
 
     Detects:
     - import: Import statements (open import, import)
+
+    Returns (edges, import_aliases) where import_aliases maps renamed
+    symbols to their qualified module paths for path_hint resolution.
     """
     edges: list[Edge] = []
+    import_aliases: dict[str, str] = {}
     file_id = _make_file_id(file_path)
 
     for node in iter_tree(tree.root_node):
@@ -338,6 +375,12 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
+                    # Extract renaming aliases from import_directive
+                    directive = _find_child_by_type(node, "import_directive")
+                    if directive:
+                        renamings = _extract_renamings(directive, source, module_name)
+                        import_aliases.update(renamings)
+
         elif node.type == "import":
             # Plain import statement (not inside open)
             # Check parent is not 'open'
@@ -358,7 +401,7 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
-    return edges
+    return edges, import_aliases
 
 
 def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
@@ -444,7 +487,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
     all_edges: list[Edge] = []
 
     for fa in file_analyses:
-        edges = _extract_edges_from_file(
+        edges, import_aliases = _extract_edges_from_file(
             fa.tree,  # type: ignore
             fa.source,
             fa.path,
@@ -452,6 +495,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
             resolver,
             run_id,
         )
+        fa.import_aliases = import_aliases
         all_edges.extend(edges)
 
     run.files_analyzed = files_analyzed
