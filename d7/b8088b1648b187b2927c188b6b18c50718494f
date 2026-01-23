@@ -1,0 +1,8 @@
+Original commit body from 6c46957:
+
+The example output files had the entire content wrapped in a code block
+which contained inner code blocks (Structure, Configuration, Python
+source). This caused markdown rendering issues.
+
+Fix by removing the outer code block and using horizontal rules (---)
+to visually separate the intro text from the example output content.
