@@ -1,0 +1,10 @@
+Original commit body from 2570770:
+
+- Fix _collect_source_files to respect exclude_tests flag, filtering
+  test files from SOURCE_DIRS (src/, lib/, etc.) when flag is used
+- Add [IGNORING TESTS] marker to all section headers when -x is used
+- Show actual test LOC count (should be 0 if filtering works correctly)
+  to reveal any filtering failures
+- Fix regex for IGNORING TESTS markers to only match proper markdown
+  headers (alphabetic names), not bash comments inside code blocks
+- Add test coverage for test file filtering in source directories
