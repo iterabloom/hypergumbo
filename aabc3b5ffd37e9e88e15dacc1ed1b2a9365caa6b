@@ -1,0 +1,14 @@
+Original commit body from 7c5efeb:
+
+Implements UsageContext extraction for remaining frameworks:
+- Hapi: config-object parsing for server.route({ method, path, handler })
+- Ruby Sinatra: block detection for get '/path' do ... end
+- Elixir Phoenix: router DSL parsing for get "/", Controller, :action
+- Next.js: file-based routing for pages/ and app/ directories
+
+Adds YAML patterns:
+- sinatra.yaml for Sinatra block-based routes
+- nextjs.yaml for Next.js file-based routes
+- Updates hapi.yaml and phoenix.yaml with usage patterns
+
+Tests added for all new functionality with 100% coverage.
