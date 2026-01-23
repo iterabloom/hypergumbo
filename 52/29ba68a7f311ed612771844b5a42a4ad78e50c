@@ -1,0 +1,15 @@
+Original commit body from 62c8dba:
+
+When a repository has only root-level files and no subdirectories
+(or when -x excludes all subdirectory contents), the fallback tree
+renderer now shows root-level source and config files instead of
+"(empty)".
+
+The fallback tree function `_format_structure_tree_toplevel` now:
+- Collects root-level source files matching SOURCE_EXTENSIONS patterns
+- Collects root-level config/documentation files (CONFIG/DOCUMENTATION)
+- Respects exclude patterns for root-level files
+- Respects exclude_tests flag for root-level test files (test_*.py)
+
+Fixes issue where repos like qemu-sgabios showed "(empty)" structure
+when run with -x flag, despite having source files at the root level.
