@@ -1,0 +1,21 @@
+Original commit body from f87c362:
+
+Phase 2 of ADR-0003 migration: entrypoint detection is now 100% YAML-driven
+via semantic concept metadata from the FRAMEWORK_PATTERNS phase.
+
+Removed functions (~1,700 lines deleted):
+- Framework-specific: _detect_django, _detect_flask, _detect_fastapi,
+  _detect_express, _detect_nestjs, _detect_spring, _detect_rails,
+  _detect_phoenix, _detect_go_handlers, _detect_laravel, _detect_rust_handlers,
+  _detect_aspnet, _detect_sinatra, _detect_ktor, _detect_vapor, _detect_plug,
+  _detect_hapi, _detect_fastify, _detect_koa, _detect_grape, _detect_tornado,
+  _detect_aiohttp, _detect_slim, _detect_micronaut, _detect_graphql_server
+- Pattern-based: _detect_cli_main, _detect_electron_entrypoints
+- Helper: _is_test_file (moved to slice.py)
+
+Changes:
+- entrypoints.py: Reduced from 2180 to 423 lines
+- detect_entrypoints() now only calls _detect_from_concepts()
+- Tests updated to use meta.concepts instead of name/path patterns
+- Added Entrypoint.to_dict() test for serialization coverage
+- Added pragmas to sketch.py integration paths
