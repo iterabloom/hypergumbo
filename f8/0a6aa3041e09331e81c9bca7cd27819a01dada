@@ -1,0 +1,16 @@
+Original commit body from ab3729b:
+
+When using a token budget (-t), sketch now displays a Rich table showing
+what fraction of the codebase's importance is captured in each section.
+Automatically generates a double-budget sketch for comparison.
+
+The table shows:
+- Entry Points, Data Models: confidence mass (%)
+- Key Symbols, Source Files, Additional Files: symbol mass (%)
+- Source/Additional Files Content: symbol mass (only with --with-source)
+
+Implementation adds:
+- SketchStats dataclass to track metrics during sketch generation
+- stats_out parameter to generate_sketch for optional tracking
+- display_representativeness_table() for Rich table rendering
+- CLI integration to run 2x budget comparison automatically
