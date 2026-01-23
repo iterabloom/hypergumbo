@@ -1,0 +1,20 @@
+Original commit body from 1ab7ff7:
+
+Three fixes for entrypoint detection issues discovered in socketio-chat-example:
+
+1. Case-insensitive HTTP method matching: The JS/TS analyzer stores
+   uppercase HTTP methods (GET, POST) in stable_id, but the entrypoint
+   detector compared against lowercase HTTP_ROUTE_DECORATORS. Now uses
+   case-insensitive matching.
+
+2. Metadata-based route detection: Added fallback detection for routes
+   with meta.http_method set (Express inline handlers like
+   `app.get('/', (req, res) => {})`).
+
+3. Full analyzer support in slice: Changed `hypergumbo slice --entry auto`
+   to use run_all_analyzers() instead of only Python/HTML. This ensures
+   JS/TS routes are detected when running slice without a pre-existing
+   hypergumbo.results.json file.
+
+4. Metadata preservation: Fixed _node_from_dict to preserve the meta
+   field when reconstructing symbols from JSON.
