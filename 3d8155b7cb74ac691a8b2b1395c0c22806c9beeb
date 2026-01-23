@@ -1,0 +1,9 @@
+Original commit body from eb1d081:
+
+Previously, the profile module only detected "jetpack-compose" for Android but
+not the base "android" framework. This caused Android projects to not have
+their framework detected, which prevented the android.yaml lifecycle hook
+patterns from being applied.
+
+Added detection patterns for com.android.application, com.android.library,
+and android.app.Activity in build.gradle files.
