@@ -1,0 +1,5 @@
+Original commit body from 1db0f68:
+
+Update example outputs to reflect the new de-duplicated representativeness
+calculation for Additional Files, which now properly aggregates unique
+symbols rather than double-counting across files.
