@@ -1,0 +1,42 @@
+Original commit body from 7394964:
+
+Add YAML-driven pattern files to replace legacy _detect_* functions:
+
+Python:
+- tornado.yaml: RequestHandler, WebSocketHandler
+- aiohttp.yaml: RouteTableDef, Views, middleware
+
+Node.js:
+- fastify.yaml: routes, hooks, plugins, WebSocket
+
+Ruby:
+- grape.yaml: Grape API routes, entities, helpers
+
+Elixir:
+- plug.yaml: Plug.Router, Plug.Builder, Ecto
+
+Java/Kotlin:
+- micronaut.yaml: @Controller, @Get, messaging, gRPC
+- ktor.yaml: routing DSL, WebSocket, middleware
+
+Swift:
+- vapor.yaml: RouteCollection, Middleware, Fluent ORM
+
+PHP:
+- slim.yaml: PSR-7 routes, middleware, actions
+
+Cross-language:
+- graphql.yaml: JS/TS GraphQL servers
+- graphql-python.yaml: Strawberry, Ariadne, Graphene
+- graphql-ruby.yaml: graphql-ruby gem
+- electron.yaml: IPC handlers, contextBridge, BrowserWindow
+- cli.yaml: Python Click/Typer/Fire
+- cli-js.yaml: Commander.js, yargs, oclif
+- cli-rust.yaml: clap, structopt, argh
+- cli-go.yaml: Cobra, urfave/cli, kong
+- cli-ruby.yaml: Thor, GLI, OptionParser
+
+Also adds RUBY_FRAMEWORKS and ELIXIR_FRAMEWORKS mappings
+to profile.py for Gemfile and mix.exs detection.
+
+Spec now documents 37 framework pattern files (up from 18).
