@@ -1,0 +1,6 @@
+Original commit body from 3bd9e8c:
+
+Adds a final gate job that runs with `if: always()` to ensure the
+workflow properly completes even when jobs are skipped due to
+docs-only changes. This fixes a Forgejo Actions issue where skipped
+jobs leave the workflow stuck in "running" state.
