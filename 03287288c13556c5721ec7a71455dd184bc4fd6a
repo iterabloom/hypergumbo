@@ -1,0 +1,11 @@
+Original commit body from 5071227:
+
+Add backward compatibility for ADR-0003 v1.0.x transition:
+- enrich_symbols() now populates legacy http_method/route_path fields
+  when YAML patterns match route concepts with path/method
+- Legacy fields only populated if not already present (analyzer wins)
+
+Add integration tests proving YAML patterns can replace deprecated code:
+- TestJavaAnalyzerIntegration with 4 tests covering Spring Boot routes
+- Tests verify end-to-end flow: Java analyzer -> enrich_symbols -> concepts
+- Demonstrates deprecated analyzer code removal is feasible
