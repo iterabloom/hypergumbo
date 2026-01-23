@@ -1,0 +1,11 @@
+Original commit body from 0683772:
+
+- Add more patterns to detect Android from build.gradle:
+  - `android {` block (present in all Android projects)
+  - `com.android.tools.build:gradle` dependency
+- Add AndroidManifest.xml detection as definitive indicator
+- Add tests for build.gradle and AndroidManifest.xml detection
+
+This fixes detection gaps in repos like tensorflow and android-ndk-samples
+that use custom Gradle plugin IDs but still have Android DSL blocks or
+AndroidManifest.xml files.
