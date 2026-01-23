@@ -107,6 +107,7 @@ class _FileContext:
     run_id: str
     symbols: list[Symbol]
     edges: list[Edge]
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
@@ -238,13 +239,67 @@ def _find_enclosing_function_d(
     return None  # pragma: no cover - defensive
 
 
-def _get_call_target_name_d(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract the target name from a call_expression."""
-    # First child that is identifier is the function name
+def _extract_import_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases for disambiguation.
+
+    In D:
+        import math = std.math; -> math maps to std.math
+
+    Returns a dict mapping alias names to module paths.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+
+        # Find imported node containing alias = module_fqn
+        imported = _find_child_by_type(node, "imported")
+        if not imported:  # pragma: no cover - defensive
+            continue
+
+        # Check if there's an alias (identifier before =)
+        alias_name = None
+        module_path = None
+
+        for child in imported.children:
+            if child.type == "identifier":
+                alias_name = _node_text(child, source)
+            elif child.type == "module_fqn":
+                module_path = _node_text(child, source)
+
+        if alias_name and module_path:
+            aliases[alias_name] = module_path
+
+    return aliases
+
+
+def _get_call_target_name_d(
+    node: "tree_sitter.Node", source: bytes
+) -> tuple[Optional[str], Optional[str]]:
+    """Extract the target name and receiver from a call_expression.
+
+    Returns (target_name, receiver) where receiver is the module prefix
+    for qualified calls like math.sin().
+    """
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
-    return None  # pragma: no cover - defensive
+            return (_node_text(child, source), None)
+        elif child.type == "type":
+            # Qualified call like math.sin()
+            # type has: identifier (math), '.', identifier (sin)
+            parts = []
+            for subchild in child.children:
+                if subchild.type == "identifier":
+                    parts.append(_node_text(subchild, source))
+            if len(parts) >= 2:
+                return (parts[-1], parts[0])
+            elif len(parts) == 1:  # pragma: no cover - defensive
+                return (parts[0], None)
+    return (None, None)  # pragma: no cover - defensive
 
 
 def analyze_d(repo_root: Path) -> DAnalysisResult:
@@ -277,8 +332,8 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
     # Global symbol registry for cross-file resolution
     global_symbol_registry: dict[str, Symbol] = {}
 
-    # Store parsed files for pass 2
-    parsed_files: list[tuple[str, bytes, object, str]] = []
+    # Store parsed files for pass 2: (rel_path, source, tree, file_stable_id, import_aliases)
+    parsed_files: list[tuple[str, bytes, object, str, dict[str, str]]] = []
 
     # Pass 1: Extract symbols from all files
     for file_path in find_d_files(repo_root):
@@ -293,6 +348,9 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
         rel_path = str(file_path.relative_to(repo_root))
         file_stable_id = f"d:{rel_path}:file:"
 
+        # Extract import aliases for disambiguation
+        import_aliases = _extract_import_aliases(tree, source)
+
         ctx = _FileContext(
             source=source,
             rel_path=rel_path,
@@ -300,6 +358,7 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
             run_id=run_id,
             symbols=symbols,
             edges=[],  # Don't collect edges in pass 1
+            import_aliases=import_aliases,
         )
 
         # Extract symbols only
@@ -321,13 +380,13 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
                 global_symbol_registry[sym.name] = sym
 
         # Store for pass 2
-        parsed_files.append((rel_path, source, tree, file_stable_id))
+        parsed_files.append((rel_path, source, tree, file_stable_id, import_aliases))
 
     # Create resolver from global registry
     resolver = NameResolver(global_symbol_registry)
 
     # Pass 2: Extract edges (imports + calls)
-    for rel_path, source, tree, file_stable_id in parsed_files:
+    for rel_path, source, tree, file_stable_id, import_aliases in parsed_files:
         # Build local symbol map for this file (functions only)
         local_symbols = {s.name: s for s in symbols
                          if s.path == rel_path and s.kind == "function"}
@@ -339,6 +398,7 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
             run_id=run_id,
             symbols=[],  # Not adding symbols in pass 2
             edges=edges,
+            import_aliases=import_aliases,
         )
 
         for node in iter_tree(tree.root_node):  # type: ignore
@@ -348,12 +408,17 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
 
             # Process function calls
             elif node.type == "call_expression":
-                target_name = _get_call_target_name_d(node, source)
+                target_name, receiver = _get_call_target_name_d(node, source)
                 if target_name:
                     caller = _find_enclosing_function_d(node, source, local_symbols)
                     if caller:
+                        # Get path hint from import aliases if receiver is aliased
+                        path_hint: Optional[str] = None
+                        if receiver:
+                            path_hint = import_aliases.get(receiver)
+
                         # Use resolver for callee resolution
-                        lookup_result = resolver.lookup(target_name)
+                        lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
                             confidence = 0.85 * lookup_result.confidence

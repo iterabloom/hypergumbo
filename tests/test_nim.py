@@ -260,3 +260,72 @@ proc hello() =
         assert result.run is not None
         assert result.run.pass_id == "nim-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestNimImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, temp_repo: Path) -> None:
+        """Extracts import alias from 'import as' statement."""
+        from hypergumbo.analyze.nim import _extract_import_aliases
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("nim")
+
+        nim_file = temp_repo / "Main.nim"
+        nim_file.write_text("""
+import strutils as su
+import os as osmod
+
+proc greet(name: string) =
+    echo su.strip(name)
+""")
+
+        source = nim_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "su" in aliases
+        assert aliases["su"] == "strutils"
+        assert "osmod" in aliases
+        assert aliases["osmod"] == "os"
+
+    def test_import_alias_creates_edge(self, temp_repo: Path) -> None:
+        """Import with alias creates import edge."""
+        (temp_repo / "main.nim").write_text("""
+import strutils as su
+
+proc greet(name: string) =
+    echo su.strip(name)
+""")
+
+        result = analyze_nim(temp_repo)
+
+        # Should have import edge for strutils
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        imported = {e.dst for e in import_edges}
+        assert any("strutils" in dst for dst in imported)
+
+    def test_qualified_call_uses_alias(self, temp_repo: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        (temp_repo / "main.nim").write_text("""
+import strutils as su
+
+proc processText(text: string) =
+    echo su.strip(text)
+""")
+
+        result = analyze_nim(temp_repo)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "processText" for s in symbols)
+
+        # Should have call edges from processText
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        proc_calls = [e for e in call_edges if "processText" in e.src]
+        # Should have at least the echo call
+        assert len(proc_calls) >= 1
