@@ -1,0 +1,6 @@
+Original commit body from 24d6b3d:
+
+The sketch command now prints "[hypergumbo sketch] Output: stdout" to
+stderr after generating the sketch. This provides feedback about where
+the output went, consistent with the artifact summary added to the run
+command.
