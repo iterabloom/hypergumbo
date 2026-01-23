@@ -1,0 +1,9 @@
+Original commit body from 3173eed:
+
+Symbols may have absolute paths (e.g., /home/user/repo/src/file.py)
+which would incorrectly appear as "/" in the structure tree.
+
+- Add to_relative() helper that uses Path.relative_to() for robust conversion
+- apply to_relative() in add_file() to catch all path sources
+- Skip paths outside repo_root instead of including invalid paths
+- Simplify code by removing duplicated path conversion logic
