@@ -1,0 +1,9 @@
+Original commit body from af2f8cf:
+
+- Merge duplicate Fixed sections into one
+- Remove internal ADR-0003 v1.1.x roadmap references
+- Condense implementation details into user-facing summaries
+- Add intro sentence for context
+- Reduce from ~150 lines to ~35 lines
+
+Addresses feedback that release notes read like internal dev notes.
