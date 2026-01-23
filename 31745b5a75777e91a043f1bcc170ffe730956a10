@@ -1,0 +1,14 @@
+Original commit body from bfe5ba4:
+
+cmd_test_coverage was only counting direct test→target calls, giving
+~30% coverage when the actual transitive coverage was ~90%.
+
+Changes:
+- Add compute_transitive_test_coverage() helper to ranking.py
+  - Shared BFS algorithm for transitive test reachability
+  - If test_foo() calls helper() which calls core(), both are "tested"
+- Update cmd_test_coverage to use the shared helper
+- Update _estimate_test_coverage in sketch.py to use the shared helper
+
+This ensures both `hypergumbo test-coverage` and `hypergumbo sketch`
+report consistent coverage percentages using the same algorithm.
