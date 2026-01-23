@@ -1,0 +1,10 @@
+Original commit body from 4ca849d:
+
+The tree structure now ensures directory diversity by including one
+representative file from each root-level directory (up to max_root_dirs),
+rather than taking only the top 5 files by centrality.
+
+Previously, directories containing only lower-ranked files would be
+hidden under "[and N other items]" even when the max_root_dirs limit
+wasn't reached. Now each root directory gets its highest-centrality
+file as representative.
