@@ -1,0 +1,10 @@
+Original commit body from 55e8203:
+
+Remove confusing version-by-version migration history and fictional
+version numbers. The section now describes what hypergumbo does:
+- YAML-driven entrypoint detection via framework patterns
+- Pattern types table (decorator, call, DSL, file-based)
+- Links to ADR-0003 for design rationale
+- Scoring formula for auto-slice entry selection
+
+Reduced from ~140 lines to ~45 lines.
