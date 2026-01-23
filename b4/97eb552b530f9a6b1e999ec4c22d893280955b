@@ -1,0 +1,7 @@
+Original commit body from b65234d:
+
+- Add --progress flag to run command (default: on, --no-progress to disable)
+- Show progress indicator with ETA during analysis phases
+- Display phases: profile detection, analyzers, enrichment, linkers,
+  classification, ranking, metrics, entrypoints, sketch precomputation, output
+- Match output format of sketch command: [XXX%] Phase... ETA Xs
