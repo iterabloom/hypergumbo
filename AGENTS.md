@@ -122,6 +122,11 @@ git commit -s -m "feat: description"
      - **Manual:** Push via `git push origin "HEAD:refs/for/dev/<branch>" -o title="..." -o description="..."`, then manually poll CI and merge.
   5. **CI Check:** Wait for remote CI to pass.
   6. **Merge:** If CI is Green, merge immediately. Do not wait for human review unless you are unsure of architecture or PR touches governance files.
+- **Merge Strategy (auto-pr):**
+  - **Default:** Fast-forward merge — preserves full commit bodies and DCO sign-offs.
+  - **If diverged:** Prompts to rebase first (`git rebase origin/dev && ./scripts/auto-pr`).
+  - **`--squash` fallback:** Discouraged, but available for edge cases. Preserves body via git notes, adds `[from <sha>]` to subject.
+- **Git Notes:** Historical commits (Jan 9-22 2026) have bodies restored via git notes. Fetch with `git fetch origin refs/notes/*:refs/notes/*`. View with `git log --show-notes`.
 - **PR Pending Gate (auto-pr only):**
   - `auto-pr` creates `.git/PR_PENDING` while CI runs. It removes the file after merge.
   - Before starting new work: `test -f .git/PR_PENDING && echo "WAIT"`

@@ -75,10 +75,50 @@ The `scripts/auto-pr` script automates the entire PR lifecycle: push, CI polling
 1. **Push** — Pushes your branch using Forgejo's AGit workflow (`refs/for/dev/<branch>`)
 2. **Create PR** — The push automatically creates a PR on Codeberg
 3. **Poll CI** — Waits for CI status checks to complete (polls every 10 seconds)
-4. **Merge** — Automatically merges when CI passes
+4. **Merge** — Uses **fast-forward merge** by default (preserves commit bodies + DCO)
 5. **Cleanup** — Switches back to `dev`, pulls, and deletes the local feature branch
 
 If the remote is unavailable (503 errors, network issues), the PR is **queued locally** and can be pushed later with `./scripts/auto-pr flush`.
+
+### Merge Strategy
+
+**Default: Fast-forward merge** — Your original commits are preserved exactly as-is, including:
+- Full commit message bodies
+- DCO `Signed-off-by` lines
+- Commit SHAs remain unchanged
+
+**If branch has diverged:** The script will prompt you to rebase first:
+```bash
+git fetch origin dev
+git rebase origin/dev
+./scripts/auto-pr
+```
+
+**Emergency fallback: `--squash`** — Only if fast-forward fails, rebasing fails, and it's an emergency:
+```bash
+./scripts/auto-pr --squash
+```
+This will:
+- Warn and ask for confirmation
+- Squash merge with `[from <sha>]` in subject for traceability
+- Attach original commit body as a **git note** on the squash commit
+- Push notes to remote
+
+### Git Notes (for historical commits)
+
+Some historical commits (Jan 9-22 2026) were squash-merged before fast-forward was the default.
+Their original bodies are preserved as git notes.
+
+```bash
+# Fetch notes from remote
+git fetch origin refs/notes/*:refs/notes/*
+
+# View commits with notes
+git log --show-notes
+
+# Show note for specific commit
+git notes show <sha>
+```
 
 ### Requirements
 
@@ -111,6 +151,9 @@ FORGEJO_TOKEN=your_token_here
 
 # Custom title and description
 ./scripts/auto-pr "feat: add new feature" "Detailed description here"
+
+# Force squash merge (emergency only - use only if fast-forward and rebasing both fail)
+./scripts/auto-pr --squash
 
 # Queue management (when remote is unavailable)
 ./scripts/auto-pr list    # Show queued PRs

@@ -9,11 +9,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+- **auto-pr now uses fast-forward merge by default:** Preserves full commit bodies and DCO sign-offs.
+  If branch has diverged, prompts user to rebase. Squash merge is available as `--squash` fallback
+  (discouraged) which preserves body via git notes with `[from <sha>]` in subject for traceability.
+
 ### Fixed
-- **Commit body preservation in squash merge:** Fixed auto-pr to preserve newlines in commit
-  descriptions. Added SQUASH_TEMPLATE.md to `.gitea/` directory (Forgejo reads templates from
-  the base branch). Also added API PATCH to update PR body with actual newlines since git push
-  options cannot contain them.
+- **Restored 193 orphaned commit bodies via git notes:** Commits that were squash-merged between
+  Jan 9-22 2026 lost their bodies. Original bodies recovered from orphaned commits and attached
+  as git notes. View with `git log --show-notes`. Fetch notes: `git fetch origin refs/notes/*:refs/notes/*`.
 
 ### Added
 - **YAML-based main() function detection (ADR-0003 v1.2.x):** Language-level main() entry points
