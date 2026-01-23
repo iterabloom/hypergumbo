@@ -1,0 +1,9 @@
+Original commit body from 4030d96:
+
+Migrate Express-style route detection to the new UsageContext system.
+The JS/TS analyzer now emits UsageContext records for app.get(),
+router.post(), and other call-based route registrations, which are
+matched against YAML patterns in express.yaml.
+
+This extends v1.1.x UsageContext support to JavaScript/TypeScript
+frameworks (Express, Fastify, Koa) following Django in PR #315.
