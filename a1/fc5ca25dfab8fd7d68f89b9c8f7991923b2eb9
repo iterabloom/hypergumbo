@@ -1,0 +1,11 @@
+Original commit body from afc727a:
+
+Extract symbol resolution logic into a shared framework that can be reused
+across all language analyzers. The SymbolResolver provides:
+- Suffix-based module matching (finds backend.app.crud for app.crud)
+- Go-style path hints for disambiguation
+- Lazy index building for performance
+- Confidence tracking for fuzzy vs exact matches
+
+Integrated with Python analyzer, replacing the per-analyzer implementation.
+Designed for reuse in Go, TypeScript, and other language analyzers.
