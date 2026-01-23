@@ -1,0 +1,14 @@
+Original commit body from 1df99ad:
+
+- Add parent_base_class and method_name pattern matching to framework patterns
+- Extract parent class base_classes for Java methods in the analyzer
+- Create android.yaml with lifecycle hook patterns for Activity, Application,
+  Fragment, Service, BroadcastReceiver, and ContentProvider classes
+- Add lifecycle_hook concept handling in entrypoints detection
+- Improve catalog command: skip large directories (>200 entries), show v1.1.x
+  framework patterns, add deprecation notice for packs
+- Remove hardcoded Android detection code in favor of YAML-driven patterns
+
+This makes Android lifecycle detection consistent with the v1.1.x design
+where framework-specific knowledge lives in YAML pattern files rather than
+hardcoded in Python.
