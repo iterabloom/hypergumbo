@@ -1,0 +1,6 @@
+Original commit body from 2bdf9a3:
+
+The old name was misleading - "toplevel" suggests it only shows top-level
+items, but it actually renders a full tree structure. The function is
+called as a fallback when there are no pre-selected important_files,
+so "_fallback" accurately describes its role.
