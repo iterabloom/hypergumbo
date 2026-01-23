@@ -1,0 +1,22 @@
+Original commit body from d8f936d:
+
+Migrate GLSL, WGSL, COBOL, Fish, and GDScript analyzers to use the
+shared NameResolver framework for cross-file call resolution:
+
+- GLSL: Two-pass analysis with NameResolver for function calls
+- WGSL: Two-pass analysis with NameResolver for function calls
+- HLSL: Add pragma comments for defensive code paths
+- COBOL: NameResolver for PERFORM/CALL resolution
+- Fish: Two-pass analysis with cross-file function resolution
+- GDScript: Two-pass analysis, fix bug where edge src was file ID
+
+All analyzers now properly:
+- Use caller function Symbol ID (not file ID) as edge source
+- Use resolver.lookup() for callee resolution
+- Assign confidence 0.85 * lookup_confidence for resolved calls
+- Assign confidence 0.70 for external/unresolved calls
+
+Also fixes generate-architecture to remove code fences from both
+Structure and Configuration sections for better markdown rendering.
+
+Tests: 4317 passing with 100% coverage
