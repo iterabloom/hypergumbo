@@ -1,0 +1,6 @@
+Original commit body from f18fe58:
+
+- Add `explain` command to Quick Reference table
+- Add `explain` example and "See also" note in section 5
+- Add `--tiers` option in section 6 for multiple budget outputs
+- Add `--progress` tip in Performance Tips section
