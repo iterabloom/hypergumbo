@@ -1,0 +1,12 @@
+Original commit body from 3a2f9e2:
+
+Changes:
+- Rename explain --verbose to --with-source for consistency with sketch
+- Add 5 LOC minimum for sketch --with-source (skip trivial files)
+- Exclude license/legal files from Additional Files (LICENSE, COPYING, etc)
+- Exclude hypergumbo.results.json and similar artifacts
+- Exclude git/editor config files (.gitignore, .editorconfig, CODEOWNERS)
+- Fix Additional Files exclusion to use proper fnmatch patterns
+
+This improves the signal-to-noise ratio by filtering out boilerplate
+and auto-generated files that add little value to sketch output.
