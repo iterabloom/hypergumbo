@@ -1,0 +1,13 @@
+Original commit body from 07de054:
+
+Progress indicator changes:
+- --progress is now on by default for sketch command
+- Use --no-progress to disable (via BooleanOptionalAction)
+- Updated README and USE-CASES.md to reflect new defaults
+
+Config extraction telemetry:
+- Added progress_callback parameter to _extract_config_embedding()
+- Propagated callback through _extract_config_hybrid() and _extract_config_info()
+- Shows per-file progress like "Embedding config files [3/15]" during
+  the "Extracting config" phase when using embedding/hybrid modes
+- Matches the telemetry pattern used for Additional Files embedding
