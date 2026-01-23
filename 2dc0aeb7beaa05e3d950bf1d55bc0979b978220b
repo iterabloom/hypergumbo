@@ -1,0 +1,4 @@
+Original commit body from e6509e2:
+
+WGSL (WebGPU Shading Language) was missing from the profile language mapping,
+causing sketch Overview to not count .wgsl files.
