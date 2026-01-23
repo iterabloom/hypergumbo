@@ -1,0 +1,16 @@
+Original commit body from 759beb5:
+
+This PR extends variable type inference to C# and Dart analyzers:
+
+- C# analyzer: Added _extract_param_types helper and var_types tracking
+  in _extract_edges_from_file. Method calls on typed parameters and
+  constructor-assigned variables are now resolved to class methods.
+
+- Dart analyzer: Same pattern - parameter types from function signatures
+  and constructor assignments are tracked, enabling type-inferred
+  method call resolution (e.g., db.save() -> Database.save).
+
+Both implementations follow the pattern established in Java/Kotlin/TypeScript
+(PR #486) and documented in ADR-0006.
+
+Updated ADR-0006 to reflect that C# and Dart now have type inference support.
