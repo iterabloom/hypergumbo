@@ -1,0 +1,10 @@
+Original commit body from 78846a4:
+
+Complete rewrite of USE-CASES.md to prioritize user onboarding:
+- Start with git clone + hypergumbo . (one complete example)
+- Progressive disclosure of features (detail level, queries, slicing)
+- Real workflow examples (code review, onboarding, debugging)
+- Quick reference table at the end
+- Removed verbose explanations in favor of "show don't tell"
+
+Reduced from 457 lines to 185 lines while covering the same features.
