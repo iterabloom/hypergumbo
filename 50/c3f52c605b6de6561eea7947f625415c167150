@@ -1,0 +1,8 @@
+Original commit body from 02fec5b:
+
+Enables DEBUG level logging to stderr, showing:
+- Which centrality path is used (ripgrep vs Python fallback)
+- Pattern count when exceeding 500 limit
+- Timeout retries and fallback decisions
+
+Usage: hypergumbo --debug . -t 4000
