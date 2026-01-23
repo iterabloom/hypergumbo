@@ -1,0 +1,13 @@
+Original commit body from 1ea3d02:
+
+Migrate Flask's programmatic route registration to the UsageContext system.
+The Python analyzer now emits UsageContext records for add_url_rule() calls,
+which are matched against YAML patterns in flask.yaml.
+
+This completes v1.1.x UsageContext support for the major Python web frameworks:
+- Django: path(), re_path(), url()
+- Flask: add_url_rule()
+- FastAPI: already uses decorator-based patterns (v1.0.x)
+
+Also adds comprehensive tests for Flask add_url_rule detection and updates
+CHANGELOG.md with Django, Express, and Flask UsageContext entries.
