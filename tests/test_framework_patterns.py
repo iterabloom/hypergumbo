@@ -7116,3 +7116,113 @@ class TestConfigConventionPatterns:
         cargo_concepts = [c for c in concepts if c["concept"] == "cargo_dependency"]
         assert len(cargo_concepts) == 1
         assert cargo_concepts[0]["framework"] == "config-conventions"
+
+
+class TestPlayFrameworkPatterns:
+    """Tests for Play Framework (Scala) patterns."""
+
+    def test_play_yaml_loads(self) -> None:
+        """Play Framework YAML file loads without error."""
+        clear_pattern_cache()
+        patterns = load_framework_patterns("play")
+        assert patterns is not None
+        assert len(patterns.patterns) > 0
+
+    def test_play_controller_base_class_pattern(self) -> None:
+        """Pattern matches Scala controller extending BaseController."""
+        pattern = Pattern(
+            concept="controller",
+            base_class=r"^(BaseController|AbstractController|InjectedController)$",
+        )
+        symbol = Symbol(
+            id="scala:UserController.scala:5-50:UserController:class",
+            name="UserController",
+            kind="class",
+            language="scala",
+            path="app/controllers/UserController.scala",
+            span=Span(5, 50, 0, 0),
+            meta={"base_classes": ["BaseController"]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "controller"
+        assert result["matched_base_class"] == "BaseController"
+
+    def test_play_action_decorator_pattern(self) -> None:
+        """Pattern matches Play Action decorator."""
+        pattern = Pattern(
+            concept="route",
+            decorator=r"^Action$",
+        )
+        symbol = Symbol(
+            id="scala:UserController.scala:10-15:index:function",
+            name="index",
+            kind="function",
+            language="scala",
+            path="app/controllers/UserController.scala",
+            span=Span(10, 15, 0, 0),
+            meta={"decorators": [{"name": "Action"}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "route"
+
+    def test_play_async_action_pattern(self) -> None:
+        """Pattern matches Play Action.async decorator."""
+        pattern = Pattern(
+            concept="route",
+            decorator=r"^Action\.async$",
+        )
+        symbol = Symbol(
+            id="scala:UserController.scala:20-30:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="scala",
+            path="app/controllers/UserController.scala",
+            span=Span(20, 30, 0, 0),
+            meta={"decorators": [{"name": "Action.async"}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "route"
+
+    def test_play_websocket_pattern(self) -> None:
+        """Pattern matches Play WebSocket handler."""
+        pattern = Pattern(
+            concept="websocket_handler",
+            decorator=r"^WebSocket\.(accept|acceptOrResult)$",
+        )
+        symbol = Symbol(
+            id="scala:ChatController.scala:15-25:socket:function",
+            name="socket",
+            kind="function",
+            language="scala",
+            path="app/controllers/ChatController.scala",
+            span=Span(15, 25, 0, 0),
+            meta={"decorators": [{"name": "WebSocket.accept"}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "websocket_handler"
+
+    def test_enrich_symbols_with_play_controller(self) -> None:
+        """enrich_symbols enriches Play controller with controller concept."""
+        clear_pattern_cache()
+        symbol = Symbol(
+            id="scala:UserController.scala:5-50:UserController:class",
+            name="UserController",
+            kind="class",
+            language="scala",
+            path="app/controllers/UserController.scala",
+            span=Span(5, 50, 0, 0),
+            meta={"base_classes": ["AbstractController"]},
+        )
+
+        enriched = enrich_symbols([symbol], {"play"})
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        controller_concepts = [c for c in concepts if c["concept"] == "controller"]
+        assert len(controller_concepts) == 1
+        assert controller_concepts[0]["framework"] == "play"

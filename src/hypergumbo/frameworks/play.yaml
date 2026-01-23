@@ -1,0 +1,92 @@
+# Play Framework patterns for Scala (ADR-0003)
+#
+# Play Framework is a high-productivity Scala/Java web framework.
+# Routes are defined in conf/routes, controllers extend BaseController.
+#
+# Pattern types:
+# - Definition-based: Match controller base classes and action blocks
+# - Usage-based: Match Action { } DSL patterns
+
+id: play
+language: scala
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Play Action DSL - Action { request => ... }
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^Action(\\.(async))?$"
+      position: "^args\\[last\\]$"
+    extract:
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Play controllers extend BaseController or AbstractController
+  - concept: controller
+    base_class: "^(BaseController|AbstractController|InjectedController)$"
+
+  # Play Action blocks - def index = Action { ... }
+  - concept: route
+    decorator: "^Action$"
+
+  # Play async actions - def fetch = Action.async { ... }
+  - concept: route
+    decorator: "^Action\\.async$"
+
+  # Play ActionBuilder
+  - concept: route
+    decorator: "^(UserAction|AuthAction|SecuredAction|AdminAction)$"
+
+  # Play JSON body parser - Action(parse.json) { ... }
+  - concept: route
+    decorator: "^Action\\(parse\\.(json|tolerantJson|xml|text|raw)\\)$"
+
+  # Play WebSocket handlers
+  - concept: websocket_handler
+    decorator: "^WebSocket\\.(accept|acceptOrResult)$"
+
+  # Play EventSource handlers
+  - concept: event_source
+    decorator: "^EventSource$"
+
+  # Play Forms and validation
+  - concept: middleware
+    decorator: "^Form$"
+
+  # Play authentication helpers
+  - concept: auth
+    decorator: "^(Authenticated|OptionallyAuthenticated|Security\\.Authenticated)$"
+
+  # Play CSRF protection
+  - concept: middleware
+    decorator: "^(CSRFAddToken|CSRFCheck)$"
+
+  # Play silhouette auth (common Play auth library)
+  - concept: auth
+    decorator: "^(SecuredAction|UserAwareAction|UnsecuredAction)$"
+
+  # Play WS (HTTP client)
+  - concept: http_client
+    decorator: "^ws\\.(url|get|post|put|delete)$"
+
+  # Akka Streams integration
+  - concept: streaming
+    decorator: "^Source\\.(single|apply|fromIterator|fromPublisher)$"
+
+  # Play Slick database actions
+  - concept: database
+    decorator: "^db\\.run$"
+
+  # Play cache
+  - concept: cache
+    decorator: "^cache\\.(get|set|remove|getOrElseUpdate)$"
+
+  # Play i18n
+  - concept: middleware
+    decorator: "^Messages$"
+
+linkers:
+  - http
+  - websocket
+  - database_query

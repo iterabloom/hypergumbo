@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Pattern system extended with `symbol_name`, `language`, and `prefix_from_parent` fields
 - Framework pattern types added to `docs/schema.json` for YAML validation
 - YAML linting via `yamllint` in pre-commit hooks
+- Play Framework patterns for Scala (`play.yaml`): controllers, Action blocks, WebSocket handlers
 
 **New Commands & Flags**
 - `hypergumbo test-coverage`: Static coverage estimation via call graph analysis
