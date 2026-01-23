@@ -1,0 +1,11 @@
+Original commit body from c5837bd:
+
+READMEs with paragraphs spanning multiple physical lines (Markdown soft
+breaks) now extract complete sentences instead of cutting off mid-sentence.
+
+Changes:
+- Headers selected during embedding search are expanded with their following
+  content paragraphs (merged together for better context during selection)
+- Header markup is stripped from the final description so the elevator pitch
+  reads naturally (e.g., "## catatonit ##" prefix removed)
+- Sentence continuation logic extends extraction until sentence boundary found
