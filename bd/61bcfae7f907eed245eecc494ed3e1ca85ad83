@@ -1,0 +1,9 @@
+Original commit body from c90b4ad:
+
+- "Source Content" → "Source Files Content"
+- "Additional File Content" → "Additional Files Content"
+
+Also update CHANGELOG with recent changes:
+- -x/--exclude-tests flag for sketch
+- Fixed file content truncation (accurate token estimation)
+- Trailing newline for sketch output
