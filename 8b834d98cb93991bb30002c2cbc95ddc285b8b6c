@@ -1,0 +1,10 @@
+Original commit body from fdff684:
+
+When a caller/callee node is not found in the behavior map, extract
+the file path from the symbol ID to show full context:
+
+Before: <module level> (:479)
+After:  <module level> (tests/test_foo.py:479)
+
+Added _extract_path_from_symbol_id() helper that parses the symbol ID
+format: {lang}:{path}:{start}-{end}:{kind}:{name}
