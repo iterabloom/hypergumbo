@@ -1,0 +1,10 @@
+Original commit body from d1e2175:
+
+- Add monkeypatch.chdir(tmp_path) to catalog tests to avoid scanning
+  full repo when testing catalog command
+- Simplify sketch config extraction test to only test heuristic mode
+  (embedding behavior is thoroughly tested in test_sketch.py)
+
+test_cmd_catalog_shows_all_passes: 11.93s → 0.08s
+test_main_with_catalog: 12.13s → 0.09s
+test_cmd_sketch_config_extraction_modes: 14.55s → 0.17s
