@@ -1,0 +1,27 @@
+Original commit body from d555315:
+
+For compiled language projects (C, C++, Go, Rust) that use shell scripts
+as integration tests, these tests invoke the compiled binary rather than
+calling functions directly. This means call graph analysis shows 0%
+coverage even when the project has comprehensive integration tests.
+
+This change:
+- Adds _detect_project_binary_names() to find executable names from:
+  - meson.build: executable('name', ...)
+  - Makefile: TARGET = name (and similar variables)
+  - CMakeLists.txt: add_executable(name ...)
+  - Cargo.toml: [package] name or [[bin]] name
+  - go.mod: module path (last component)
+  - configure.ac: AC_INIT([name], ...)
+  - Falls back to directory name if compiled language source exists
+
+- Adds _detect_shell_integration_tests() to find shell scripts in test
+  directories that invoke the project binary
+
+- Updates the Tests section to show hybrid coverage like:
+  "~10% estimated coverage + 5 shell integration scripts"
+
+Also improves README intro extraction to complete sentences that span
+paragraph breaks - if the extracted text doesn't end with punctuation,
+it will append words from the next non-empty line until a period is
+reached.
