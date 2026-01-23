@@ -1,0 +1,15 @@
+Original commit body from b2b5b42:
+
+Two fixes for sketch output quality:
+
+1. Elevator pitch truncation now prefers sentence boundaries over word
+   boundaries. Previously, descriptions could be cut mid-sentence like
+   "A container init that is so simple it's effectively brain-dead. This is a"
+   Now truncates at sentence-ending punctuation (. ! ? :) when available,
+   falling back to word boundary if no sentence end is found.
+
+2. License/copying files now enforce a minimum chunk size (80 chars) during
+   semantic config extraction. This prevents undersized chunks like heading-only
+   fragments (e.g., "> Preamble") from appearing in the "Additional context
+   (semantic)" section. Non-license config files retain the ability to have
+   short chunks since they often contain meaningful short strings.
