@@ -1,0 +1,17 @@
+Original commit body from 7b81a70:
+
+Allows sketch to use a pre-computed hypergumbo.results.json file
+instead of re-running analysis. This significantly speeds up
+iterating on different token budgets for large codebases.
+
+Features:
+- New --input argument for sketch command
+- Uses cached profile from results file (no re-detection)
+- Uses cached symbols/edges from results file
+- Staleness warning when source files are newer than results
+- -x flag filters test symbols/edges from cached results
+
+Also adds from_dict methods to Edge, Span, Symbol, LanguageStats,
+and RepoProfile for reconstructing objects from cached JSON.
+
+Updated USE-CASES.md with documentation and command aliases.
