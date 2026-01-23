@@ -1,0 +1,28 @@
+Original commit body from 291c9c3:
+
+Migrate 45 language analyzers to use the shared NameResolver/SymbolResolver/
+ListNameResolver framework for cross-file symbol resolution. This ensures
+consistent call resolution patterns across all languages.
+
+Key changes:
+- All analyzers now use two-pass analysis (symbols first, then edges)
+- Call edges use resolver.lookup() for callee resolution
+- Resolved calls get confidence 0.85 * lookup_confidence
+- Unresolved calls get external IDs with confidence 0.70
+
+New call resolution added to:
+- HLSL: Cross-file function call tracking for DirectX shaders
+- Nix: Function call tracking in Nix expressions
+- Starlark: Function call tracking in Bazel/Buck files
+- PowerShell: Migrated from synthetic IDs to proper resolution
+
+Test coverage:
+- Added TestHLSLCallResolution with 5 tests
+- Added TestNixCallResolution with 3 tests
+- Added TestStarlarkCallResolution with 3 tests
+- Added TestPowerShellCallResolution with 3 tests
+- Added TestAdaCallResolution with 5 tests
+- Added TestDCallResolution with 3 tests
+- Added TestNimCallResolution with 3 tests
+
+All 4312 tests pass with 100% coverage.
