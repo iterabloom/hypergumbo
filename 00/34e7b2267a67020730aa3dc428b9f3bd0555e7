@@ -1,0 +1,19 @@
+Original commit body from c6eea50:
+
+Documents the systematic gap where only 5 of 67 analyzers track imports
+for call resolution disambiguation, despite investing in the shared
+SymbolResolver framework that supports path_hint.
+
+Key findings:
+- Phase 1: JS/TS and Kotlin have bugs (imports tracked but not used)
+- Phase 2: 8 high-value languages should add tracking
+- Phase 3A: 20 more languages where tracking matters (triaged by
+  whether aliased/qualified imports are idiomatic)
+- Phase 3B: 17 languages where tracking doesn't help (dynamic/textual)
+- Category C: 17 config/data formats (N/A)
+
+This ADR was prompted by PR #503 which fixed Python's submodule import
+resolution. The investigation revealed the broader pattern.
+
+References: ADR-0006 (type inference), commits afc727a-d8f936d
+(resolution framework rollout)
