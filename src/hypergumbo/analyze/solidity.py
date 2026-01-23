@@ -181,6 +181,7 @@ class FileAnalysis:
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     current_contract: str = ""
+    import_aliases: dict[str, str] = field(default_factory=dict)  # alias → import_path
 
 
 def _extract_symbols_from_file(
@@ -285,6 +286,49 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_import_aliases(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> tuple[str, dict[str, str]]:
+    """Extract import path and alias mappings from an import directive.
+
+    Solidity import patterns:
+    - import "file.sol";                      -> path, no aliases
+    - import * as Alias from "file.sol";      -> path, {Alias: path}
+    - import {X as Y} from "file.sol";        -> path, {Y: path}
+    - import {X, Y as Z} from "file.sol";     -> path, {Z: path}
+
+    Returns (import_path, {alias: import_path}).
+    """
+    import_path = ""
+    aliases: dict[str, str] = {}
+
+    # Find the import path (string node)
+    string_node = _find_child_by_type(node, "string")
+    if string_node:
+        import_path = _node_text(string_node, source).strip('"\'')
+
+    if not import_path:
+        return "", {}  # pragma: no cover - defensive
+
+    # Look for alias patterns
+    # Pattern: identifier "as" identifier (named import alias)
+    # Pattern: "*" "as" identifier (namespace alias)
+    children = list(node.children)
+    i = 0
+    while i < len(children):
+        child = children[i]
+        if child.type == "as" and i + 1 < len(children):
+            # The next identifier is the alias
+            next_child = children[i + 1]
+            if next_child.type == "identifier":
+                alias = _node_text(next_child, source)
+                aliases[alias] = import_path
+        i += 1
+
+    return import_path, aliases
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -292,26 +336,29 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
-) -> list[Edge]:
-    """Extract edges (calls, imports) from a Solidity file."""
+) -> tuple[list[Edge], dict[str, str]]:
+    """Extract edges (calls, imports) from a Solidity file.
+
+    Returns (edges, import_aliases) where import_aliases maps alias names
+    to import paths for path_hint resolution.
+    """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
     except (OSError, IOError):
-        return []
+        return [], {}
 
     edges: list[Edge] = []
+    import_aliases: dict[str, str] = {}
     file_id = _make_file_id(str(file_path))
 
+    # First pass: extract import aliases
     for node in iter_tree(tree.root_node):
-        # Import directive
         if node.type == "import_directive":
-            # Find the import path (string node)
-            string_node = _find_child_by_type(node, "string")
-            if string_node:
-                import_path = _node_text(string_node, source).strip('"\'')
+            import_path, aliases = _extract_import_aliases(node, source)
+            if import_path:
                 edge = Edge.create(
                     src=file_id,
                     dst=import_path,
@@ -322,9 +369,12 @@ def _extract_edges_from_file(
                     origin_run_id=run.execution_id,
                 )
                 edges.append(edge)
+                import_aliases.update(aliases)
 
+    # Second pass: extract call edges with alias resolution
+    for node in iter_tree(tree.root_node):
         # Function call
-        elif node.type == "call_expression":
+        if node.type == "call_expression":
             func_node = _find_child_by_field(node, "function")
             current_function = _get_enclosing_function_solidity(
                 node, source, local_symbols, global_symbols
@@ -345,8 +395,10 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
                 else:
-                    # Try global symbols via resolver
-                    lookup_result = resolver.lookup(call_name)
+                    # Get path_hint from import aliases if available
+                    path_hint = import_aliases.get(call_name)
+                    # Try global symbols via resolver with path_hint
+                    lookup_result = resolver.lookup(call_name, path_hint=path_hint)
                     if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover - suffix fallback
                         edge = Edge.create(
                             src=current_function.id,
@@ -359,7 +411,7 @@ def _extract_edges_from_file(
                         )
                         edges.append(edge)
 
-    return edges
+    return edges, import_aliases
 
 
 def analyze_solidity(repo_root: Path) -> SolidityAnalysisResult:
@@ -413,7 +465,8 @@ def analyze_solidity(repo_root: Path) -> SolidityAnalysisResult:
     all_edges: list[Edge] = []
     for sol_file in sol_files:
         local_symbols = file_analyses[sol_file].symbol_by_name
-        edges = _extract_edges_from_file(sol_file, parser, local_symbols, global_symbols, run, resolver)
+        edges, import_aliases = _extract_edges_from_file(sol_file, parser, local_symbols, global_symbols, run, resolver)
+        file_analyses[sol_file].import_aliases = import_aliases
         all_edges.extend(edges)
 
     # Update run with timing

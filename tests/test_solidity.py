@@ -357,10 +357,11 @@ class TestSolidityEdgeCases:
         # Create a fake file path that doesn't exist
         fake_path = temp_repo / "nonexistent.sol"
 
-        # This should trigger OSError and return empty list
-        result = _extract_edges_from_file(fake_path, parser, {}, {}, run)
+        # This should trigger OSError and return empty tuple
+        edges, aliases = _extract_edges_from_file(fake_path, parser, {}, {}, run)
 
-        assert result == []
+        assert edges == []
+        assert aliases == {}
 
     def test_find_child_by_type_returns_none(self, temp_repo: Path) -> None:
         """_find_child_by_type returns None when child type not found."""
@@ -414,6 +415,46 @@ contract Token {
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 0
+
+
+class TestSolidityImportAliases:
+    """Tests for Solidity import alias tracking (ADR-0007)."""
+
+    def test_extracts_named_import_alias(self, temp_repo: Path) -> None:
+        """Extracts aliased imports from named import statements."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {IERC20 as Token} from "./interfaces/IERC20.sol";
+
+contract MyToken {
+    Token public token;
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        # Import edge should be created for the aliased symbol
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
+
+    def test_extracts_namespace_import_alias(self, temp_repo: Path) -> None:
+        """Extracts aliased imports from namespace import statements."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import * as Utils from "./utils.sol";
+
+contract MyToken {}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        # Import edge should be created for the namespace import
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
 
 
 class TestSoliditySignatureExtraction:
