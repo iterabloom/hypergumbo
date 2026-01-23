@@ -1,0 +1,11 @@
+Original commit body from 3a0f651:
+
+Cache the generated sketch to a .md file in the cache directory with a
+filename that encodes the token budget and non-default flags:
+- sketch.md (no budget)
+- sketch.4000.md (4000 token budget)
+- sketch.4000.notests.md (with --exclude-tests)
+- sketch.4000.withsource.md (with --with-source)
+
+The cached sketch contains only the clean markdown without the runtime
+summary, making it easy to copy/paste into LLM conversations.
