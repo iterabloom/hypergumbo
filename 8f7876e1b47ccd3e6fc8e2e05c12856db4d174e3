@@ -1,0 +1,6 @@
+Original commit body from 6cd596e:
+
+The run command now prints a summary listing all generated files at the
+end of execution. Shows the main output file plus any tier files that
+were created (e.g., 4k, 16k, 64k), making it clear where all outputs
+were written.
