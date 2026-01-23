@@ -1,0 +1,9 @@
+Original commit body from ced862d:
+
+Migrate Django URL routing detection to the new UsageContext system.
+The Python analyzer now emits UsageContext records for path(), re_path(),
+and url() calls, which are matched against YAML patterns in django.yaml
+during the enrichment phase.
+
+This is the first framework to use usage-based patterns, demonstrating
+the v1.1.x pattern matching system for call-based frameworks.
