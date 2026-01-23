@@ -1,0 +1,9 @@
+Original commit body from 42b7102:
+
+When the number of symbols is large (e.g., 29,036 for TensorFlow),
+passing the combined regex pattern on the command line exceeds the
+kernel's argument list size limit (E2BIG / Errno 7).
+
+The fix writes the pattern to a temporary file and uses ripgrep's
+-f flag to read the pattern from the file. A finally block ensures
+the temp file is always cleaned up.
