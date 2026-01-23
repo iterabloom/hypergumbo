@@ -1,0 +1,27 @@
+Original commit body from eee7c62:
+
+Previously, the representativeness metric for Additional Files summed
+per-file normalized scores (in-degree/filesize), which didn't accurately
+represent "how much symbol connectivity is covered." If README.md and
+CONTRIBUTING.md both mentioned `foo`, we were double-counting foo's
+contribution.
+
+Now we:
+1. Track which symbols are mentioned in each file (symbols_per_file)
+2. When calculating representativeness, collect unique symbols across
+   all selected files
+3. Sum in-degrees only for those unique symbols (no double-counting)
+
+This is analogous to how Source Files representativeness counts each
+symbol definition only once, regardless of how many times it appears.
+
+Also sums in-degrees for symbols with the same name (e.g., foo in
+module1.py and foo in module2.py) since a doc mentioning "foo"
+documents all symbols with that name.
+
+Changes:
+- Add CentralityResult dataclass with normalized_scores, symbols_per_file,
+  and name_to_in_degree fields
+- Update compute_symbol_mention_centrality_batch to return CentralityResult
+- Update _format_additional_files to use de-duplicated in-degree sum
+- Fix cli.py run_behavior_map to use new return type
