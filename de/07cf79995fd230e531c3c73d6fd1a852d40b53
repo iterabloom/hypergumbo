@@ -1,0 +1,10 @@
+Original commit body from ad5b56c:
+
+Query commands (search, routes, explain, symbols, test-coverage, slice) now:
+- Auto-discover cached behavior maps from ~/.cache/hypergumbo/
+- Auto-run analysis if no cached results exist
+- Report artifact sources (cached vs freshly generated)
+
+Additional improvements:
+- Slice output includes entry name in filename (slice.<entry>.json) to prevent overwrites
+- Removed misleading "Requires: Run 'hypergumbo run' first" from help text
