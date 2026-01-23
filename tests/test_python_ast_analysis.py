@@ -3176,6 +3176,78 @@ class TestSuffixBasedModuleMatching:
         assert len(resolved) >= 1, f"Expected resolved import edge, got: {import_dsts}"
 
 
+    def test_nested_module_import_with_method_call(self, tmp_path: Path) -> None:
+        """Module import with method call resolves in nested structure.
+
+        This tests the exact FastAPI pattern:
+            from app import crud  # Module import
+            crud.create_item()    # Method call on imported module
+
+        Where the directory structure is backend/app/crud.py.
+        This is Case 2e in py.py's _process_call().
+        """
+        # Create a nested directory structure like FastAPI template
+        backend = tmp_path / "backend"
+        app = backend / "app"
+        app.mkdir(parents=True)
+
+        # Create __init__.py files
+        (backend / "__init__.py").write_text("")
+        (app / "__init__.py").write_text("")
+
+        # Create crud.py with functions
+        (app / "crud.py").write_text(
+            "def create_item(session, item_in):\n"
+            "    '''Create an item in the database.'''\n"
+            "    return {'name': item_in}\n"
+            "\n"
+            "def delete_item(session, item_id):\n"
+            "    '''Delete an item.'''\n"
+            "    pass\n"
+        )
+
+        # Create routes/items.py that imports the module and calls its functions
+        routes = app / "routes"
+        routes.mkdir()
+        (routes / "__init__.py").write_text("")
+        (routes / "items.py").write_text(
+            "from app import crud\n"
+            "\n"
+            "def create_item_handler(session, item_in):\n"
+            "    '''Route handler that calls crud.create_item().'''\n"
+            "    return crud.create_item(session=session, item_in=item_in)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges from the handler
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Find the handler symbol
+        nodes = {n["id"]: n for n in data["nodes"]}
+        handler_edges = [e for e in call_edges if "create_item_handler" in e["src"]]
+
+        # Should have at least one call edge from the handler
+        assert len(handler_edges) >= 1, (
+            f"Expected call edge from handler, got none. "
+            f"All call edges: {call_edges}"
+        )
+
+        # The target should be resolved to crud.py, not unresolved
+        crud_call = [e for e in handler_edges if "crud" in e["dst"].lower() or "create_item" in e["dst"]]
+        assert len(crud_call) >= 1, (
+            f"Expected edge to crud.create_item, got: {handler_edges}"
+        )
+
+        # Should NOT be unresolved
+        for edge in crud_call:
+            assert "unresolved" not in edge["dst"], (
+                f"Expected resolved target, got unresolved: {edge['dst']}"
+            )
+
+
 class TestUnresolvedEdgeEmission:
     """Tests for unresolved edge emission.
 

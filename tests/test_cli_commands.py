@@ -1015,6 +1015,190 @@ def test_cmd_slice_list_entries_none(tmp_path: Path, capsys) -> None:
     assert "No entrypoints detected" in out
 
 
+def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
+    """Test --list-entries with --exclude-tests filters out test entrypoints."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_main.py:1-5:test_main:function",
+                "name": "test_main",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]},
+            },
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/user"}]},
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    # First test WITHOUT --exclude-tests: should show all entrypoints
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = True
+    args.reverse = False
+    args.language = None
+    args.max_tier = None
+
+    result = cmd_slice(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "test_main" in out or "tests/test_main" in out
+
+    # Now test WITH --exclude-tests: should NOT show test entrypoints
+    args.exclude_tests = True
+
+    result = cmd_slice(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "test_main" not in out
+    assert "tests/test_main" not in out
+    assert "excluding tests" in out
+    # Should still show non-test entrypoint
+    assert "get_user" in out or "api.py" in out
+
+
+def test_cmd_slice_list_entries_max_tier(tmp_path: Path, capsys) -> None:
+    """Test --list-entries with --max-tier filters out high-tier entrypoints."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "supply_chain_tier": 1,
+                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/user"}]},
+            },
+            {
+                # Vendor entrypoint with explicit route concept to ensure detection
+                "id": "c:deps/hiredis/examples/api.c:1-5:vendor_api:function",
+                "name": "vendor_api",
+                "kind": "function",
+                "language": "c",
+                "path": "deps/hiredis/examples/api.c",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "supply_chain_tier": 3,
+                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/vendor"}]},
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    # Test with --max-tier 1: should NOT show tier 3 entrypoints
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = True
+    args.reverse = False
+    args.language = None
+    args.max_tier = 1
+
+    result = cmd_slice(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # Should show tier 1 entrypoint
+    assert "get_user" in out or "api.py" in out
+    # Should NOT show tier 3 (vendor) entrypoint
+    assert "hiredis" not in out
+    assert "max-tier 1" in out
+
+
+def test_cmd_slice_list_entries_all_filtered_out(tmp_path: Path, capsys) -> None:
+    """Test --list-entries when all entrypoints are filtered out."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                # This entrypoint is in a test file
+                "id": "python:tests/test_main.py:1-5:test_main:function",
+                "name": "test_main",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "supply_chain_tier": 1,
+                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]},
+            },
+            {
+                # This entrypoint is in vendor code (tier 3) with explicit route concept
+                "id": "c:deps/vendor/api.c:1-5:vendor_handler:function",
+                "name": "vendor_handler",
+                "kind": "function",
+                "language": "c",
+                "path": "deps/vendor/api.c",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "supply_chain_tier": 3,
+                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/vendor"}]},
+            },
+        ],
+        "edges": [],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    # Test with both --exclude-tests and --max-tier 1: should filter out ALL entrypoints
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = True
+    args.list_entries = True
+    args.reverse = False
+    args.language = None
+    args.max_tier = 1
+
+    result = cmd_slice(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # Should show "No entrypoints detected" with filter messages
+    assert "No entrypoints detected" in out
+    assert "--exclude-tests active" in out
+    assert "--max-tier 1 active" in out
+
+
 def test_cmd_slice_auto_entry(tmp_path: Path, capsys) -> None:
     """Test --entry auto uses detected entrypoints."""
     behavior_map = {

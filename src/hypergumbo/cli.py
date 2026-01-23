@@ -730,6 +730,7 @@ def _node_from_dict(d: Dict[str, Any]) -> Symbol:
         stable_id=d.get("stable_id"),
         shape_id=d.get("shape_id"),
         meta=d.get("meta"),  # Preserve metadata for entrypoint detection
+        supply_chain_tier=d.get("supply_chain_tier", 1),  # Default tier 1 (first-party)
     )
 
 
@@ -862,11 +863,44 @@ def cmd_slice(args: argparse.Namespace) -> int:
     # Handle --list-entries: show detected entrypoints and exit
     if args.list_entries:
         entrypoints = detect_entrypoints(nodes, edges)
-        if not entrypoints:
-            print("[hypergumbo slice] No entrypoints detected")
+
+        # Apply --exclude-tests and --max-tier filters to entrypoint list
+        # Build lookup from symbol_id to Symbol for filtering
+        symbol_lookup = {node.id: node for node in nodes}
+        exclude_tests = getattr(args, "exclude_tests", False)
+        max_tier = getattr(args, "max_tier", None)
+
+        filtered_entrypoints = []
+        for ep in entrypoints:
+            sym = symbol_lookup.get(ep.symbol_id)
+            if sym is None:
+                continue  # pragma: no cover - symbol should exist
+
+            # Filter out test files if --exclude-tests
+            if exclude_tests and sym.path and _is_test_path(sym.path):
+                continue
+
+            # Filter out entries with tier > max_tier if --max-tier set
+            if max_tier is not None and sym.supply_chain_tier > max_tier:
+                continue
+
+            filtered_entrypoints.append(ep)
+
+        if not filtered_entrypoints:
+            filter_msg = ""
+            if exclude_tests:
+                filter_msg += " (--exclude-tests active)"
+            if max_tier is not None:
+                filter_msg += f" (--max-tier {max_tier} active)"
+            print(f"[hypergumbo slice] No entrypoints detected{filter_msg}")
         else:
-            print(f"[hypergumbo slice] Detected {len(entrypoints)} entrypoint(s):")
-            for ep in entrypoints:
+            filter_msg = ""
+            if exclude_tests:
+                filter_msg += " [excluding tests]"
+            if max_tier is not None:
+                filter_msg += f" [max-tier {max_tier}]"
+            print(f"[hypergumbo slice] Detected {len(filtered_entrypoints)} entrypoint(s){filter_msg}:")
+            for ep in filtered_entrypoints:
                 print(f"  [{ep.kind.value}] {ep.label} (confidence: {ep.confidence:.2f})")
                 print(f"    {ep.symbol_id}")
         _print_output_summary("slice --list-entries", stdout_output=True)
