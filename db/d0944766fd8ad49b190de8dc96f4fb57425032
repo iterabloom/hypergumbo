@@ -1,0 +1,21 @@
+Original commit body from a4aa5fd:
+
+Adds a new language convention pattern file that detects test functions
+across multiple languages and frameworks:
+
+- Python: pytest/unittest test_* functions, @pytest.fixture
+- Go: Test*, Benchmark*, Example* functions
+- Java/Kotlin: @Test, @BeforeEach, @AfterEach, @ParameterizedTest
+- JavaScript/TypeScript: test* functions (jest/mocha/vitest)
+- Ruby: test_* methods (Minitest)
+- Rust: #[test], #[bench] attributes
+- C#: [Test], [Fact], [Theory], [TestMethod] (NUnit/xUnit/MSTest)
+- Swift: test* methods, setUp/tearDown (XCTest)
+- PHP: test* methods, @test annotation (PHPUnit)
+
+The patterns use decorator matching for annotation-based frameworks
+and symbol_name matching for naming convention-based frameworks.
+This enables filtering test code from production code in slices.
+
+Also updates enrich_symbols() to always load test-frameworks.yaml
+alongside main-functions.yaml for language convention detection.
