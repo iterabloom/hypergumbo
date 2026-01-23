@@ -241,7 +241,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 | julia.py | `import as` | `import Pkg as P` then `P.add()` | ✅ Done |
 | r_lang.py | `pkg::func` | Qualified calls `dplyr::filter()` | |
 | vhdl.py | `library`, `use` | `use ieee.std_logic_1164.all;` (Ada-like package system) | |
-| zig.py | `@import` | `const std = @import("std");` then `std.debug.print()` | |
+| zig.py | `@import` | `const std = @import("std");` then `std.debug.print()` | ✅ Done |
 
 **Phase 3B: Import tracking DOESN'T MATTER (dynamic or textual)**
 

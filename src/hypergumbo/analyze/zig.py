@@ -357,11 +357,19 @@ def _extract_edges_from_tree(
     edges: list[Edge],
     resolver: NameResolver,
     run: "AnalysisRun",
-) -> None:
+    import_aliases: Optional[dict[str, str]] = None,
+) -> dict[str, str]:
     """Extract edges from an AST using iterative traversal.
 
     This avoids nested function closure issues with loop variables.
+
+    Returns a dict of import aliases (var_name -> module_path) for path_hint resolution.
+    In Zig, imports look like: const std = @import("std");
+    So 'std' becomes an alias for the "std" module.
     """
+    if import_aliases is None:
+        import_aliases = {}
+
     # Stack: (node, container_name, current_function_sym)
     stack: list[tuple["tree_sitter.Node", Optional[str], Optional[Symbol]]] = [
         (root_node, None, None)
@@ -414,6 +422,10 @@ def _extract_edges_from_tree(
                 if builtin_id and _node_text(builtin_id, source) == "@import":
                     module_name = _get_import_module(builtin_node, source)
                     if module_name:
+                        # Track the import alias (e.g., const std = @import("std"))
+                        if var_name:
+                            import_aliases[var_name] = module_name
+
                         # Create file-level import edge
                         src_id = f"zig:{rel_path}:0-0:file:file"
                         dst_id = f"zig:{module_name}:0-0:{module_name}:module"
@@ -455,9 +467,21 @@ def _extract_edges_from_tree(
             if current_function_sym:
                 call_name = _get_call_name(node, source)
                 if call_name:
-                    # Try to resolve the target using NameResolver
+                    # Check if this is a field_expression call (e.g., std.debug.print)
+                    # to get path_hint from import aliases
+                    path_hint: Optional[str] = None
+                    field_node = _find_child_by_type(node, "field_expression")
+                    if field_node:
+                        # Get the first identifier (receiver)
+                        first_id = _find_child_by_type(field_node, "identifier")
+                        if first_id:
+                            receiver = _node_text(first_id, source)
+                            if receiver in import_aliases:
+                                path_hint = import_aliases[receiver]
+
+                    # Try to resolve the target using NameResolver with path_hint
                     base_confidence = 0.9
-                    lookup_result = resolver.lookup(call_name)
+                    lookup_result = resolver.lookup(call_name, path_hint=path_hint)
                     if lookup_result.found and lookup_result.symbol:
                         dst_id = lookup_result.symbol.id
                         confidence = base_confidence * lookup_result.confidence
@@ -482,6 +506,8 @@ def _extract_edges_from_tree(
         # Add children to stack (in reverse to maintain order)
         for child in reversed(node.children):
             stack.append((child, container, current_function_sym))
+
+    return import_aliases
 
 
 def analyze_zig(root: Path) -> ZigAnalysisResult:
@@ -552,6 +578,7 @@ def analyze_zig(root: Path) -> ZigAnalysisResult:
         rel_path = str(file_path.relative_to(root))
 
         # Extract edges from this file using iterative traversal
+        # Returns import_aliases for this file (not used cross-file currently)
         _extract_edges_from_tree(
             tree.root_node, source, rel_path, edges, resolver, run
         )

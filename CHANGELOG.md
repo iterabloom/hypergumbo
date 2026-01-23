@@ -46,7 +46,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - ADR-0007: Import tracking for cross-file call resolution
   - Phase 1 complete: JS/TS, Kotlin bug fixes
   - Phase 2 complete: Rust, C#, Ruby, Elixir, Swift, PHP, Scala, Dart
-  - Phase 3A in progress: Ada, Agda, Clojure, D, Elm, F#, Groovy, Haskell, Julia, Nim, OCaml, Solidity, Starlark (13 of 20 done)
+  - Phase 3A in progress: Ada, Agda, Clojure, D, Elm, F#, Groovy, Haskell, Julia, Nim, OCaml, Solidity, Starlark, Zig (14 of 20 done)
 
 **CLI Ergonomics**
 - Auto-run analysis for query commands when no cached results exist

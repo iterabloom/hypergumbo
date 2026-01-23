@@ -255,6 +255,44 @@ class TestZigEdgeExtraction:
             assert 0.0 <= edge.confidence <= 1.0
 
 
+class TestZigImportAliases:
+    """Tests for Zig import alias tracking (ADR-0007)."""
+
+    def test_extracts_import_alias(self, tmp_path: Path) -> None:
+        """Tracks const name = @import('module') as alias."""
+        from hypergumbo.analyze.zig import _extract_edges_from_tree
+        from hypergumbo.ir import AnalysisRun
+        from hypergumbo.symbol_resolution import NameResolver
+        import tree_sitter
+        import tree_sitter_zig
+
+        source = b"""
+const std = @import("std");
+const mymod = @import("mymodule.zig");
+
+pub fn main() void {
+    std.debug.print("hello", .{});
+}
+"""
+        language = tree_sitter.Language(tree_sitter_zig.language())
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(source)
+
+        run = AnalysisRun.create(pass_id="test", version="0.1.0")
+        resolver = NameResolver({})
+        edges: list = []
+
+        import_aliases = _extract_edges_from_tree(
+            tree.root_node, source, "test.zig", edges, resolver, run
+        )
+
+        # Should track import aliases
+        assert "std" in import_aliases
+        assert import_aliases["std"] == "std"
+        assert "mymod" in import_aliases
+        assert import_aliases["mymod"] == "mymodule.zig"
+
+
 class TestZigAnalysisRun:
     """Tests for analysis run metadata."""
 
