@@ -1,0 +1,12 @@
+Original commit body from d2edb70:
+
+The Python fallback was doing N regex searches per file (where N is
+the number of symbols). This caused multi-hour processing times on
+large repos like TensorFlow.
+
+Fix: build a single combined regex pattern \b(sym1|sym2|...)\b and
+use findall() to match all symbols in one pass per file.
+
+Benchmarks (estimated for TensorFlow with ~225K symbols, ~3K files):
+- Before: O(225K * 3K) = ~675M regex operations
+- After: O(3K) = ~3K regex operations (one per file)
