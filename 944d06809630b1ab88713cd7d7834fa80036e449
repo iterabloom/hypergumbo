@@ -1,0 +1,23 @@
+Original commit body from 1afd53d:
+
+Remove deprecated analyzer-level route detection from Java analyzer:
+- Remove _detect_spring_boot_route(), _extract_spring_route_path(),
+  _parse_request_mapping(), _detect_jaxrs_route() functions (~180 lines)
+- Remove deprecation warning infrastructure
+- Remove SPRING_MAPPING_ANNOTATIONS and JAXRS_HTTP_ANNOTATIONS constants
+
+Migrate tests to use YAML pattern enrichment:
+- TestSpringBootRouteDetection now calls enrich_symbols() after analyzer
+- TestJaxRsRouteDetection now calls enrich_symbols() after analyzer
+- Remove TestRouteDetectionDeprecation (no longer applicable)
+
+Add JAX-RS framework patterns:
+- New jax-rs.yaml with patterns for @GET, @POST, @PUT, @DELETE, @PATCH
+- Includes @Path annotation for resource_path concept
+
+Enhance framework_patterns.py:
+- Add multi-path extraction with "|" syntax (e.g., "args[0]|kwargs.value")
+- Add enum-style value parsing ("RequestMethod.GET" -> "GET")
+- Update spring-boot.yaml to use fallback paths
+
+This completes ADR-0003 v1.0.x for the Java analyzer.
