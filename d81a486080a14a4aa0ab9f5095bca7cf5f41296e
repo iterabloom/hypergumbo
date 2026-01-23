@@ -1,0 +1,11 @@
+Original commit body from 87cb0c2:
+
+Python complex number literals (like 1+2j) are now serialized as strings
+instead of causing TypeError during JSON serialization. This fixes analysis
+of codebases like tensorflow that contain complex number literals.
+
+The fix handles both:
+- Pure imaginary constants (2j) -> "2j"
+- Complex literals (1+2j) -> "(1+2j)"
+
+Discovered via 12.11 bakeoff when analyzing tensorflow.
