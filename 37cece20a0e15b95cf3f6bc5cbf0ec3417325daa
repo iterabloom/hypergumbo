@@ -1,0 +1,10 @@
+Original commit body from f081c73:
+
+- Refactor _run_analysis() to use data-driven LANGUAGE_ANALYZERS registry
+- Add progress_callback parameter for per-language progress reporting
+- Show "Analyzing <language>" with current/total during analysis phase
+- Reduce code from ~500 lines of if-statements to ~80 lines using loop
+- Also show full artifact paths in output summary (.resolve())
+
+The refactor makes it easy to add new language analyzers and provides
+granular progress feedback during the static analysis phase.
