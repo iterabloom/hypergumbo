@@ -1,0 +1,22 @@
+Original commit body from 6ffb31e:
+
+Add infrastructure for usage-based framework pattern matching, enabling
+YAML-driven route detection for call-based frameworks like Django, Express,
+and Go Gin.
+
+Core changes:
+- Add UsageContext dataclass to ir.py with create() and to_dict() methods
+- Add usage_contexts field to AnalysisResult in analyze/base.py
+- Add UsagePatternSpec class for matching against usage contexts
+- Extend Pattern class with matches_usage() method and extract field
+- Add extraction DSL: literal:VALUE, metadata.path, transforms
+- Add two-phase enrichment to enrich_symbols() (definition + usage)
+- Update FrameworkPatternDef.from_dict() to parse usage patterns
+
+Test coverage:
+- Add tests for UsageContext creation and serialization
+- Add tests for UsagePatternSpec matching
+- Add tests for extract_usage_value() DSL
+- Add tests for Pattern.matches_usage()
+- Add tests for enrich_symbols() with usage_contexts parameter
+- 100% coverage maintained (3758 tests passing)
