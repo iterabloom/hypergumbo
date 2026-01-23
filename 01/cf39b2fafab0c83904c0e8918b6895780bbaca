@@ -1,0 +1,18 @@
+Original commit body from c9caeab:
+
+This commit tests the fix we just implemented for preserving commit
+message bodies during squash merge. The fix had two components:
+
+1. Added .forgejo/default_merge_message/SQUASH_TEMPLATE.md which tells
+   Forgejo to use ${PullRequestTitle} and ${PullRequestDescription}
+   placeholders when constructing squash merge commit messages.
+
+2. Fixed scripts/auto-pr to preserve newlines in commit descriptions:
+   - Removed the tr/sed pipeline that collapsed the body to one line
+   - Removed explicit newline stripping in do_pr() and flush_queue()
+   - Added proper JSON escaping for newlines in the vPR queue
+
+If this commit body appears in the final squash merge commit on dev,
+then the fix is working correctly. The previous behavior would have
+collapsed this entire message into a single ~118 character line
+containing only the subject and Co-authored-by trailers.
