@@ -1,0 +1,8 @@
+Original commit body from de8d9cb:
+
+The http linker was falling back to stable_id when http_method was missing,
+treating the semantic hash as an HTTP method. This masked enrichment failures.
+
+Now if route method is missing (no concept and no http_method metadata),
+the route can still match on path alone, making the missing data visible
+rather than silently using incorrect data.
