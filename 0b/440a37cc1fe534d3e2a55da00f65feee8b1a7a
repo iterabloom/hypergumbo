@@ -1,0 +1,13 @@
+Original commit body from 4a910c2:
+
+Repos with many entrypoints (e.g., redis with 158 main() functions)
+previously produced 0 edges in compact mode because all max_symbols
+slots were consumed by force-included entrypoints, leaving no room
+for the connectivity-aware algorithm to add bridge nodes.
+
+Now entrypoints are capped to max_symbols // 2 (minimum 1), keeping
+the highest-confidence entries. The remaining budget is used by
+connectivity-aware selection to add nodes that connect the subgraph.
+
+Before: redis compact → 158 nodes, 0 edges
+After:  redis compact → 100 nodes, 175 edges
