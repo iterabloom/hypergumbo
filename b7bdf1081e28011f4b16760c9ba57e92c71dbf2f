@@ -1,0 +1,5 @@
+Original commit body from af9cce5:
+
+- Remove redundant "Current implementation includes..." section
+- Add reference to §4 and docs/LANGUAGES.md, docs/LINKERS.md
+- Standardize on "67 languages" (was inconsistent 65+/67)
