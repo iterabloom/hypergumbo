@@ -1,0 +1,12 @@
+Original commit body from 47a43fa:
+
+Instead of showing confusing raw symbol IDs like
+"python:/path/to/file.py:1-1:file:file", file-level symbols
+are now displayed as "<module level>" in:
+
+- cmd_explain (callers and callees)
+- cmd_symbols (symbol table)
+- cmd_search (search results)
+- cmd_test_coverage (test names, hot spots, cold spots)
+
+Added _format_symbol_display_name() helper for consistent formatting.
