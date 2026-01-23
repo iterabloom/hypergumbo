@@ -1,0 +1,13 @@
+Original commit body from 972ebd0:
+
+- Remove Domain Vocabulary section (TF-IDF terms were too generic)
+- Reorder sections: Entry Points now comes before Source Files
+- Implement --with-source budget rebalancing:
+  - Source Files list: 15% (down from 66%/25%)
+  - Key Symbols: 30% (down from 80%)
+  - Additional Files list: 10% (down from ~100%)
+  - Source Content: 70%
+- Add all-or-nothing per file for Source Content (no truncation mid-file)
+- Add new Additional File Content section for --with-source mode
+- Fix README URLs to point to dev branch instead of main
+- Update spec to match ADR-0005 section order
