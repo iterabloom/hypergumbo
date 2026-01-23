@@ -1,0 +1,13 @@
+Original commit body from 9808041:
+
+- Update ADR-0004 status from Proposed to Accepted
+- Update CHANGELOG with ADR-0004 implementation summary
+- Change LANGUAGE_EXTENSIONS import in sketch.py to use taxonomy directly
+  for consistency (instead of via profile)
+
+All 5 phases of ADR-0004 file taxonomy implementation are now complete:
+1. FileRole enum and LanguageSpec dataclass in taxonomy.py
+2. LANGUAGE_EXTENSIONS derived from LANGUAGES registry
+3. SOURCE_EXTENSIONS derived from ANALYZABLE languages
+4. is_additional_file_candidate() for role-based filtering
+5. Cleanup and documentation
