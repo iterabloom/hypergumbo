@@ -359,8 +359,9 @@ class TestPattern:
 
         result = pattern.matches(symbol)
         assert result is not None
-        # Should not have path extracted (invalid index)
-        assert "path" not in result
+        # Path is set to empty string when extraction fails - this allows
+        # prefix_from_parent to work with decorators that have no path arg
+        assert result.get("path") == ""
 
     def test_pattern_extract_path_malformed_index(self) -> None:
         """Pattern handles malformed array index gracefully."""
@@ -386,8 +387,8 @@ class TestPattern:
 
         result = pattern.matches(symbol)
         assert result is not None
-        # Should not have path extracted (malformed index)
-        assert "path" not in result
+        # Path is set to empty string when extraction fails
+        assert result.get("path") == ""
 
     def test_pattern_extract_method_single_value(self) -> None:
         """Pattern extracts HTTP method from single value (not list)."""
@@ -1767,13 +1768,14 @@ class TestNestJSPatterns:
 
         enriched = enrich_symbols([controller, method], {"nestjs"})
 
-        # Check method route has just its own path (no prefix)
+        # Check method route path is normalized with leading slash
+        # Even when controller has no prefix, paths are normalized
         method_concepts = enriched[1].meta.get("concepts", [])
         route_concept = next(
             (c for c in method_concepts if c.get("concept") == "route"), None
         )
         assert route_concept is not None
-        assert route_concept["path"] == "health"
+        assert route_concept["path"] == "/health"
 
 
 class TestSpringPatterns:
@@ -2251,8 +2253,8 @@ patterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
-        # No path since all extraction attempts failed
-        assert "path" not in results[0]
+        # Path is empty string when extraction fails - enables prefix combination
+        assert results[0]["path"] == ""
 
     def test_enum_style_method_extraction(self, tmp_path: Path) -> None:
         """Test extraction of enum-style method values like RequestMethod.GET."""

@@ -222,8 +222,10 @@ class Pattern:
                     result["matched_decorator"] = dec_name
                     if self.extract_path and isinstance(dec, dict):
                         path = self._extract_value(dec, self.extract_path)
-                        if path:
-                            result["path"] = path
+                        # Always set path when extract_path is configured - empty string
+                        # for decorators with no path arg (like @Get()) so that
+                        # prefix_from_parent can still combine with controller prefix
+                        result["path"] = path if path else ""
                     if self.extract_method:
                         method = self._extract_http_method(dec, match, dec_name)
                         if method:
@@ -246,8 +248,9 @@ class Pattern:
                     result["matched_annotation"] = ann_name
                     if self.extract_path and isinstance(ann, dict):
                         path = self._extract_value(ann, self.extract_path)
-                        if path:
-                            result["path"] = path
+                        # Always set path when extract_path is configured - empty string
+                        # for annotations with no path arg so that prefix combination works
+                        result["path"] = path if path else ""
                     if self.extract_method:
                         method = self._extract_http_method_from_annotation(ann, match, ann_name)
                         if method:
@@ -938,10 +941,15 @@ def enrich_symbols(
                     parent_symbol, matched_pattern.prefix_from_parent
                 )
 
-                # Only combine if there's a parent path to add
-                # If parent has no path, leave the method path unchanged
-                if parent_path:
-                    method_path = concept.get("path")
+                # Always combine paths when we have a parent - this ensures
+                # leading slash normalization even when parent path is empty.
+                # Examples:
+                #   @Controller('users') + @Get(':id') -> /users/:id
+                #   @Controller() + @Get('test') -> /test
+                #   @Controller('users') + @Get() -> /users
+                method_path = concept.get("path")
+                # Only skip if parent_path is None (no concept) vs "" (empty concept)
+                if parent_path is not None:
                     combined_path = _combine_route_paths(parent_path, method_path)
                     if combined_path:
                         concept["path"] = combined_path

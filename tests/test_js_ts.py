@@ -2745,11 +2745,11 @@ export class UsersController {
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # Controller has no path, so just method path
+        # Controller has no path, but method path is normalized with leading slash
         concepts = handler.meta.get("concepts", [])
         route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
         assert route_concept is not None
-        assert route_concept["path"] == "users/:id"
+        assert route_concept["path"] == "/users/:id"
 
     def test_nestjs_controller_with_path_method_no_path(self, tmp_path: Path) -> None:
         """NestJS @Controller('users') + @Get() gives just controller path."""

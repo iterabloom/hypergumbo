@@ -1182,6 +1182,10 @@ def cmd_routes(args: argparse.Namespace) -> int:
 
             method = method.upper() if method else ""
             if route_path:
+                # Normalize: ensure paths start with /
+                # (defense-in-depth; framework_patterns already normalizes)
+                if route_path and not route_path.startswith("/"):  # pragma: no cover
+                    route_path = "/" + route_path
                 print(f"  [{method}] {route_path} -> {name} (line {line})")
             else:
                 print(f"  [{method}] {name} (line {line})")
