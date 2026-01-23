@@ -1,0 +1,8 @@
+Original commit body from 25ea301:
+
+The catalog command is for quick heuristic hints about what hypergumbo
+can do - it doesn't need accurate LOC counts. Added optional max_file_size
+parameter to _count_loc, _detect_languages, and detect_profile that skips
+large files when counting LOC.
+
+Only catalog uses this limit (100 KB). All other commands do full analysis.
