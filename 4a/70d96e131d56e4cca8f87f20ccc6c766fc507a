@@ -1,0 +1,15 @@
+Original commit body from 3047d6d:
+
+Call edges now point to function definitions (.c, .cpp files) instead of
+declarations (.h files). This fixes transitive test coverage estimation
+for C/C++ codebases where the previous behavior could truncate the call
+graph at header file declarations (which have no outgoing call edges).
+
+The fix processes header files before source files during file discovery,
+so that definitions naturally replace declarations when building the
+global symbol registry. This ensures call edge resolution uses the
+definition (with its outgoing call edges) rather than the declaration.
+
+Discovered while investigating why quadlet repo showed only 7% estimated
+coverage - the actual issue was that call edges were pointing to header
+declarations that had no bodies and therefore no outgoing calls.
