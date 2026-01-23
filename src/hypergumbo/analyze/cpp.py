@@ -181,6 +181,9 @@ def _extract_symbols_from_file(
 
     analysis = FileAnalysis()
 
+    # Extract namespace aliases for ADR-0007
+    analysis.import_aliases = _extract_namespace_aliases(tree.root_node, source)
+
     # Use iterative traversal to avoid RecursionError on deeply nested code
     for node in iter_tree(tree.root_node):
         # Class declaration
@@ -296,6 +299,32 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_namespace_aliases(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract namespace aliases from C++ source (ADR-0007).
+
+    Namespace alias syntax:
+        namespace fs = std::filesystem;
+
+    Returns dict mapping alias → qualified_namespace (e.g., "fs" → "std::filesystem").
+    """
+    aliases: dict[str, str] = {}
+    for node in iter_tree(root_node):
+        if node.type == "namespace_alias_definition":
+            alias_name = None
+            target_namespace = None
+            for child in node.children:
+                if child.type == "namespace_identifier" and alias_name is None:
+                    alias_name = _node_text(child, source)
+                elif child.type == "nested_namespace_specifier":
+                    target_namespace = _node_text(child, source)
+            if alias_name and target_namespace:
+                aliases[alias_name] = target_namespace
+    return aliases
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -303,13 +332,19 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    namespace_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a file.
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+
+    Args:
+        namespace_aliases: Mapping of alias → qualified_namespace for path_hint (ADR-0007)
     """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    if namespace_aliases is None:
+        namespace_aliases = {}  # pragma: no cover - always passed by caller
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -402,6 +437,18 @@ def _extract_edges_from_file(
                     # Try to resolve: look for short name first
                     short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
 
+                    # Extract namespace prefix for path_hint (ADR-0007)
+                    path_hint = None
+                    if "::" in callee_name:
+                        ns_prefix = callee_name.split("::")[0]
+                        # Check if namespace prefix is an alias
+                        if ns_prefix in namespace_aliases:
+                            # Resolve alias: fs::func -> std::filesystem as path_hint
+                            path_hint = namespace_aliases[ns_prefix]
+                        else:
+                            # Use explicit namespace as path_hint
+                            path_hint = ns_prefix
+
                     # Check local symbols first
                     if short_name in local_symbols:
                         callee = local_symbols[short_name]
@@ -417,7 +464,7 @@ def _extract_edges_from_file(
                         ))
                     # Check global symbols via resolver
                     else:
-                        lookup_result = resolver.lookup(short_name)
+                        lookup_result = resolver.lookup(short_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -557,7 +604,8 @@ def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            cpp_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            cpp_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            namespace_aliases=analysis.import_aliases,
         )
         all_edges.extend(edges)
 

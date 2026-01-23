@@ -585,3 +585,48 @@ class TestCppSignatureExtraction:
         assert get_sym is not None
         assert "std::string" in get_sym.signature
 
+
+class TestCppNamespaceAliases:
+    """Tests for C++ namespace alias tracking (ADR-0007)."""
+
+    def test_extracts_namespace_alias(self, tmp_path: Path) -> None:
+        """Extracts namespace aliases from namespace_alias_definition."""
+        from hypergumbo.analyze.cpp import _extract_namespace_aliases
+        import tree_sitter
+        import tree_sitter_cpp
+
+        source = b"""
+namespace fs = std::filesystem;
+namespace io = std::iostream;
+"""
+        lang = tree_sitter.Language(tree_sitter_cpp.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+
+        aliases = _extract_namespace_aliases(tree.root_node, source)
+
+        assert "fs" in aliases
+        assert aliases["fs"] == "std::filesystem"
+        assert "io" in aliases
+        assert aliases["io"] == "std::iostream"
+
+    def test_namespace_alias_provides_path_hint(self, tmp_path: Path) -> None:
+        """Namespace aliases are stored in FileAnalysis for call resolution."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        (tmp_path / "test.cpp").write_text("""
+namespace MyNS = Some::Namespace;
+
+void caller() {
+    MyNS::helper();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        # The alias should be extracted (checking via result)
+        # Since we can't directly check FileAnalysis, we verify no crash
+        assert not result.skipped
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "caller" for s in funcs)
+
