@@ -1,0 +1,14 @@
+Original commit body from d6e332a:
+
+Create paths.py module with consistent path handling functions:
+- normalize_path(): Convert backslashes to forward slashes
+- to_relative_path(): Convert to relative path from repo root
+- paths_match(): Compare paths handling different formats
+- path_ends_with(): Safe suffix matching at directory boundaries
+- get_filename(): Extract filename from path
+- is_under_directory(): Check if path is under a directory
+
+Update slice.py to use these utilities for entry point matching
+and test file detection, removing ad-hoc path normalization logic.
+
+This is the foundation for consistent path handling across the codebase.
