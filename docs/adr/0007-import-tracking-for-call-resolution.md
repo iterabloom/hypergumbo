@@ -237,7 +237,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 |----------|---------------|----------------|--------|
 | cpp.py | `namespace x = y` | `namespace fs = std::filesystem;` then `fs::exists()` | |
 | erlang.py | `-import`, `mod:func` | Module-qualified calls `lists:map()` | |
-| fortran.py | `use, only:` | `use linear_algebra, only: solve` | |
+| fortran.py | `use, only:` | `use linear_algebra, only: solve` | ✅ Done |
 | julia.py | `import as` | `import Pkg as P` then `P.add()` | ✅ Done |
 | r_lang.py | `pkg::func` | Qualified calls `dplyr::filter()` | |
 | vhdl.py | `library`, `use` | `use ieee.std_logic_1164.all;` (Ada-like package system) | |

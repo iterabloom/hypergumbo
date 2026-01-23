@@ -407,12 +407,63 @@ def _extract_fortran_symbols(
                 symbol_registry[name] = sym
 
 
+def _extract_use_aliases(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases from Fortran use statements (ADR-0007).
+
+    Fortran renaming syntax in use statements:
+        use linear_algebra, only: my_solve => solve
+        use std_io, only: print_msg, my_read => read
+
+    The use_alias node contains:
+    - local_name: the alias (e.g., "my_solve")
+    - identifier: the original name (e.g., "solve")
+
+    Returns:
+        Dict mapping alias → "module_name.original_name" for path_hint resolution.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(root_node):
+        if node.type == "use_statement":
+            # Get the module name
+            module_name = None
+            for child in node.children:
+                if child.type == "module_name":
+                    module_name = _node_text(child, source).lower()
+                    break
+
+            if not module_name:
+                continue  # pragma: no cover - use_statement always has module_name
+
+            # Look for included_items with use_alias children
+            for child in node.children:
+                if child.type == "included_items":
+                    for item in child.children:
+                        if item.type == "use_alias":
+                            local_name = None
+                            original_name = None
+                            for alias_child in item.children:
+                                if alias_child.type == "local_name":
+                                    local_name = _node_text(alias_child, source).lower()
+                                elif alias_child.type == "identifier":
+                                    original_name = _node_text(alias_child, source).lower()
+                            if local_name and original_name:
+                                # Map alias to qualified path: module.original
+                                aliases[local_name] = f"{module_name}.{original_name}"
+
+    return aliases
+
+
 def _extract_fortran_edges(
     root_node: "tree_sitter.Node",
     source: bytes,
     edges: list[Edge],
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
+    import_aliases: dict[str, str] | None = None,
 ) -> None:
     """Extract edges from Fortran AST tree (pass 2).
 
@@ -424,7 +475,10 @@ def _extract_fortran_edges(
         edges: List to append edges to
         local_symbols: Local symbol registry for finding enclosing functions
         resolver: NameResolver for callee resolution
+        import_aliases: Mapping of alias → module.original for path_hint (ADR-0007)
     """
+    if import_aliases is None:
+        import_aliases = {}  # pragma: no cover - always passed by caller
     # Build local ID registry for _get_enclosing_fortran_symbol
     local_id_registry: dict[str, str] = {name: sym.id for name, sym in local_symbols.items()}
 
@@ -473,8 +527,10 @@ def _extract_fortran_edges(
             current_symbol = _get_enclosing_fortran_symbol(node, source, local_id_registry)
             if call_name and current_symbol:
                 start_line = node.start_point[0] + 1
+                # Use path_hint from import aliases if available (ADR-0007)
+                path_hint = import_aliases.get(call_name)
                 # Use resolver for callee resolution
-                lookup_result = resolver.lookup(call_name)
+                lookup_result = resolver.lookup(call_name, path_hint=path_hint)
                 if lookup_result.found and lookup_result.symbol:
                     dst_id = lookup_result.symbol.id
                     confidence = 0.90 * lookup_result.confidence
@@ -541,8 +597,8 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
 
     fortran_files = list(find_fortran_files(repo_root))
 
-    # Store parsed trees for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
+    # Store parsed trees for pass 2: (rel_path, source, tree, import_aliases)
+    parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
 
     # Pass 1: Extract symbols from all files
     for fortran_path in fortran_files:
@@ -561,8 +617,11 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
                 global_symbol_registry,
             )
 
+            # Extract import aliases for ADR-0007
+            import_aliases = _extract_use_aliases(tree.root_node, source)
+
             # Store for pass 2
-            parsed_files.append((rel_path, source, tree))
+            parsed_files.append((rel_path, source, tree, import_aliases))
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
@@ -572,7 +631,7 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
     resolver = NameResolver(global_symbol_registry)
 
     # Pass 2: Extract edges using resolver
-    for rel_path, source, tree in parsed_files:
+    for rel_path, source, tree, import_aliases in parsed_files:
         # Build local symbol map for this file
         local_symbols = {s.name: s for s in symbols if s.path == rel_path}
 
@@ -582,6 +641,7 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
             edges,
             local_symbols,
             resolver,
+            import_aliases,
         )
 
     duration_ms = int((time.time() - start_time) * 1000)

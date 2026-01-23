@@ -293,6 +293,76 @@ end program main
     assert "program" in kinds
 
 
+class TestFortranImportAliases:
+    """Tests for Fortran import alias tracking (ADR-0007)."""
+
+    def test_extracts_use_alias(self, tmp_path):
+        """Tracks use ... only: alias => original as alias mapping."""
+        from hypergumbo.analyze.fortran import _extract_use_aliases
+        import tree_sitter
+        import tree_sitter_fortran
+
+        source = b"""program main
+    use linear_algebra, only: my_solve => solve
+    use std_io, only: print_msg, my_read => read
+end program main
+"""
+        lang = tree_sitter.Language(tree_sitter_fortran.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+
+        aliases = _extract_use_aliases(tree.root_node, source)
+
+        # Should track aliased imports
+        assert "my_solve" in aliases
+        assert aliases["my_solve"] == "linear_algebra.solve"
+        assert "my_read" in aliases
+        assert aliases["my_read"] == "std_io.read"
+        # Non-aliased imports should not be tracked
+        assert "print_msg" not in aliases
+
+    def test_alias_provides_path_hint_for_disambiguation(self, tmp_path):
+        """Import aliases help disambiguate calls when same name exists in multiple modules."""
+        # Create two modules with identically-named subroutines
+        (tmp_path / "math_ops.f90").write_text("""
+module math_ops
+contains
+    subroutine calculate(x, y, result)
+        real, intent(in) :: x, y
+        real, intent(out) :: result
+        result = x + y
+    end subroutine calculate
+end module math_ops
+""")
+        (tmp_path / "physics_ops.f90").write_text("""
+module physics_ops
+contains
+    subroutine calculate(mass, velocity, result)
+        real, intent(in) :: mass, velocity
+        real, intent(out) :: result
+        result = 0.5 * mass * velocity * velocity
+    end subroutine calculate
+end module physics_ops
+""")
+        # Use one with alias
+        (tmp_path / "main.f90").write_text("""
+program main
+    use math_ops, only: add => calculate
+    use physics_ops, only: kinetic => calculate
+    implicit none
+    real :: r
+    call add(1.0, 2.0, r)
+    call kinetic(10.0, 5.0, r)
+end program main
+""")
+
+        result = analyze_fortran_files(tmp_path)
+
+        # The aliases should help with path hints
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) >= 2
+
+
 class TestFortranSignatureExtraction:
     """Tests for Fortran function/subroutine signature extraction."""
 

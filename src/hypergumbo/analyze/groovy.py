@@ -448,8 +448,8 @@ def _extract_edges_from_file(
     """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
-    if import_aliases is None:  # pragma: no cover - defensive
-        import_aliases = {}
+    if import_aliases is None:
+        import_aliases = {}  # pragma: no cover - defensive
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
