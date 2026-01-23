@@ -1,0 +1,12 @@
+Original commit body from 823d0d8:
+
+- Pre-computed probe embeddings: Store README, answer patterns, and
+  big picture question embeddings as base64-encoded float16 arrays
+  in _embedding_data.py, avoiding ~2-3s startup cost
+
+- README extraction debug mode: extract_readme_description_embedding()
+  accepts debug=True to return ReadmeExtractionDebug with k-value
+  scores, timing, and early stopping info
+
+- Progress indicator: --progress flag shows [45%] Extracting config...
+  ETA 23s style progress to stderr during sketch generation
