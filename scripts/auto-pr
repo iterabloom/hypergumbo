@@ -60,9 +60,12 @@ queue_vpr() {
 	ts="$(date -Iseconds)"
 	vpr_num=$(($(queue_count) + 1))
 
-	# Escape quotes in title/desc for JSON
+	# Escape for JSON: backslashes, quotes, then newlines
+	title="${title//\\/\\\\}"
 	title="${title//\"/\\\"}"
+	desc="${desc//\\/\\\\}"
 	desc="${desc//\"/\\\"}"
+	desc="${desc//$'\n'/\\n}"
 
 	echo "{\"vpr\":$vpr_num,\"branch\":\"$branch\",\"base\":\"$base\",\"title\":\"$title\",\"desc\":\"$desc\",\"sha\":\"$sha\",\"ts\":\"$ts\"}" >>"$QUEUE_FILE"
 
@@ -220,10 +223,10 @@ Individual commits are preserved in the history."
 	local attempt=1
 	local push_success=false
 
+	# Title must be single line; description preserves newlines
 	pr_title="${pr_title//$'\n'/ }"
 	pr_title="${pr_title//$'\r'/ }"
 	pr_desc="${pr_desc//$'\r'/}"
-	pr_desc="${pr_desc//$'\n'/'  '}"
 
 	local sha
 	while IFS= read -r line; do
@@ -451,10 +454,10 @@ do_pr() {
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
 	TITLE="${1:-$(git log -1 --pretty=%s)}"
-	DESC="${2:-$(git log -1 --pretty=%b | tr '\n' ' ' | sed 's/  */ /g')}"
+	DESC="${2:-$(git log -1 --pretty=%b)}"
 
+	# Title must be single line; description keeps newlines
 	TITLE="${TITLE//$'\n'/ }"
-	DESC="${DESC//$'\n'/ }"
 	echo "🚀 Target: $REPO_SLUG"
 	echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
 	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
