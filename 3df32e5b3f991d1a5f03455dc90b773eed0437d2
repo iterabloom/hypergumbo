@@ -1,0 +1,17 @@
+Original commit body from a39cf66:
+
+When the sketch runs static analysis, it now computes an estimated test
+coverage by counting how many non-test functions/methods are directly
+called by test code. This replaces the generic "Coverage requires
+execution" message with something like "~35% estimated coverage
+(460/1318 functions called by tests)".
+
+Key changes:
+- Add _estimate_test_coverage() to compute coverage from call graph
+- Modify _run_analysis() to compute coverage BEFORE filtering test files
+- Update _format_test_summary() to accept optional coverage_stats
+- Update generate_sketch() to pass coverage stats to test summary
+
+This is a static approximation based on direct call edges. It doesn't
+track transitive calls or runtime-only coverage, but gives users a
+useful signal about test coverage without requiring test execution.
