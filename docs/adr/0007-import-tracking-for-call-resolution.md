@@ -229,7 +229,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 | nim.py | `import as` | `import strutils as su` then `su.strip()` | ✅ Done |
 | ocaml.py | `module` aliases | ML family; `module L = List` then `L.map` | ✅ Done |
 | solidity.py | `import {X as Y}` | `import {IERC20 as Token} from "..."` | |
-| starlark.py | `load()` | `load("//foo:bar.bzl", my_rule="rule")` explicit bindings | |
+| starlark.py | `load()` | `load("//foo:bar.bzl", my_rule="rule")` explicit bindings | ✅ Done |
 
 *Medium priority - qualified imports exist but less central:*
 
