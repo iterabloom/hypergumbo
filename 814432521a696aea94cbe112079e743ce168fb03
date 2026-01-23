@@ -1,0 +1,15 @@
+Original commit body from 58861a0:
+
+Add a `changes` job that detects if code files changed. Jobs that
+only make sense for code changes (lint, audit, verify-generated,
+pytest) now depend on this and skip when only docs changed.
+
+Docs-only patterns that skip expensive jobs:
+- *.md files
+- LICENSE, .gitignore, etc.
+
+Jobs that always run:
+- changes (detection job)
+- dco (sign-off still required for all PRs)
+
+This saves ~6 minutes of CI time for documentation PRs.
