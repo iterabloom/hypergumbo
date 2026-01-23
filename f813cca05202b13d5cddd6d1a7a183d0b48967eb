@@ -1,0 +1,18 @@
+Original commit body from 4a7f02b:
+
+Add Rich library for better terminal table formatting:
+- Auto-adjusting column widths based on content
+- Proper text wrapping for long symbol names and paths
+- Colored output for better readability
+
+Add --exclude-tests (-x) flag:
+- Filter out symbols from test files without modifying results file
+- Allows ephemeral filtering while preserving test nodes for later use
+
+Add --max-per-file N flag:
+- Limit symbols shown per file to prevent file domination
+- Works with --all to show all files with limited symbols per file
+- Useful for browsing diverse codebases
+
+Dependencies:
+- Add rich>=13.0 to pyproject.toml
