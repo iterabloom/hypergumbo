@@ -1,0 +1,7 @@
+Original commit body from c6494e4:
+
+Updates following the legacy entrypoint detection removal:
+- hypergumbo-spec.md: Updated entrypoints.py description to reflect
+  YAML-driven detection (ADR-0003), updated v1.0.x roadmap to document
+  the complete removal of 26 legacy _detect_* functions
+- ARCHITECTURE.md: Regenerated with current codebase metrics
