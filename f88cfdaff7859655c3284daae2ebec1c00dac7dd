@@ -1,0 +1,9 @@
+Original commit body from 80feea7:
+
+Add hypergumbo test-coverage command for static analysis test coverage
+estimation. Identifies "hot spots" (functions called by many tests) and
+"cold spots" (untested functions) using call graph analysis without
+executing code. Language agnostic.
+
+Also add --help --all flag to show comprehensive help including all
+subcommand documentation at once.
