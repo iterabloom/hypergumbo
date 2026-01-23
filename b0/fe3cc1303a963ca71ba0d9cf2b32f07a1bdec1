@@ -1,0 +1,19 @@
+Original commit body from e9f810e:
+
+For flat repos where all files are at the root level (like qemu-sgabios),
+the Structure section now shows source files even if they don't have
+detected symbols.
+
+Previously, only files with symbols were collected for the Structure tree.
+This meant that `.h` files with only `#define` macros, assembly files, and
+other source files without parseable symbols would be hidden under
+"[and N other items]" even when there was room to show them.
+
+New step 5b in `_collect_important_files`:
+- Scans root-level files for source file patterns (*.c, *.h, *.py, etc.)
+- Adds them AFTER files with symbols (preserving importance ordering)
+- Respects max_root_files limit (default 5)
+
+Example improvement for qemu-sgabios:
+  Before: Makefile, csum8.c, [and 6 other items]
+  After:  Makefile, csum8.c, sgabios.h, [and 5 other items]
