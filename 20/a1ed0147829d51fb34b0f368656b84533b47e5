@@ -1,0 +1,23 @@
+Original commit body from 7f82f09:
+
+Fixes two related issues from the evaluation report:
+
+1. **Import resolution**: Added suffix-based module matching so that
+   imports like `from app.crud import X` resolve correctly when the
+   file is registered as `backend.app.crud`. This handles nested
+   project layouts (like FastAPI template) where the import path
+   differs from the file system path.
+
+2. **Unresolved edges**: Python now emits "unresolved" edges (like Go
+   does) when calls can't be resolved. This enables cross-language
+   linking and makes the graph more complete. Unresolved edges have
+   confidence=0.50 to indicate uncertainty.
+
+The suffix matching is applied at all module lookup points:
+- Import edge creation
+- Call resolution for module.func() patterns
+- Parameter type annotation inference
+- Re-export processing
+
+This is a generalizable pattern - other languages with similar
+module/package resolution challenges could benefit from suffix matching.
