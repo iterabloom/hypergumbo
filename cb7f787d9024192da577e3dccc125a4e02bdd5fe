@@ -1,0 +1,8 @@
+Original commit body from 031c6be:
+
+The sentence-transformers library logs "No sentence-transformers model
+found with name microsoft/unixcoder-base" every time the model is loaded.
+This is expected behavior for UnixCoder and not useful to users.
+
+Add _load_embedding_model() helper that sets the logger level to ERROR
+before loading, suppressing the warning while preserving actual errors.
