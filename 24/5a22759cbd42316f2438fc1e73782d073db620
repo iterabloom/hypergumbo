@@ -1,0 +1,6 @@
+Original commit body from b77f52a:
+
+- Add CHANGELOG entries for README-first ranking, multi-format link
+  extraction, and forge URL resolution
+- Update spec table to show "README-first + hybrid round-robin"
+- Add new "Additional Files ranking" section explaining the algorithm
