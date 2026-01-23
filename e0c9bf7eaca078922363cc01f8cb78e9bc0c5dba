@@ -1,0 +1,11 @@
+Original commit body from 5a03c40:
+
+- Add title-proximity bonus (25%) for lines 1-5 after title
+- Use absolute position decay (scale to 20 lines) instead of relative
+- Lower quality_drop_threshold from 0.10 to 0.07 for tighter windows
+- Increase max_chars from 200 to 300 for longer descriptions
+
+These changes ensure the actual project description (usually right
+after the title) is selected over explanatory content that may appear
+later in the README. Tested on hypergumbo's README to correctly extract
+the first-line tagline instead of the "How It Works" section.
