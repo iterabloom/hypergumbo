@@ -1,0 +1,12 @@
+Original commit body from f1f0033:
+
+PyPI renders README.md but doesn't host repository files, so relative
+links like `docs/LANGUAGES.md` were broken. Convert all relative links
+to absolute Codeberg URLs:
+
+- docs/*.md links → codeberg.org/.../src/branch/main/docs/*.md
+- Root files (AGENTS.md, CHANGELOG.md, etc.) → absolute URLs
+- Logo image → raw/branch/main/... for direct image serving
+- LICENSE → absolute URL
+
+This ensures links work both on Codeberg and PyPI.
