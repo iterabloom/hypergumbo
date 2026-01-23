@@ -1,0 +1,5 @@
+Original commit body from c4e96b2:
+
+Explains the two-tier cache structure with repo fingerprints (stable)
+and state hashes (changes with edits). Documents how embeddings are
+shared across states while results are per-state.
