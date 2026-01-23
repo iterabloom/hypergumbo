@@ -1,0 +1,10 @@
+Original commit body from 02ad573:
+
+Add support for analyzing LLVM IR files (.ll) using tree-sitter-llvm:
+- Detect function definitions (define)
+- Detect function declarations (declare)
+- Detect global variable definitions
+- Detect function call edges with cross-file resolution
+
+This is language analyzer #69, useful for analyzing compiler and
+toolchain projects.
