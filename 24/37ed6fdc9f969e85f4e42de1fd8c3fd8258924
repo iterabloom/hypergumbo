@@ -1,0 +1,14 @@
+Original commit body from b2fb797:
+
+Symbol mention centrality now uses only parallelized Python regex.
+Ripgrep was removed because:
+- Symbol names with special regex characters caused parse errors
+- The Python path is fast enough (O(files) with combined alternation)
+- Only ~0.1% of repos (30k+ symbols) would benefit from ripgrep
+
+Changes:
+- Remove _is_ripgrep_available() and _compute_centrality_with_ripgrep()
+- Simplify compute_symbol_mention_centrality_batch() to call Python directly
+- Remove ripgrep installation instructions from README and CONTRIBUTING
+- Update ADR-0005 to reflect current implementation
+- Add future work note in spec about potential ripgrep optimization
