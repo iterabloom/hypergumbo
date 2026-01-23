@@ -1,0 +1,10 @@
+Original commit body from 215cb3d:
+
+Similar to the previous fix for --frameworks all, explicit framework
+lists like --frameworks fastapi,celery now use the specified frameworks
+directly without requiring them to be present in dependency manifests.
+This enables pattern matching when pyproject.toml/package.json is in a
+subdirectory rather than the repo root.
+
+Also cleans up dead code in _detect_frameworks() - the allowed_frameworks
+parameter is no longer needed since only AUTO mode calls this function.
