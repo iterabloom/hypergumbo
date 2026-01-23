@@ -1,0 +1,10 @@
+Original commit body from 7c2a549:
+
+- Update schema_version in examples from 0.1.0 to 0.2.1
+- Change ADR-0004 File Taxonomy status from Proposed to Implemented
+- Add prefix_from_parent pattern field documentation
+- Update timeline to reflect actual release history (0.9.1 released, 1.1.0+ next)
+- Mark ripgrep centrality optimization as attempted and removed
+- Add status boxes to CLI integration sections
+- Remove non-existent --include-deps flag from examples
+- Add note to CHANGELOG clarifying 1.0.0 was not released to PyPI
