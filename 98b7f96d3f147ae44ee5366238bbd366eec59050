@@ -1,0 +1,5 @@
+Original commit body from 7b16781:
+
+- Add explain command to spec (--with-source, -t tokens)
+- Add --with-source flag to sketch command docs
+- Update CHANGELOG with new features and Additional Files improvements
