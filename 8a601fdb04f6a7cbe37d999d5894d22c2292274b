@@ -1,0 +1,12 @@
+Original commit body from 967756a:
+
+"Hot spots" in standard dev tooling means high-risk areas needing more
+tests. Our usage (high test density) was the opposite - well-tested code.
+
+Rename to "test_dense" which accurately describes what it shows: functions
+with high tests-per-LOC ratio, which may indicate redundant tests or
+over-tested utilities.
+
+This naming makes more sense in the agentic development context where
+100% coverage is table-stakes and tracking test concentration helps
+identify potential redundancy.
