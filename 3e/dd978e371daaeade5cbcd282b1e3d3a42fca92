@@ -1,0 +1,19 @@
+Original commit body from 937594e:
+
+Add NameResolver and ListNameResolver classes to handle the different
+registry formats used by language analyzers:
+
+- NameResolver: For dict[str, Symbol] registries (JS/TS, Java, C#, etc.)
+  Provides suffix matching so "doWork" can find "MyClass.doWork"
+
+- ListNameResolver: For dict[str, list[Symbol]] registries (Go)
+  Handles disambiguation among multiple candidates using path hints
+
+Integrate the resolvers into Go, JavaScript/TypeScript, and Java analyzers:
+
+- Go: Replace _resolve_callee with ListNameResolver.lookup()
+- JS/TS: Add NameResolver for function call resolution
+- Java: Add NameResolver for method call resolution
+
+All resolvers provide lazy index building, confidence tracking,
+and path hint disambiguation. 46 new tests added for comprehensive coverage.
