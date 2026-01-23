@@ -1,0 +1,18 @@
+Original commit body from bbe8290:
+
+NestJS routes now correctly combine class-level @Controller('/users')
+with method-level @Get(':id') to produce full paths like /users/:id.
+
+Previously only the method decorator path was extracted, causing routes
+to display as method descriptors (e.g., ":id") instead of full HTTP paths.
+
+Changes:
+- Add _get_enclosing_class_node() to walk up AST to class
+- Add _get_class_route_prefix() to extract Controller decorator path
+- Add _combine_route_paths() for path normalization
+- Handle both exported and non-exported class patterns
+- Add comprehensive tests for path combination edge cases
+
+This pattern (class prefix + method path) also exists in Spring Boot
+(@RequestMapping + @GetMapping) and ASP.NET ([Route] + [HttpGet]).
+The generalized approach can be extended to Java/C# in future work.
