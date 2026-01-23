@@ -1,0 +1,10 @@
+Original commit body from df642be:
+
+Previously, `symbols --exclude-tests` hid test symbols from display but
+still counted test edges when computing in-degree and out-degree. This
+led to inflated degree counts that were inconsistent with what `explain -x`
+showed for the same symbols.
+
+Now when --exclude-tests is set, edges where either src or dst is a test
+file are excluded from degree computation, making the counts consistent
+across commands.
