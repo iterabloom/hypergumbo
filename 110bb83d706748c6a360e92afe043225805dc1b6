@@ -1,0 +1,11 @@
+Original commit body from 00edf52:
+
+Implements the Data Models section from ADR-0005. Detects data models
+(ORM entities, DTOs, domain objects) via multiple signals:
+- YAML framework pattern concepts ("model", "schema", "entity")
+- Decorator patterns (@dataclass, @Entity, @Table)
+- Base class patterns (BaseModel, Model, Base, Schema)
+- Naming conventions (classes ending in Model, Entity, Schema, DTO)
+
+Data models are ranked by confidence and centrality, with the section
+appearing between Entry Points and Source Files in the sketch output.
