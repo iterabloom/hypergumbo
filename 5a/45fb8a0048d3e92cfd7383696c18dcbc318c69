@@ -1,0 +1,14 @@
+Original commit body from 9aaf4ac:
+
+Implements _format_structure_tree() which renders directory structure
+as a tree visualization built from important files. Per ADR-0005:
+
+- Shows paths to important files revealing directory organization
+- Displays sibling counts as "[and N other items]"
+- Respects max_root_dirs limit
+- Falls back to simple format when no important files provided
+- Excludes patterns from sibling counts
+
+This prepares for the full ADR-0005 structure integration where
+important files will be sampled from config, tests, entry points,
+and source files to build the tree.
