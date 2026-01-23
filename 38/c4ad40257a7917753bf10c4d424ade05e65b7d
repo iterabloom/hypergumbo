@@ -1,0 +1,17 @@
+Original commit body from ceedfcf:
+
+Replace centrality-only selection with a greedy frontier-based algorithm
+that prioritizes nodes bridging disconnected components. This produces
+connected subgraphs instead of isolated high-centrality nodes.
+
+Algorithm uses Union-Find for O(α(n)) component tracking with scoring:
+(component_growth, edges_added, centrality). Nodes that merge disconnected
+entrypoints score highest.
+
+Results (same 200-node budget):
+- Django: 21 → 86 edges (4x improvement)
+- TensorFlow: 157 → 1775 edges (11x improvement)
+
+Performance: handles tensorflow (154k symbols, 505k edges) in ~6 seconds.
+
+Connectivity-aware is now the default; use --no-connectivity to disable.
