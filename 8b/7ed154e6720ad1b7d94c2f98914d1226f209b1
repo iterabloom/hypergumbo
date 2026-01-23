@@ -1,0 +1,6 @@
+Original commit body from 1cf642d:
+
+Reflects the addition of framework pattern types (Pattern, UsagePatternSpec,
+FrameworkPatternDef) to docs/schema.json. The schema version now tracks
+significant changes to the entire schema documentation, not just the
+behavior map output format.
