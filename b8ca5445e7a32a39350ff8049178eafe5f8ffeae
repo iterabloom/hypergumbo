@@ -1,0 +1,14 @@
+Original commit body from 79d9f8c:
+
+The capsule system was designed for a world where every repo needs a
+bespoke analyzer. In practice, the general-purpose analyzer works well
+enough that custom composition isn't needed.
+
+Changes:
+- Extract capsule system design to docs/history/capsule-system-v1.md
+- Extract registry/factory vision to docs/future/registry-factory-vision.md
+- Simplify Section 5 (Architecture) to document what's actually implemented
+- Remove registry-related content from Spec B
+- Mark vestigial modules (plan.py, llm_assist.py, export.py, catalog.py)
+
+Spec reduced from ~2700 to 2333 lines.
