@@ -1,0 +1,13 @@
+Original commit body from 401b3de:
+
+Update data flow diagram in generate-architecture to show the full
+ADR-0003 pipeline:
+- PROFILE → ANALYZERS (+ UsageContexts) → FRAMEWORK_PATTERNS → LINKERS
+
+Add usage-based pattern example (v1.1.x) alongside definition-based.
+
+Update counts across documentation:
+- 67 language analyzers (was 54)
+- 14 cross-language linkers (was 13, added OpenAPI)
+
+Regenerate ARCHITECTURE.md with accurate data flow and linker count.
