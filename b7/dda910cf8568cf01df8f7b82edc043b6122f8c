@@ -1,0 +1,19 @@
+Original commit body from 8991e43:
+
+Python analyzer now detects two previously-missed call patterns:
+
+1. Imported class method calls: Item.model_validate(data) where Item
+   is imported via "from models import Item" now produces a calls edge
+   to Item.model_validate.
+
+2. Parameter type annotations: def handler(db: Database) now enables
+   resolution of db.add() and db.commit() calls to Database.add and
+   Database.commit methods.
+
+Previously, type inference only worked for constructor-assigned
+variables (db = Database()). This improves call graph completeness
+for FastAPI/Flask patterns that use dependency injection and Pydantic
+model classmethods.
+
+Note: only works when the target class/method is defined in the
+analyzed codebase (not inherited from external libraries).
