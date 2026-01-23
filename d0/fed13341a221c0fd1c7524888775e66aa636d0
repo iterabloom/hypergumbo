@@ -1,0 +1,13 @@
+Original commit body from cf499f9:
+
+Both `hypergumbo sketch` and `hypergumbo explain` now include source code
+by default. The `--with-source` flag is retained for backward compatibility
+but is now a no-op. Use `--no-source` to omit source code from output.
+
+This aligns with the primary use case of providing context to LLMs, where
+source code is typically what's needed to make changes.
+
+- Add `--no-source` flag to sketch and explain commands
+- Make `with_source=True` the default for both commands
+- Update USE-CASES.md to reflect new default behavior
+- Update test expectations for new cache filenames
