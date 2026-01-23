@@ -11,7 +11,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 - **Commit body preservation in squash merge:** Fixed auto-pr to preserve newlines in commit
-  descriptions, and added Forgejo SQUASH_TEMPLATE.md to include PR descriptions in merge commits.
+  descriptions. Added SQUASH_TEMPLATE.md to both `.forgejo/` and `.gitea/` directories to ensure
+  PR descriptions are included in squash merge commits. Also added API PATCH to update PR body
+  with actual newlines since git push options cannot contain them.
 
 ### Added
 - **YAML-based main() function detection (ADR-0003 v1.2.x):** Language-level main() entry points
