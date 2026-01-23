@@ -1569,6 +1569,90 @@ def test_cmd_slice_without_inline_has_ids_only(tmp_path: Path) -> None:
     assert "edge_ids" in data["feature"]
 
 
+def test_cmd_slice_flat_output(tmp_path: Path, capsys) -> None:
+    """Test slice --flat outputs nodes/edges at top level (no wrapper)."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [
+            {
+                "id": "calls:caller->callee",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "caller"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = False  # --flat implies inline, so this should be ignored
+    args.flat = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # --flat outputs a simple structure with just nodes and edges
+    assert "nodes" in data
+    assert "edges" in data
+
+    # Should NOT have the wrapper structure
+    assert "view" not in data
+    assert "feature" not in data
+    assert "schema_version" not in data
+
+    # Nodes should be full objects
+    assert len(data["nodes"]) == 2
+    node_names = {n["name"] for n in data["nodes"]}
+    assert "caller" in node_names
+    assert "callee" in node_names
+
+    # Edges should be full objects
+    assert len(data["edges"]) == 1
+    assert data["edges"][0]["type"] == "calls"
+
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo slice]" in out
+
+
 def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     """Test slice command handles ambiguous entry with helpful error message."""
     # Create behavior map with same symbol name in different files/languages

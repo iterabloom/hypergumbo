@@ -26,6 +26,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - `--progress`: Show ETA during sketch generation
 - `--readme-debug`: Debug README extraction algorithm
 - `--help --all`: Show all subcommand help at once
+- `slice --flat`: Output simple `{nodes, edges}` format for external tools (implies `--inline`)
 
 **Sketch Improvements**
 - Source code included by default (`--no-source` to disable)
@@ -90,8 +91,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 **Call Graph**
 - C/C++ analyzers prefer definitions over declarations (fixes coverage estimation)
 - NestJS route paths combine controller + method via `prefix_from_parent`
+- NestJS routes normalize to start with `/` (fixes `[GET] test` → `[GET] /test`)
 - Python: submodule imports resolve (`from app import crud; crud.func()`)
 - Python: imported class method calls resolve (`from X import Class; Class.method()`)
+
+**Entrypoints**
+- `slice --list-entries` now respects `--exclude-tests` and `--max-tier` filters
 
 **Other**
 - `explain --with-source` output ordering (callers/callees grouped with sources)

@@ -977,8 +977,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
     feature_dict = result.to_dict()
     feature_dict["node_ids"] = ranked_node_ids  # Replace with ranked order
 
-    # If --inline, include full node/edge objects for self-contained output
-    if getattr(args, "inline", False):
+    # --flat implies --inline (need full objects for external tools)
+    use_inline = getattr(args, "inline", False) or getattr(args, "flat", False)
+
+    # If --inline (or --flat), include full node/edge objects for self-contained output
+    if use_inline:
         # Filter nodes and edges from behavior map to include only those in slice
         node_ids_set = set(result.node_ids)
         edge_ids_set = set(result.edge_ids)
@@ -999,11 +1002,19 @@ def cmd_slice(args: argparse.Namespace) -> int:
             if e.get("id") in edge_ids_set
         ]
 
-    output = {
-        "schema_version": behavior_map.get("schema_version", "0.1.0"),
-        "view": "slice",
-        "feature": feature_dict,
-    }
+    # If --flat, output simple structure (nodes/edges at top level)
+    # Otherwise, use standard wrapper structure
+    if getattr(args, "flat", False):
+        output = {
+            "nodes": feature_dict["nodes"],
+            "edges": feature_dict["edges"],
+        }
+    else:
+        output = {
+            "schema_version": behavior_map.get("schema_version", "0.1.0"),
+            "view": "slice",
+            "feature": feature_dict,
+        }
 
     # Write output
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2424,6 +2435,12 @@ Examples:
   hypergumbo slice --entry "UserService"     # Slice from a class
   hypergumbo slice --list-entries            # Show detected entry points
   hypergumbo slice --entry auto              # Auto-detect entry point
+  hypergumbo slice --entry main --flat       # Output for external tools
+
+Output format:
+  Default: {schema_version, view, feature: {nodes, edges, ...}}
+  --inline: Same as default, but feature includes full node/edge objects
+  --flat:   {nodes: [...], edges: [...]} - simple format for external tools
 
 Use cases:
   - Understand what code main() depends on (forward slice)
@@ -2512,6 +2529,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         action="store_true",
         help="Include full node/edge objects in output (not just IDs). "
              "Makes slice.json self-contained without needing the behavior map.",
+    )
+    p_slice.add_argument(
+        "--flat",
+        action="store_true",
+        help="Output flat structure with just nodes/edges arrays at top level. "
+             "Useful for external tools expecting {nodes: [...], edges: [...]}. "
+             "Implies --inline.",
     )
     p_slice.set_defaults(func=cmd_slice)
 
