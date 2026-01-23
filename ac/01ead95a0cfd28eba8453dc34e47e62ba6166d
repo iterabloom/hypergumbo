@@ -1,0 +1,11 @@
+Original commit body from 4974a8a:
+
+- Overview section now always shows the test/non-test breakdown format
+  (e.g., "43 files (43 non-test + 0 test)") regardless of whether tests
+  exist or -x flag is used. Previously used compact format when no tests.
+
+- Tests section is now always present in the sketch, showing "No test
+  files detected" when no tests are found. Previously the section was
+  omitted entirely for repos without tests.
+
+These changes ensure consistent sketch formatting across all repositories.
