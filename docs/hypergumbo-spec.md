@@ -1692,6 +1692,17 @@ When unresolved, call edges may point to placeholder IDs instead of real symbols
 
 **Workaround:** Use fully-qualified imports when precise resolution is critical.
 
+### Import Tracking for Disambiguation
+
+Cross-file call resolution benefits from tracking import statements to disambiguate which module a qualified call refers to:
+
+```python
+from app import crud    # Track: crud refers to app.crud
+crud.create_user()      # Resolve: app.crud.create_user()
+```
+
+Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
+
 > **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md).
 
 ## 10) Known limitations and risks
