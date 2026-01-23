@@ -1,0 +1,13 @@
+Original commit body from d20f506:
+
+The SQUASH_TEMPLATE.md approach didn't work - Forgejo templates
+only apply to web UI merges, not API merges.
+
+This fix passes the merge_message_field directly to the merge
+API call, bypassing the template system entirely:
+
+1. Combine TITLE and DESC into a proper commit message format
+2. Pass as merge_message_field in the squash merge payload
+3. Forgejo uses this message for the squash commit
+
+If this body appears in the final commit, the fix worked.
