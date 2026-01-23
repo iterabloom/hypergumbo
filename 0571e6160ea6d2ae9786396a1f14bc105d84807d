@@ -1,0 +1,7 @@
+Original commit body from 860b743:
+
+- Fix "Symbols without tests" → "Non-test symbols only" (symbols -x)
+- Remove misleading wildcard example from search (uses substring match)
+- Update token budgets to match CLI guidelines (1000/4000/8000/16000)
+- Add --with-source examples for explain and sketch commands
+- Update Token Budget Guidelines table
