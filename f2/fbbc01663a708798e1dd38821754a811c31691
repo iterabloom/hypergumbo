@@ -1,0 +1,6 @@
+Original commit body from 83eec3d:
+
+- Mark Data Models section as done (implemented in sketch.py Section 5)
+- Mark Additional File Content section as done (Section 10)
+- Mark caching benchmark as done (docs/CACHE.md exists)
+- Expand explain --with-source spec with ordering and budget details
