@@ -223,7 +223,7 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 | d_lang.py | `import x = y` | `import io = std.stdio;` then `io.writeln()` | ✅ Done |
 | elm.py | `import as` | `import Dict as D` then `D.get` | ✅ Done |
 | fsharp.py | `module` abbreviations | ML family; `module M = List` then `M.map` | ✅ Done |
-| groovy.py | `import` | Same as Java | |
+| groovy.py | `import` | Same as Java | ✅ Done |
 | haskell.py | `import qualified as` | `import qualified Data.Map as M` then `M.lookup` | ✅ Done |
 | lean.py | `import` | Qualified names in theorem prover | |
 | nim.py | `import as` | `import strutils as su` then `su.strip()` | ✅ Done |

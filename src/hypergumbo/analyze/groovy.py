@@ -190,12 +190,50 @@ def _extract_groovy_signature(
     return signature
 
 
+def _extract_import_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases for disambiguation.
+
+    In Groovy:
+        import java.util.List as JList -> JList maps to java.util.List
+
+    Returns a dict mapping alias names to fully qualified module paths.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+
+        # Check if this import has an alias (has 'as' keyword)
+        has_as = False
+        module_path = None
+        alias_name = None
+
+        for child in node.children:
+            if child.type == "scoped_identifier":
+                module_path = _node_text(child, source)
+            elif child.type == "as":
+                has_as = True
+            elif child.type == "identifier" and has_as:
+                # This identifier comes after 'as', so it's the alias
+                alias_name = _node_text(child, source)
+
+        if has_as and module_path and alias_name:
+            aliases[alias_name] = module_path
+
+    return aliases
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_symbols_from_file(
@@ -387,6 +425,9 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
 
+    # Extract import aliases for path_hint disambiguation
+    analysis.import_aliases = _extract_import_aliases(tree, source)
+
     return analysis
 
 
@@ -397,10 +438,18 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
+    """Extract call and import edges from a file.
+
+    Args:
+        import_aliases: Mapping of alias name to fully qualified path (e.g., JList -> java.util.List)
+                        Used as path_hint for resolver disambiguation.
+    """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    if import_aliases is None:  # pragma: no cover - defensive
+        import_aliases = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -431,18 +480,40 @@ def _extract_edges_from_file(
                 ))
 
         # Detect function calls (various forms in Groovy)
-        # method_invocation: helper() inside a method
+        # method_invocation: helper() inside a method, or Receiver.method()
         # juxt_function_call: println "hello" (Groovy's operator-less call syntax)
         elif node.type in ("method_invocation", "juxt_function_call"):
             current_function = _get_enclosing_function_groovy(node, source, local_symbols)
             if current_function is not None:
-                # Get the function/method being called
-                callee_node = _find_child_by_type(node, "identifier")
-                if not callee_node:  # pragma: no cover - grammar fallback
-                    callee_node = _find_child_by_type(node, "simple_identifier")
+                # Extract receiver and method name from method_invocation
+                # Pattern: identifier.identifier(args) or just identifier(args)
+                receiver = None
+                callee_name = None
 
-                if callee_node:
-                    callee_name = _node_text(callee_node, source)
+                if node.type == "method_invocation":
+                    # Check structure: receiver.method(args)
+                    # Identifiers appear in order: receiver (optional), then method
+                    identifiers = [c for c in node.children if c.type == "identifier"]
+                    has_dot = any(c.type == "." for c in node.children)
+
+                    if has_dot and len(identifiers) >= 2:
+                        # Qualified call: Receiver.method()
+                        receiver = _node_text(identifiers[0], source)
+                        callee_name = _node_text(identifiers[1], source)
+                    elif len(identifiers) >= 1:
+                        # Simple call: method()
+                        callee_name = _node_text(identifiers[0], source)
+                else:
+                    # juxt_function_call: println "hello"
+                    callee_node = _find_child_by_type(node, "identifier")
+                    if callee_node:
+                        callee_name = _node_text(callee_node, source)
+
+                if callee_name:
+                    # Get path hint from import aliases if receiver is aliased
+                    path_hint: Optional[str] = None
+                    if receiver and receiver in import_aliases:
+                        path_hint = import_aliases[receiver]
 
                     # Check local symbols first
                     if callee_name in local_symbols:
@@ -459,7 +530,7 @@ def _extract_edges_from_file(
                         ))
                     # Check global symbols via resolver
                     else:
-                        lookup_result = resolver.lookup(callee_name)
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -538,7 +609,8 @@ def analyze_groovy(repo_root: Path) -> GroovyAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            groovy_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            groovy_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            import_aliases=analysis.import_aliases,
         )
         all_edges.extend(edges)
 
