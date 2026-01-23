@@ -1,0 +1,13 @@
+Original commit body from 6234713:
+
+Implement cross-language linking between OpenAPI specification files
+and route handlers in application code. The linker:
+
+- Parses openapi.yaml/json and swagger.yaml/json files
+- Creates openapi_operation symbols for each path/method
+- Links to route handlers by path pattern matching
+- Links by operationId when available (higher confidence)
+- Supports parameterized paths with {param} and :param notation
+
+Also updates spec to mark OpenAPI linker as implemented (green).
+Regenerates ARCHITECTURE.md with updated linker count.
