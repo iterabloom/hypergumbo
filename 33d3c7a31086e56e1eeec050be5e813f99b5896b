@@ -1,0 +1,14 @@
+Original commit body from e76af78:
+
+When --frameworks all was specified, the profile detection still scanned
+dependency files to detect frameworks. This meant that if a framework wasn't
+listed in requirements.txt/package.json but its decorators were present in
+code, no entrypoint patterns would match.
+
+Now --frameworks all uses ALL known framework patterns for detected languages,
+enabling entrypoint detection even when frameworks aren't in manifest files.
+
+Bug discovered by 12.10 bakeoff experiment after removing legacy _detect_*
+functions - with legacy removal, --frameworks none and --frameworks all both
+produced 0 entrypoints because the "all" mode wasn't actually loading all
+framework patterns.
