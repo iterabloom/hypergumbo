@@ -1,0 +1,7 @@
+Original commit body from c3934be:
+
+Replaces per-file embedding calls with batch processing. At batch_size=64,
+1600 files now require ~25 batch calls instead of 1600 individual calls,
+reducing embedding time from ~38 minutes to ~4-6 minutes.
+
+Also reorganizes README to put Two Outputs and CLI Commands above How It Works.
