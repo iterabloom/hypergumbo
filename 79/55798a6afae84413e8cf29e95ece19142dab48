@@ -1,0 +1,10 @@
+Original commit body from 20b2914:
+
+Repos primarily containing markdown, JSON, or YAML files now display
+correct file and LOC counts when using -x/--exclude-tests. Previously
+showed "0 files" and "~0 LOC" because _format_language_stats was
+recalculating totals from an empty filtered_source_files list instead
+of using the profile's counts and subtracting test files.
+
+Also adds comprehensive tests for SketchStats and the representativeness
+table display function to achieve 100% test coverage.
