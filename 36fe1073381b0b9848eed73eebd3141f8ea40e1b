@@ -1,0 +1,18 @@
+Original commit body from d1b93d1:
+
+Ruby Rails:
+- Add _extract_rails_usage_contexts() for route DSL calls
+- Detect get, post, put, patch, delete, head, options routes
+- Detect resources and resource declarations
+- Extract route_path, http_method, controller_action metadata
+- Update rails.yaml with usage-based patterns
+
+Rust Axum:
+- Add _extract_axum_usage_contexts() for .route() calls
+- Add _extract_handler_usage_contexts() for handler chain traversal
+- Detect get, post, put, patch, delete, head, options, trace methods
+- Extract route_path, http_method, handler_name metadata
+- Update rust-web.yaml with usage-based patterns (Actix-web unchanged)
+
+Add usage_contexts field to RubyAnalysisResult and RustAnalysisResult.
+Update hypergumbo-spec.md and CHANGELOG.md.
