@@ -1,0 +1,6 @@
+Original commit body from b0eac11:
+
+- Use ├── when hidden items follow the last shown item (not └──)
+- Use │ continuation in child prefix when more items follow at parent level
+- Calculate hidden count at each level before rendering children
+- Add tests verifying correct connector usage with hidden siblings
