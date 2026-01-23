@@ -1,0 +1,6 @@
+Original commit body from 4767f42:
+
+The Overview line now shows test and non-test LOC separately, e.g.,
+"186 files · ~59,292 LOC (128 test files, ~56,204 test LOC)"
+
+This makes it easier to understand the test vs production code ratio.
