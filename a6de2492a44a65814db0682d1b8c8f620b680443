@@ -1,0 +1,9 @@
+Original commit body from b7055d4:
+
+Add detection of Solidity smart contract toolchains via config files:
+- Foundry: detected from foundry.toml presence
+- Hardhat: detected from hardhat.config.js or hardhat.config.ts
+
+Previously Hardhat was only detected via package.json dependencies.
+This enables proper framework detection for pure Solidity projects
+like Aave v3 and Uniswap v4 that use Foundry without a package.json.
