@@ -1,0 +1,5 @@
+Original commit body from e27cfa1:
+
+After displaying the representativeness table, show a helpful message
+explaining that the double-budget sketch was created temporarily, with
+a ready-to-run cp command to preserve it to the cache if desired.
