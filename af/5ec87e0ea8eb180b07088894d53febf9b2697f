@@ -1,0 +1,18 @@
+Original commit body from 6e5c6dc:
+
+Three UX improvements when using -x/--exclude-tests:
+
+1. Remove misleading "Coverage requires execution" message
+   - When coverage cannot be estimated (no production functions),
+     simply omit the coverage line instead of showing a confusing hint
+   - Removed unused COVERAGE_HINTS dict and _get_coverage_hint function
+
+2. Overview totals now match -x semantics
+   - Shows "2 files (2 non-test + 0 test)" instead of "6 files (2 + 4)"
+   - Total equals non-test count when excluding tests
+   - Makes clear that tests are truly being ignored in the counts
+
+3. Structure section filters test files in directory counts
+   - Tests directory now shows count of non-test items only
+   - Config/doc files (Makefile, Cargo.toml) still counted
+   - Test source files and test subdirectories excluded from count
