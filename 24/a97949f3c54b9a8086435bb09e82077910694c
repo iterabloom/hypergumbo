@@ -1,0 +1,11 @@
+Original commit body from 5e81ead:
+
+After processing source files by centrality, the Structure tree now also
+scans for CONFIG/DOCUMENTATION files in unrepresented directories. This
+ensures directories containing only docs or config files still get
+representation in the tree.
+
+Uses separate limits to prevent crowding:
+- Max 5 root-level files (e.g., pyproject.toml, README.md)
+- Max 10 root-level directories
+- Max 5 additional files from unrepresented directories
