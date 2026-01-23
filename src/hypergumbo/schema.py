@@ -9,9 +9,10 @@ Version Distinction
 
 - **SCHEMA_VERSION** (defined here): The schema documentation version, embedded
   in every JSON output as `schema_version`. It increments for significant changes
-  to `docs/schema.json`, including: breaking changes to the behavior map output
-  format (minor bump), and non-breaking additions like new type definitions or
-  optional fields (patch bump). Consumers can use this to check compatibility.
+  to `docs/schema.json`, which is a **unified schema** containing both behavior map
+  output definitions AND framework pattern types for YAML validation. Breaking
+  changes to output format bump minor; additions like new type definitions for
+  YAML patterns bump patch. Consumers can use this to check compatibility.
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
