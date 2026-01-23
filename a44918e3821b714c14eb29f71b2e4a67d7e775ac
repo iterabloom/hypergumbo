@@ -1,0 +1,15 @@
+Original commit body from 0d75a10:
+
+When using --progress flag, sketch now displays item-level progress
+during embedding computation: "Embedding files: 10/157"
+
+This provides visibility into the heaviest lift (embedding) and
+helps users understand progress during large repo analysis.
+
+Also increased default semantic_top_n from 3 to 10 for Additional
+Files section, surfacing more semantically relevant documentation.
+
+Changes:
+- Add update_item_progress() to SketchProgress for item-level progress
+- Add progress_callback parameter to _format_additional_files()
+- Change semantic_top_n default from 3 to 10
