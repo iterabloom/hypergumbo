@@ -1,0 +1,9 @@
+Original commit body from 2f5f061:
+
+Updates section 8.7 (Entrypoint Detection Improvements):
+- Java analyzer purified: Spring/JAX-RS route detection now YAML-driven
+- Python analyzer: Removed misleading Django deprecation warning
+- Added reference to ADR-0003 Usage Context Patterns extension
+- Documented that call-based frameworks (Django, Express, Go) need
+  the proposed UsageContext model for YAML-driven pattern matching
+- Clarified remaining work: JS/TS, Go, Ruby, Rust analyzers
