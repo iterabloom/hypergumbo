@@ -1,0 +1,12 @@
+Original commit body from 37badc2:
+
+Move route path combination logic from js_ts.py analyzer to the YAML
+enrichment layer. NestJS routes now use `prefix_from_parent: "controller"`
+to inherit path prefixes from parent @Controller decorators.
+
+- Add prefix_from_parent field to Pattern dataclass
+- Implement parent concept lookup in enrich_symbols()
+- Update NestJS YAML to use declarative path inheritance
+- Remove path combination hack from js_ts.py analyzer
+- Add yamllint config and pre-commit hook for YAML validation
+- Add framework pattern types to unified schema.json
