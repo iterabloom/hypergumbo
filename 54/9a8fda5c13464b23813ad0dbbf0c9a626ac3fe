@@ -1,0 +1,14 @@
+Original commit body from 8bf9ff8:
+
+Replace the fragile regex-based approach for adding [IGNORING TESTS]
+markers to section headers with a cleaner _section_header() helper
+function that generates the marker at header creation time.
+
+This avoids issues with the regex matching bash comments inside code
+blocks (like "## --->" in shell scripts).
+
+Changes:
+- Add _section_header(title, exclude_tests) helper function
+- Update all _format_* functions to accept exclude_tests parameter
+- Pass exclude_tests to format function call sites in generate_sketch
+- Remove regex post-processing that was matching content incorrectly
