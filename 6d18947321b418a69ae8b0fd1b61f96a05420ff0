@@ -1,0 +1,5 @@
+Original commit body from 0424b3d:
+
+Tests should not break when schema version changes. Updated all test
+files to import and use SCHEMA_VERSION from hypergumbo.schema instead
+of hardcoding '0.1.0'.
