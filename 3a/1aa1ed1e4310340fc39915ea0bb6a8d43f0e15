@@ -1,0 +1,12 @@
+Original commit body from ddccf88:
+
+Forgejo reads templates from .gitea/, not .forgejo/. The .forgejo
+directory was created by mistake during initial implementation.
+
+This commit tests the SQUASH_TEMPLATE.md functionality now that
+the template exists on the dev branch. If this body appears in the
+final squash merge commit, the template is working correctly.
+
+Previous PRs couldn't use the template because it wasn't on the
+base branch (dev) yet - each PR added the template, but it only
+became available after that PR merged.
