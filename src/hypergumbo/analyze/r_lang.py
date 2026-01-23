@@ -304,16 +304,50 @@ def _extract_r_symbols(
                                     break
 
 
+def _extract_loaded_packages(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> set[str]:
+    """Extract package names loaded via library() or require() (ADR-0007).
+
+    Returns a set of loaded package names for path_hint resolution.
+    """
+    packages: set[str] = set()
+    for node in iter_tree(root_node):
+        if node.type == "call":
+            func_name_node = _find_child_by_type(node, "identifier")
+            if func_name_node:
+                func_name = _node_text(func_name_node, source)
+                if func_name in ("library", "require"):
+                    # Extract package name from arguments
+                    args_node = _find_child_by_type(node, "arguments")
+                    if args_node:
+                        for arg in args_node.children:
+                            if arg.type == "argument":
+                                # Package name could be identifier or string
+                                pkg_id = _find_child_by_type(arg, "identifier")
+                                if pkg_id:
+                                    packages.add(_node_text(pkg_id, source))
+                                    break
+                                pkg_str = _find_child_by_type(arg, "string")
+                                if pkg_str:
+                                    packages.add(_node_text(pkg_str, source).strip("\"'"))
+                                    break
+    return packages
+
+
 def _extract_r_edges(
     root_node: "tree_sitter.Node",
     source: bytes,
     edges: list[Edge],
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
+    loaded_packages: set[str] | None = None,
 ) -> None:
     """Extract edges from R AST tree (pass 2).
 
     Uses NameResolver for callee resolution to enable cross-file symbol lookup.
+    Handles both unqualified calls (func()) and namespace-qualified calls (pkg::func()).
 
     Args:
         root_node: Root tree-sitter node to process
@@ -321,47 +355,68 @@ def _extract_r_edges(
         edges: List to append edges to
         local_symbols: Local symbol registry for finding enclosing functions
         resolver: NameResolver for callee resolution
+        loaded_packages: Set of package names loaded via library/require (ADR-0007)
     """
+    if loaded_packages is None:
+        loaded_packages = set()  # pragma: no cover - always passed by caller
+
     for node in iter_tree(root_node):
         if node.type == "call":
-            func_name_node = None
-            for child in node.children:
-                if child.type == "identifier":
-                    func_name_node = child
-                    break
+            func_name = None
+            path_hint = None
+            start_line = node.start_point[0] + 1
 
-            if func_name_node:
-                func_name = _node_text(func_name_node, source)
-                start_line = node.start_point[0] + 1
+            # Check for namespace-qualified call: pkg::func()
+            ns_operator = _find_child_by_type(node, "namespace_operator")
+            if ns_operator:
+                # Extract package and function names from namespace_operator
+                identifiers = [c for c in ns_operator.children if c.type == "identifier"]
+                if len(identifiers) >= 2:
+                    pkg_name = _node_text(identifiers[0], source)
+                    func_name = _node_text(identifiers[1], source)
+                    path_hint = pkg_name  # Use package name as path_hint for disambiguation
+            else:
+                # Unqualified call: func()
+                func_name_node = _find_child_by_type(node, "identifier")
+                if func_name_node:
+                    func_name = _node_text(func_name_node, source)
 
-                # Skip library/require/source - these are handled as symbols
-                if func_name in ("library", "require", "source"):
-                    continue
+            if not func_name:
+                continue
 
-                # Regular function call - create edge if inside a function
-                caller = _find_enclosing_function_r(node, source, local_symbols)
-                if caller:
-                    # Use resolver for callee resolution
-                    lookup_result = resolver.lookup(func_name)
-                    if lookup_result.found and lookup_result.symbol:
-                        dst_id = lookup_result.symbol.id
-                        confidence = 0.90 * lookup_result.confidence
+            # Skip library/require/source - these are handled as symbols
+            if func_name in ("library", "require", "source"):
+                continue
+
+            # Regular function call - create edge if inside a function
+            caller = _find_enclosing_function_r(node, source, local_symbols)
+            if caller:
+                # Use resolver for callee resolution with path_hint
+                lookup_result = resolver.lookup(func_name, path_hint=path_hint)
+                if lookup_result.found and lookup_result.symbol:
+                    dst_id = lookup_result.symbol.id
+                    # Higher confidence for namespace-qualified calls
+                    base_confidence = 0.95 if path_hint else 0.90
+                    confidence = base_confidence * lookup_result.confidence
+                else:
+                    # Builtin or external function
+                    if path_hint:
+                        dst_id = f"r:external:{path_hint}::{func_name}"
                     else:
-                        # Builtin or external function
                         dst_id = f"r:builtin:{func_name}"
-                        confidence = 0.70
+                    confidence = 0.75 if path_hint else 0.70
 
-                    edge = Edge(
-                        id=_make_edge_id(caller.id, dst_id, "calls"),
-                        src=caller.id,
-                        dst=dst_id,
-                        edge_type="calls",
-                        line=start_line,
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        evidence_type="static",
-                    )
-                    edges.append(edge)
+                edge = Edge(
+                    id=_make_edge_id(caller.id, dst_id, "calls"),
+                    src=caller.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=start_line,
+                    confidence=confidence,
+                    origin=PASS_ID,
+                    evidence_type="static" if not path_hint else "qualified_call",
+                )
+                edges.append(edge)
 
 
 def analyze_r_files(repo_root: Path) -> RAnalysisResult:
@@ -416,8 +471,8 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
 
     r_files = list(find_r_files(repo_root))
 
-    # Store parsed trees for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
+    # Store parsed trees for pass 2: (rel_path, source, tree, loaded_packages)
+    parsed_files: list[tuple[str, bytes, object, set[str]]] = []
 
     # Pass 1: Extract symbols from all files
     for r_path in r_files:
@@ -436,8 +491,11 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
                 global_symbol_registry,
             )
 
+            # Extract loaded packages for ADR-0007
+            loaded_packages = _extract_loaded_packages(tree.root_node, source)
+
             # Store for pass 2
-            parsed_files.append((rel_path, source, tree))
+            parsed_files.append((rel_path, source, tree, loaded_packages))
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
@@ -447,7 +505,7 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
     resolver = NameResolver(global_symbol_registry)
 
     # Pass 2: Extract edges using resolver
-    for rel_path, source, tree in parsed_files:
+    for rel_path, source, tree, loaded_packages in parsed_files:
         # Build local symbol map for this file (functions only)
         local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
 
@@ -457,6 +515,7 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
             edges,
             local_symbols,
             resolver,
+            loaded_packages,
         )
 
     duration_ms = int((time.time() - start_time) * 1000)
