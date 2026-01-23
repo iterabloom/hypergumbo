@@ -356,10 +356,28 @@ except Exception:
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
+	# Build merge payload with commit message
+	local merge_payload
+	merge_payload=$(python3 -c "
+import json, sys
+title = sys.argv[1]
+body = sys.argv[2]
+# Combine title and body for the merge commit message
+message = title
+if body.strip():
+    message += '\n\n' + body
+payload = {
+    'do': 'squash',
+    'delete_branch_after_merge': True,
+    'merge_message_field': message
+}
+print(json.dumps(payload))
+" "$TITLE" "$DESC")
+
 	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
 		-H "Authorization: token $TOKEN" \
 		-H "Content-Type: application/json" \
-		-d '{"do": "squash", "delete_branch_after_merge": true}' \
+		-d "$merge_payload" \
 		"$API_BASE/pulls/$PR_NUM/merge")
 
 	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
@@ -626,10 +644,28 @@ except Exception:
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
+	# Build merge payload with commit message
+	local merge_payload
+	merge_payload=$(python3 -c "
+import json, sys
+title = sys.argv[1]
+body = sys.argv[2]
+# Combine title and body for the merge commit message
+message = title
+if body.strip():
+    message += '\n\n' + body
+payload = {
+    'do': 'squash',
+    'delete_branch_after_merge': True,
+    'merge_message_field': message
+}
+print(json.dumps(payload))
+" "$TITLE" "$DESC")
+
 	MERGE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
 		-H "Authorization: token $TOKEN" \
 		-H "Content-Type: application/json" \
-		-d '{"do": "squash", "delete_branch_after_merge": true}' \
+		-d "$merge_payload" \
 		"$API_BASE/pulls/$PR_NUM/merge")
 
 	if [[ "$MERGE_HTTP_CODE" == "200" || "$MERGE_HTTP_CODE" == "204" ]]; then
