@@ -1,0 +1,5 @@
+Original commit body from d85ce17:
+
+Every expanded branch should terminate at a visible file (the "important
+file" that caused that path to be included). Updated both examples to
+show this clearly.
