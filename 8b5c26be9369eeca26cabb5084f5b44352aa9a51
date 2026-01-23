@@ -1,0 +1,7 @@
+Original commit body from 729d369:
+
+- Add symbols and explain commands to README CLI Commands section
+- Add symbols section (## 11) to USE-CASES.md with all flag options
+- Update test-coverage section (## 12) to mention transitive BFS
+- Add symbols -x and test-coverage to Quick Reference table
+- Add symbols to Output Formats section
