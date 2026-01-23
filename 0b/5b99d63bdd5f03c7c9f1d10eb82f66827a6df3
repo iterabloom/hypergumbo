@@ -1,0 +1,16 @@
+Original commit body from f4cc104:
+
+Single source of truth for route metadata: all route information is now
+exclusively stored in meta.concepts[].{path, method} instead of being
+duplicated to legacy fields (route_path, http_method).
+
+Changes:
+- Removed dual-population code from framework_patterns.py (lines 775-785, 809-816)
+- Updated http.py linker to only read from concepts (removed legacy fallback)
+- Updated openapi.py linker with concept-based route detection
+- Added _has_route_concept() and _get_route_info_from_concept() helpers
+- Updated all tests to verify concepts instead of legacy fields
+
+This completes the migration to the concept-based metadata system,
+eliminating potential data inconsistencies between legacy fields and
+concepts that could mask bugs or cause incorrect behavior.
