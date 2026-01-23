@@ -1,0 +1,8 @@
+Original commit body from a47fd62:
+
+Previously hot spots were ranked by raw test count, which biased toward
+larger functions. Now ranks by test density (tests per LOC), surfacing
+small utility functions that are disproportionately tested.
+
+Example: A 3-line function with 172 tests (57.33 t/LOC) now correctly
+ranks above a 224-line function with 230 tests (1.03 t/LOC).
