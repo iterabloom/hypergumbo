@@ -1,0 +1,13 @@
+Original commit body from 144077f:
+
+- Use streaming json.dump() instead of json.dumps() + write_text()
+- Free Symbol/Edge objects after tier/compact processing (they're
+  converted to dicts in behavior_map and no longer needed)
+- Add incremental cleanup for RankedSymbol, UsageContext, Entrypoint,
+  LinkerContext, and captured_symbols after their data is extracted
+- Add gc.collect() between tier generations and before final write
+- Add optional memory telemetry (HG_MEMORY_DEBUG env var) for debugging
+
+Testing on tensorflow (154k symbols, 505k edges):
+- Before: ~11 GB peak memory (caused terminal unresponsiveness)
+- After: ~2.1 GB peak memory (80% reduction)
