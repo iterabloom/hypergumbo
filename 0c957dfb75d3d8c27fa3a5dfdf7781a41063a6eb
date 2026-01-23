@@ -1,0 +1,12 @@
+Original commit body from 2d70184:
+
+- CHANGELOG.md: Reduced from 557 to 153 lines
+  - Replaced exhaustive framework pattern lists with summaries
+  - Moved capabilities catalogs to doc references
+  - Updated version history table through 1.0.0
+  - Fixed compare links for all versions
+
+- README.md: Added link to USE-CASES.md
+
+- USE-CASES.md: Added test-coverage command section,
+  updated framework list to include PHP/C#/Chi
