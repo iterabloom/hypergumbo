@@ -98,6 +98,34 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_import_hints(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import statements for disambiguation.
+
+    In Swift:
+        import Foundation -> Foundation as hint
+        import MyModule -> MyModule as hint
+
+    Returns a dict mapping module names to their import paths.
+    """
+    hints: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+
+        # Get the module being imported
+        id_node = _find_child_by_type(node, "identifier")
+        if id_node:
+            module_name = _node_text(id_node, source)
+            if module_name:
+                hints[module_name] = module_name
+
+    return hints
+
+
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
@@ -190,6 +218,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    import_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_symbols_from_file(
@@ -319,6 +348,9 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
+    # Extract import hints for disambiguation
+    analysis.import_hints = _extract_import_hints(tree, source)
+
     return analysis
 
 
@@ -329,10 +361,17 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    import_hints: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
-    if resolver is None:
+    """Extract call and import edges from a file.
+
+    Args:
+        import_hints: Optional dict mapping module names to import paths for disambiguation.
+    """
+    if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    if import_hints is None:  # pragma: no cover - defensive default
+        import_hints = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -390,7 +429,9 @@ def _extract_edges_from_file(
                         ))
                     # Check global symbols via resolver
                     else:
-                        lookup_result = resolver.lookup(callee_name)
+                        # Use import hints for disambiguation
+                        path_hint = import_hints.get(callee_name)
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -469,7 +510,8 @@ def analyze_swift(repo_root: Path) -> SwiftAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            swift_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            swift_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            import_hints=analysis.import_hints,
         )
         all_edges.extend(edges)
 

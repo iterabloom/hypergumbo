@@ -97,6 +97,54 @@ def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def _extract_use_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    r"""Extract use statements for disambiguation.
+
+    In PHP:
+        use Namespace\ClassName; -> ClassName maps to Namespace\ClassName
+        use Namespace\ClassName as Alias; -> Alias maps to Namespace\ClassName
+
+    Returns a dict mapping short names to full qualified names.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "namespace_use_declaration":
+            continue
+
+        # Each use declaration can have multiple clauses
+        for child in node.children:
+            if child.type == "namespace_use_clause":
+                # Find qualified_name and check for alias
+                path_node = None
+                alias_name = None
+                has_as = False
+
+                for sub in child.children:
+                    if sub.type == "qualified_name":
+                        path_node = sub
+                    elif sub.type == "as":
+                        has_as = True
+                    elif sub.type == "name" and has_as:
+                        # This is the alias after 'as'
+                        alias_name = _node_text(sub, source)
+
+                if path_node:
+                    full_path = _node_text(path_node, source)
+                    if alias_name:
+                        aliases[alias_name] = full_path
+                    else:
+                        # Use last component of namespace path
+                        short_name = full_path.rsplit("\\", 1)[-1]
+                        if short_name:
+                            aliases[short_name] = full_path
+
+    return aliases
+
+
 def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Find identifier name in node's children."""
     for child in node.children:
@@ -319,6 +367,7 @@ class _ParsedFile:
     path: Path
     tree: "tree_sitter.Tree"
     source: bytes
+    use_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_symbols(
@@ -417,10 +466,14 @@ def _extract_edges(
     symbol_resolver: NameResolver | None = None,
     method_resolver: ListNameResolver | None = None,
     class_resolver: NameResolver | None = None,
+    use_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed PHP tree (pass 2).
 
     Uses global symbol registries to resolve cross-file references.
+
+    Args:
+        use_aliases: Optional dict mapping short names to full qualified names for disambiguation.
     """
     if symbol_resolver is None:  # pragma: no cover - defensive
         symbol_resolver = NameResolver(global_symbols)
@@ -428,6 +481,8 @@ def _extract_edges(
         method_resolver = ListNameResolver(global_methods)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
+    if use_aliases is None:  # pragma: no cover - defensive default
+        use_aliases = {}
     edges: list[Edge] = []
 
     for node in iter_tree(tree.root_node):
@@ -438,7 +493,9 @@ def _extract_edges(
                 callee_name = _node_text(func_node, source)
                 current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
                 if current_function:
-                    lookup_result = symbol_resolver.lookup(callee_name)
+                    # Use use_aliases for disambiguation
+                    path_hint = use_aliases.get(callee_name)
+                    lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -515,8 +572,11 @@ def _extract_edges(
                     if class_name in ("self", "static") and current_class_name:
                         class_name = current_class_name
 
-                    full_name = f"{class_name}.{method_name}"
-                    lookup_result = symbol_resolver.lookup(full_name)
+                    # Resolve class alias if present
+                    resolved_class = use_aliases.get(class_name, class_name)
+                    full_name = f"{resolved_class}.{method_name}"
+                    path_hint = use_aliases.get(class_name)
+                    lookup_result = symbol_resolver.lookup(full_name, path_hint=path_hint)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -538,7 +598,9 @@ def _extract_edges(
                 for child in node.children:
                     if child.type == "name":
                         class_name = _node_text(child, source)
-                        lookup_result = class_resolver.lookup(class_name)
+                        # Use use_aliases for disambiguation
+                        path_hint = use_aliases.get(class_name)
+                        lookup_result = class_resolver.lookup(class_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -575,6 +637,7 @@ def _analyze_php_file(
         return [], [], False
 
     symbols = _extract_symbols(tree, source, file_path, run)
+    use_aliases = _extract_use_aliases(tree, source)
 
     # Build symbol registry for edge extraction
     global_symbols: dict[str, Symbol] = {}
@@ -592,7 +655,10 @@ def _analyze_php_file(
         elif sym.kind == "class":
             global_classes[sym.name] = sym
 
-    edges = _extract_edges(tree, source, file_path, run, global_symbols, global_methods, global_classes)
+    edges = _extract_edges(
+        tree, source, file_path, run, global_symbols, global_methods, global_classes,
+        use_aliases=use_aliases,
+    )
     return symbols, edges, True
 
 
@@ -643,7 +709,10 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
         try:
             source = file_path.read_bytes()
             tree = parser.parse(source)
-            parsed_files.append(_ParsedFile(path=file_path, tree=tree, source=source))
+            use_aliases = _extract_use_aliases(tree, source)
+            parsed_files.append(_ParsedFile(
+                path=file_path, tree=tree, source=source, use_aliases=use_aliases
+            ))
             symbols = _extract_symbols(tree, source, file_path, run)
             all_symbols.extend(symbols)
             files_analyzed += 1
@@ -675,7 +744,8 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
             global_symbols, global_methods, global_classes,
-            symbol_resolver, method_resolver, class_resolver
+            symbol_resolver, method_resolver, class_resolver,
+            use_aliases=pf.use_aliases,
         )
         all_edges.extend(edges)
 

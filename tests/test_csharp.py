@@ -912,3 +912,80 @@ public class UserModel
         annotations = method.meta["annotations"]
         range_ann = next(a for a in annotations if a["name"] == "Range")
         assert range_ann["args"] == ["1", "100"]
+
+
+class TestUsingAliasExtraction:
+    """Tests for using directive alias extraction for disambiguation."""
+
+    def test_extracts_aliased_using(self, tmp_path: Path) -> None:
+        """Extracts aliased using directives like 'using Svc = MyApp.Services;'."""
+        from hypergumbo.analyze.csharp import (
+            _extract_using_aliases,
+            is_csharp_tree_sitter_available,
+        )
+
+        if not is_csharp_tree_sitter_available():
+            pytest.skip("tree-sitter-c-sharp not available")
+
+        import tree_sitter_c_sharp
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_c_sharp.language())
+        parser = tree_sitter.Parser(lang)
+
+        cs_file = tmp_path / "Main.cs"
+        cs_file.write_text("""
+using System;
+using Svc = MyApp.Services;
+using System.Collections.Generic;
+
+public class Program
+{
+    public static void Main() {}
+}
+""")
+
+        source = cs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_using_aliases(tree, source)
+
+        # Check regular using extracts last component
+        assert "System" in aliases
+        assert "Generic" in aliases
+
+        # Check aliased using
+        assert "Svc" in aliases
+        assert aliases["Svc"] == "MyApp.Services"
+
+    def test_extracts_simple_namespace_using(self, tmp_path: Path) -> None:
+        """Extracts simple using directives as name -> full path."""
+        from hypergumbo.analyze.csharp import (
+            _extract_using_aliases,
+            is_csharp_tree_sitter_available,
+        )
+
+        if not is_csharp_tree_sitter_available():
+            pytest.skip("tree-sitter-c-sharp not available")
+
+        import tree_sitter_c_sharp
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_c_sharp.language())
+        parser = tree_sitter.Parser(lang)
+
+        cs_file = tmp_path / "Test.cs"
+        cs_file.write_text("""
+using System.Linq;
+
+public class Test {}
+""")
+
+        source = cs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_using_aliases(tree, source)
+
+        # Last component of qualified name
+        assert "Linq" in aliases
+        assert aliases["Linq"] == "System.Linq"

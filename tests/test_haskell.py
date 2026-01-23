@@ -376,3 +376,58 @@ helper x = x + 1
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "helper"]
         assert len(funcs) == 1
         assert funcs[0].signature is None
+
+
+class TestHaskellImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, tmp_path: Path) -> None:
+        """Extracts import alias from 'import qualified as' statement."""
+        from hypergumbo.analyze.haskell import _extract_import_aliases
+
+        import tree_sitter
+        import tree_sitter_haskell
+
+        lang = tree_sitter.Language(tree_sitter_haskell.language())
+        parser = tree_sitter.Parser(lang)
+
+        hs_file = tmp_path / "Main.hs"
+        hs_file.write_text("""
+module Main where
+
+import qualified Data.Map as M
+import qualified Data.List as L
+
+main = print "hello"
+""")
+
+        source = hs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "M" in aliases
+        assert aliases["M"] == "Data.Map"
+        assert "L" in aliases
+        assert aliases["L"] == "Data.List"
+
+    def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        from hypergumbo.analyze.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import qualified Data.Map as M
+
+lookup_ :: String -> Int
+lookup_ key = M.lookup key M.empty
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "lookup_" for s in symbols)

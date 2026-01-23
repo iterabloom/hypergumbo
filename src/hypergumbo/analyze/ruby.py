@@ -104,6 +104,73 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _snake_to_pascal(name: str) -> str:
+    """Convert snake_case to PascalCase.
+
+    Examples:
+        user_service -> UserService
+        http_client -> HttpClient
+        api -> Api
+    """
+    return "".join(word.capitalize() for word in name.split("_"))
+
+
+def _extract_require_hints(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract require/require_relative statements and infer class/module names.
+
+    Ruby convention maps snake_case file paths to PascalCase class names.
+    For example:
+        require 'user_service' -> hints that UserService class comes from this path
+        require 'math/calculator' -> hints that Calculator class comes from this path
+
+    Returns a dict mapping inferred class/module names to their require paths.
+    """
+    hints: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        # Get method name
+        method_node = None
+        for child in node.children:
+            if child.type == "identifier":
+                method_node = child
+                break
+
+        if not method_node:  # pragma: no cover - call nodes always have identifier
+            continue
+
+        callee_name = _node_text(method_node, source)
+        if callee_name not in ("require", "require_relative"):
+            continue
+
+        # Extract the require path from arguments
+        args_node = _find_child_by_field(node, "arguments")
+        if not args_node:  # pragma: no cover - require always has arguments
+            continue
+
+        for arg in args_node.children:
+            if arg.type == "string":
+                content_node = _find_child_by_type(arg, "string_content")
+                if content_node:
+                    require_path = _node_text(content_node, source)
+                    # Extract the last component and convert to PascalCase
+                    # 'math/calculator' -> 'calculator' -> 'Calculator'
+                    basename = require_path.rsplit("/", 1)[-1]
+                    # Remove .rb extension if present
+                    if basename.endswith(".rb"):
+                        basename = basename[:-3]
+                    if basename:
+                        class_name = _snake_to_pascal(basename)
+                        hints[class_name] = require_path
+
+    return hints
+
+
 def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> tuple[Optional[str], str]:
     """Walk up the tree to find the enclosing class or module name.
 
@@ -330,6 +397,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    require_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_symbols_from_file(
@@ -436,6 +504,9 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
 
+    # Extract require hints for disambiguation
+    analysis.require_hints = _extract_require_hints(tree, source)
+
     return analysis
 
 
@@ -446,10 +517,17 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    require_hints: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
-    if resolver is None:
+    """Extract call and import edges from a file.
+
+    Args:
+        require_hints: Optional dict mapping class/module names to require paths for disambiguation.
+    """
+    if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    if require_hints is None:  # pragma: no cover - defensive default
+        require_hints = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -511,7 +589,9 @@ def _extract_edges_from_file(
                             ))
                         # Check global symbols via resolver
                         else:
-                            lookup_result = resolver.lookup(callee_name)
+                            # Use require hints for disambiguation
+                            path_hint = require_hints.get(callee_name)
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_method.id,
@@ -544,7 +624,9 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                         ))
                 else:
-                    lookup_result = resolver.lookup(callee_name)
+                    # Use require hints for disambiguation
+                    path_hint = require_hints.get(callee_name)
+                    lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                     if lookup_result.found and lookup_result.symbol is not None:
                         callee = lookup_result.symbol
                         if callee.kind == "method" and callee.id != current_method.id:
@@ -628,7 +710,8 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            rb_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            rb_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            require_hints=analysis.require_hints,
         )
         all_edges.extend(edges)
 

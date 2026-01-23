@@ -347,3 +347,58 @@ combine a b c d =
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "combine"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(a, b, c, d)"
+
+
+class TestElmImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, tmp_path: Path) -> None:
+        """Extracts import alias from 'import ... as' statement."""
+        from hypergumbo.analyze.elm import _extract_import_aliases
+
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("elm")
+
+        elm_file = tmp_path / "Main.elm"
+        elm_file.write_text("""
+module Main exposing (main)
+
+import Dict as D
+import List as L
+
+main = D.empty
+""")
+
+        source = elm_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "D" in aliases
+        assert aliases["D"] == "Dict"
+        assert "L" in aliases
+        assert aliases["L"] == "List"
+
+    def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        make_elm_file(
+            tmp_path,
+            "Main.elm",
+            """
+module Main exposing (lookup)
+
+import Dict as D
+
+lookup key =
+    D.get key D.empty
+""",
+        )
+
+        result = analyze_elm(tmp_path)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "lookup" for s in symbols)

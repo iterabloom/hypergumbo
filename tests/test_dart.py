@@ -683,3 +683,65 @@ void process({Logger logger}) {
         assert "process" in edge.src
         assert "Logger.log" in edge.dst
 
+
+class TestDartImportHintsExtraction:
+    """Tests for import hints extraction for disambiguation."""
+
+    def test_extracts_as_prefix(self, tmp_path: Path) -> None:
+        """Extracts import prefix from 'as' clause."""
+        from hypergumbo.analyze.dart import _extract_import_hints
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+
+        lang = get_language("dart")
+        parser = tree_sitter.Parser(lang)
+
+        dart_file = tmp_path / "main.dart"
+        dart_file.write_text("""
+import 'package:http/http.dart' as http;
+
+void main() {
+  http.get('url');
+}
+""")
+
+        source = dart_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_import_hints(tree, source)
+
+        # 'http' prefix should map to the import path
+        assert "http" in hints
+        assert hints["http"] == "package:http/http.dart"
+
+    def test_extracts_show_names(self, tmp_path: Path) -> None:
+        """Extracts names from 'show' combinator."""
+        from hypergumbo.analyze.dart import _extract_import_hints
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+
+        lang = get_language("dart")
+        parser = tree_sitter.Parser(lang)
+
+        dart_file = tmp_path / "main.dart"
+        dart_file.write_text("""
+import 'package:models/models.dart' show User, Account;
+
+void main() {
+  var user = User();
+}
+""")
+
+        source = dart_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_import_hints(tree, source)
+
+        # Both shown names should map to the import path
+        assert "User" in hints
+        assert hints["User"] == "package:models/models.dart"
+        assert "Account" in hints
+        assert hints["Account"] == "package:models/models.dart"
+

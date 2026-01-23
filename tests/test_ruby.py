@@ -468,6 +468,78 @@ class TestRubyHelperFunctions:
         assert result is None
 
 
+class TestRequireHintsExtraction:
+    """Tests for require hints extraction for disambiguation."""
+
+    def test_extracts_require_hints(self, tmp_path: Path) -> None:
+        """Extracts require paths and converts to PascalCase class names."""
+        from hypergumbo.analyze.ruby import (
+            _extract_require_hints,
+            is_ruby_tree_sitter_available,
+        )
+
+        if not is_ruby_tree_sitter_available():
+            pytest.skip("tree-sitter-ruby not available")
+
+        import tree_sitter_ruby
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_ruby.language())
+        parser = tree_sitter.Parser(lang)
+
+        rb_file = tmp_path / "main.rb"
+        rb_file.write_text("""
+require 'user_service'
+require_relative 'math/calculator'
+
+def main
+  UserService.new
+  Calculator.add(1, 2)
+end
+""")
+
+        source = rb_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_require_hints(tree, source)
+
+        # Check that hints are extracted and converted to PascalCase
+        assert "UserService" in hints
+        assert hints["UserService"] == "user_service"
+        assert "Calculator" in hints
+        assert hints["Calculator"] == "math/calculator"
+
+    def test_extracts_require_with_rb_extension(self, tmp_path: Path) -> None:
+        """Strips .rb extension from require paths."""
+        from hypergumbo.analyze.ruby import (
+            _extract_require_hints,
+            is_ruby_tree_sitter_available,
+        )
+
+        if not is_ruby_tree_sitter_available():
+            pytest.skip("tree-sitter-ruby not available")
+
+        import tree_sitter_ruby
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_ruby.language())
+        parser = tree_sitter.Parser(lang)
+
+        rb_file = tmp_path / "test.rb"
+        rb_file.write_text("""
+require_relative 'helpers/string_utils.rb'
+""")
+
+        source = rb_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_require_hints(tree, source)
+
+        # .rb extension should be stripped, snake_case converted to PascalCase
+        assert "StringUtils" in hints
+        assert hints["StringUtils"] == "helpers/string_utils.rb"
+
+
 class TestRubySignatureExtraction:
     """Tests for Ruby method signature extraction."""
 

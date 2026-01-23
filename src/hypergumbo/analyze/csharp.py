@@ -362,6 +362,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    using_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -384,6 +385,62 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - defensive
 
 
+def _extract_using_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract using directive aliases from a parsed C# tree.
+
+    Maps type names to their full namespace paths for disambiguation:
+    - using System.Collections.Generic; -> Generic: System.Collections.Generic
+    - using MyApp.Services; -> Services: MyApp.Services
+    - using Svc = MyApp.Services; -> Svc: MyApp.Services
+
+    Returns dict mapping local alias/name -> full namespace path.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "using_directive":
+            continue
+
+        # Check if this is an aliased using (has = child)
+        # Structure: using_directive { identifier, =, qualified_name }
+        has_equals = any(child.type == "=" for child in node.children)
+
+        if has_equals:
+            # Handle 'using Alias = Namespace.Type;' (aliased using)
+            # First identifier is the alias, qualified_name is the path
+            alias_node = _find_child_by_type(node, "identifier")
+            path_node = _find_child_by_type(node, "qualified_name")
+            if alias_node and path_node:
+                alias = _node_text(alias_node, source)
+                full_path = _node_text(path_node, source)
+                if alias and full_path:
+                    aliases[alias] = full_path
+            continue
+
+        # Handle regular 'using Namespace.Type;'
+        name_node = _find_child_by_type(node, "qualified_name")
+        if name_node:
+            full_path = _node_text(name_node, source)
+            if full_path and "." in full_path:
+                # Last segment is the imported name
+                name = full_path.rsplit(".", 1)[-1]
+                if name:
+                    aliases[name] = full_path
+            continue
+
+        # Handle simple 'using Namespace;'
+        id_node = _find_child_by_type(node, "identifier")
+        if id_node:
+            name = _node_text(id_node, source)
+            if name:
+                aliases[name] = name
+
+    return aliases
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -399,7 +456,10 @@ def _extract_symbols_from_file(
     except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
         return FileAnalysis()
 
-    analysis = FileAnalysis()
+    # Extract using aliases for disambiguation
+    using_aliases = _extract_using_aliases(tree, source)
+
+    analysis = FileAnalysis(using_aliases=using_aliases)
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the identifier name from a declaration node."""
@@ -664,6 +724,7 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    using_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -672,9 +733,14 @@ def _extract_edges_from_file(
     Type inference tracks types from:
     - Constructor calls: var db = new Database() -> db has type Database
     - Method/constructor parameters: void Process(Database db) -> db has type Database
+
+    Args:
+        using_aliases: Optional dict mapping type names to namespace paths for disambiguation.
     """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    if using_aliases is None:  # pragma: no cover - defensive default
+        using_aliases = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -759,7 +825,9 @@ def _extract_edges_from_file(
                                 ))
                                 continue
                             else:
-                                lookup_result = resolver.lookup(qualified_name)
+                                # Use type's import path for disambiguation
+                                import_hint = using_aliases.get(class_name)
+                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -791,7 +859,9 @@ def _extract_edges_from_file(
                         ))
                     # Check global symbols via resolver
                     else:
-                        lookup_result = resolver.lookup(callee_name)
+                        # Use import path for disambiguation
+                        import_hint = using_aliases.get(callee_name)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -825,7 +895,9 @@ def _extract_edges_from_file(
                         origin_run_id=run.execution_id,
                     ))
                 else:
-                    lookup_result = resolver.lookup(type_name)
+                    # Use import path for disambiguation
+                    import_hint = using_aliases.get(type_name)
+                    lookup_result = resolver.lookup(type_name, path_hint=import_hint)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -924,7 +996,8 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            using_aliases=analysis.using_aliases
         )
         all_edges.extend(edges)
 

@@ -292,6 +292,121 @@ fn main() {
         # Should have edges for use statements
         assert len(import_edges) >= 1
 
+    def test_use_aliases_extracted(self, tmp_path: Path) -> None:
+        """Use statement aliases are extracted for disambiguation."""
+        from hypergumbo.analyze.rust import (
+            _extract_use_aliases,
+            is_rust_tree_sitter_available,
+        )
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+use std::collections::HashMap;
+use crate::module::helper;
+
+fn main() {
+    let map = HashMap::new();
+    helper();
+}
+""")
+
+        source = rs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_use_aliases(tree, source)
+
+        # Check that aliases are extracted
+        assert "HashMap" in aliases
+        assert aliases["HashMap"] == "std::collections::HashMap"
+        assert "helper" in aliases
+        assert aliases["helper"] == "crate::module::helper"
+
+    def test_extracts_simple_use(self, tmp_path: Path) -> None:
+        """Extracts simple use statements without qualified path."""
+        from hypergumbo.analyze.rust import (
+            _extract_use_aliases,
+            is_rust_tree_sitter_available,
+        )
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        rs_file = tmp_path / "simple.rs"
+        rs_file.write_text("""
+use helper;
+
+fn main() {
+    helper();
+}
+""")
+
+        source = rs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_use_aliases(tree, source)
+
+        # Simple use should map name to itself
+        assert "helper" in aliases
+        assert aliases["helper"] == "helper"
+
+    def test_extracts_use_as_alias(self, tmp_path: Path) -> None:
+        """Extracts 'use foo::bar as baz;' aliased use statements."""
+        from hypergumbo.analyze.rust import (
+            _extract_use_aliases,
+            is_rust_tree_sitter_available,
+        )
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        rs_file = tmp_path / "aliased.rs"
+        rs_file.write_text("""
+use std::collections::HashMap as Map;
+use crate::module::helper as h;
+use helper as simple_alias;
+
+fn main() {
+    let m: Map = Map::new();
+    h();
+    simple_alias();
+}
+""")
+
+        source = rs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_use_aliases(tree, source)
+
+        # Check aliased uses
+        assert "Map" in aliases
+        assert aliases["Map"] == "std::collections::HashMap"
+        assert "h" in aliases
+        assert aliases["h"] == "crate::module::helper"
+        # Simple alias without :: scoping
+        assert "simple_alias" in aliases
+        assert aliases["simple_alias"] == "helper"
+
 
 class TestRustEdgeCases:
     """Tests for edge cases and error handling."""

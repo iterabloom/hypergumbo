@@ -1,4 +1,5 @@
 """Tests for PHP analyzer."""
+import pytest
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -553,6 +554,87 @@ class User {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         static_calls = [e for e in call_edges if e.evidence_type == "ast_static_call"]
         assert len(static_calls) >= 1
+
+
+class TestUseAliasExtraction:
+    """Tests for use statement alias extraction for disambiguation."""
+
+    def test_extracts_simple_use(self, tmp_path: Path) -> None:
+        """Extracts simple use statements using last component."""
+        from hypergumbo.analyze.php import (
+            _extract_use_aliases,
+            is_php_tree_sitter_available,
+            _get_php_parser,
+        )
+
+        if not is_php_tree_sitter_available():
+            pytest.skip("tree-sitter-php not available")
+
+        parser = _get_php_parser()
+        if parser is None:
+            pytest.skip("tree-sitter-php parser not available")
+
+        php_file = tmp_path / "main.php"
+        php_file.write_text(r"""<?php
+namespace App;
+
+use App\Services\UserService;
+use App\Models\User;
+
+class Main {
+    public function run() {
+        $svc = new UserService();
+    }
+}
+?>""")
+
+        source = php_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_use_aliases(tree, source)
+
+        # Last component of namespace path should be the short name
+        assert "UserService" in aliases
+        assert aliases["UserService"] == r"App\Services\UserService"
+        assert "User" in aliases
+        assert aliases["User"] == r"App\Models\User"
+
+    def test_extracts_aliased_use(self, tmp_path: Path) -> None:
+        """Extracts use statements with 'as' alias."""
+        from hypergumbo.analyze.php import (
+            _extract_use_aliases,
+            is_php_tree_sitter_available,
+            _get_php_parser,
+        )
+
+        if not is_php_tree_sitter_available():
+            pytest.skip("tree-sitter-php not available")
+
+        parser = _get_php_parser()
+        if parser is None:
+            pytest.skip("tree-sitter-php parser not available")
+
+        php_file = tmp_path / "main.php"
+        php_file.write_text(r"""<?php
+namespace App;
+
+use App\Services\UserService as Svc;
+
+class Main {
+    public function run() {
+        $svc = new Svc();
+    }
+}
+?>""")
+
+        source = php_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_use_aliases(tree, source)
+
+        # Custom alias should be used
+        assert "Svc" in aliases
+        assert aliases["Svc"] == r"App\Services\UserService"
 
 
 class TestPhpEdgeExtraction:

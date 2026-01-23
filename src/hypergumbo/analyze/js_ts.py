@@ -1983,8 +1983,10 @@ def _extract_edges(
                         # Case 2: alias.func() via namespace import
                         elif obj_name and obj_name in namespace_imports:
                             # This is a namespace call: alias.func() or alias.Class()
-                            # Resolve via global symbols using method_name directly
-                            lookup_result = resolver.lookup(method_name)
+                            # Resolve via global symbols using import path as hint
+                            # to disambiguate when same name exists in multiple modules
+                            import_path = namespace_imports[obj_name]
+                            lookup_result = resolver.lookup(method_name, path_hint=import_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 is_class = lookup_result.symbol.kind == "class"
                                 edge = Edge.create(
@@ -2042,6 +2044,7 @@ def _extract_edges(
             class_name = None
             target_sym = None
             lookup_confidence = 1.0  # Default for exact match
+            ns_import_path: str | None = None  # Path hint for namespace imports
 
             for child in node.children:
                 if child.type == "identifier":
@@ -2059,11 +2062,13 @@ def _extract_edges(
                             cls_name = _node_text(mc, source)
                     if ns_name and ns_name in namespace_imports and cls_name:
                         class_name = cls_name
+                        # Track import path for disambiguation
+                        ns_import_path = namespace_imports[ns_name]
                     break
 
-            # Resolve class via class_resolver
+            # Resolve class via class_resolver, using import path for disambiguation
             if class_name:
-                lookup_result = class_resolver.lookup(class_name)
+                lookup_result = class_resolver.lookup(class_name, path_hint=ns_import_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target_sym = lookup_result.symbol
                     lookup_confidence = lookup_result.confidence

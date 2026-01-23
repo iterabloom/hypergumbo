@@ -100,6 +100,81 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_alias_hints(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract alias and import directives for disambiguation.
+
+    In Elixir:
+        alias MyApp.Services.UserService -> UserService maps to MyApp.Services.UserService
+        alias MyApp.Services.UserService, as: Svc -> Svc maps to MyApp.Services.UserService
+        import MyApp.Math -> all functions from MyApp.Math are available
+
+    Returns a dict mapping short names to full module paths.
+    """
+    hints: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        target = _find_child_by_type(node, "identifier")
+        if not target:  # pragma: no cover - call nodes always have identifier
+            continue
+
+        target_name = _node_text(target, source)
+
+        if target_name == "alias":
+            args = _find_child_by_type(node, "arguments")
+            if not args:  # pragma: no cover - alias always has arguments
+                continue
+
+            # Find the module being aliased
+            module_node = None
+            for child in args.children:
+                if child.type == "alias":
+                    module_node = child
+                    break
+
+            if module_node:
+                full_path = _node_text(module_node, source)
+                # Check for 'as:' option in keywords
+                kw_node = _find_child_by_type(args, "keywords")
+                if kw_node:
+                    # Look for as: Alias pattern
+                    for pair in kw_node.children:
+                        if pair.type == "pair":
+                            key_node = _find_child_by_type(pair, "keyword")
+                            if key_node and _node_text(key_node, source).strip().rstrip(":") == "as":
+                                value_node = _find_child_by_type(pair, "alias")
+                                if value_node:
+                                    alias_name = _node_text(value_node, source)
+                                    hints[alias_name] = full_path
+                                    break
+                    else:
+                        # No as: found, use last component of module path
+                        short_name = full_path.rsplit(".", 1)[-1]
+                        hints[short_name] = full_path
+                else:
+                    # No keywords, use last component of module path
+                    short_name = full_path.rsplit(".", 1)[-1]
+                    hints[short_name] = full_path
+
+        elif target_name == "import":
+            args = _find_child_by_type(node, "arguments")
+            if args:
+                for child in args.children:
+                    if child.type == "alias":
+                        full_path = _node_text(child, source)
+                        # For imports, use the full module name as hint
+                        short_name = full_path.rsplit(".", 1)[-1]
+                        hints[short_name] = full_path
+                        break
+
+    return hints
+
+
 def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Walk up the tree to find all enclosing module names, innermost first."""
     modules: list[str] = []
@@ -340,6 +415,7 @@ class FileAnalysis:
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     current_module: str = ""
+    alias_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_symbols_from_file(
@@ -452,6 +528,9 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[macro_name] = symbol
 
+    # Extract alias hints for disambiguation
+    analysis.alias_hints = _extract_alias_hints(tree, source)
+
     return analysis
 
 
@@ -462,10 +541,17 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    alias_hints: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
+    """Extract call and import edges from a file.
+
+    Args:
+        alias_hints: Optional dict mapping short names to full module paths for disambiguation.
+    """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    if alias_hints is None:  # pragma: no cover - defensive default
+        alias_hints = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -535,7 +621,9 @@ def _extract_edges_from_file(
                             ))
                         # Check global symbols via resolver
                         else:
-                            lookup_result = resolver.lookup(target_name)
+                            # Use alias hints for disambiguation
+                            path_hint = alias_hints.get(target_name)
+                            lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -612,7 +700,8 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            ex_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            ex_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            alias_hints=analysis.alias_hints,
         )
         all_edges.extend(edges)
 

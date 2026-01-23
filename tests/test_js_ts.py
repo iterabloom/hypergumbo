@@ -3386,6 +3386,127 @@ function run() {
         )
         assert run_helper_edge is not None, "Expected call edge from run to helper via namespace"
 
+    def test_namespace_import_disambiguates_same_name_functions(self, tmp_path: Path) -> None:
+        """When same function name exists in multiple modules, namespace import disambiguates.
+
+        This test uses directory structure to control file discovery order, ensuring
+        the "wrong" file is processed last (overwriting global_symbols). The namespace
+        import path_hint must be used to resolve to the correct target.
+
+        rglob discovery order: main.js -> a_early/utils.js -> z_late/utils.js
+        So z_late (WRONG) overwrites a_early (CORRECT) in global_symbols.
+        Without path_hint, resolution incorrectly picks z_late.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create two modules with same function name in different directories
+        # rglob processes alphabetically: a_early/ before z_late/
+        # So z_late/utils.js (WRONG) will be processed LAST, overwriting global_symbols
+        correct_dir = tmp_path / "a_early"
+        correct_dir.mkdir()
+        (correct_dir / "utils.js").write_text("""
+function process() {
+    return 'CORRECT';
+}
+""")
+
+        wrong_dir = tmp_path / "z_late"
+        wrong_dir.mkdir()
+        (wrong_dir / "utils.js").write_text("""
+function process() {
+    return 'WRONG';
+}
+""")
+
+        # Import only a_early/utils and call process via namespace
+        main_file = tmp_path / "main.js"
+        main_file.write_text("""
+import * as correct from './a_early/utils';
+
+function run() {
+    correct.process();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges from run
+        call_edges = [e for e in result.edges if e.edge_type == "calls" and "run" in e.src]
+
+        # Should resolve to a_early/utils.process, NOT z_late/utils.process
+        run_process_edge = next(
+            (e for e in call_edges if "process" in e.dst),
+            None
+        )
+        assert run_process_edge is not None, "Expected call edge from run to process"
+
+        # The edge should point to a_early (correct), not z_late (wrong)
+        assert "a_early" in run_process_edge.dst, (
+            f"Expected call to resolve to a_early/utils.process, but got {run_process_edge.dst}. "
+            "Namespace import path_hint should disambiguate when same function exists in multiple modules."
+        )
+
+    def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
+        """When same class name exists in multiple modules, namespace import disambiguates.
+
+        This test uses directory structure to control file discovery order, ensuring
+        the "wrong" file is processed last (overwriting global_classes). The namespace
+        import path_hint must be used to resolve to the correct target.
+
+        rglob discovery order: main.js -> a_early/service.js -> z_late/service.js
+        So z_late (WRONG) overwrites a_early (CORRECT) in global_classes.
+        Without path_hint, resolution incorrectly picks z_late.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create two modules with same class name in different directories
+        # rglob processes alphabetically: a_early/ before z_late/
+        # So z_late/service.js (WRONG) will be processed LAST, overwriting global_classes
+        correct_dir = tmp_path / "a_early"
+        correct_dir.mkdir()
+        (correct_dir / "service.js").write_text("""
+class Client {
+    connect() { return 'CORRECT'; }
+}
+""")
+
+        wrong_dir = tmp_path / "z_late"
+        wrong_dir.mkdir()
+        (wrong_dir / "service.js").write_text("""
+class Client {
+    connect() { return 'WRONG'; }
+}
+""")
+
+        # Import only a_early/service and instantiate via namespace
+        main_file = tmp_path / "main.js"
+        main_file.write_text("""
+import * as correct from './a_early/service';
+
+function run() {
+    const client = new correct.Client();
+    return client;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find instantiates edges from run
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates" and "run" in e.src]
+
+        # Should resolve to a_early/service.Client, NOT z_late/service.Client
+        run_client_edge = next(
+            (e for e in inst_edges if "Client" in e.dst),
+            None
+        )
+        assert run_client_edge is not None, "Expected instantiates edge from run to Client"
+
+        # The edge should point to a_early (correct), not z_late (wrong)
+        assert "a_early" in run_client_edge.dst, (
+            f"Expected instantiation to resolve to a_early/service.Client, but got {run_client_edge.dst}. "
+            "Namespace import path_hint should disambiguate when same class exists in multiple modules."
+        )
+
 
 class TestVariableTypeInference:
     """Tests for variable type inference from constructor calls."""

@@ -107,6 +107,7 @@ class _FileContext:
     run_id: str
     symbols: list[Symbol]
     edges: list[Edge]
+    package_renames: dict[str, str] = field(default_factory=dict)  # alias -> full_path
 
 
 def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
@@ -281,24 +282,61 @@ def _process_with_clause(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                 )
 
 
-def _get_call_target_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+def _extract_package_renames(
+    tree: "tree_sitter.Tree", source: bytes
+) -> dict[str, str]:
+    """Extract package renaming declarations for disambiguation.
+
+    In Ada:
+        package TIO renames Ada.Text_IO;
+
+    Returns a dict mapping alias names to full package paths.
+    """
+    renames: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "package_renaming_declaration":
+            continue
+
+        alias_name: Optional[str] = None
+        full_path: Optional[str] = None
+
+        for child in node.children:
+            if child.type == "identifier" and alias_name is None:
+                alias_name = _node_text(child, source)
+            elif child.type == "selected_component":
+                full_path = _node_text(child, source)
+
+        if alias_name and full_path:
+            renames[alias_name] = full_path
+
+    return renames
+
+
+def _get_call_target_name(node: "tree_sitter.Node", source: bytes) -> tuple[Optional[str], Optional[str]]:
     """Extract the target name from a procedure_call_statement or function_call.
 
-    Returns the simple name (last identifier) for resolution.
+    Returns (target_name, receiver) where:
+    - target_name is the simple name (last identifier) for resolution
+    - receiver is the first part of qualified calls (e.g., "TIO" from "TIO.Put_Line")
     """
     # For procedure_call_statement: first child is identifier or selected_component
     # For function_call: first child is identifier or selected_component
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return (_node_text(child, source), None)
         elif child.type == "selected_component":
-            # Get the last identifier (e.g., "Put_Line" from "Ada.Text_IO.Put_Line")
-            last_ident = None
+            # Get all identifiers for qualified calls
+            identifiers: list[str] = []
             for sub in child.children:
                 if sub.type == "identifier":
-                    last_ident = _node_text(sub, source)
-            return last_ident
-    return None  # pragma: no cover - defensive
+                    identifiers.append(_node_text(sub, source))
+            if identifiers:
+                # last is target, first is receiver
+                target_name = identifiers[-1]
+                receiver = identifiers[0] if len(identifiers) > 1 else None
+                return (target_name, receiver)
+    return (None, None)  # pragma: no cover - defensive
 
 
 def _find_enclosing_subprogram(
@@ -402,19 +440,22 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
                              "subprogram_body", "full_type_declaration", "object_declaration"):
                 _process_node(ctx, node)
 
+        # Extract package renames for disambiguation
+        package_renames = _extract_package_renames(tree, source)
+
         # Register symbols globally
         for sym in symbols:
             if sym.path == rel_path:
                 global_symbol_registry[sym.name] = sym
 
         # Store for pass 2
-        parsed_files.append((rel_path, source, tree, file_stable_id))
+        parsed_files.append((rel_path, source, tree, file_stable_id, package_renames))
 
     # Create resolver from global registry
     resolver = NameResolver(global_symbol_registry)
 
     # Pass 2: Extract edges (imports + calls)
-    for rel_path, source, tree, file_stable_id in parsed_files:
+    for rel_path, source, tree, file_stable_id, package_renames in parsed_files:
         # Build local symbol map for this file (functions/procedures only)
         local_symbols = {s.name: s for s in symbols
                          if s.path == rel_path and s.kind in ("function", "procedure")}
@@ -426,6 +467,7 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
             run_id=run_id,
             symbols=[],  # Not adding symbols in pass 2
             edges=edges,
+            package_renames=package_renames,
         )
 
         for node in iter_tree(tree.root_node):  # type: ignore
@@ -435,12 +477,14 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
 
             # Process procedure calls
             elif node.type == "procedure_call_statement":
-                target_name = _get_call_target_name(node, source)
+                target_name, receiver = _get_call_target_name(node, source)
                 if target_name:
                     caller = _find_enclosing_subprogram(node, source, local_symbols)
                     if caller:
+                        # Get path hint from package renames
+                        path_hint = package_renames.get(receiver) if receiver else None
                         # Use resolver for callee resolution
-                        lookup_result = resolver.lookup(target_name)
+                        lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
                             confidence = 0.85 * lookup_result.confidence
@@ -462,12 +506,14 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
 
             # Process function calls
             elif node.type == "function_call":
-                target_name = _get_call_target_name(node, source)
+                target_name, receiver = _get_call_target_name(node, source)
                 if target_name:
                     caller = _find_enclosing_subprogram(node, source, local_symbols)
                     if caller:
+                        # Get path hint from package renames
+                        path_hint = package_renames.get(receiver) if receiver else None
                         # Use resolver for callee resolution
-                        lookup_result = resolver.lookup(target_name)
+                        lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
                             confidence = 0.85 * lookup_result.confidence

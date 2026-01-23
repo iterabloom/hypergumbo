@@ -386,3 +386,35 @@ end Test;
         assert result.run is not None
         assert result.run.pass_id == "ada-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestAdaPackageRenames:
+    """Tests for package renaming declaration tracking."""
+
+    def test_extracts_package_renames(self, temp_repo: Path) -> None:
+        """Extracts package renaming declarations."""
+        from hypergumbo.analyze.ada import _extract_package_renames
+
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("ada")
+
+        ada_file = temp_repo / "main.adb"
+        ada_file.write_text("""
+with Ada.Text_IO;
+package TIO renames Ada.Text_IO;
+
+procedure Main is
+begin
+   TIO.Put_Line("Hello");
+end Main;
+""")
+
+        source = ada_file.read_bytes()
+        tree = parser.parse(source)
+
+        renames = _extract_package_renames(tree, source)
+
+        # 'TIO' should map to 'Ada.Text_IO'
+        assert "TIO" in renames
+        assert renames["TIO"] == "Ada.Text_IO"

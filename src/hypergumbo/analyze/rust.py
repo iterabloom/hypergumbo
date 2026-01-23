@@ -119,6 +119,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    use_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_rust_signature(
@@ -363,7 +364,10 @@ def _extract_symbols_from_file(
     except (OSError, IOError):
         return FileAnalysis()
 
-    analysis = FileAnalysis()
+    # Extract use statement aliases for disambiguation
+    use_aliases = _extract_use_aliases(tree, source)
+
+    analysis = FileAnalysis(use_aliases=use_aliases)
 
     for node in iter_tree(tree.root_node):
         # Function declaration
@@ -676,6 +680,65 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
+def _extract_use_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract use statement aliases from a parsed Rust tree.
+
+    Maps imported names to their full paths for disambiguation:
+    - use crate::module::func; -> func: crate::module::func
+    - use std::io::Write; -> Write: std::io::Write
+    - use foo::bar as baz; -> baz: foo::bar
+
+    Returns dict mapping local alias -> full import path.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "use_declaration":
+            continue
+
+        # Handle 'use foo::bar as baz;' - use_as_clause
+        as_clause = _find_child_by_type(node, "use_as_clause")
+        if as_clause:
+            # Find the scoped_identifier (foo::bar) and alias (baz)
+            path_node = _find_child_by_type(as_clause, "scoped_identifier")
+            if not path_node:
+                path_node = _find_child_by_type(as_clause, "identifier")
+            alias_node = _find_child_by_type(as_clause, "identifier")
+            # The alias is typically the last identifier child
+            for child in as_clause.children:
+                if child.type == "identifier":
+                    alias_node = child
+            if path_node and alias_node:
+                full_path = _node_text(path_node, source)
+                alias = _node_text(alias_node, source)
+                if alias and full_path:
+                    aliases[alias] = full_path
+            continue
+
+        # Handle regular 'use foo::bar;' - scoped_identifier
+        path_node = _find_child_by_type(node, "scoped_identifier")
+        if path_node:
+            full_path = _node_text(path_node, source)
+            if full_path and "::" in full_path:
+                # Last segment is the imported name
+                name = full_path.rsplit("::", 1)[-1]
+                if name:
+                    aliases[name] = full_path
+            continue
+
+        # Handle simple 'use foo;'
+        id_node = _find_child_by_type(node, "identifier")
+        if id_node:
+            name = _node_text(id_node, source)
+            if name:
+                aliases[name] = name
+
+    return aliases
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -683,13 +746,19 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    use_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+
+    Args:
+        use_aliases: Optional dict mapping local names to import paths for disambiguation.
     """
     if resolver is None:
         resolver = NameResolver(global_symbols)
+    if use_aliases is None:
+        use_aliases = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -766,7 +835,9 @@ def _extract_edges_from_file(
                             ))
                         # Check global symbols via resolver
                         else:
-                            lookup_result = resolver.lookup(callee_name)
+                            # Use import path as hint for disambiguation
+                            import_hint = use_aliases.get(callee_name)
+                            lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -846,7 +917,8 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            rs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
+            rs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            use_aliases=analysis.use_aliases
         )
         all_edges.extend(edges)
 

@@ -530,7 +530,9 @@ def _extract_edges_from_file(
                         # Case 2: Object.method() - static/object call
                         if receiver_name in class_symbols:
                             candidate = f"{receiver_name}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            # Use import path as hint for disambiguation
+                            import_hint = imports.get(receiver_name)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -548,7 +550,9 @@ def _extract_edges_from_file(
                         elif receiver_name in var_types:
                             type_class_name = var_types[receiver_name]
                             candidate = f"{type_class_name}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            # Use import path of the type as hint for disambiguation
+                            import_hint = imports.get(type_class_name)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -565,7 +569,9 @@ def _extract_edges_from_file(
                         # Case 4: Fallback - try qualified name directly
                         if not edge_added:  # pragma: no cover
                             candidate = f"{receiver_name}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            # Use import path as hint if receiver is an imported name
+                            import_hint = imports.get(receiver_name)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -598,7 +604,9 @@ def _extract_edges_from_file(
                         ))
                     # Check global symbols via resolver
                     else:
-                        lookup_result = resolver.lookup(callee_name)
+                        # Use import path as hint for disambiguation
+                        import_hint = imports.get(callee_name)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,

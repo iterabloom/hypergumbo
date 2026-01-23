@@ -114,6 +114,7 @@ class FileAnalysis:
     source: bytes
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
+    import_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -403,6 +404,59 @@ def _find_enclosing_function(
     return None  # pragma: no cover - no enclosing function
 
 
+def _extract_import_hints(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import statements for disambiguation.
+
+    In Dart:
+        import 'path' as prefix; -> prefix maps to path
+        import 'path' show Name1, Name2; -> Name1 and Name2 map to path
+
+    Returns a dict mapping short names/prefixes to full import paths.
+    """
+    hints: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_specification":
+            continue
+
+        # Find the import path
+        import_path: Optional[str] = None
+        as_prefix: Optional[str] = None
+        show_names: list[str] = []
+        has_as = False
+
+        for child in node.children:
+            if child.type == "configurable_uri":
+                # Extract path from uri > string_literal
+                for sub in iter_tree(child):
+                    if sub.type == "string_literal":
+                        import_path = _node_text(sub, source).strip("'\"")
+                        break
+            elif child.type == "as":
+                has_as = True
+            elif child.type == "identifier" and has_as:
+                as_prefix = _node_text(child, source)
+            elif child.type == "combinator":
+                # Look for show followed by identifiers
+                is_show = False
+                for sub in child.children:
+                    if sub.type == "show":
+                        is_show = True
+                    elif sub.type == "identifier" and is_show:
+                        show_names.append(_node_text(sub, source))
+
+        if import_path:
+            if as_prefix:
+                hints[as_prefix] = import_path
+            for name in show_names:
+                hints[name] = import_path
+
+    return hints
+
+
 def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the import path from an import/export directive using iterative traversal."""
     for n in iter_tree(node):
@@ -481,8 +535,15 @@ def _extract_edges_from_file(
     file_symbols: list[Symbol],
     resolver: NameResolver,
     run_id: str,
+    import_hints: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call, import, and instantiation edges from a parsed Dart file."""
+    """Extract call, import, and instantiation edges from a parsed Dart file.
+
+    Args:
+        import_hints: Optional dict mapping short names to full import paths for disambiguation.
+    """
+    if import_hints is None:  # pragma: no cover - defensive default
+        import_hints = {}
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
@@ -555,7 +616,8 @@ def _extract_edges_from_file(
                         # Type-inferred method call: receiver.method()
                         class_name = var_types[first_ident]
                         qualified_name = f"{class_name}.{method_name}"
-                        lookup_result = resolver.lookup(qualified_name)
+                        path_hint = import_hints.get(class_name)
+                        lookup_result = resolver.lookup(qualified_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.85 * lookup_result.confidence
@@ -572,7 +634,8 @@ def _extract_edges_from_file(
                             edges.append(edge)
                     elif not method_name:
                         # Simple function call: func()
-                        lookup_result = resolver.lookup(first_ident)
+                        path_hint = import_hints.get(first_ident)
+                        lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.85 * lookup_result.confidence
@@ -602,7 +665,8 @@ def _extract_edges_from_file(
                         if has_args:
                             caller = _find_enclosing_function(node, function_scopes)
                             if caller:
-                                lookup_result = resolver.lookup(method_name)
+                                path_hint = import_hints.get(method_name)
+                                lookup_result = resolver.lookup(method_name, path_hint=path_hint)
                                 if lookup_result.found and lookup_result.symbol:
                                     callee = lookup_result.symbol
                                     confidence = 0.80 * lookup_result.confidence
@@ -626,7 +690,8 @@ def _extract_edges_from_file(
                     class_name = _node_text(child, source)
                     caller = _find_enclosing_function(node, function_scopes)
                     if caller:
-                        lookup_result = resolver.lookup(class_name)
+                        path_hint = import_hints.get(class_name)
+                        lookup_result = resolver.lookup(class_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.90 * lookup_result.confidence
@@ -665,7 +730,8 @@ def _extract_edges_from_file(
                     if i + 1 < len(children) and children[i + 1].type == "arguments":
                         caller = _find_enclosing_function(node, function_scopes)
                         if caller:
-                            lookup_result = resolver.lookup(class_name)
+                            path_hint = import_hints.get(class_name)
+                            lookup_result = resolver.lookup(class_name, path_hint=path_hint)
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
                                 confidence = 0.90 * lookup_result.confidence
@@ -751,6 +817,9 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
         file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract import hints for disambiguation
+        import_hints = _extract_import_hints(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -760,6 +829,7 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
             source=source,
             tree=tree,
             symbols=file_symbols,
+            import_hints=import_hints,
         ))
         files_analyzed += 1
 
@@ -775,6 +845,7 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
             fa.symbols,
             resolver,
             run_id,
+            import_hints=fa.import_hints,
         )
         all_edges.extend(edges)
 

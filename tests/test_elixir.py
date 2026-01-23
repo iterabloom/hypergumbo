@@ -520,6 +520,122 @@ end
         assert macros[0].signature == "(expr)"
 
 
+class TestAliasHintsExtraction:
+    """Tests for alias hints extraction for disambiguation."""
+
+    def test_extracts_simple_alias(self, tmp_path: Path) -> None:
+        """Extracts alias directives using last component of module path."""
+        from hypergumbo.analyze.elixir import (
+            _extract_alias_hints,
+            is_elixir_tree_sitter_available,
+        )
+
+        if not is_elixir_tree_sitter_available():
+            pytest.skip("tree-sitter-elixir not available")
+
+        import tree_sitter_language_pack
+        import tree_sitter
+
+        lang = tree_sitter_language_pack.get_language("elixir")
+        parser = tree_sitter.Parser(lang)
+
+        ex_file = tmp_path / "main.ex"
+        ex_file.write_text("""
+defmodule Main do
+  alias MyApp.Services.UserService
+  alias MyApp.Math.Calculator
+
+  def run do
+    UserService.create()
+    Calculator.add(1, 2)
+  end
+end
+""")
+
+        source = ex_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_alias_hints(tree, source)
+
+        # Last component of module path should be the short name
+        assert "UserService" in hints
+        assert hints["UserService"] == "MyApp.Services.UserService"
+        assert "Calculator" in hints
+        assert hints["Calculator"] == "MyApp.Math.Calculator"
+
+    def test_extracts_alias_with_as_option(self, tmp_path: Path) -> None:
+        """Extracts alias directives with 'as:' custom alias."""
+        from hypergumbo.analyze.elixir import (
+            _extract_alias_hints,
+            is_elixir_tree_sitter_available,
+        )
+
+        if not is_elixir_tree_sitter_available():
+            pytest.skip("tree-sitter-elixir not available")
+
+        import tree_sitter_language_pack
+        import tree_sitter
+
+        lang = tree_sitter_language_pack.get_language("elixir")
+        parser = tree_sitter.Parser(lang)
+
+        ex_file = tmp_path / "main.ex"
+        ex_file.write_text("""
+defmodule Main do
+  alias MyApp.Services.UserService, as: Svc
+
+  def run do
+    Svc.create()
+  end
+end
+""")
+
+        source = ex_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_alias_hints(tree, source)
+
+        # Custom alias should be used
+        assert "Svc" in hints
+        assert hints["Svc"] == "MyApp.Services.UserService"
+
+    def test_extracts_alias_with_other_options(self, tmp_path: Path) -> None:
+        """Falls back to last component when alias has options but not 'as:'."""
+        from hypergumbo.analyze.elixir import (
+            _extract_alias_hints,
+            is_elixir_tree_sitter_available,
+        )
+
+        if not is_elixir_tree_sitter_available():
+            pytest.skip("tree-sitter-elixir not available")
+
+        import tree_sitter_language_pack
+        import tree_sitter
+
+        lang = tree_sitter_language_pack.get_language("elixir")
+        parser = tree_sitter.Parser(lang)
+
+        ex_file = tmp_path / "main.ex"
+        ex_file.write_text("""
+defmodule Main do
+  alias MyApp.Services.UserService, warn: false
+
+  def run do
+    UserService.create()
+  end
+end
+""")
+
+        source = ex_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_alias_hints(tree, source)
+
+        # Should use last component when as: is not present
+        assert "UserService" in hints
+        assert hints["UserService"] == "MyApp.Services.UserService"
+
+
 class TestElixirPhoenixUsageContext:
     """Tests for Phoenix router DSL usage context extraction."""
 
