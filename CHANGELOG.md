@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Framework pattern types added to `docs/schema.json` for YAML validation
 - YAML linting via `yamllint` in pre-commit hooks
 - Play Framework patterns for Scala (`play.yaml`): controllers, Action blocks, WebSocket handlers
+- Akka HTTP patterns for Scala (`akka-http.yaml`): route directives, method handlers, WebSocket, auth
 
 **New Commands & Flags**
 - `hypergumbo test-coverage`: Static coverage estimation via call graph analysis

@@ -7226,3 +7226,114 @@ class TestPlayFrameworkPatterns:
         controller_concepts = [c for c in concepts if c["concept"] == "controller"]
         assert len(controller_concepts) == 1
         assert controller_concepts[0]["framework"] == "play"
+
+
+class TestAkkaHttpPatterns:
+    """Tests for Akka HTTP (Scala) patterns."""
+
+    def test_akka_http_yaml_loads(self) -> None:
+        """Akka HTTP YAML file loads without error."""
+        clear_pattern_cache()
+        patterns = load_framework_patterns("akka-http")
+        assert patterns is not None
+        assert len(patterns.patterns) > 0
+
+    def test_akka_http_method_pattern(self) -> None:
+        """Pattern matches Akka HTTP method directives."""
+        pattern = Pattern(
+            concept="route",
+            decorator=r"^(get|post|put|delete|patch|head|options)$",
+        )
+        symbol = Symbol(
+            id="scala:Routes.scala:10-15:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="scala",
+            path="src/main/scala/Routes.scala",
+            span=Span(10, 15, 0, 0),
+            meta={"decorators": [{"name": "get"}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "route"
+
+    def test_akka_http_path_pattern(self) -> None:
+        """Pattern matches Akka HTTP path directive."""
+        pattern = Pattern(
+            concept="route",
+            decorator=r"^(path|pathPrefix|pathEnd|pathSuffix|pathSuffixTest)$",
+            extract_path="args[0]",
+        )
+        symbol = Symbol(
+            id="scala:Routes.scala:5-20:usersRoute:function",
+            name="usersRoute",
+            kind="function",
+            language="scala",
+            path="src/main/scala/Routes.scala",
+            span=Span(5, 20, 0, 0),
+            meta={"decorators": [{"name": "path", "args": ["users"]}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "route"
+        assert result["path"] == "users"
+
+    def test_akka_http_websocket_pattern(self) -> None:
+        """Pattern matches Akka HTTP WebSocket handler."""
+        pattern = Pattern(
+            concept="websocket_handler",
+            decorator=r"^handleWebSocketMessages$",
+        )
+        symbol = Symbol(
+            id="scala:WsRoutes.scala:10-20:wsHandler:function",
+            name="wsHandler",
+            kind="function",
+            language="scala",
+            path="src/main/scala/WsRoutes.scala",
+            span=Span(10, 20, 0, 0),
+            meta={"decorators": [{"name": "handleWebSocketMessages"}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "websocket_handler"
+
+    def test_akka_http_auth_pattern(self) -> None:
+        """Pattern matches Akka HTTP authentication directives."""
+        pattern = Pattern(
+            concept="auth",
+            decorator=r"^(authenticateBasic|authenticateOAuth2|authorize)$",
+        )
+        symbol = Symbol(
+            id="scala:Routes.scala:25-30:securedRoute:function",
+            name="securedRoute",
+            kind="function",
+            language="scala",
+            path="src/main/scala/Routes.scala",
+            span=Span(25, 30, 0, 0),
+            meta={"decorators": [{"name": "authenticateBasic"}]},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "auth"
+
+    def test_enrich_symbols_with_akka_http_route(self) -> None:
+        """enrich_symbols enriches Akka HTTP route with route concept."""
+        clear_pattern_cache()
+        symbol = Symbol(
+            id="scala:Routes.scala:10-15:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="scala",
+            path="src/main/scala/Routes.scala",
+            span=Span(10, 15, 0, 0),
+            meta={"decorators": [{"name": "get"}]},
+        )
+
+        enriched = enrich_symbols([symbol], {"akka-http"})
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        route_concepts = [c for c in concepts if c["concept"] == "route"]
+        assert len(route_concepts) == 1
+        assert route_concepts[0]["framework"] == "akka-http"
