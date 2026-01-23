@@ -1,0 +1,17 @@
+Original commit body from b64849a:
+
+Add tree-sitter based analyzer for Common Lisp (.lisp, .lsp, .cl, .asd files).
+
+Detects:
+- defun, defmacro, defmethod, defgeneric (functions)
+- defclass, defstruct (types)
+- defvar, defparameter, defconstant (variables)
+- defpackage (packages)
+- Function call edges with cross-file resolution
+- use-package import edges
+
+Key design decisions:
+- Handles both lowercase (defun) and uppercase (DEFUN) forms since
+  tree-sitter-commonlisp only creates defun nodes for lowercase
+- Supports keyword syntax for package names (:myapp vs myapp)
+- Case-insensitive name handling (CL is case-insensitive by default)
