@@ -1,0 +1,16 @@
+Original commit body from 976af3c:
+
+Confidence model:
+- Replace elaborate versioning contract (~35 lines) with simple evidence
+  type table showing base scores
+- Remove hypothetical version compatibility matrices
+- Keep simple explanation: confidence_model field identifies algorithm,
+  unknown evidence types default to 0.30
+
+Section 10 (Key risks):
+- Rename to "Known limitations and risks"
+- Remove outdated risks about capsule system (vestigial)
+- Remove timeline-related risks ("Week 0 buffer")
+- Remove LLM plan generation risks (vestigial)
+- Keep relevant limitations: best-effort analysis, ID collisions,
+  heuristic confidence, schema stability, stable_id limits, re-exports
