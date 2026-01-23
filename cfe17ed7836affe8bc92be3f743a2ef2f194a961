@@ -1,0 +1,12 @@
+Original commit body from 9da4326:
+
+When analyzing Python codebases that contain invalid escape sequences
+(e.g., regex patterns without raw string prefix like "test\.pattern"),
+Python's ast.parse() emits SyntaxWarning to stderr. These warnings come
+from the target codebase being analyzed, not from hypergumbo itself.
+
+Wrap ast.parse() in warnings.catch_warnings() to suppress SyntaxWarning,
+providing cleaner output when scanning large codebases.
+
+Example warnings now suppressed:
+  test_auth_utils.py:37: SyntaxWarning: invalid escape sequence '\.'
