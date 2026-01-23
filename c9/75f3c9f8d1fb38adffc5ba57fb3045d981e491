@@ -1,0 +1,7 @@
+Original commit body from 5f54ce4:
+
+- Add edge type distribution to Self-Analysis Summary
+  Shows breakdown: calls, imports, instantiates, uses, etc.
+- Replace hardcoded "14 linkers" with dynamic count_linkers()
+  Now correctly shows 15 linkers as linker count has grown
+- Regenerate ARCHITECTURE.md with latest analysis
