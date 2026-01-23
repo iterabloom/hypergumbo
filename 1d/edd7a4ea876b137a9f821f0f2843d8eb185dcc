@@ -1,0 +1,18 @@
+Original commit body from b396b9f:
+
+Two bugs fixed:
+
+1. Fallback Structure section was undercounting items (18 vs 28):
+   - The fallback only counted source/config files in `root_files`
+   - But hidden_count was calculated from this filtered list
+   - Added `_count_root_items()` helper that counts ALL non-excluded items
+   - Both tree functions now use consistent counting logic
+
+2. Representativeness Table showed "0t" for small budgets:
+   - When max_tokens <= base_tokens, the early return at line 5448
+     didn't set stats_out.token_budget before returning
+   - Now sets token_budget before the early return
+
+These fixes ensure:
+- `hypergumbo . -t 500` shows correct item counts matching `hypergumbo .`
+- Representativeness Table shows "500t" instead of "0t"
