@@ -1,0 +1,7 @@
+Original commit body from bb54fc9:
+
+The autouse clean_registry fixture in test_linker_registry.py clears
+the global linker registry before each test. Python's import caching
+prevents @register_linker from re-running when importing an already-
+loaded module. Using importlib.reload() forces the module code to
+re-execute, ensuring the linker is registered.
