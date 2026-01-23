@@ -1,0 +1,10 @@
+Original commit body from fd22fc1:
+
+Use semantic similarity to extract project descriptions from READMEs:
+- Compare each line against probe embeddings of known project mission statements
+- Sliding window approach finds best consecutive description lines
+- Quality-based stopping: stop when similarity score drops 10%+
+- Falls back to heuristic parsing if embeddings unavailable
+
+This fixes the bug where heuristic extraction picked code snippets
+(e.g., litellm's Python import) instead of actual descriptions.
