@@ -1,0 +1,5 @@
+Original commit body from fc17eb8:
+
+- Mark v1.0.x status as complete (🟩)
+- Remove deferred Ruby/Rust note (now complete)
+- Add completed entries for Rails and Axum UsageContext
