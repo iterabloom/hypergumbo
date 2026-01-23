@@ -1,0 +1,14 @@
+Original commit body from 6d951fc:
+
+v1.0.x is complete for decorator/annotation-based framework migration:
+- Java: Purified (Spring Boot, JAX-RS now YAML-driven)
+- NestJS: Deprecation warning added
+- Call-based frameworks (Django, Express, Go): Documented as out-of-scope
+
+v1.1.x planned for UsageContext extension:
+- New IR type to capture how symbols are used (call args, data values, exports)
+- Extends YAML patterns for call-based, DSL, and file-based frameworks
+- Enables migration of Django, Express, Go, Ruby, Rust/Axum
+
+This follows semantic versioning: UsageContext is a new backward-compatible
+feature (minor version bump), not a breaking change.
