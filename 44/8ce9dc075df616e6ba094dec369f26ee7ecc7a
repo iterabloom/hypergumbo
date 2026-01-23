@@ -1,0 +1,20 @@
+Original commit body from f8b09e4:
+
+Update spec and generate-architecture script to reflect PRs 469-472:
+
+Spec changes (docs/hypergumbo-spec.md):
+- Add meta.concepts structure documentation (single source of truth)
+- Document convention vs framework patterns distinction
+- Add path normalization note for route matching
+- Update YAML file count: 41 (4 convention + 37 framework)
+
+generate-architecture changes:
+- Rename "FRAMEWORK_PATTERNS" to "PATTERN SYSTEM" in data flow
+- Add convention patterns box showing the 4 always-loaded files
+- Update Pattern System Architecture section with:
+  - New diagram showing convention vs framework patterns
+  - meta.concepts structure with JSON example
+  - Instructions for adding both pattern types
+- Remove outdated "Migration Status (v1.0.x)" section
+  (no deprecation warnings actually fire; linkers use concepts exclusively)
+- Keep UsageContext references for call-based pattern detection
