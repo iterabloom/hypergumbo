@@ -1,0 +1,11 @@
+Original commit body from 39f85b1:
+
+Config file extraction:
+- Refactored to collect all chunks first, then batch encode
+- Single model.encode() call instead of per-file calls
+- Same ~5-10x speedup as Additional Files batching
+
+Progress telemetry:
+- Added "embedding" phase (85-95%) for Additional Files
+- Progress no longer shows 100% during embedding
+- Clearer phase transitions between symbols -> embedding -> format
