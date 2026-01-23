@@ -1,0 +1,12 @@
+Original commit body from b858a91:
+
+NIT #1: Run sketch on full repo with larger token budget
+- Change from src/ to repo root for complete structure view
+- Increase token budget from 1500 to 4000
+- Remove code fence around Structure section for better web rendering
+
+NIT #2: Fix alignment in PATTERN SYSTEM ASCII box
+- Align "Convention Patterns" and "Framework Patterns" text
+- Use dynamic padding for ANALYZERS output line
+
+NIT #3: Center connector from LINKERS to output boxes
