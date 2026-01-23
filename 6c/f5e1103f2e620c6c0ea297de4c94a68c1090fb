@@ -1,0 +1,14 @@
+Original commit body from 409174e:
+
+Add two new convention YAML files that enrich symbols from specialized
+analyzers with concepts:
+
+- language-conventions.yaml: CUDA kernels/functions, WGSL shaders,
+  COBOL programs/sections, LaTeX document structure, Starlark rules/macros
+- config-conventions.yaml: NPM dependencies/scripts, Maven dependencies/modules,
+  Android permissions/components, Cargo dependencies/workspaces/targets,
+  Poetry dependencies, TypeScript project references
+
+These patterns enable symbols from json_config.py, xml_config.py, toml_config.py,
+cuda.py, wgsl.py, cobol.py, latex.py, and starlark.py to participate in
+concept-based features like filtering and future entrypoint detection.
