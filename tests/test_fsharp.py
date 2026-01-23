@@ -327,3 +327,83 @@ let getCount () = 0
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "getCount"]
         assert len(funcs) == 1
         assert funcs[0].signature == "()"
+
+
+class TestFsharpModuleAliases:
+    """Tests for module alias extraction and qualified call resolution."""
+
+    def test_extracts_module_alias(self, tmp_path: Path) -> None:
+        """Extracts module alias from 'module M = List' statement."""
+        from hypergumbo.analyze.fsharp import _extract_module_aliases
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("fsharp")
+
+        fs_file = tmp_path / "Main.fs"
+        fs_file.write_text("""
+module M = List
+module S = String
+
+let main args =
+    M.map id [1; 2; 3]
+""")
+
+        source = fs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_module_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "M" in aliases
+        assert aliases["M"] == "List"
+        assert "S" in aliases
+        assert aliases["S"] == "String"
+
+    def test_extracts_dotted_module_alias(self, tmp_path: Path) -> None:
+        """Extracts module alias from dotted module path."""
+        from hypergumbo.analyze.fsharp import _extract_module_aliases
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("fsharp")
+
+        fs_file = tmp_path / "Main.fs"
+        fs_file.write_text("""
+module IO = System.IO
+module Col = System.Collections
+
+let main args =
+    0
+""")
+
+        source = fs_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_module_aliases(tree, source)
+
+        # Dotted paths should be extracted (uses module_abbrev node type)
+        assert "IO" in aliases
+        assert aliases["IO"] == "System.IO"
+        assert "Col" in aliases
+        assert aliases["Col"] == "System.Collections"
+
+    def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
+        """Qualified call resolution uses module alias for path hint."""
+        make_fsharp_file(
+            tmp_path,
+            "Main.fs",
+            """
+module Main
+
+module L = List
+
+let process items =
+    L.map id items
+""",
+        )
+
+        result = analyze_fsharp(tmp_path)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "process" for s in symbols)
