@@ -1,0 +1,8 @@
+Original commit body from 5c67135:
+
+The 500 pattern limit was overly conservative. Ripgrep handles large
+alternation patterns efficiently, and the adaptive timeout (60s->480s)
+already handles cases where ripgrep is slow.
+
+Now ripgrep will always be tried first regardless of pattern count.
+If it times out even at 480s, the optimized Python fallback kicks in.
