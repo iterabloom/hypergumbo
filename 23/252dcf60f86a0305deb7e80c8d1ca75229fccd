@@ -1,0 +1,17 @@
+Original commit body from efb0c1b:
+
+Two UX improvements:
+
+1. Output summary now distinguishes cached vs generated artifacts:
+   - Shows "Generated N, Using M cached" instead of "Generated N artifact(s)"
+   - Lists cached files with [cached] prefix for clarity
+   - Helps users understand when results are being reused
+
+2. File content blocks now have clearer visual delineation:
+   - Changed from "### filename.py" headers
+   - To "------------------- START of filename.py ----" markers
+   - Added matching END markers after each file
+   - Makes file boundaries much easier to parse visually
+
+Both changes improve the experience when working with cached results
+and when reading file content in sketches.
