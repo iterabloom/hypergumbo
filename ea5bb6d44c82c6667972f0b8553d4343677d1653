@@ -1,0 +1,15 @@
+Original commit body from 496e06b:
+
+Two fixes:
+1. Exclude hypergumbo.results*.json pattern to catch budget files
+   (4k, 16k, 64k, etc.) which were inflating LOC counts
+
+2. Consistent output summary at end of all commands:
+   - Added _print_output_summary() helper
+   - All commands report artifact count (even if 0)
+   - For JSON output mode (test-coverage), summary goes to stderr
+     to avoid breaking JSON parsing
+   - Text/stdout output: summary goes to stdout
+
+Before: JSON files counted in stats (47% of codebase)
+After: JSON files excluded, stats accurate
