@@ -1,0 +1,10 @@
+Original commit body from a020d4e:
+
+- Add position-based symbol lookup for inline Express handlers in JS analyzer
+- UsageContext now correctly links inline handlers to their Symbol IDs
+- Remove legacy stable_id fallback in routes command
+- Update all route tests to use meta.concepts instead of stable_id markers
+- Add test for routes with method but no path
+
+This ensures route detection fails loudly if pattern enrichment doesn't work,
+rather than silently falling back to legacy logic that masks failures.
