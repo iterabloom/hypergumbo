@@ -1,0 +1,16 @@
+Original commit body from 676a328:
+
+Add `hypergumbo symbols` command for viewing symbol catalog with
+connectivity information:
+- Table with columns: Symbol, Kind, In-degree, Out-degree, Degree, File
+- Sorted by total file degree (hottest files first), then filename,
+  then individual symbol degree
+- Default limit of 200 entries with --all flag to show all
+- Filter by --kind and --language
+
+Also fix slice command to require hypergumbo.results.json (like routes,
+explain, and search commands) instead of automatically running analysis.
+
+Documentation:
+- Add note in USE-CASES.md that query commands need `run` first
+- Add `symbols` command to quick reference table
