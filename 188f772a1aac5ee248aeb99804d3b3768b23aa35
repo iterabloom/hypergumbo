@@ -1,0 +1,15 @@
+Original commit body from 5aff704:
+
+This release marks completion of ADR-0003 milestones:
+- v0.9.x: Semantic entry detection (complete)
+- v1.0.x: All framework patterns in YAML, all analyzers pure (complete)
+
+Key changes since v0.9.1:
+- Memory optimization: 80% reduction for large repos (11GB→2.1GB on tensorflow)
+- Android detection: Now finds projects via android{} blocks and AndroidManifest.xml
+- JSON serialization: Fixed complex numbers and bytes literals
+- Detection gaps: All 6 bakeoff repos now have 0% gap between AUTO and ALL modes
+- Recursive manifest scanning: Finds dependency files in subdirectories
+- Ruby/Elixir framework detection: Rails, Sinatra, Phoenix, etc.
+
+PRs included: #335-340
