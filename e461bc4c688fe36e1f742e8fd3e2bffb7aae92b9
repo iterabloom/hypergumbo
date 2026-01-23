@@ -1,0 +1,23 @@
+Original commit body from f091b9a:
+
+The UsageContext infrastructure (ADR-0003 v1.1.x) was implemented in
+individual analyzers but never connected to the output pipeline:
+
+- collect_analyzer_result() wasn't collecting result.usage_contexts
+- run_all_analyzers() wasn't returning usage_contexts
+- enrich_symbols() wasn't being passed usage_contexts
+- behavior_map JSON output didn't include usage_contexts field
+
+This fix completes the wiring:
+
+1. all_analyzers.py: Add all_usage_contexts parameter to
+   collect_analyzer_result() and include in run_all_analyzers() return
+
+2. cli.py: Capture all_usage_contexts from run_all_analyzers(),
+   pass to enrich_symbols(), and add to behavior_map output
+
+3. schema.py: Add usage_contexts to new_behavior_map() factory
+
+Analyzers that emit usage_contexts (Python, JS/TS, Go, Ruby, Elixir,
+Rust) will now have their call-based framework patterns (Django URLs,
+Express routes, etc.) appear in the JSON output.
