@@ -1,0 +1,8 @@
+Original commit body from c27b354:
+
+- Add -x/--exclude-tests flag to filter out test callers/callees
+- Sort callers by in-degree (most depended-upon first)
+- Sort callees by in-degree (most important dependencies first)
+
+This makes explain output more useful for understanding production
+code flow without test noise cluttering the results.
