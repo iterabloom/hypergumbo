@@ -1,0 +1,18 @@
+Original commit body from 67ca957:
+
+Django URL pattern detection (path, re_path, url) uses function calls,
+not decorators, so it cannot be migrated to YAML patterns. The
+deprecation warning was misleading since there's no YAML-based
+replacement for call-based routing patterns.
+
+Changes:
+- Remove _deprecated_route_warnings_emitted tracking set
+- Remove _emit_route_deprecation_warning() function
+- Remove unused 'warnings' import
+- Update docstring to clarify Django detection is NOT deprecated
+- Remove TestDjangoRouteDetectionDeprecation test class
+
+The Django URL pattern detection remains in place as it's necessary
+for call-based frameworks. See ADR-0003 usage-context-patterns
+extension for the principled solution to handle call-based patterns
+via YAML in the future.
