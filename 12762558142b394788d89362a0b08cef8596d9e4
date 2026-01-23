@@ -1,0 +1,10 @@
+Original commit body from 335005c:
+
+Changed from single-line format to multi-line with aligned columns:
+```
+Python (91%), Markdown (6%), Yaml (3%)
+314 files    (186 non-test + 128 test)
+~115,510 LOC (~59,306 non-test + ~56,204 test)
+```
+
+Shows totals first, then breakdown for easy comparison.
