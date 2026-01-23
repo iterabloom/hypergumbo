@@ -1,0 +1,11 @@
+Original commit body from ff2fee4:
+
+The --tiers flag controlled token budget output files, but was confusing
+since --max-tier controls supply chain tier classification. Renamed to
+--budgets to clarify:
+
+- --budgets: Token budget output files (4k, 16k, 64k)
+- --max-tier: Supply chain tier classification (1-4)
+
+The --tiers flag is kept as a hidden deprecated alias for backward
+compatibility. Updated documentation and tests to use new terminology.
