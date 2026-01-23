@@ -1,0 +1,17 @@
+Original commit body from 501cc63:
+
+Binary files (images, audio, video, fonts, archives, PDFs) cannot be
+meaningfully embedded for semantic similarity. This change adds these
+file extensions to ADDITIONAL_FILES_EXCLUDES to avoid wasting compute
+on files that won't produce useful results.
+
+File types now excluded:
+- Images: png, jpg, jpeg, gif, svg, ico, webp, bmp, tiff, tif, psd
+- Audio/video: mp3, wav, ogg, flac, m4a, aac, mp4, webm, avi, mov, mkv
+- Fonts: ttf, woff, woff2, eot, otf
+- Archives: zip, tar, gz, tgz, rar, 7z, bz2, xz
+- Binary data: bin, dat, npy, npz, pkl, pickle
+- Documents: pdf, doc, docx, xls, xlsx, ppt, pptx
+
+This significantly reduces the number of files to embed in repos with
+media assets (e.g., litellm went from 1628 to ~800 Additional Files).
