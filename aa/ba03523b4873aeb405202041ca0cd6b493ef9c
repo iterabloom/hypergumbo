@@ -1,0 +1,19 @@
+Original commit body from cbd00f2:
+
+Two UX issues fixed when using -x/--exclude-tests:
+
+1. Structure section now always uses the modern tree format (├── and └──)
+   even when -x excludes all source files. Previously fell back to
+   deprecated bullet-list format.
+
+2. Representativeness table now shows when -x is used, displaying
+   coverage for Additional Files sections. Previously hidden when
+   all source symbols were excluded.
+
+Implementation:
+- Added _format_structure_tree_toplevel() for tree format with no
+  important files - shows top-level directories with item counts
+- Changed stats flags (has_source_files, has_additional_files, etc.)
+  to be set when sections are added, not just when in-degree available
+- Updated main flow to always use _format_structure_tree(), which now
+  handles empty important_files via the new helper function
