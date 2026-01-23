@@ -191,19 +191,19 @@ def _extract_edges(..., import_aliases: dict[str, str], resolver, ...):
 
 ### Phase 1: Bug Fixes
 
-- [ ] **js_ts.py**: Add `path_hint=namespace_imports.get(obj_name)` to resolver calls
-- [ ] **kotlin.py**: Use `imports` dict in `_extract_edges_from_file()`
+- [x] **js_ts.py**: Add `path_hint=namespace_imports.get(obj_name)` to resolver calls
+- [x] **kotlin.py**: Use `imports` dict in `_extract_edges_from_file()`
 
 ### Phase 2: High-Priority Languages
 
-- [ ] **rust.py**: Track `use` statements, pass as path hints
-- [ ] **csharp.py**: Track `using` directives
-- [ ] **ruby.py**: Track `require`/`require_relative` for disambiguation
-- [ ] **elixir.py**: Track `alias`/`import`/`use` directives
-- [ ] **swift.py**: Track `import` statements
-- [ ] **php.py**: Track `use` statements for namespace disambiguation
-- [ ] **scala.py**: Track `import` statements
-- [ ] **dart.py**: Track `import` statements with `show`/`hide`
+- [x] **rust.py**: Track `use` statements, pass as path hints
+- [x] **csharp.py**: Track `using` directives
+- [x] **ruby.py**: Track `require`/`require_relative` for disambiguation
+- [x] **elixir.py**: Track `alias`/`import`/`use` directives
+- [x] **swift.py**: Track `import` statements
+- [x] **php.py**: Track `use` statements for namespace disambiguation
+- [x] **scala.py**: Track `import` statements
+- [x] **dart.py**: Track `import` statements with `show`/`hide`
 
 ### Phase 3: Remaining Analyzers (Triaged)
 
@@ -215,33 +215,33 @@ import semantics with aliasing) and those where it wouldn't help (dynamic or tex
 
 *High priority - aliased/qualified imports are idiomatic:*
 
-| Analyzer | Import Syntax | Why It Matters |
-|----------|---------------|----------------|
-| ada.py | `with`, `use`, renames | Package renames: `package TIO renames Ada.Text_IO;` |
-| agda.py | `import`, `open` | Qualified names in dependent type proofs |
-| clojure.py | `require :as` | `(require '[clojure.string :as str])` then `(str/join ...)` |
-| d_lang.py | `import x = y` | `import io = std.stdio;` then `io.writeln()` |
-| elm.py | `import as` | `import Dict as D` then `D.get` |
-| fsharp.py | `open` | ML family; qualified names like `List.map` |
-| groovy.py | `import` | Same as Java |
-| haskell.py | `import qualified as` | `import qualified Data.Map as M` then `M.lookup` |
-| lean.py | `import` | Qualified names in theorem prover |
-| nim.py | `import as` | `import strutils as su` then `su.strip()` |
-| ocaml.py | `open` | ML family; qualified names like `List.map` |
-| solidity.py | `import {X as Y}` | `import {IERC20 as Token} from "..."` |
-| starlark.py | `load()` | `load("//foo:bar.bzl", my_rule="rule")` explicit bindings |
+| Analyzer | Import Syntax | Why It Matters | Status |
+|----------|---------------|----------------|--------|
+| ada.py | `with`, `use`, renames | Package renames: `package TIO renames Ada.Text_IO;` | ✅ Done |
+| agda.py | `import`, `open` | Qualified names in dependent type proofs | |
+| clojure.py | `require :as` | `(require '[clojure.string :as str])` then `(str/join ...)` | ✅ Done |
+| d_lang.py | `import x = y` | `import io = std.stdio;` then `io.writeln()` | ✅ Done |
+| elm.py | `import as` | `import Dict as D` then `D.get` | ✅ Done |
+| fsharp.py | `module` abbreviations | ML family; `module M = List` then `M.map` | ✅ Done |
+| groovy.py | `import` | Same as Java | |
+| haskell.py | `import qualified as` | `import qualified Data.Map as M` then `M.lookup` | ✅ Done |
+| lean.py | `import` | Qualified names in theorem prover | |
+| nim.py | `import as` | `import strutils as su` then `su.strip()` | ✅ Done |
+| ocaml.py | `module` aliases | ML family; `module L = List` then `L.map` | ✅ Done |
+| solidity.py | `import {X as Y}` | `import {IERC20 as Token} from "..."` | |
+| starlark.py | `load()` | `load("//foo:bar.bzl", my_rule="rule")` explicit bindings | |
 
 *Medium priority - qualified imports exist but less central:*
 
-| Analyzer | Import Syntax | Why It Matters |
-|----------|---------------|----------------|
-| cpp.py | `namespace x = y` | `namespace fs = std::filesystem;` then `fs::exists()` |
-| erlang.py | `-import`, `mod:func` | Module-qualified calls `lists:map()` |
-| fortran.py | `use, only:` | `use linear_algebra, only: solve` |
-| julia.py | `import as` | `import Pkg as P` then `P.add()` |
-| r_lang.py | `pkg::func` | Qualified calls `dplyr::filter()` |
-| vhdl.py | `library`, `use` | `use ieee.std_logic_1164.all;` (Ada-like package system) |
-| zig.py | `@import` | `const std = @import("std");` then `std.debug.print()` |
+| Analyzer | Import Syntax | Why It Matters | Status |
+|----------|---------------|----------------|--------|
+| cpp.py | `namespace x = y` | `namespace fs = std::filesystem;` then `fs::exists()` | |
+| erlang.py | `-import`, `mod:func` | Module-qualified calls `lists:map()` | |
+| fortran.py | `use, only:` | `use linear_algebra, only: solve` | |
+| julia.py | `import as` | `import Pkg as P` then `P.add()` | ✅ Done |
+| r_lang.py | `pkg::func` | Qualified calls `dplyr::filter()` | |
+| vhdl.py | `library`, `use` | `use ieee.std_logic_1164.all;` (Ada-like package system) | |
+| zig.py | `@import` | `const std = @import("std");` then `std.debug.print()` | |
 
 **Phase 3B: Import tracking DOESN'T MATTER (dynamic or textual)**
 

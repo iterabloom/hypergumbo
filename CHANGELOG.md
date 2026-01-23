@@ -42,7 +42,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Common Lisp analyzer (`.lisp`, `.lsp`, `.cl`, `.asd`)
 - LLVM IR analyzer (`.ll` files)
 - ADR-0004: File taxonomy with `FileRole` enum and 75+ language specs
-- ADR-0007: Import tracking roadmap for cross-file call resolution (30 analyzers identified)
+- ADR-0007: Import tracking for cross-file call resolution
+  - Phase 1 complete: JS/TS, Kotlin bug fixes
+  - Phase 2 complete: Rust, C#, Ruby, Elixir, Swift, PHP, Scala, Dart
+  - Phase 3A in progress: Ada, Clojure, D, Elm, F#, Haskell, Julia, Nim, OCaml (9 of 20 done)
 
 **CLI Ergonomics**
 - Auto-run analysis for query commands when no cached results exist
