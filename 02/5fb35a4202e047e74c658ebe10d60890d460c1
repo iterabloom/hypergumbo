@@ -1,0 +1,12 @@
+Original commit body from 347edde:
+
+- Show caller sources immediately after "Called by" list, then callee
+  sources after "Calls" list (instead of combining all sources at end)
+- Fix budget pruning to omit items one-at-a-time in priority order
+  (module-level first, then ascending in-degree) until total fits,
+  rather than greedy selection which could skip important items
+- Add separate omission messages for callers vs callees, and for
+  module-level vs regular sources
+- Fix deduplication when symbol is both caller and callee
+
+Adds 4 new tests covering budget scenarios.
