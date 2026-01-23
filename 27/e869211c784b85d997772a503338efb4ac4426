@@ -1,0 +1,16 @@
+Original commit body from a469f63:
+
+Both sections now use the same _is_test_path function for test
+classification and SOURCE_EXTENSIONS for file discovery.
+
+Changes:
+- _detect_test_summary: Uses SOURCE_EXTENSIONS + _is_test_path
+  instead of TEST_FILE_PATTERNS glob matching
+- _count_test_loc: Uses SOURCE_EXTENSIONS instead of LANGUAGE_EXTENSIONS
+  to exclude config files (Makefile, Cargo.toml) from test counts
+- is_test_path: Added tests.py and *_spec.rb patterns
+
+This fixes the contradictory output where Overview showed different
+test counts than the Tests section. For example, qemu-keycodemapdb
+had Overview showing "6 test files" while Tests section showed
+"No test files detected" (now both show 4 test files).
