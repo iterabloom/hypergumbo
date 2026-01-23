@@ -1,0 +1,16 @@
+Original commit body from 3f895da:
+
+Implements experiment 13.3 findings:
+
+- Add multi-format README link extraction (Markdown, Org-mode, RST, AsciiDoc)
+- Implement round-robin selection from README links, similarity, and centrality
+- Add dynamic truncation based on median token count with 500-token floor
+- Support reference-style Markdown links, Org [[url][text]], RST `text <url>`_
+- Handle GitHub/GitLab Pages URLs and forge URLs (github.com, gitlab.com, etc.)
+- Fix relative forge URL patterns (/repo/tree/branch/path) to skip branch name
+- Handle Org-mode file: scheme links
+
+The README always appears first in Additional Files. If it exceeds the budget,
+it gets truncated and no other files are included. Otherwise, files are
+selected in round-robin from: README-linked files, similarity-ranked files,
+and centrality-ranked files.
