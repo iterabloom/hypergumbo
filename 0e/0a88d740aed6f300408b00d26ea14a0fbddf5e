@@ -1,0 +1,8 @@
+Original commit body from fbe590b:
+
+Ripgrep's -f flag expects one pattern per line, not a single combined
+alternation. With 29,036 symbols, the giant \b(a|b|c|...)\b pattern
+caused ripgrep's regex engine to error (exit code 2).
+
+Now we write each \bname\b pattern on its own line and let ripgrep
+handle the OR'ing internally.
