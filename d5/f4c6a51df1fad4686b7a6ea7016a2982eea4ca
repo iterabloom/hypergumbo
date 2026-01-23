@@ -1,0 +1,13 @@
+Original commit body from 0a83ba4:
+
+Two improvements based on bakeoff 12.13 debug report findings:
+
+1. Main() function detection (Finding 2):
+   - Extended Pattern class with `symbol_name` and `language` fields
+   - Created main-functions.yaml with patterns for 10 languages
+   - main() functions detected as entrypoints with 0.80 confidence
+   - YAML-driven approach follows ADR-0003 data-driven philosophy
+
+2. Slice path suffix matching (Finding 3):
+   - `--entry src/main.go` now matches `/home/user/repo/src/main.go`
+   - Enables relative path matching against absolute stored paths
