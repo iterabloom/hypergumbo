@@ -1,0 +1,16 @@
+Original commit body from 3623397:
+
+Before this change, running hypergumbo without the -t flag produced different
+output than running with -t (bullet list structure vs tree format, no
+Representativeness Table vs having one). This was confusing and indicated
+deprecated code paths were still being used.
+
+Changes:
+- Default token budget to 4000 when -t is not specified (cli.py)
+- Always create SketchStats for representativeness tracking
+- Always use tree format for Structure section from the start
+- Delete deprecated _format_structure() function
+- Add directory type labels to tree fallback format
+- Remove tests for deleted function
+
+This ensures `hypergumbo .` produces the same output as `hypergumbo . -t 4000`.
