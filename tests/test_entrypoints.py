@@ -979,6 +979,82 @@ class TestSemanticEntryDetection:
         main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
         assert len(main_eps) == 1
 
+    def test_detect_library_export_concept(self) -> None:
+        """Detects library_export concept and creates LIBRARY_EXPORT entrypoint."""
+        sym = make_symbol(
+            "doSomething",
+            kind="function",
+            path="index.ts",
+            language="typescript",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "doSomething",
+                        "is_default": "false",
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.LIBRARY_EXPORT
+        assert ep.confidence == 0.75
+        assert "doSomething" in ep.label
+
+    def test_library_export_default_export(self) -> None:
+        """Default exports have appropriate label."""
+        sym = make_symbol(
+            "Hls",
+            kind="class",
+            path="index.ts",
+            language="typescript",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "Hls",
+                        "is_default": True,  # Note: can be bool or string
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.LIBRARY_EXPORT
+        assert "default" in ep.label.lower()
+
+    def test_duplicate_library_export_concepts_deduplicated(self) -> None:
+        """Multiple library_export concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "exportedFunc",
+            kind="function",
+            path="index.js",
+            language="javascript",
+            meta={
+                "concepts": [
+                    {"concept": "library_export", "framework": "library-exports"},
+                    {"concept": "library_export", "framework": "library-exports"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+
 
 class TestConnectivityBasedRanking:
     """Tests for connectivity-based entrypoint ranking."""

@@ -1491,11 +1491,12 @@ The pattern system has two categories:
 | **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, language-conventions, config-conventions |
 | **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
 
-**Convention patterns (4 files):**
+**Convention patterns (5 files):**
 - `main-functions.yaml`: main() entrypoints across 10+ languages
 - `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
 - `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
 - `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
+- `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
 
 **Framework patterns (37 files):** Loaded only when the framework is detected in profile. See `src/hypergumbo/frameworks/` for full list.
 
@@ -1509,6 +1510,7 @@ The framework pattern system supports multiple detection strategies:
 | **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
 | **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
 | **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
+| **Export-based** | JS/TS libraries | Detect exports from `index.ts/js` as library entrypoints |
 
 **Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
 

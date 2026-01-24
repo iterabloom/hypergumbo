@@ -4598,3 +4598,162 @@ export async function getServerSideProps() {
         contexts = [c for c in result.usage_contexts if c.kind == "export"]
         # Should have both default export and getServerSideProps
         assert len(contexts) >= 1
+
+
+class TestLibraryExportContext:
+    """Tests for library export detection from index files."""
+
+    def test_index_ts_default_export(self, tmp_path: Path) -> None:
+        """Detects default export from index.ts."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text("""
+export default class Hls {
+    constructor() {}
+    load(url: string) {}
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.context_name == "export.default"
+        assert ctx.metadata["is_default"] is True
+        assert ctx.metadata["export_name"] == "Hls"
+
+    def test_index_js_named_exports(self, tmp_path: Path) -> None:
+        """Detects named exports from index.js."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("""
+export function doSomething() {
+    return 42;
+}
+
+export function doOtherThing() {
+    return "hello";
+}
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 2
+        names = {c.metadata["export_name"] for c in contexts}
+        assert names == {"doSomething", "doOtherThing"}
+        for ctx in contexts:
+            assert ctx.metadata["is_default"] is False
+
+    def test_index_tsx_export_clause(self, tmp_path: Path) -> None:
+        """Detects export clause from index.tsx."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.tsx").write_text("""
+function Button() {
+    return <button>Click</button>;
+}
+
+function Input() {
+    return <input />;
+}
+
+export { Button, Input };
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 2
+        names = {c.metadata["export_name"] for c in contexts}
+        assert names == {"Button", "Input"}
+
+    def test_index_const_export(self, tmp_path: Path) -> None:
+        """Detects exported constants from index.js."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("""
+export const VERSION = "1.0.0";
+export const CONFIG = { debug: false };
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 2
+        names = {c.metadata["export_name"] for c in contexts}
+        assert names == {"VERSION", "CONFIG"}
+
+    def test_non_index_file_ignored(self, tmp_path: Path) -> None:
+        """Non-index files don't generate library export contexts."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "utils.ts").write_text("""
+export function helper() {
+    return 123;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 0
+
+    def test_index_jsx_supported(self, tmp_path: Path) -> None:
+        """Detects exports from index.jsx."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.jsx").write_text("""
+export function ReactComponent() {
+    return <div>Hello</div>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.metadata["export_name"] == "ReactComponent"
+
+    def test_export_symbol_ref_resolved(self, tmp_path: Path) -> None:
+        """Exported symbols have their symbol_ref resolved."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text("""
+export function myExportedFunction() {
+    return 42;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.symbol_ref is not None
+        # Verify the symbol exists
+        sym = next((s for s in result.symbols if s.id == ctx.symbol_ref), None)
+        assert sym is not None
+        assert sym.name == "myExportedFunction"
+        assert sym.kind == "function"
+
+    def test_class_export(self, tmp_path: Path) -> None:
+        """Detects exported class from index.ts."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text("""
+export class MyLibrary {
+    doStuff() {
+        return "stuff";
+    }
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.metadata["export_name"] == "MyLibrary"
+        assert ctx.symbol_ref is not None
+
+    def test_default_export_identifier(self, tmp_path: Path) -> None:
+        """Detects 'export default Identifier' pattern."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("""
+function MyComponent() {
+    return null;
+}
+
+export default MyComponent;
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.context_name == "export.default"
+        assert ctx.metadata["is_default"] is True
+        # The export_name should be the identifier
+        assert ctx.metadata["export_name"] == "MyComponent"
