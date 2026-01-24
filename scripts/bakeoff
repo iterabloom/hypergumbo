@@ -462,7 +462,7 @@ def cmd_run(args):
             ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
             ("routes", ["hypergumbo", "routes", "--input", os.path.join(repo_out, "hg.json")]),
             ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
-            ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
+            ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
             ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
         ]
 
