@@ -79,8 +79,8 @@ Analyzes the repo and emits a behavior map. No initialization required—works d
 🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.<entry>.json]`**
 Produces a reduced subgraph suitable for LLM context. Default output filename includes a sanitized entry name to prevent overwrites when slicing different symbols.
 
-⬛ **`hypergumbo catalog`** *(vestigial)*
-Shows available passes/packs. Part of the capsule system—not needed since `run` auto-detects everything.
+🟩 **`hypergumbo catalog [--show-all]`**
+Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
 ⬛ **`hypergumbo export-capsule`** *(vestigial)*
 Exports capsule files. Part of the capsule system—see [history](history/capsule-system-v1.md).
