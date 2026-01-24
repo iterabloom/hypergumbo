@@ -835,6 +835,128 @@ When in doubt, check if the issue affects the bakeoff repos in practice.
     return 0
 
 
+def cmd_loop(args):
+    """Run the bakeoff loop: auto-progress cohorts and iterations.
+
+    This is the main orchestrator for autonomous bakeoff runs. It:
+    1. Checks current state
+    2. If converged on current cohort: selects next cohort
+    3. Runs a cycle (run + diagnose)
+    4. Outputs structured status for agent consumption
+
+    Use --max-iterations to limit total cycles. Use --dry-run to see what would happen.
+    """
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found. Run 'bakeoff init' first.", file=sys.stderr)
+        return 1
+
+    max_iter = args.max_iterations or 100
+    iterations_run = 0
+
+    while iterations_run < max_iter:
+        # Check if we need a new cohort
+        need_new_cohort = False
+        if not state.current_cohort:
+            need_new_cohort = True
+            reason = "No cohort selected"
+        elif len(state.convergence_history) >= 2:
+            recent = state.convergence_history[-2:]
+            curr = recent[1]
+            if curr.get("critical", 0) == 0 and curr.get("high", 0) == 0 and curr.get("new_issues", 0) == 0:
+                need_new_cohort = True
+                reason = "Converged on current cohort"
+
+        if need_new_cohort:
+            print(f"\n=== Selecting new cohort (reason: {reason}) ===\n")
+            if args.dry_run:
+                print("[DRY RUN] Would select new cohort")
+            else:
+                # Create args object for cohort selection
+                class CohortArgs:
+                    count = args.cohort_size
+                    workdir = workdir
+                rc = cmd_cohort(CohortArgs())
+                if rc != 0:
+                    print("Error selecting cohort", file=sys.stderr)
+                    return rc
+                # Reload state after cohort selection
+                state = load_state(workdir)
+                if not state:  # pragma: no cover
+                    return 1
+
+        # Run a cycle
+        print(f"\n=== Running cycle (cohort #{state.cohort_number}, iteration {state.iteration + 1}) ===\n")
+        if args.dry_run:
+            print("[DRY RUN] Would run cycle")
+        else:
+            class CycleArgs:
+                workdir = workdir
+            rc = cmd_cycle(CycleArgs())
+            if rc != 0:
+                print("Error running cycle", file=sys.stderr)
+                return rc
+            # Reload state after cycle
+            state = load_state(workdir)
+            if not state:  # pragma: no cover
+                return 1
+
+        iterations_run += 1
+
+        # Output structured status
+        print("\n" + "=" * 60)
+        print("BAKEOFF STATUS")
+        print("=" * 60)
+        print(f"Session: {state.session_id}")
+        print(f"Cohort: #{state.cohort_number} ({', '.join(state.current_cohort)})")
+        print(f"Iteration: {state.iteration}")
+        print(f"Issues: {len(state.issues)}")
+
+        if state.convergence_history:
+            last = state.convergence_history[-1]
+            print(f"\nLast cycle:")
+            print(f"  CRITICAL: {last.get('critical', 0)}")
+            print(f"  HIGH: {last.get('high', 0)}")
+            print(f"  New issues: {last.get('new_issues', 0)}")
+
+        # Check convergence and decide whether to continue
+        if len(state.convergence_history) >= 2:
+            recent = state.convergence_history[-2:]
+            curr = recent[1]
+            if curr.get("critical", 0) == 0 and curr.get("high", 0) == 0 and curr.get("new_issues", 0) == 0:
+                # Converged - loop will select new cohort next iteration
+                print("\nSTATUS: CONVERGED")
+                print("This cohort is stable. Will select new cohort in next iteration.")
+            elif curr.get("critical", 0) > 0 or curr.get("high", 0) > 0:
+                # Has issues - agent should investigate
+                print("\nSTATUS: NEEDS_INVESTIGATION")
+                print("Critical or high severity issues detected.")
+                print("\nNext steps for agent:")
+                print("  1. Review issues: ./scripts/bakeoff issues --format json")
+                print("  2. For each issue, ask: What analogous issues might exist?")
+                print("  3. Fix issues in hypergumbo")
+                print("  4. Run: ./scripts/bakeoff loop --continue")
+                # Exit loop to let agent investigate
+                if not args.auto_continue:
+                    return 0
+            else:
+                print("\nSTATUS: IMPROVING")
+                print("Issues decreasing. Continuing...")
+        else:
+            # First iteration
+            last = state.convergence_history[-1] if state.convergence_history else {}
+            if last.get("critical", 0) > 0 or last.get("high", 0) > 0:
+                print("\nSTATUS: NEEDS_INVESTIGATION")
+                print("Issues found in first iteration.")
+                if not args.auto_continue:
+                    return 0
+
+    print(f"\nReached max iterations ({max_iter})")
+    return 0
+
+
 def cmd_scan(args):
     """Scan repo pool and show available repos by language/size."""
     pool_path = os.path.expanduser(args.pool)
@@ -961,6 +1083,14 @@ def main():
     # questions
     subparsers.add_parser("questions", help="Show diagnostic questions to ask")
 
+    # loop
+    p_loop = subparsers.add_parser("loop", help="Run bakeoff loop (cohort → cycle → check)")
+    p_loop.add_argument("--workdir", help="Override workdir")
+    p_loop.add_argument("--max-iterations", type=int, default=10, help="Max iterations (default: 10)")
+    p_loop.add_argument("--cohort-size", type=int, default=DEFAULT_COHORT_SIZE, help="Repos per cohort")
+    p_loop.add_argument("--dry-run", action="store_true", help="Show what would happen without running")
+    p_loop.add_argument("--auto-continue", action="store_true", help="Continue even when issues found")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -977,6 +1107,7 @@ def main():
         "cycle": cmd_cycle,
         "scan": cmd_scan,
         "questions": cmd_questions,
+        "loop": cmd_loop,
     }
 
     return commands[args.command](args)
