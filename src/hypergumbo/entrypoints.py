@@ -94,6 +94,8 @@ class EntrypointKind(Enum):
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
     EVENT_HANDLER = "event_handler"  # Event/message handler
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
+    # Library entry points (exported API)
+    LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
 
 
 @dataclass
@@ -389,6 +391,29 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=f"{lang} main()",
                 ))
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
+            # Library export concept -> LIBRARY_EXPORT
+            # (ADR-0003 v1.3.x - Library public API detection)
+            # Exports from index files (index.ts, index.js) are treated as library
+            # entry points since they define the public API surface.
+            elif concept_type == "library_export":
+                if EntrypointKind.LIBRARY_EXPORT in added_kinds:
+                    continue
+                export_name = concept.get("export_name", sym.name)
+                # Handle is_default as bool or string "true"/"false"
+                is_default_raw = concept.get("is_default", False)
+                is_default = is_default_raw is True or is_default_raw == "true"
+                if is_default:
+                    label = "Library default export"
+                else:
+                    label = f"Library export: {export_name}"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.LIBRARY_EXPORT,
+                    confidence=0.75,  # Lower than routes, similar to main()
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
 
     return entrypoints
 

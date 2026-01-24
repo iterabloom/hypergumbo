@@ -1112,6 +1112,146 @@ def _extract_nextjs_usage_contexts(
     return contexts
 
 
+def _is_index_file(file_path: Path) -> bool:
+    """Check if a file is an index file (library entry point).
+
+    Index files are the entry points for libraries, defining the public API.
+    Supports various extensions used in JavaScript/TypeScript projects.
+    """
+    stem = file_path.stem  # filename without extension
+    return stem == "index"
+
+
+def _extract_library_export_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for library exports from index files.
+
+    Libraries (as opposed to applications) expose their public API through
+    exports from index files (index.ts, index.js, etc.). These exports are
+    entry points for library consumers.
+
+    Detects:
+    - export default X
+    - export function name() {}
+    - export class Name {}
+    - export const name = ...
+    - export { name1, name2 }
+    - export { name as alias }
+
+    Note: Re-exports (export * from './module') are not currently detected
+    as they require import resolution to determine the exported symbols.
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    # Only process index files
+    if not _is_index_file(file_path):
+        return contexts
+
+    # Look for exports
+    for node in iter_tree(tree.root_node):
+        if node.type != "export_statement":
+            continue
+
+        # Check for export default
+        is_default = False
+        export_names: list[str] = []
+
+        for child in node.children:
+            if child.type == "default":
+                is_default = True
+            elif child.type == "function_declaration":
+                name = _find_name_in_children(child, source)
+                if name:
+                    export_names.append(name)
+            elif child.type == "class_declaration":
+                name = _find_name_in_children(child, source)
+                if name:
+                    export_names.append(name)
+            elif child.type == "lexical_declaration":
+                # export const x = ..., export let y = ...
+                for decl in child.children:
+                    if decl.type == "variable_declarator":
+                        for dc in decl.children:
+                            if dc.type == "identifier":
+                                export_names.append(_node_text(dc, source))
+                                break
+            elif child.type == "identifier":
+                # export default SomeIdentifier
+                export_names.append(_node_text(child, source))
+            elif child.type == "export_clause":
+                # Named exports: export { name1, name2, name3 as alias }
+                for ec_child in child.children:
+                    if ec_child.type == "export_specifier":
+                        # Get the local name (first identifier) for symbol lookup
+                        # and the exported name (second identifier or alias)
+                        local_name = None
+                        for spec_child in ec_child.children:
+                            if spec_child.type == "identifier":
+                                if local_name is None:
+                                    local_name = _node_text(spec_child, source)
+                                # If there's an alias, we still use local name for lookup
+                        if local_name:
+                            export_names.append(local_name)
+
+        # Create span for the export statement
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        if is_default:
+            # Default export - may or may not have a name
+            export_name = export_names[0] if export_names else None
+            handler_ref = None
+            if export_name and export_name in symbol_by_name:
+                handler_ref = symbol_by_name[export_name].id
+
+            ctx = UsageContext.create(
+                kind="library_export",
+                context_name="export.default",
+                position="default",
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "export_name": export_name,
+                    "is_default": True,
+                },
+            )
+            contexts.append(ctx)
+        else:
+            # Named exports - create a context for each export
+            for export_name in export_names:
+                handler_ref = None
+                if export_name in symbol_by_name:
+                    handler_ref = symbol_by_name[export_name].id
+
+                ctx = UsageContext.create(
+                    kind="library_export",
+                    context_name=f"export.{export_name}",
+                    position="named",
+                    path=str(file_path),
+                    span=span,
+                    symbol_ref=handler_ref,
+                    metadata={
+                        "export_name": export_name,
+                        "is_default": False,
+                    },
+                )
+                contexts.append(ctx)
+
+    return contexts
+
+
 def _detect_nestjs_decorator(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[str | None, str | None]:
@@ -2477,6 +2617,12 @@ def analyze_javascript(
             pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
         )
         all_usage_contexts.extend(nextjs_contexts)
+
+        # Library exports from index files (index.ts, index.js, etc.)
+        library_contexts = _extract_library_export_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(library_contexts)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
