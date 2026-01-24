@@ -2,8 +2,10 @@
 
 Status: draft, living document.
 
-- Spec A: MVP behavior map + capsules (current focus of this repo).
+- Spec A: MVP behavior map (current focus of this repo).
 - Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
+
+> **Note on Capsule System**: The original design included a "capsule" abstraction for composing custom analyzers from building blocks. In practice, the general-purpose analyzer works well enough that custom composition isn't needed. The capsule system is now vestigial—`init` creates capsule files, but `run` ignores them. See [Capsule System History](history/capsule-system-v1.md) for the original design.
 
 ## Implementation Status Legend
 
@@ -21,17 +23,17 @@ Status: draft, living document.
 # Spec A — hypergumbo MVP
 
 ## 0) One-sentence summary
-A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer capsule** from pre-approved building blocks (optionally LLM-assisted), and (3) runs that capsule to emit a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
+A local-first CLI that profiles a repo and emits a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
 
 ## 1) Goals
 * 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
 * 🟩 **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
 * 🟩 **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
-* 🟩 **Capsule Plan composition**: `hypergumbo init` generates a validated `capsule_plan.json` selecting from pre-approved passes/packs/rules in a `catalog.json`. LLM may assist with plan generation **(optional)**, but `hypergumbo run` stays deterministic and offline-by-default.
-* 🟩 **Portable analyzer artifact**: `.hypergumbo/` (manifest + plan + execution spec) that can be committed/shared without repo code, with security defaults and toolchain versioning.
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
+* ⬛ **Capsule Plan composition**: Originally planned but not needed—the general-purpose analyzer handles most repos. See [history](history/capsule-system-v1.md).
+* ⬛ **Portable analyzer artifact**: Originally planned but not needed—`hypergumbo run` works directly without initialization.
 
 ## 2) Non-goals (for MVP)
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
@@ -39,7 +41,7 @@ A local-first CLI that (1) profiles a repo, (2) composes a **portable analyzer c
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
 * No attempt to support *every* language—support a small set well.
 * No incremental analysis daemon (full re-analysis is acceptable for MVP).
-* No LLM-generated analyzer *code* in MVP. LLM *may* assist with **Capsule Plan** generation (validated JSON selecting pre-approved components) during `hypergumbo init` only. `hypergumbo run` remains offline-by-default.
+* No LLM-generated analyzer code.
 
 ## 3) User experience (CLI)
 
@@ -68,81 +70,20 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
 * `-x` excludes callers/callees from test files
 
-🟩 **`hypergumbo init [--capabilities python,javascript] [--assistant template|llm] [--llm-input tier0|tier1|tier2]`**
-Creates `.hypergumbo/` containing:
-* `capsule.json` (manifest: format version, requirements, capabilities, security defaults)
-* `capsule_plan.json` (validated composition plan)
-* `catalog.json` (optional to *copy into capsule* only if you want portability of the menu; otherwise it stays in the installed package)
-* `analyzer.py` is a **stable runner** that reads the plan (not a generated analyzer script).
-* `hypergumbo/runner.py` — Runner abstraction; selects execution strategy by capsule `format` (v0.1 implements subprocess runner for `python_script`)
-* `hypergumbo/subprocess_runner.py` — Launches analyzer in a subprocess, applies resource limits, collects outputs
-* `.hypergumbo/config.json` (analysis configuration)
-* `.hypergumbo/profile.json` (repo profiling results)
-* `tier0`: profile metadata only
-* `tier1`: allowlisted config files only (package.json, pyproject.toml, etc.)
-* `tier2`: “repo sketch” (structure-only summaries, no raw code. Show a preview of exactly what will be sent.)
-Auto-detects languages if `--capabilities` not specified.
-Sets security defaults: `trust: local_only`, `network: deny`, `sandbox: recommended`, `validation_mode: strict`.
-* If `--assistant llm`, generate `capsule_plan.json` using an LLM **but always validate** against the local catalog; on failure, fall back to template plan.
-* If `--assistant template` (default), generate the plan without any LLM.
+⬛ **`hypergumbo init`** *(vestigial)*
+Creates `.hypergumbo/` with capsule files. These files are not used by `run`—the general-purpose analyzer handles all repos without initialization. See [Capsule System History](history/capsule-system-v1.md).
 
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
-Runs the analyzer capsule on the repo. If no capsule exists, auto-generates a default one with a warning.
+Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
 
 🟩 **`hypergumbo slice --entry <symbol|file|route> [--out slice.<entry>.json]`**
 Produces a reduced subgraph suitable for LLM context. Default output filename includes a sanitized entry name to prevent overwrites when slicing different symbols.
 
-🟩 **`hypergumbo catalog [--show-all]`**
-Displays available passes, packs, and rule templates. Use `--show-all` to include optional extras requiring additional dependencies (e.g., tree-sitter language packs).
+⬛ **`hypergumbo catalog`** *(vestigial)*
+Shows available passes/packs. Part of the capsule system—not needed since `run` auto-detects everything.
 
-Example output:
-```
-Available Passes:
-  - python-ast-v1: Python AST parser
-  - javascript-ts-v1: JS/TS via tree-sitter
-  - java-ts-v1: Java via tree-sitter
-  - go-ts-v1: Go via tree-sitter
-  ... (67 language passes available)
-
-Available Packs:
-  - python-fastapi: FastAPI route detection + call graph
-  - electron-app: Main/renderer split + IPC detection
-  - react-nextjs: Component tree + route mapping
-```
-
-🟩 **`hypergumbo export-capsule --shareable [--out capsule.tar.gz]`**
-
-Exports the analyzer capsule in a privacy-safe format suitable for sharing or publishing to a registry.
-
-**Redactions applied (shareable mode):**
-* Strips repo file paths from capsule metadata where present (replaces with placeholders: `<file-1>`, `<file-2>`, etc.)
-* Excludes `.hypergumbo/profile.json` (contains repo structure info)
-* Excludes `.hypergumbo/cache/` (repo-specific cached results)
-
-* Sanitizes `capsule_plan.json`:
-  - Removes `features[]` entirely (feature queries are commonly repo-specific: routes, symbols, internal identifiers)
-  - Removes any `rules[]` entries that contain repo-specific selectors, including:
-    - literal file paths (non-glob), directory names unique to the repo
-    - explicit symbol names or fully-qualified identifiers
-    - explicit HTTP routes or IPC channels
-  - Preserves only “generic” rules such as standard excludes (e.g., `**/*_test.py`, `node_modules/**`) and size limits
-  - Emits a summary of removed items in `SHAREABLE.txt` (counts + categories), not the original values
-
-* Preserves:
-  - `capsule.json` (manifest)
-  - `capsule_plan.json` (sanitized composition plan; see SHAREABLE redactions)
-  - `analyzer.py` (runner script)
-  - `catalog.json` (if customized)
-
-**Output format:**
-* Tarball containing capsule files
-* Includes `SHAREABLE.txt` marker file documenting redactions applied, including:
-  - which plan sections were removed (`features`, `repo_specific_rules`)
-  - counts of removed entries (no original values)
-  - shareable capsule format/version and checksums
-* Includes integrity checksums (SHA256SUMS)
-
-**Use case:** Share analyzer configuration without leaking repository structure. Shareable capsules contain no source code, no symbol names, no file paths from your repository.
+⬛ **`hypergumbo export-capsule`** *(vestigial)*
+Exports capsule files. Part of the capsule system—see [history](history/capsule-system-v1.md).
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
 
@@ -181,7 +122,7 @@ Cold Spots (untested - need coverage)
 **Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
 
 ### Key principle
-Initialization may use language detection; **analysis execution requires no network or API keys** (by default). The capsule should be deterministic and reproducible given the same repo state.
+**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state.
 
 ## 4) Supported stacks
 
@@ -1349,38 +1290,17 @@ def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
 
 **Use case:** "Show me everything my code calls, but don't trace into lodash internals."
 
-### Capsule Plan Integration
-
-Supply chain configuration can be customized in `capsule_plan.json`:
-
-```json
-{
-  "supply_chain": {
-    "analysis_tiers": [1, 2, 3],
-    "first_party_patterns": ["src/", "lib/", "custom_code/"],
-    "derived_patterns": ["dist/", "build/", "generated/"],
-    "internal_package_roots": ["packages/core", "packages/shared"]
-  }
-}
-```
-
-**Fields:**
-- `analysis_tiers`: Which tiers to include in analysis (default: [1, 2, 3])
-- `first_party_patterns`: Additional patterns to classify as tier 1
-- `derived_patterns`: Additional patterns to classify as tier 4
-- `internal_package_roots`: Explicit internal package paths (supplements auto-detection)
-
 ### Limitations
 
 **What supply chain classification does NOT do:**
 
 1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment.
 
-2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party). Use `derived_patterns` in capsule plan to exclude.
+2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party).
 
 3. **Understand build pipelines**: Classification doesn't know that `dist/app.js` was built from `src/app.ts`. It relies on path conventions and content heuristics.
 
-4. **Handle unconventional structures**: Projects with unusual layouts (e.g., source in root, deps in `lib/`) need capsule plan customization.
+4. **Handle unconventional structures**: Projects with unusual layouts (e.g., source in root, deps in `lib/`) may be misclassified.
 
 **Logged in limits:**
 ```json
@@ -1873,34 +1793,19 @@ Spec A is designed to enable future enhancements without breaking changes:
 - Analyzer benchmarking (precision by evidence type)
 - Agent filtering (show only high-confidence edges)
 
-**Security manifest (trust, network, sandbox)**:
-- Future registry can enforce sandboxing for untrusted capsules
-- Gradual trust model (local → shared → signed)
-
-**Pass interface**:
-- Multi-pass engine extends the registry
-- Typed analyzers (tsserver, pyright) are just new passes
-
-**Toolchain capture**:
-- Reproducibility requirements
-- Registry fingerprinting (which tool versions were used)
-
 **Machine-readable provenance**:
 - Critical for merging edges from multiple analyzers
 - Enables programmatic quality assessment
 - Foundation for context router filtering
 
-**Capsule Plan composition**:
-- Enables vast combinatorial space from small building blocks
-- LLM-assisted or template-based generation
-- Safe (generates data, not code)
+**Toolchain capture**:
+- Reproducibility requirements
+- Version tracking for debugging
 
 ### What upgrades in future versions
-* Multiple execution formats (not just `python_script`)
 * Mixed-fidelity graphs (AST edges + typed edges)
 * Cross-language linkers (HTTP, IPC, SQL)
 * Context router (agent-optimized bundles)
-* Registry (sharing capsules + benchmarks)
 
 ## Appendix C: Versioning & Support Policy
 
@@ -1913,7 +1818,6 @@ Spec A is designed to enable future enhancements without breaking changes:
 * **Confidence model versions**: `hypergumbo-evidence-vMAJOR.MINOR`
   - MAJOR: Incompatible changes (requires new schema)
   - MINOR: Refinements (new evidence types, score adjustments)
-* **Capsule format versions**: Independent, declared in `capsule.json.format_version`
 
 ### Compatibility guarantees
 
@@ -2087,11 +1991,8 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 # Was using Spec A v0.1.0
 pip install --upgrade hypergumbo  # Now future version
 
-# Old capsule still works
-hypergumbo run  # Executes existing capsule_plan.json, output compatible
-
-# Optionally regenerate capsule to use new analyzers
-hypergumbo init --upgrade  # Gets new capabilities
+# Just works - no reinitialization needed
+hypergumbo run  # Output compatible with existing tooling
 ```
 
 **User upgrades output consumers (agents, tooling):**
