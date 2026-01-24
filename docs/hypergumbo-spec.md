@@ -5,8 +5,6 @@ Status: draft, living document.
 - Spec A: MVP behavior map (current focus of this repo).
 - Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
 
-> **Note on Capsule System**: The original design included a "capsule" abstraction for composing custom analyzers from building blocks. In practice, the general-purpose analyzer works well enough that custom composition isn't needed. The capsule system is now vestigial—`init` creates capsule files, but `run` ignores them. See [Capsule System History](history/capsule-system-v1.md) for the original design.
-
 ## Implementation Status Legend
 
 | Icon | Status | Meaning |
@@ -32,8 +30,8 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
-* ⬛ **Capsule Plan composition**: Originally planned but not needed—the general-purpose analyzer handles most repos. See [history](history/capsule-system-v1.md).
-* ⬛ **Portable analyzer artifact**: Originally planned but not needed—`hypergumbo run` works directly without initialization.
+* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix D](#appendix-d-capsule-system-history).
+* ⬛ **Portable analyzer artifact**: Removed—`hypergumbo run` works directly without initialization.
 
 ## 2) Non-goals (for MVP)
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
@@ -48,8 +46,6 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 ### Install
 * `pipx install hypergumbo` (primary, includes all 67 language analyzers)
 * `pip install hypergumbo` (secondary)
-* `pip install hypergumbo[llm-assist]` (optional OpenAI support for plan generation)
-* `pip install hypergumbo[llm-local]` (optional local LLM support via llm package)
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
 ### Commands
@@ -70,8 +66,8 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
 * `-x` excludes callers/callees from test files
 
-⬛ **`hypergumbo init`** *(vestigial)*
-Creates `.hypergumbo/` with capsule files. These files are not used by `run`—the general-purpose analyzer handles all repos without initialization. See [Capsule System History](history/capsule-system-v1.md).
+⬛ **`hypergumbo init`** *(removed)*
+Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
 
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
@@ -82,8 +78,8 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 🟩 **`hypergumbo catalog [--show-all]`**
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
-⬛ **`hypergumbo export-capsule`** *(vestigial)*
-Exports capsule files. Part of the capsule system—see [history](history/capsule-system-v1.md).
+⬛ **`hypergumbo export-capsule`** *(removed)*
+Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
 
@@ -159,8 +155,6 @@ Hypergumbo supports 67 languages via tree-sitter grammars. All are included in t
 * **Build-from-source grammars**: Lean, Wolfram built from source in CI for languages lacking PyPI packages
 * **Fallback**: If a specific grammar fails to load, that language is skipped with explicit `limits.skipped_languages[]` logging
 * **Optional extras**:
-  - `[llm-assist]`: OpenAI for LLM-assisted plan generation
-  - `[llm-local]`: Local LLM support via llm package
   - `[embeddings]`: sentence-transformers for embedding-based config extraction
 ### Build strategy
 * Tree-sitter grammars with PyPI wheels are installed directly as dependencies
@@ -198,13 +192,8 @@ Hypergumbo supports 67 languages via tree-sitter grammars. All are included in t
 * `linkers/jni.py` — JNI boundary detection (Java↔C)
 * `linkers/ipc.py` — IPC message channel detection
 
-**Vestigial modules** (kept for `init` command, not used by `run`):
-* `catalog.py` — Pass/pack availability checking
-* `plan.py` — capsule_plan.json generation
-* `llm_assist.py` — LLM-assisted plan generation (proof of concept)
-* `export.py` — capsule export
-
-See [Capsule System History](history/capsule-system-v1.md) for design context.
+**Discovery & catalog:**
+* `catalog.py` — Pass availability checking (used by `catalog` command)
 
 ### IR Layer
 Parsers emit to `AnalysisIR`:
@@ -448,7 +437,7 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
 * `config_fingerprint`: Hash of effective configuration affecting this pass (for cache invalidation)
 
 **skipped_passes** (array, optional):
-- List of passes that were requested in capsule_plan.json but could not run
+- List of passes that could not run (e.g., missing grammar)
 - Each entry includes pass ID and reason
 - Example:
 ```json
@@ -714,7 +703,6 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
   ],
   "partial_results_reason": "",
   "analyzer_version": "hypergumbo-0.1.0",
-  "capsule_version": "sha256:abc123...",
   "analysis_depth": "syntax_only"
 }
 ```
@@ -899,7 +887,7 @@ def calculate_evidence_confidence(
   * File-level results: `(content_hash, run_signature)`
   * Full analysis outputs: `(repo_fingerprint, run_signature)` where `repo_fingerprint` changes when any analyzed file content changes (including dirty git files).
 * File-level cache stores mapping: `file_path → content_hash → cached_result`
-* Cache invalidation: if capsule version changes or repo_fingerprint changes
+* Cache invalidation: if analyzer version changes or repo_fingerprint changes
 * Cache format: JSON (simple, debuggable)
 
 ### Deterministic ordering
@@ -1524,11 +1512,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * 🟩 Confidence calculation determinism
 * 🟩 Provenance tracking (correct origin fields, execution_id/run_signature hashing)
 * 🟩 IR → view compilation correctness
-* 🟩 **Capsule Plan validation**: invalid plans rejected, valid plans execute correctly
-* 🟩 **Catalog loading**: building blocks (packs) discovered and merged correctly, schema validation
-* 🟩 Plan validation: unknown pass/pack rejected in strict mode
-* 🟩 Pack schema validation: invalid pack.json rejected
-* 🟩 LLM plan output must validate or fall back to template
+* 🟩 **Catalog loading**: passes discovered correctly, schema validation
 ### Schema validation tests
 * 🟩 Output validates against published JSON Schema
 * 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
@@ -1537,11 +1521,10 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * 🟩 Evidence type presence in all edges
 * 🟩 Toolchain capture in analysis_runs
 ### Smoke test
-* 🟩 `hypergumbo init` then `hypergumbo run` on a fixture repo
-* 🟩 Yields valid JSON schema
+* 🟩 `hypergumbo run` on a fixture repo yields valid JSON schema
 * 🟩 All expected nodes/edges present
 * 🟩 No crashes, warnings logged appropriately
-* 🟩 `hypergumbo catalog` displays building blocks
+* 🟩 `hypergumbo catalog` displays available passes
 ### Performance benchmarks
 * 🟩 Small repo (<100 files): <5 seconds end-to-end
 * 🟩 Medium repo (~500 files): <30 seconds
@@ -1753,7 +1736,6 @@ Minimal working example for a tiny FastAPI app:
     "failed_files": [],
     "partial_results_reason": "",
     "analyzer_version": "hypergumbo-0.1.0",
-    "capsule_version": "sha256:template-v1...",
     "analysis_depth": "syntax_only"
   }
 }
@@ -1767,7 +1749,6 @@ Spec A is designed to enable future enhancements without breaking changes:
 
 * **Internal IR**: Strong analyzers (tsserver, pyright) can enhance the IR
 * **View system**: New views (`ir_export`, `context_bundle`) can be added
-* **Capsule manifest**: `format` field supports `toolchain_bundle`, `container`, `daemon` modes
 * **Provenance**: Already tracks which pass created which nodes/edges via execution_id
 * **Versioned schema**: Room for v0.2, v0.3 with migration paths
 
@@ -1884,14 +1865,6 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 * Telemetry code is open source (can audit exactly what's sent)
 * Privacy policy published at https://hypergumbo.iterabloom.com/privacy
 * Opt-in status shown in `hypergumbo config --show`
-
-### LLM API usage
-If using `hypergumbo init --assistant llm`:
-* API key required (OpenAI or compatible)
-* Repo profile sent to LLM (language stats, framework signals)
-* **No source code sent** (only metadata)
-* Subject to LLM provider's terms
-* Can use local LLM (ollama, etc.) to avoid external API
 
 ## Appendix E: Forward Compatibility Contract
 This contract ensures Spec A outputs remain valid when future capabilities are added, and enhancements degrade gracefully for Spec A consumers.
@@ -2274,14 +2247,14 @@ TypeScript incremental took ~3 years, rust-analyzer ~2 years.
 
 ## Appendix B: Future Testing Enhancements
 
-### LLM Integration Tests
+### Integration Tests
 
-Add optional integration tests that make real API calls to LLM providers to validate the `llm_assist` module end-to-end:
+Add optional integration tests that validate end-to-end behavior:
 
 * Use `@pytest.mark.integration` marker
-* Skip automatically when API keys are not set
+* Skip automatically when dependencies are not available
 * Run only on explicit request (`pytest -m integration`)
-* Catch environment-specific issues (proxy configuration, API changes)
+* Catch environment-specific issues
 
 ## Appendix C: Planned Language/DSL Support
 
@@ -2308,3 +2281,19 @@ Languages and DSLs identified as gaps from industry analysis.
 |--------|--------|
 | **Markdown/RST** | Intellectual exhaustion |
 | **Plain text specs** | Intellectual exhaustion |
+
+## Appendix D: Capsule System History
+
+The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
+
+In practice, the general-purpose analyzer worked well enough that custom composition wasn't needed. The capsule system was never used:
+- `init` created capsule files, but `run` ignored them
+- The `Pack` concept for bundling passes was deprecated
+- LLM-assisted plan generation was a proof of concept that added complexity without value
+
+**Removed in v1.0.0:**
+- `init` and `export-capsule` commands
+- `plan.py`, `llm_assist.py`, `export.py` modules
+- `Pack` class from catalog (framework-specific behavior handled by linker activation conditions and `--frameworks` flag)
+
+**For historical reference**, see [history/capsule-system-v1.md](history/capsule-system-v1.md).
