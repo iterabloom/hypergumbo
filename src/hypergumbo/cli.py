@@ -8,11 +8,9 @@ How It Works
 The CLI uses argparse with subcommands for different operations:
 
 - **sketch** (default): Generate token-budgeted Markdown overview
-- **init**: Create .hypergumbo/ capsule with analysis plan
 - **run**: Execute full analysis and output behavior map JSON
 - **slice**: Extract subgraph from an entry point
-- **catalog**: List available analysis passes and packs
-- **export-capsule**: Export capsule as shareable tarball
+- **catalog**: List available analysis passes
 - **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
 
 When no subcommand is given, sketch mode is assumed. This makes the
@@ -65,11 +63,9 @@ import hypergumbo.linkers.subprocess_cli as _subprocess_linker  # noqa: F401
 import hypergumbo.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
-from .export import export_capsule
 from .ir import Symbol, Edge, Span
 from .metrics import compute_metrics
 from .profile import detect_profile
-from .llm_assist import generate_plan_with_fallback
 from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
@@ -581,96 +577,6 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         embeddings_dir=embeddings_dir,
         cached_artifacts=pre_existing_results,
     )
-
-    return 0
-
-
-def cmd_init(args: argparse.Namespace) -> int:
-    repo_root = Path(args.path).resolve()
-    capsule_dir = repo_root / ".hypergumbo"
-    capsule_dir.mkdir(parents=True, exist_ok=True)
-
-    capsule_path = capsule_dir / "capsule.json"
-    plan_path = capsule_dir / "capsule_plan.json"
-
-    # Normalize capabilities into a list
-    capabilities = [
-        c.strip()
-        for c in (args.capabilities or "").split(",")
-        if c.strip()
-    ]
-
-    # Detect repo profile for plan generation
-    profile = detect_profile(repo_root)
-
-    # If no explicit capabilities, use detected languages
-    if not capabilities:
-        capabilities = list(profile.languages.keys())
-
-    # Generate capsule plan (template or LLM-assisted)
-    catalog = get_default_catalog()
-    use_llm = args.assistant == "llm"
-
-    # If LLM requested but no backend available, offer interactive setup
-    if use_llm:
-        from .llm_assist import detect_backend, LLMBackend
-        from .user_config import prompt_for_llm_setup
-
-        backend, _ = detect_backend()
-        if backend == LLMBackend.NONE and sys.stdin.isatty():
-            # Offer to set up LLM backend interactively
-            if prompt_for_llm_setup():
-                # Re-detect after setup
-                backend, _ = detect_backend()
-
-    plan, llm_result = generate_plan_with_fallback(
-        profile, catalog, use_llm=use_llm, tier=args.llm_input
-    )
-
-    # Build capsule manifest with generation metadata
-    capsule = {
-        "repo_root": str(repo_root),
-        "assistant": args.assistant,
-        "llm_input": args.llm_input,
-        "capabilities": capabilities,
-    }
-
-    # Add LLM generation metadata if attempted
-    if llm_result is not None:
-        capsule["generator"] = {
-            "mode": "llm_assisted" if llm_result.success else "template_fallback",
-            "backend": llm_result.backend_used.value if llm_result.backend_used else None,
-            "model": llm_result.model_used,
-        }
-        if not llm_result.success:
-            capsule["generator"]["fallback_reason"] = llm_result.error
-
-    capsule_path.write_text(json.dumps(capsule, indent=2))
-    plan_path.write_text(json.dumps(plan.to_dict(), indent=2))
-
-    # Print status
-    print(
-        "[hypergumbo init] "
-        f"repo_root={repo_root} "
-        f"capabilities={','.join(capabilities)} "
-        f"assistant={args.assistant} "
-        f"llm_input={args.llm_input}"
-    )
-    print(f"  Created: {capsule_path}")
-    print(f"  Created: {plan_path}")
-    print(f"  Passes: {len(plan.passes)}, Packs: {len(plan.packs)}, Rules: {len(plan.rules)}")
-
-    # Print LLM status if attempted
-    if llm_result is not None:
-        if llm_result.success:
-            backend = llm_result.backend_used.value if llm_result.backend_used else "unknown"
-            model = llm_result.model_used or "default"
-            print(f"  LLM: {backend}/{model} (success)")
-        else:
-            print(f"  LLM: failed ({llm_result.error}), using template fallback")
-
-    # Output summary (always at the end)
-    _print_output_summary("init", artifacts=[capsule_path, plan_path])
 
     return 0
 
@@ -1675,31 +1581,6 @@ def cmd_catalog(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_export_capsule(args: argparse.Namespace) -> int:
-    """Export the capsule as a tarball."""
-    repo_root = Path(args.path).resolve()
-    out_path = Path(args.out)
-    capsule_dir = repo_root / ".hypergumbo"
-
-    # Check if capsule exists
-    if not capsule_dir.exists():
-        print(f"Error: No capsule found at {capsule_dir}", file=sys.stderr)
-        print("Run 'hypergumbo init' first to create a capsule.", file=sys.stderr)
-        return 1
-
-    export_capsule(repo_root, out_path, shareable=args.shareable)
-
-    mode = "shareable" if args.shareable else "full"
-    print(f"[hypergumbo export-capsule] Exported {mode} capsule to {out_path}")
-    if args.shareable:
-        print("  Privacy redactions applied (see SHAREABLE.txt in archive)")
-
-    # Output summary (always at the end)
-    _print_output_summary("export-capsule", artifacts=[out_path])
-
-    return 0
-
-
 def cmd_build_grammars(args: argparse.Namespace) -> int:
     """Build tree-sitter grammars from source (Lean, Wolfram)."""
     if args.check:
@@ -2281,33 +2162,6 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
-    # hypergumbo init
-    p_init = sub.add_parser("init", help="Initialize a hypergumbo capsule")
-    p_init.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
-    p_init.add_argument(
-        "--capabilities",
-        default="",
-        help="Comma-separated capabilities (e.g. python,javascript)",
-    )
-    p_init.add_argument(
-        "--assistant",
-        choices=["template", "llm"],
-        default="template",
-        help="Plan assistant mode (default: template)",
-    )
-    p_init.add_argument(
-        "--llm-input",
-        choices=["tier0", "tier1", "tier2"],
-        default="tier0",
-        help="How much repo info may be sent to LLM during init",
-    )
-    p_init.set_defaults(func=cmd_init)
-
     # hypergumbo run
     run_epilog = """\
 Examples:
@@ -2696,29 +2550,6 @@ The output begins with passes suggested for your current directory."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_catalog.set_defaults(func=cmd_catalog)
-
-    # hypergumbo export-capsule
-    p_export = sub.add_parser(
-        "export-capsule",
-        help="Export capsule in shareable format",
-    )
-    p_export.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
-    p_export.add_argument(
-        "--shareable",
-        action="store_true",
-        help="Apply privacy redactions to make capsule safe to share",
-    )
-    p_export.add_argument(
-        "--out",
-        default="capsule.tar.gz",
-        help="Output tarball path (default: capsule.tar.gz)",
-    )
-    p_export.set_defaults(func=cmd_export_capsule)
 
     # hypergumbo build-grammars
     p_build = sub.add_parser(
@@ -3333,7 +3164,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"init", "run", "slice", "search", "routes", "explain", "catalog", "export-capsule", "sketch", "build-grammars", "test-coverage", "symbols"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "test-coverage", "symbols"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

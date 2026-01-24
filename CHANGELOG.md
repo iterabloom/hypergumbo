@@ -9,6 +9,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Removed
+
+- **Vestigial capsule system** (ADR cleanup)
+  - Removed `init` and `export-capsule` commands (marked vestigial in spec)
+  - Removed `plan.py`, `llm_assist.py`, `export.py` modules
+  - Removed deprecated `Pack` class from catalog (packs replaced by linker activation conditions)
+  - Removed `llm-assist` and `llm-local` optional dependencies from pyproject.toml
+
 ### Added
 
 **YAML-Driven Analysis (ADR-0003)**

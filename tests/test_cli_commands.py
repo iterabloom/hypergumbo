@@ -4,11 +4,9 @@ from pathlib import Path
 
 from hypergumbo.schema import SCHEMA_VERSION
 from hypergumbo.cli import (
-    cmd_init,
     cmd_run,
     cmd_slice,
     cmd_catalog,
-    cmd_export_capsule,
     cmd_sketch,
     main,
     _find_git_root,
@@ -20,45 +18,6 @@ from hypergumbo.cli import (
 class FakeArgs:
     """Minimal namespace for testing command functions."""
     pass
-
-
-def test_cmd_init_creates_capsule(tmp_path: Path, capsys) -> None:
-    args = FakeArgs()
-    args.path = str(tmp_path)
-    args.capabilities = "python,javascript"
-    args.assistant = "template"
-    args.llm_input = "tier1"
-
-    result = cmd_init(args)
-
-    assert result == 0
-
-    capsule_path = tmp_path / ".hypergumbo" / "capsule.json"
-    assert capsule_path.exists()
-
-    data = json.loads(capsule_path.read_text())
-    assert data["capabilities"] == ["python", "javascript"]
-    assert data["assistant"] == "template"
-    assert data["llm_input"] == "tier1"
-
-    out, _ = capsys.readouterr()
-    assert "[hypergumbo init]" in out
-
-
-def test_cmd_init_empty_capabilities(tmp_path: Path) -> None:
-    args = FakeArgs()
-    args.path = str(tmp_path)
-    args.capabilities = ""
-    args.assistant = "template"
-    args.llm_input = "tier0"
-
-    result = cmd_init(args)
-
-    assert result == 0
-
-    capsule_path = tmp_path / ".hypergumbo" / "capsule.json"
-    data = json.loads(capsule_path.read_text())
-    assert data["capabilities"] == []
 
 
 def test_cmd_run_creates_behavior_map(tmp_path: Path) -> None:
@@ -1792,54 +1751,6 @@ def test_cmd_catalog_prints_output_summary(capsys, tmp_path, monkeypatch) -> Non
     assert "Output: stdout" in out
 
 
-def test_cmd_export_capsule(tmp_path: Path, capsys) -> None:
-    """Export capsule creates tarball."""
-    # Setup capsule directory
-    capsule_dir = tmp_path / ".hypergumbo"
-    capsule_dir.mkdir()
-    (capsule_dir / "capsule.json").write_text('{"repo_root": "/tmp"}')
-    (capsule_dir / "capsule_plan.json").write_text(
-        '{"version": "0.1.0", "passes": [], "packs": [], "rules": [], "features": []}'
-    )
-
-    args = FakeArgs()
-    args.path = str(tmp_path)
-    args.shareable = True
-    args.out = str(tmp_path / "capsule.tar.gz")
-
-    result = cmd_export_capsule(args)
-
-    assert result == 0
-    assert (tmp_path / "capsule.tar.gz").exists()
-
-    out, _ = capsys.readouterr()
-    assert "[hypergumbo export-capsule]" in out
-    assert "shareable" in out
-
-
-def test_cmd_export_capsule_no_capsule(tmp_path: Path, capsys) -> None:
-    """Export fails if no capsule exists."""
-    args = FakeArgs()
-    args.path = str(tmp_path)
-    args.shareable = False
-    args.out = str(tmp_path / "capsule.tar.gz")
-
-    result = cmd_export_capsule(args)
-
-    assert result == 1
-
-    _, err = capsys.readouterr()
-    assert "No capsule found" in err
-
-
-def test_main_with_init(tmp_path: Path) -> None:
-    result = main(["init", str(tmp_path)])
-    assert result == 0
-
-    capsule_path = tmp_path / ".hypergumbo" / "capsule.json"
-    assert capsule_path.exists()
-
-
 def test_main_with_run(tmp_path: Path) -> None:
     out_file = tmp_path / "output.json"
     result = main(["run", str(tmp_path), "--out", str(out_file)])
@@ -1877,22 +1788,6 @@ def test_main_with_catalog(tmp_path, monkeypatch) -> None:
 
     result = main(["catalog"])
     assert result == 0
-
-
-def test_main_with_export_capsule(tmp_path: Path) -> None:
-    """Main with export-capsule creates tarball."""
-    # Setup capsule directory
-    capsule_dir = tmp_path / ".hypergumbo"
-    capsule_dir.mkdir()
-    (capsule_dir / "capsule.json").write_text('{"repo_root": "/tmp"}')
-    (capsule_dir / "capsule_plan.json").write_text(
-        '{"version": "0.1.0", "passes": [], "packs": [], "rules": [], "features": []}'
-    )
-
-    out_path = tmp_path / "capsule.tar.gz"
-    result = main(["export-capsule", str(tmp_path), "--out", str(out_path)])
-    assert result == 0
-    assert out_path.exists()
 
 
 def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
