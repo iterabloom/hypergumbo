@@ -652,6 +652,30 @@ class FrameworkPatternDef:
 # Cache for loaded framework patterns
 _PATTERN_CACHE: dict[str, FrameworkPatternDef | None] = {}
 
+# Framework alias mapping: maps detected framework names to pattern file names
+# Used when multiple frameworks share a single pattern file
+_FRAMEWORK_ALIASES: dict[str, str] = {
+    # Go web frameworks -> go-web.yaml
+    "gin": "go-web",
+    "echo": "go-web",
+    "fiber": "go-web",
+    "chi": "go-web",
+    "gorilla": "go-web",
+    "buffalo": "go-web",
+    "revel": "go-web",
+    "beego": "go-web",
+    "iris": "go-web",
+    # Rust web frameworks -> rust-web.yaml
+    "actix-web": "rust-web",
+    "axum": "rust-web",
+    "rocket": "rust-web",
+    "warp": "rust-web",
+    "tide": "rust-web",
+    "gotham": "rust-web",
+    "poem": "rust-web",
+    "salvo": "rust-web",
+}
+
 
 def get_frameworks_dir() -> Path:
     """Get the path to the frameworks directory.
@@ -665,8 +689,11 @@ def get_frameworks_dir() -> Path:
 def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     """Load framework patterns from YAML file.
 
+    Supports framework aliases - multiple detected framework names can map
+    to a single pattern file (e.g., "chi" -> "go-web.yaml").
+
     Args:
-        framework_id: Framework identifier (e.g., "fastapi")
+        framework_id: Framework identifier (e.g., "fastapi", "chi")
 
     Returns:
         FrameworkPatternDef if found, None otherwise.
@@ -674,7 +701,10 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     if framework_id in _PATTERN_CACHE:
         return _PATTERN_CACHE[framework_id]
 
-    yaml_path = get_frameworks_dir() / f"{framework_id}.yaml"
+    # Resolve alias if present (e.g., "chi" -> "go-web")
+    resolved_id = _FRAMEWORK_ALIASES.get(framework_id, framework_id)
+
+    yaml_path = get_frameworks_dir() / f"{resolved_id}.yaml"
     if not yaml_path.exists():
         _PATTERN_CACHE[framework_id] = None
         return None

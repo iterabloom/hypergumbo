@@ -95,6 +95,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - C/C++ analyzers prefer definitions over declarations (fixes coverage estimation)
 - NestJS route paths combine controller + method via `prefix_from_parent`
 - NestJS routes normalize to start with `/` (fixes `[GET] test` → `[GET] /test`)
+- Framework aliases: Go web frameworks (gin, chi, echo, fiber) now load `go-web.yaml`; Rust web frameworks (axum, actix-web, rocket, warp) now load `rust-web.yaml`
 - Python: submodule imports resolve (`from app import crud; crud.func()`)
 - Python: imported class method calls resolve (`from X import Class; Class.method()`)
 

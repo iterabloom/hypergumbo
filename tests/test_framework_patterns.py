@@ -734,6 +734,21 @@ linkers:
         assert result.language == "python"
         assert len(result.patterns) == 1
 
+    def test_resolves_framework_alias(self) -> None:
+        """Framework aliases map to consolidated pattern files (e.g., chi -> go-web)."""
+        clear_pattern_cache()
+
+        # chi, gin, etc. should all load go-web.yaml
+        chi_result = load_framework_patterns("chi")
+        assert chi_result is not None
+        assert chi_result.id == "go-web"
+
+        # actix-web, axum, etc. should all load rust-web.yaml
+        clear_pattern_cache()
+        axum_result = load_framework_patterns("axum")
+        assert axum_result is not None
+        assert axum_result.id == "rust-web"
+
 
 class TestMatchPatterns:
     """Tests for match_patterns function."""
