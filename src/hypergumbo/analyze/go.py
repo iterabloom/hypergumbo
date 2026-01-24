@@ -367,6 +367,10 @@ def _get_enclosing_function(
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function/method.
 
+    For calls inside anonymous functions (func_literal), continues walking up
+    to find the containing named function. This enables call attribution for
+    patterns like: go func() { helper() }()
+
     Args:
         node: The current node.
         source: Source bytes for extracting text.
@@ -383,6 +387,9 @@ def _get_enclosing_function(
                 func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
+        # For func_literal (anonymous functions), continue walking up
+        # to find the containing named function rather than returning None
+        # This handles: go func() { helper() }(), callbacks, etc.
         current = current.parent
     return None  # pragma: no cover - defensive
 

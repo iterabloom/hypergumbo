@@ -1147,3 +1147,105 @@ fn routes() {
                 assert ctx.symbol_ref == handler_id
                 break
 
+
+class TestRustClosureCallAttribution:
+    """Tests for call edge attribution inside Rust closures.
+
+    Rust uses closures heavily in iterators (map, filter, for_each). Calls inside
+    these closures must be attributed to the enclosing function.
+    """
+
+    def test_call_inside_iterator_closure_attributed(self, tmp_path: Path) -> None:
+        """Calls inside iterator closures are attributed to enclosing function.
+
+        When you have:
+            fn process() {
+                items.iter().for_each(|item| helper(item));
+            }
+
+        The call to helper() should be attributed to process, not lost.
+        """
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn helper(x: i32) {
+    println!("{}", x);
+}
+
+fn process() {
+    let items = vec![1, 2, 3];
+    items.iter().for_each(|item| helper(*item));
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Find symbols
+        process_func = next(
+            (s for s in result.symbols if s.name == "process"),
+            None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "helper"),
+            None,
+        )
+
+        assert process_func is not None, "Should find process function"
+        assert helper_func is not None, "Should find helper function"
+
+        # The call to helper() inside the closure should be attributed to process
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_func.id
+                and e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to helper() inside iterator closure should be attributed to process"
+
+    def test_call_inside_map_closure_attributed(self, tmp_path: Path) -> None:
+        """Calls inside map closures are attributed to enclosing function."""
+        from hypergumbo.analyze.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn transform(x: i32) -> i32 {
+    x * 2
+}
+
+fn caller() {
+    let items = vec![1, 2, 3];
+    let _result: Vec<i32> = items.iter().map(|x| transform(*x)).collect();
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Find symbols
+        caller_func = next(
+            (s for s in result.symbols if s.name == "caller"),
+            None,
+        )
+        transform_func = next(
+            (s for s in result.symbols if s.name == "transform"),
+            None,
+        )
+
+        assert caller_func is not None
+        assert transform_func is not None
+
+        # The call to transform() inside the map closure should be attributed to caller
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == caller_func.id
+                and e.dst == transform_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside map closure should be attributed to caller"
+

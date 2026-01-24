@@ -739,3 +739,140 @@ end
         ctx = next((c for c in result.usage_contexts if c.context_name == "post"), None)
         assert ctx is not None
         assert ctx.metadata["controller_action"] == "sessions#create"
+
+
+class TestRubyBlockCallAttribution:
+    """Tests for call edge attribution inside Ruby blocks.
+
+    Ruby uses blocks extensively (each, map, times, etc.). Calls inside these
+    blocks must be attributed to the enclosing method.
+    """
+
+    def test_call_inside_each_block_attributed(self, tmp_path: Path) -> None:
+        """Calls inside each block are attributed to enclosing method.
+
+        When you have:
+            def process
+              items.each do |item|
+                helper(item)  # This call should be from process
+              end
+            end
+
+        The call to helper() should be attributed to process, not lost.
+        """
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "app.rb"
+        rb_file.write_text("""
+def helper(x)
+  puts x
+end
+
+def process
+  items = [1, 2, 3]
+  items.each do |item|
+    helper(item)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Find symbols
+        process_method = next((s for s in result.symbols if s.name == "process"), None)
+        helper_method = next((s for s in result.symbols if s.name == "helper"), None)
+
+        assert process_method is not None, "Should find process method"
+        assert helper_method is not None, "Should find helper method"
+
+        # The call to helper() inside the block should be attributed to process
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_method.id
+                and e.dst == helper_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to helper() inside each block should be attributed to process"
+
+    def test_call_inside_brace_block_attributed(self, tmp_path: Path) -> None:
+        """Calls inside brace {} blocks are attributed to enclosing method.
+
+        Ruby allows both do...end and {...} block syntax.
+        """
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "app.rb"
+        rb_file.write_text("""
+def worker
+  puts "working"
+end
+
+def caller
+  3.times { worker }
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Find symbols
+        caller_method = next((s for s in result.symbols if s.name == "caller"), None)
+        worker_method = next((s for s in result.symbols if s.name == "worker"), None)
+
+        assert caller_method is not None
+        assert worker_method is not None
+
+        # The call to worker() inside the brace block should be attributed to caller
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == caller_method.id
+                and e.dst == worker_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside brace block should be attributed to caller"
+
+    def test_nested_blocks_attributed_to_outer_method(self, tmp_path: Path) -> None:
+        """Calls inside nested blocks are attributed to the outermost method."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "app.rb"
+        rb_file.write_text("""
+def helper
+  puts "help"
+end
+
+def outer
+  items = [[1, 2], [3, 4]]
+  items.each do |row|
+    row.each do |cell|
+      helper
+    end
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Find symbols
+        outer_method = next((s for s in result.symbols if s.name == "outer"), None)
+        helper_method = next((s for s in result.symbols if s.name == "helper"), None)
+
+        assert outer_method is not None
+        assert helper_method is not None
+
+        # Call inside nested blocks should be attributed to outer
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == outer_method.id
+                and e.dst == helper_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside nested blocks should be attributed to outermost method"

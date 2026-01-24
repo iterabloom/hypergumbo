@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""
+Reflective analysis of bakeoff artifacts.
+
+This script asks open-ended qualitative questions about hypergumbo's performance.
+Run it REPEATEDLY - the value is in the variation of insights across cycles.
+
+Philosophy:
+- Same question, different answers each time = exploring the problem space
+- Qualitative assessments, not just metrics
+- "Needs work" vs "doing something special" framing
+- Designed to surface non-obvious patterns
+
+What "doing something special" means:
+- Genuinely valuable insights other tools miss (cross-file resolution, framework patterns)
+- Helping developers/agents understand "what happens when X" across boundaries
+- NOT: novelty for its own sake, impressive-looking but useless metrics
+
+What "needs work" means:
+- Missing patterns that users would actually care about
+- Failing to connect things that are obviously related
+- NOT: missing obscure edge cases nobody encounters
+
+Usage:
+    ./scripts/bakeoff-reflect /path/to/bakeoff/out/cohort-N/iter-N
+    ./scripts/bakeoff-reflect --cycle 3  # Record which reflection cycle this is
+"""
+
+import json
+import sys
+from pathlib import Path
+from collections import defaultdict
+import random
+
+
+def load_hg(repo_dir: Path) -> dict | None:
+    """Load hg.json for a repo."""
+    hg_path = repo_dir / "hg.json"
+    if not hg_path.exists():
+        return None
+    with open(hg_path) as f:
+        return json.load(f)
+
+
+def analyze_repo(repo_name: str, hg: dict) -> dict:
+    """Produce qualitative analysis of a single repo."""
+    nodes = hg.get("nodes", [])
+    edges = hg.get("edges", [])
+
+    # Basic counts
+    node_count = len(nodes)
+    edge_by_type = defaultdict(list)
+    for e in edges:
+        # Note: field is "type", not "edge_type" in serialized form
+        edge_by_type[e.get("type", "unknown")].append(e)
+
+    calls = edge_by_type.get("calls", [])
+    imports = edge_by_type.get("imports", [])
+
+    # Compute metrics
+    # Unresolved calls have :unresolved or :external or ? in dst
+    resolved_calls = [c for c in calls
+                      if ":unresolved" not in c.get("dst", "")
+                      and ":external" not in c.get("dst", "")
+                      and "?" not in c.get("dst", "?")]
+    cross_file_calls = [c for c in resolved_calls
+                        if c.get("src", "").split(":")[1] != c.get("dst", "").split(":")[1]]
+
+    analysis = {
+        "repo": repo_name,
+        "nodes": node_count,
+        "calls": len(calls),
+        "resolved_calls": len(resolved_calls),
+        "cross_file_calls": len(cross_file_calls),
+        "imports": len(imports),
+        "other_edges": {k: len(v) for k, v in edge_by_type.items() if k not in ("calls", "imports")},
+        "concerns": [],
+        "strengths": [],
+    }
+
+    # Qualitative assessments
+
+    # Concern: Nodes but no calls
+    if node_count > 5 and len(calls) == 0:
+        analysis["concerns"].append({
+            "type": "NO_CALL_EDGES",
+            "description": f"Has {node_count} nodes but 0 call edges",
+            "hypothesis": "Callback/anonymous function pattern not captured, or declarative-only code",
+            "severity": "HIGH",
+        })
+
+    # Concern: Very low resolution rate
+    if len(calls) > 10:
+        resolution_rate = len(resolved_calls) / len(calls) if calls else 0
+        if resolution_rate < 0.3:
+            analysis["concerns"].append({
+                "type": "LOW_RESOLUTION",
+                "description": f"Only {resolution_rate:.1%} of calls resolved",
+                "hypothesis": "Heavy external dependencies OR missing analyzer patterns",
+                "severity": "MEDIUM",
+            })
+
+    # Concern: Low cross-file ratio (isolated analysis)
+    if len(resolved_calls) > 20:
+        cross_file_ratio = len(cross_file_calls) / len(resolved_calls)
+        if cross_file_ratio < 0.2:
+            analysis["concerns"].append({
+                "type": "LOW_CROSS_FILE",
+                "description": f"Only {cross_file_ratio:.1%} of resolved calls are cross-file",
+                "hypothesis": "Import resolution may be incomplete",
+                "severity": "LOW",
+            })
+
+    # Strength: High cross-file resolution
+    if len(resolved_calls) > 20:
+        cross_file_ratio = len(cross_file_calls) / len(resolved_calls)
+        if cross_file_ratio > 0.5:
+            analysis["strengths"].append({
+                "type": "STRONG_CROSS_FILE",
+                "description": f"{cross_file_ratio:.1%} cross-file resolution",
+                "insight": "Module/import system well understood",
+            })
+
+    # Strength: Rich edge types
+    interesting_edges = [k for k in edge_by_type.keys()
+                         if k not in ("calls", "imports") and len(edge_by_type[k]) > 0]
+    if interesting_edges:
+        analysis["strengths"].append({
+            "type": "RICH_EDGE_TYPES",
+            "description": f"Beyond basic calls/imports: {', '.join(interesting_edges)}",
+            "insight": "Framework-specific or cross-language patterns detected",
+        })
+
+    # Strength: High resolution with substantial calls
+    if len(calls) > 50 and len(resolved_calls) / len(calls) > 0.8:
+        analysis["strengths"].append({
+            "type": "HIGH_RESOLUTION",
+            "description": f"{len(resolved_calls)}/{len(calls)} calls resolved ({len(resolved_calls)/len(calls):.1%})",
+            "insight": "Strong internal call graph",
+        })
+
+    return analysis
+
+
+def generate_reflection(analyses: list[dict], cycle: int) -> str:
+    """Generate a qualitative reflection on the cohort."""
+    lines = []
+    lines.append(f"# Bakeoff Reflection - Cycle {cycle}")
+    lines.append(f"")
+    lines.append(f"*What is hypergumbo doing well? Where does it need work?*")
+    lines.append(f"")
+
+    # Aggregate concerns and strengths
+    all_concerns = []
+    all_strengths = []
+    for a in analyses:
+        for c in a["concerns"]:
+            c["repo"] = a["repo"]
+            all_concerns.append(c)
+        for s in a["strengths"]:
+            s["repo"] = a["repo"]
+            all_strengths.append(s)
+
+    # Group by type
+    concerns_by_type = defaultdict(list)
+    for c in all_concerns:
+        concerns_by_type[c["type"]].append(c)
+
+    strengths_by_type = defaultdict(list)
+    for s in all_strengths:
+        strengths_by_type[s["type"]].append(s)
+
+    lines.append("## Where Hypergumbo Needs Work")
+    lines.append("")
+    if not concerns_by_type:
+        lines.append("*No significant concerns detected in this cohort.*")
+    else:
+        for concern_type, concerns in sorted(concerns_by_type.items(), key=lambda x: -len(x[1])):
+            lines.append(f"### {concern_type} ({len(concerns)} repos)")
+            for c in concerns:
+                lines.append(f"- **{c['repo']}**: {c['description']}")
+                lines.append(f"  - Hypothesis: {c['hypothesis']}")
+            lines.append("")
+
+    lines.append("## Where Hypergumbo Is Doing Something Special")
+    lines.append("")
+    if not strengths_by_type:
+        lines.append("*No particular strengths stood out in this cohort.*")
+    else:
+        for strength_type, strengths in sorted(strengths_by_type.items(), key=lambda x: -len(x[1])):
+            lines.append(f"### {strength_type} ({len(strengths)} repos)")
+            for s in strengths:
+                lines.append(f"- **{s['repo']}**: {s['description']}")
+                lines.append(f"  - Insight: {s['insight']}")
+            lines.append("")
+
+    # Add open-ended questions for next cycle
+    lines.append("## Questions for Next Cycle")
+    lines.append("")
+    questions = [
+        "What patterns in the source code are we systematically missing?",
+        "Are there edge types we should be detecting but aren't?",
+        "Which languages have unexpectedly low/high performance?",
+        "What would a user WANT to see in the behavior map that's missing?",
+        "Are we over-engineering some detections while missing simpler ones?",
+        "What cross-language patterns exist that we're not linking?",
+        "How would the analysis change if we ran on a different cohort?",
+    ]
+    # Pick 3 random questions to keep it fresh
+    for q in random.sample(questions, min(3, len(questions))):
+        lines.append(f"- {q}")
+    lines.append("")
+
+    lines.append("---")
+    lines.append("*Run this script again after making changes. Different insights will emerge.*")
+
+    return "\n".join(lines)
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Reflective bakeoff analysis")
+    parser.add_argument("out_dir", type=Path, help="Path to bakeoff output directory")
+    parser.add_argument("--cycle", type=int, default=1, help="Reflection cycle number")
+    args = parser.parse_args()
+
+    if not args.out_dir.exists():
+        print(f"Error: {args.out_dir} does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    # Find all repos
+    analyses = []
+    for repo_dir in sorted(args.out_dir.iterdir()):
+        if not repo_dir.is_dir():
+            continue
+        hg = load_hg(repo_dir)
+        if hg is None:
+            continue
+        analysis = analyze_repo(repo_dir.name, hg)
+        analyses.append(analysis)
+
+    if not analyses:
+        print(f"No hg.json files found in {args.out_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    reflection = generate_reflection(analyses, args.cycle)
+    print(reflection)
+
+
+if __name__ == "__main__":
+    main()

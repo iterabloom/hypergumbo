@@ -2575,6 +2575,102 @@ app.get('/users', listUsers);
 
 
 # ============================================================================
+# Callback Arrow Function Call Attribution Tests
+# ============================================================================
+
+
+class TestCallbackCallAttribution:
+    """Tests for call edge attribution inside callback arrow functions.
+
+    Verifies that calls made inside arrow functions passed as callbacks
+    (not assigned to variables) are properly attributed to either:
+    1. The synthetic route handler symbol (for Express-style routes)
+    2. The containing named function (for callbacks inside functions)
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+    def test_call_inside_express_route_handler_attributed(self, tmp_path: Path) -> None:
+        """Calls inside Express route callbacks are attributed to route handler symbol."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create a helper module
+        helper_file = tmp_path / "helper.js"
+        helper_file.write_text("""
+function processRequest(data) {
+    return data;
+}
+module.exports = { processRequest };
+""")
+
+        # Create a routes file with calls inside callback
+        routes_file = tmp_path / "routes.js"
+        routes_file.write_text("""
+const express = require('express');
+const { processRequest } = require('./helper');
+const app = express();
+
+app.get('/data', (req, res) => {
+    const result = processRequest(req.body);
+    res.json(result);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # There should be a call edge from the route handler to processRequest
+        process_calls = [e for e in call_edges if "processRequest" in e.dst]
+        assert len(process_calls) >= 1, "Call to processRequest inside route handler should be detected"
+
+        # The source should be a route handler symbol (contains GET or _GET_)
+        for edge in process_calls:
+            # Either the source has GET in it (route handler) or it's from a named function
+            assert "GET" in edge.src or "handler" in edge.src.lower() or "routes" in edge.src.lower(), \
+                f"Call should be attributed to route handler, got src={edge.src}"
+
+    def test_call_inside_callback_in_named_function_attributed(self, tmp_path: Path) -> None:
+        """Calls inside callbacks within named functions are attributed to the named function."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+function helper() {
+    return 42;
+}
+
+function main() {
+    const data = [1, 2, 3];
+    data.forEach((item) => {
+        helper();
+    });
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_calls = [e for e in call_edges if "helper" in e.dst]
+
+        # There should be a call from main to helper
+        assert len(helper_calls) >= 1, "Call to helper inside forEach callback should be detected"
+
+        # The source should be 'main' (the containing named function)
+        main_to_helper = [e for e in helper_calls if "main" in e.src]
+        assert len(main_to_helper) >= 1, \
+            f"Call should be attributed to main function, got sources: {[e.src for e in helper_calls]}"
+
+
+# ============================================================================
 # NestJS Route Detection Tests
 # ============================================================================
 

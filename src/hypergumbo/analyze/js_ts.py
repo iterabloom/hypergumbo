@@ -1751,10 +1751,15 @@ def _get_enclosing_function(
     source: bytes,
     file_path: Path,
     global_symbols: dict[str, Symbol],
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function/method.
 
     Returns the Symbol for the enclosing function, or None if not inside one.
+
+    For arrow functions passed as callbacks (not assigned to variables), looks up
+    the symbol by position using symbol_by_position. This enables call attribution
+    for patterns like: app.get('/', (req, res) => { helper(); })
     """
     current = node.parent
     while current is not None:
@@ -1778,9 +1783,9 @@ def _get_enclosing_function(
                             return sym
             return None  # pragma: no cover
 
-        # Arrow functions assigned to variables
+        # Arrow functions - try variable assignment first, then position lookup
         if current.type == "arrow_function":
-            # Walk up to find the variable_declarator
+            # First, try to find a variable_declarator parent (assigned arrow fn)
             parent = current.parent
             while parent is not None:
                 if parent.type == "variable_declarator":
@@ -1796,7 +1801,19 @@ def _get_enclosing_function(
                 if parent.type in ("lexical_declaration", "variable_declaration", "program"):
                     break
                 parent = parent.parent
-            return None  # pragma: no cover
+
+            # If not assigned to variable, try position-based lookup
+            # This handles callback arrow functions like route handlers
+            if symbol_by_position:
+                arrow_line = current.start_point[0] + 1  # 1-indexed
+                arrow_col = current.start_point[1]
+                position_key = (str(file_path), arrow_line, arrow_col)
+                if position_key in symbol_by_position:
+                    return symbol_by_position[position_key]
+
+            # Not found by position - continue walking up to find containing
+            # named function (e.g., callback inside a named function)
+            # Don't return None here; let the loop continue
 
         current = current.parent
     return None  # pragma: no cover
@@ -1816,12 +1833,14 @@ def _extract_edges(
     resolver: NameResolver | None = None,
     method_resolver: ListNameResolver | None = None,
     class_resolver: NameResolver | None = None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
     Uses global symbol registries to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     Optionally uses NameResolver for suffix-based matching and confidence tracking.
+    Uses symbol_by_position to attribute calls inside callback arrow functions.
 
     Handles:
     - Direct calls: helper(), ClassName()
@@ -1926,7 +1945,7 @@ def _extract_edges(
                             break
                 else:
                     # Regular function call - use resolver for suffix matching
-                    current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+                    current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
                     if current_function:
                         lookup_result = resolver.lookup(func_name)
                         if lookup_result.found:
@@ -1946,7 +1965,7 @@ def _extract_edges(
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
-                current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
                 if current_function:
                     method_name = None
                     obj_node = None
@@ -2040,7 +2059,7 @@ def _extract_edges(
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
             class_name = None
             target_sym = None
             lookup_confidence = 1.0  # Default for exact match
@@ -2432,7 +2451,8 @@ def analyze_javascript(
             pf.tree, pf.source, pf.path, pf.lang, run,
             global_symbols, global_methods, global_classes, pf.line_offset,
             pf.namespace_imports or {},
-            resolver, method_resolver, class_resolver
+            resolver, method_resolver, class_resolver,
+            symbol_by_position,
         )
         all_edges.extend(edges)
 

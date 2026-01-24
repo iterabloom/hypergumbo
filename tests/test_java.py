@@ -2167,3 +2167,114 @@ public class MyApp extends Application {
                 break
 
         assert matched, "Android lifecycle_hook pattern should match Application.onCreate"
+
+
+class TestJavaLambdaCallAttribution:
+    """Tests for call edge attribution inside Java lambda expressions.
+
+    Java uses lambdas heavily in streams (map, filter, forEach). Calls inside these
+    lambdas must be attributed to the enclosing method.
+    """
+
+    def test_call_inside_lambda_stream_attributed(self, tmp_path: Path) -> None:
+        """Calls inside stream lambdas are attributed to enclosing method.
+
+        When you have:
+            public void process() {
+                list.stream().forEach(item -> helper(item));
+            }
+
+        The call to helper() should be attributed to process, not lost.
+        """
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "App.java"
+        java_file.write_text("""
+import java.util.List;
+
+public class App {
+    public void helper(int x) {
+        System.out.println(x);
+    }
+
+    public void process() {
+        List<Integer> items = List.of(1, 2, 3);
+        items.stream().forEach(item -> helper(item));
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Find symbols
+        process_method = next(
+            (s for s in result.symbols if "process" in s.name and s.kind == "method"),
+            None,
+        )
+        helper_method = next(
+            (s for s in result.symbols if "helper" in s.name and s.kind == "method"),
+            None,
+        )
+
+        assert process_method is not None, "Should find process method"
+        assert helper_method is not None, "Should find helper method"
+
+        # The call to helper() inside the lambda should be attributed to process
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_method.id
+                and e.dst == helper_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to helper() inside stream lambda should be attributed to process"
+
+    def test_call_inside_callback_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside callback lambdas are attributed to enclosing method."""
+        from hypergumbo.analyze.java import analyze_java
+
+        java_file = tmp_path / "Callback.java"
+        java_file.write_text("""
+public class Callback {
+    public void worker() {
+        System.out.println("working");
+    }
+
+    public void runCallback(Runnable r) {
+        r.run();
+    }
+
+    public void caller() {
+        runCallback(() -> worker());
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Find symbols
+        caller_method = next(
+            (s for s in result.symbols if "caller" in s.name and s.kind == "method"),
+            None,
+        )
+        worker_method = next(
+            (s for s in result.symbols if "worker" in s.name and s.kind == "method"),
+            None,
+        )
+
+        assert caller_method is not None
+        assert worker_method is not None
+
+        # The call to worker() inside the lambda should be attributed to caller
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == caller_method.id
+                and e.dst == worker_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside callback lambda should be attributed to caller"

@@ -736,3 +736,191 @@ class Helper {
         # Verify edges were created (imports dict is being passed through)
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1, "Expected at least one call edge to be created"
+
+
+class TestKotlinLambdaCallAttribution:
+    """Tests for call edge attribution inside lambda expressions.
+
+    Kotlin uses lambdas heavily (forEach, map, callbacks). Calls inside these
+    lambdas must be attributed to the enclosing named function.
+    """
+
+    def test_call_inside_trailing_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside trailing lambda are attributed to enclosing function.
+
+        When you have:
+            fun main() {
+                items.forEach { item ->
+                    helper(item)  // This call should be from main
+                }
+            }
+
+        The call to helper() should be attributed to main, not lost.
+        """
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "App.kt"
+        kt_file.write_text("""
+fun helper(x: Int) {
+    println(x)
+}
+
+fun main() {
+    val items = listOf(1, 2, 3)
+    items.forEach { item ->
+        helper(item)
+    }
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        # Find symbols
+        main_func = next((s for s in result.symbols if s.name == "main"), None)
+        helper_func = next((s for s in result.symbols if s.name == "helper"), None)
+
+        assert main_func is not None, "Should find main function"
+        assert helper_func is not None, "Should find helper function"
+
+        # The call to helper() inside the lambda should be attributed to main
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == main_func.id
+                and e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to helper() inside forEach lambda should be attributed to main"
+
+    def test_call_inside_callback_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside callback lambdas are attributed to enclosing function.
+
+        When you have:
+            fun caller() {
+                runCallback { doWork() }
+            }
+
+        The call to doWork() should be attributed to caller.
+        """
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Callback.kt"
+        kt_file.write_text("""
+fun doWork() {
+    println("working")
+}
+
+fun runCallback(callback: () -> Unit) {
+    callback()
+}
+
+fun caller() {
+    runCallback { doWork() }
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        # Find symbols
+        caller_func = next((s for s in result.symbols if s.name == "caller"), None)
+        dowork_func = next((s for s in result.symbols if s.name == "doWork"), None)
+
+        assert caller_func is not None, "Should find caller function"
+        assert dowork_func is not None, "Should find doWork function"
+
+        # The call to doWork() inside the lambda should be attributed to caller
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == caller_func.id
+                and e.dst == dowork_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to doWork() inside callback lambda should be attributed to caller"
+
+    def test_nested_lambda_attributed_to_outer_function(self, tmp_path: Path) -> None:
+        """Calls inside nested lambdas are attributed to the outermost named function.
+
+        When you have:
+            fun outer() {
+                items.forEach { x ->
+                    items.map { y ->
+                        helper()  // Should be attributed to outer
+                    }
+                }
+            }
+        """
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Nested.kt"
+        kt_file.write_text("""
+fun helper() {
+    println("help")
+}
+
+fun outer() {
+    val items = listOf(1, 2, 3)
+    items.forEach { x ->
+        items.map { y ->
+            helper()
+        }
+    }
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        # Find symbols
+        outer_func = next((s for s in result.symbols if s.name == "outer"), None)
+        helper_func = next((s for s in result.symbols if s.name == "helper"), None)
+
+        assert outer_func is not None
+        assert helper_func is not None
+
+        # Call inside nested lambda should be attributed to outer
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == outer_func.id
+                and e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside nested lambdas should be attributed to outermost function"
+
+    def test_call_at_top_level_outside_function_no_edge(self, tmp_path: Path) -> None:
+        """Calls at top level (outside any function) should not create edges.
+
+        Top-level property initializers run at object creation time, not inside
+        any specific function. These calls should not be attributed.
+        """
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "TopLevel.kt"
+        kt_file.write_text("""
+fun helper() {
+    println("help")
+}
+
+// Top-level property with initializer that calls helper
+// This call is not inside any named function
+val result = helper()
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        # Find helper symbol
+        helper_func = next((s for s in result.symbols if s.name == "helper"), None)
+        assert helper_func is not None
+
+        # There should be no call edge to helper (call is at top level)
+        call_edges = [
+            e for e in result.edges
+            if e.dst == helper_func.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 0, "Top-level call should not create an edge"
