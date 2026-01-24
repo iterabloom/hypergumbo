@@ -248,6 +248,8 @@ GO_FRAMEWORKS = {
     "revel": ["github.com/revel/revel"],
     "beego": ["github.com/beego/beego"],
     "iris": ["github.com/kataras/iris"],
+    # Prometheus common router (chi-like API) - used by prometheus, alertmanager, etc.
+    "prometheus-common": ["github.com/prometheus/common"],
     # CLI
     "cli-go": ["github.com/spf13/cobra", "github.com/urfave/cli", "github.com/alecthomas/kong"],
 }

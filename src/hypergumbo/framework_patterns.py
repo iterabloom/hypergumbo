@@ -665,6 +665,7 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "revel": "go-web",
     "beego": "go-web",
     "iris": "go-web",
+    "prometheus-common": "go-web",  # github.com/prometheus/common/route (chi-like)
     # Rust web frameworks -> rust-web.yaml
     "actix-web": "rust-web",
     "axum": "rust-web",
