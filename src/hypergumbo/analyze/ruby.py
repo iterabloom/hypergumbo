@@ -276,13 +276,14 @@ def _extract_ruby_signature(
     return f"({params_str})"
 
 
-def _extract_rails_usage_contexts(
+def _extract_rails_routes(
     node: "tree_sitter.Node",
     source: bytes,
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
-) -> list[UsageContext]:
-    """Extract UsageContext records for Rails/Sinatra route DSL calls.
+    run: AnalysisRun,
+) -> tuple[list[UsageContext], list[Symbol]]:
+    """Extract UsageContext records AND Symbol objects for Rails/Sinatra route DSL calls.
 
     Detects patterns like:
     - Rails: get '/users', to: 'users#index'
@@ -293,9 +294,12 @@ def _extract_rails_usage_contexts(
 
     The has_block metadata field distinguishes Sinatra (with block) from Rails (with to: option).
 
-    Returns a list of UsageContext records for YAML pattern matching.
+    Returns:
+        Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
+        Symbols have kind="route" which matches rails.yaml symbol_kind pattern.
     """
     contexts: list[UsageContext] = []
+    route_symbols: list[Symbol] = []
 
     for n in iter_tree(node):
         if n.type != "call":
@@ -361,15 +365,16 @@ def _extract_rails_usage_contexts(
                 break
 
         # Build metadata
+        http_method = method_name.upper() if method_name in HTTP_METHODS else "RESOURCES"
         metadata: dict[str, str | bool] = {
             "route_path": route_path,
-            "http_method": method_name.upper() if method_name in HTTP_METHODS else "RESOURCES",
+            "http_method": http_method,
             "has_block": has_block,  # True for Sinatra-style, False for Rails-style
         }
         if controller_action:
             metadata["controller_action"] = controller_action
 
-        # Create UsageContext
+        # Create span
         span = Span(
             start_line=n.start_point[0] + 1,
             end_line=n.end_point[0] + 1,
@@ -377,6 +382,7 @@ def _extract_rails_usage_contexts(
             end_col=n.end_point[1],
         )
 
+        # Create UsageContext (for backwards compatibility)
         ctx = UsageContext.create(
             kind="call",
             context_name=method_name,  # e.g., "get", "post", "resources"
@@ -388,7 +394,36 @@ def _extract_rails_usage_contexts(
         )
         contexts.append(ctx)
 
-    return contexts
+        # Create route Symbol (kind="route" matches rails.yaml pattern)
+        # This enables route detection and entrypoint detection for Rails apps
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        route_name = f"{http_method} {normalized_path}"
+        route_id = _make_symbol_id(
+            path=str(file_path),
+            start_line=span.start_line,
+            end_line=span.end_line,
+            name=route_name,
+            kind="route",
+        )
+        route_symbol = Symbol(
+            id=route_id,
+            name=route_name,
+            kind="route",
+            language="ruby",
+            path=str(file_path),
+            span=span,
+            meta={
+                "http_method": http_method,
+                "route_path": normalized_path,
+            },
+            origin=run.pass_id,
+            origin_run_id=run.execution_id,
+        )
+        if controller_action:
+            route_symbol.meta["controller_action"] = controller_action
+        route_symbols.append(route_symbol)
+
+    return contexts, route_symbols
 
 
 @dataclass
@@ -715,16 +750,18 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
         )
         all_edges.extend(edges)
 
-    # Pass 3: Extract usage contexts from ALL files (including those with no symbols)
+    # Pass 3: Extract usage contexts AND route symbols from ALL files
+    # Route symbols enable route detection and entrypoint detection for Rails apps
     for rb_file in all_rb_files:
         try:
             source = rb_file.read_bytes()
             tree = parser.parse(source)
             symbol_by_name = file_analyses.get(rb_file, FileAnalysis()).symbol_by_name
-            usage_contexts = _extract_rails_usage_contexts(
-                tree.root_node, source, rb_file, symbol_by_name
+            usage_contexts, route_symbols = _extract_rails_routes(
+                tree.root_node, source, rb_file, symbol_by_name, run
             )
             all_usage_contexts.extend(usage_contexts)
+            all_symbols.extend(route_symbols)
         except (OSError, IOError):  # pragma: no cover
             pass
 

@@ -875,10 +875,8 @@ def cmd_loop(args):
                 print("[DRY RUN] Would select new cohort")
             else:
                 # Create args object for cohort selection
-                class CohortArgs:
-                    count = args.cohort_size
-                    workdir = workdir
-                rc = cmd_cohort(CohortArgs())
+                cohort_args = argparse.Namespace(count=args.cohort_size, workdir=workdir)
+                rc = cmd_cohort(cohort_args)
                 if rc != 0:
                     print("Error selecting cohort", file=sys.stderr)
                     return rc
@@ -892,9 +890,8 @@ def cmd_loop(args):
         if args.dry_run:
             print("[DRY RUN] Would run cycle")
         else:
-            class CycleArgs:
-                workdir = workdir
-            rc = cmd_cycle(CycleArgs())
+            cycle_args = argparse.Namespace(workdir=workdir)
+            rc = cmd_cycle(cycle_args)
             if rc != 0:
                 print("Error running cycle", file=sys.stderr)
                 return rc

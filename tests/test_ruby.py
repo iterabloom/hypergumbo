@@ -741,6 +741,69 @@ end
         assert ctx.metadata["controller_action"] == "sessions#create"
 
 
+class TestRailsRouteSymbols:
+    """Tests for Rails route Symbol extraction (enables entrypoint detection)."""
+
+    def test_route_symbols_created_for_http_methods(self, tmp_path: Path) -> None:
+        """Route DSL calls create Symbol objects with kind='route'."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  get '/users', to: 'users#index'
+  post '/sessions', to: 'sessions#create'
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        # Find route symbols
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+
+        get_route = next((s for s in route_symbols if "GET" in s.name), None)
+        assert get_route is not None
+        assert get_route.name == "GET /users"
+        assert get_route.meta["http_method"] == "GET"
+        assert get_route.meta["route_path"] == "/users"
+        assert get_route.language == "ruby"
+
+        post_route = next((s for s in route_symbols if "POST" in s.name), None)
+        assert post_route is not None
+        assert post_route.name == "POST /sessions"
+        assert post_route.meta["http_method"] == "POST"
+
+    def test_route_symbols_for_resources_macro(self, tmp_path: Path) -> None:
+        """Resources macro creates route Symbol with RESOURCES http_method."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resources :articles
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+        assert route_symbols[0].name == "RESOURCES /articles"
+        assert route_symbols[0].meta["http_method"] == "RESOURCES"
+
+    def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
+        """Route symbols include controller_action in metadata when specified."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  get '/home', to: 'pages#home'
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        route_symbol = next((s for s in result.symbols if s.kind == "route"), None)
+        assert route_symbol is not None
+        assert route_symbol.meta["controller_action"] == "pages#home"
+
+
 class TestRubyBlockCallAttribution:
     """Tests for call edge attribution inside Ruby blocks.
 
