@@ -35,7 +35,7 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 
 ## 2) Non-goals (for MVP)
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
-* No central registry, accounts, ratings, or social features.
+* No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
 * No attempt to support *every* language—support a small set well.
 * No incremental analysis daemon (full re-analysis is acceptable for MVP).
