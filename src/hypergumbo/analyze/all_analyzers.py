@@ -87,6 +87,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("vue", "hypergumbo.analyze.vue", "analyze_vue"),
     AnalyzerSpec("astro", "hypergumbo.analyze.astro", "analyze_astro"),
     AnalyzerSpec("twig", "hypergumbo.analyze.twig", "analyze_twig"),
+    AnalyzerSpec("puppet", "hypergumbo.analyze.puppet", "analyze_puppet"),
     AnalyzerSpec("clojure", "hypergumbo.analyze.clojure", "analyze_clojure"),
     AnalyzerSpec("commonlisp", "hypergumbo.analyze.commonlisp", "analyze_commonlisp"),
     AnalyzerSpec("elm", "hypergumbo.analyze.elm", "analyze_elm"),

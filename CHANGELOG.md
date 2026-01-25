@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **Puppet manifest analyzer**: Full tree-sitter support for Puppet configuration management.
+  Extracts classes, defined types, resources (package, service, file), nodes, and include
+  statements. Creates requires_resource, notifies_resource, and includes_class edges for
+  dependency tracking.
 - **BibTeX bibliography analyzer**: Full tree-sitter support for BibTeX/LaTeX bibliography
   files. Extracts bibliography entries with type categorization (article, book, inproceedings).
   Captures citation keys, authors, years, titles, and field counts.
