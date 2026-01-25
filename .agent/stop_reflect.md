@@ -7,8 +7,9 @@ Before stopping, complete this checklist:
 - [ ] What was the last change made?
 
 ## 2. Invariant Check
-For each remaining signal, state the violated invariant:
+For each remaining signal (for the last change made), state the violated invariant:
 > "In this system, X must always be true because Y depends on it."
+Also check the file (`cat .agent/invariant-ledger.md 2>/dev/null | grep -E -A5 'Status: (❌( UNFIXED)?|UNFIXED|PARTIALLY ADDRESSED)' || true`) and make sure it is up-to-date.
 
 ## 3. Structural vs Workaround
 For the last change made:
@@ -21,9 +22,5 @@ For the last change made:
 - [ ] Different pipeline stage?
 
 ## 5. Decision
-- [ ] If root cause unfixed and analogous issues exist: **DO NOT STOP** — fix the root cause
-- [ ] If root cause fixed or truly isolated: document in invariant ledger, then stop
-
-## Current Root Causes (Known)
-- INV-001: FIXED - JS/TS arrow functions, Kotlin/Scala lambdas all working correctly
-- INV-002: `symbol_ref` gate partially addressed with name-based fallback
+- [ ] If root cause unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
+- [ ] If root cause fixed or truly isolated: document in invariant ledger (`.agent/invariant-ledger.md`), then take a step back and think about the best thing to do from a big-picture software quality perspective. Strongly consider activating or reactivating the bakeoff loop using `scripts/bakeoff`, `scripts/bakeoff-reflect`, and `scripts/hypergumbo_diag.py` (as detailed in Parts 2 & 3 of `docs/governance-case-critiques.md`).
