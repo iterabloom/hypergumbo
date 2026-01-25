@@ -22,6 +22,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Gleam language analyzer**: Full tree-sitter support for Gleam (BEAM/Erlang VM).
   Extracts functions, custom types, type aliases. Tracks pub/private visibility,
   constructor counts, function signatures. Detects imports and call edges.
+- **V language analyzer**: Full tree-sitter support for V programming language.
+  Extracts functions, structs, enums, interfaces. Tracks pub/private visibility,
+  field counts, function signatures. Detects imports and call edges.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
