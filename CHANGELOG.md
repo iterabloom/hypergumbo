@@ -90,6 +90,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   global), static methods, abstract/virtual classes, and override methods. Detects
   method calls, static calls, and constructor calls with qualified name resolution.
   Filters built-in Salesforce system classes.
+- **Luau language analyzer**: Full tree-sitter support for Roblox's Luau
+  (.luau, .lua files). Luau is a typed Lua variant used for Roblox game
+  development. Extracts functions (including typed parameters and return types),
+  type definitions (with export support), and module variables. Detects function
+  calls and method calls with qualified name resolution. Filters built-in Lua/
+  Luau functions and Roblox service methods.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

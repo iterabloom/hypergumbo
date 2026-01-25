@@ -81,6 +81,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("swift", "hypergumbo.analyze.swift", "analyze_swift"),
     AnalyzerSpec("scala", "hypergumbo.analyze.scala", "analyze_scala"),
     AnalyzerSpec("lua", "hypergumbo.analyze.lua", "analyze_lua"),
+    AnalyzerSpec("luau", "hypergumbo.analyze.luau", "analyze_luau"),
     AnalyzerSpec("dart", "hypergumbo.analyze.dart", "analyze_dart"),
     AnalyzerSpec("clojure", "hypergumbo.analyze.clojure", "analyze_clojure"),
     AnalyzerSpec("commonlisp", "hypergumbo.analyze.commonlisp", "analyze_commonlisp"),
