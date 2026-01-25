@@ -67,10 +67,10 @@ jobs:
         run: |
           if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
             echo "Embeddings available - using standard coverage"
-            pytest --cov=src --cov-report=term-missing --cov-fail-under=100
+            pytest -n 2 --cov=src --cov-report=term-missing --cov-fail-under=100
           else
             echo "::warning::Embeddings unavailable - using reduced coverage config"
-            pytest --cov=src --cov-report=term-missing --cov-fail-under=100 \
+            pytest -n 2 --cov=src --cov-report=term-missing --cov-fail-under=100 \
               --cov-config=.coveragerc.no-embeddings
           fi
 
