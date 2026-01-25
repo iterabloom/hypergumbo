@@ -167,6 +167,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   (client:load, client:idle, client:visible). Creates imports_component edges.
   Two-pass processing ensures imports are resolved before template analysis.
   Useful for understanding Astro project structure and hydration patterns.
+- **INI configuration file analyzer**: Full tree-sitter support for INI/CFG files
+  (.ini, .cfg, .conf, setup.cfg, tox.ini, .editorconfig, .flake8, .pylintrc,
+  pytest.ini). Extracts sections and settings (key-value pairs). Categorizes
+  settings by domain (database, logging, server, security, cache, email, api).
+  Automatically masks sensitive values (password, secret, token, key, credential)
+  in output. Useful for configuration management and security auditing.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
