@@ -121,6 +121,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("xml", "hypergumbo.analyze.xml_config", "analyze_xml_files"),
     AnalyzerSpec("json", "hypergumbo.analyze.json_config", "analyze_json_files"),
     AnalyzerSpec("css", "hypergumbo.analyze.css", "analyze_css_files"),
+    AnalyzerSpec("jsonnet", "hypergumbo.analyze.jsonnet", "analyze_jsonnet"),
 
     # Hardware description
     AnalyzerSpec("cuda", "hypergumbo.analyze.cuda", "analyze_cuda_files"),
