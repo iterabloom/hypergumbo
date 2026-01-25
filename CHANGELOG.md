@@ -73,6 +73,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   object fields. Tracks parameter counts and hidden field visibility. Detects
   call edges and import relationships. Filters standard library functions.
   Supports .jsonnet and .libsonnet file extensions.
+- **Hack language analyzer**: Full tree-sitter support for Hack (Meta/Facebook's
+  PHP dialect). Extracts classes, interfaces, traits, functions, and methods.
+  Tracks visibility modifiers, static methods, and namespace context. Detects
+  function calls, method calls, and static calls with qualified name resolution.
+  Supports .hack, .hh, and .php files with <?hh header.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
