@@ -33,6 +33,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   procedures and namespaces with proc counts. Tracks namespace membership and
   function signatures. Detects call edges from command substitutions, filters
   built-in commands.
+- **Scheme language analyzer**: Full tree-sitter support for Scheme (R5RS/R6RS).
+  Extracts function and variable definitions with parameter counts. Detects
+  call edges with recursive call support. Filters special forms and built-ins.
+  Supports .scm, .ss, .sld, .sls file extensions.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

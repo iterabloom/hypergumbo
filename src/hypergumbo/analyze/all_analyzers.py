@@ -147,6 +147,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("starlark", "hypergumbo.analyze.starlark", "analyze_starlark"),
     AnalyzerSpec("fish", "hypergumbo.analyze.fish", "analyze_fish"),
     AnalyzerSpec("tcl", "hypergumbo.analyze.tcl", "analyze_tcl"),
+    AnalyzerSpec("scheme", "hypergumbo.analyze.scheme", "analyze_scheme"),
 ]
 
 
