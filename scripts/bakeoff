@@ -874,6 +874,13 @@ def cmd_loop(args):
             if args.dry_run:
                 print("[DRY RUN] Would select new cohort")
             else:
+                # Mark current cohort repos as tested before selecting new cohort
+                if state.current_cohort:
+                    for repo in state.current_cohort:
+                        if repo not in state.tested_repos:
+                            state.tested_repos.append(repo)
+                    save_state(state)
+
                 # Create args object for cohort selection
                 cohort_args = argparse.Namespace(count=args.cohort_size, workdir=workdir)
                 rc = cmd_cohort(cohort_args)
