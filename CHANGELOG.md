@@ -63,6 +63,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   files. Extracts projects, build targets (executables, libraries), and custom
   targets. Detects dependency edges between targets and subdir includes.
   Supports meson.build, meson_options.txt, and meson.options files.
+- **PureScript language analyzer**: Full tree-sitter support for PureScript.
+  Extracts modules, functions, data types, type aliases, type classes, and
+  instances. Tracks type signatures and constructor counts. Detects call edges
+  with qualified name resolution. Filters built-in functions. Supports .purs
+  file extension.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
