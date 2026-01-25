@@ -41,6 +41,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   functions, variables, and structs with field information. Detects call edges
   with recursive call support. Handles Racket-specific forms like struct and
   module+. Supports .rkt, .rktl, .rktd file extensions.
+- **Janet language analyzer**: Full tree-sitter support for Janet. Extracts
+  functions and variables with parameter counts. Detects call edges with
+  recursive call support. Filters special forms and built-ins. Supports
+  .janet file extension.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
