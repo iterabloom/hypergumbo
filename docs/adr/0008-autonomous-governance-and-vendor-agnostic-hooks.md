@@ -330,7 +330,7 @@ cat .agent/invariant-ledger.md | grep -A5 "Status: ❌"
 
 ## References
 
-- `/tmp/analysis1.md`: Full technical analysis with case critiques
+- `docs/governance-case-critiques.md`: Full technical analysis with case critiques
 - ADR-0001: Portable Agent Instructions (establishes `AGENTS.md` as canonical)
 - `framework_patterns.py:992-993`: The `symbol_ref` gate
 - [Claude Code Hooks Reference](https://docs.claude.com/en/docs/claude-code/hooks)
