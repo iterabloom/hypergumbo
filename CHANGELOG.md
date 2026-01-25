@@ -68,6 +68,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   instances. Tracks type signatures and constructor counts. Detects call edges
   with qualified name resolution. Filters built-in functions. Supports .purs
   file extension.
+- **Jsonnet configuration language analyzer**: Full tree-sitter support for
+  Jsonnet. Extracts local functions, local variables, object methods, and
+  object fields. Tracks parameter counts and hidden field visibility. Detects
+  call edges and import relationships. Filters standard library functions.
+  Supports .jsonnet and .libsonnet file extensions.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
