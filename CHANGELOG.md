@@ -154,6 +154,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   fenced code blocks with language annotations, and inline links. Identifies
   internal vs external links and creates links_to edges for documentation
   cross-references. Useful for understanding README and documentation structure.
+- **Vue.js component analyzer**: Full tree-sitter support for Vue single-file
+  components (.vue files). Extracts component references with import tracking,
+  directives (v-if, v-for, v-model, @click, :prop), slots (named and default),
+  methods, computed properties, and props. Creates imports_component edges linking
+  component usage to import paths. Two-pass processing ensures imports are resolved
+  before template analysis. Useful for understanding Vue component hierarchy and
+  composition patterns.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
