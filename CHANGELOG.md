@@ -19,6 +19,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Prisma schema analyzer**: Analyze Prisma ORM schema files (.prisma). Extracts
   models, enums, datasources, and generators. Detects @relation edges between models
   for database schema visualization.
+- **Gleam language analyzer**: Full tree-sitter support for Gleam (BEAM/Erlang VM).
+  Extracts functions, custom types, type aliases. Tracks pub/private visibility,
+  constructor counts, function signatures. Detects imports and call edges.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

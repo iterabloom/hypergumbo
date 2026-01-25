@@ -71,6 +71,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("c", "hypergumbo.analyze.c", "analyze_c", capture_symbols_as="c"),
     AnalyzerSpec("java", "hypergumbo.analyze.java", "analyze_java", capture_symbols_as="java"),
     AnalyzerSpec("elixir", "hypergumbo.analyze.elixir", "analyze_elixir"),
+    AnalyzerSpec("gleam", "hypergumbo.analyze.gleam", "analyze_gleam"),
     AnalyzerSpec("rust", "hypergumbo.analyze.rust", "analyze_rust"),
     AnalyzerSpec("go", "hypergumbo.analyze.go", "analyze_go"),
     AnalyzerSpec("ruby", "hypergumbo.analyze.ruby", "analyze_ruby"),
