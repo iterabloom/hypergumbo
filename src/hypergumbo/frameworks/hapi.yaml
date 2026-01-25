@@ -1,25 +1,37 @@
-# Hapi.js framework patterns (ADR-0003 v1.0.x)
+# Hapi.js framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Hapi.js (@hapi/hapi) routing and plugin patterns.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Hapi uses a configuration-based approach: server.route({ method, path, handler })
-# The decorator patterns here match against the extracted call metadata.
+# Definition-based patterns (v1.0.x): Match decorator metadata for plugins, middleware
+# Usage-based patterns (v1.1.x): Match config-object routing via UsageContext
 
 id: hapi
 language: javascript
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for config-object routing
+
   # Hapi server.route() - main routing method
   # Called as server.route({ method: 'GET', path: '/users', handler: fn })
   - concept: route
-    decorator: "^server\\.route$"
-    extract_path: "kwargs.path"
-    extract_method: "kwargs.method"
+    usage:
+      kind: "^call$"
+      name: "\\.(route|routes)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
 
-  # Hapi route shorthand - server.route({ method, path }) when array
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Keep decorator patterns for backwards compatibility
+
+  # Hapi server.route() - also matches decorator-style for testing/fallback
   - concept: route
-    decorator: "^server\\.routes$"
+    decorator: "^server\\.route$"
+    extract_method: "kwargs.method"
+    extract_path: "kwargs.path"
 
   # Hapi plugin registration - server.register()
   - concept: plugin

@@ -1,0 +1,41 @@
+# JAX-RS framework patterns (ADR-0003 v1.0.x)
+#
+# Matches JAX-RS annotations for REST resources and routes.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Note: JAX-RS HTTP method annotations (@GET, @POST, etc.) don't contain
+# the path - that's in @Path. The path extraction uses kwargs.value from @Path.
+
+id: jax-rs
+language: java
+
+patterns:
+  # HTTP method annotations - @GET, @POST, @PUT, @DELETE, @PATCH
+  # Note: Java analyzer stores annotations as decorators without @ prefix
+  - concept: route
+    decorator: "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$"
+    extract_method: "decorator_name_upper"
+
+  # Path annotation - marks a resource class or method
+  - concept: resource_path
+    decorator: "^Path$"
+    extract_path: "args[0]"
+
+  # Resource class patterns (commonly extend or implement these)
+  - concept: controller
+    base_class: "^Resource$"
+
+  # Provider patterns
+  - concept: provider
+    decorator: "^Provider$"
+
+  # Exception mapper
+  - concept: error_handler
+    decorator: "^ExceptionMapper$"
+
+  # Async response
+  - concept: async
+    decorator: "^Suspended$"
+
+linkers:
+  - http

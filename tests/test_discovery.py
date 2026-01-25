@@ -78,7 +78,7 @@ def test_default_excludes_contains_expected_patterns() -> None:
         ".git",
         "__pycache__",
         ".hypergumbo",  # Hypergumbo output directory
-        "hypergumbo.results.json",  # Hypergumbo behavior map
+        "hypergumbo.results*.json",  # Hypergumbo behavior map (including budget files)
         # Lock files - generated, inflate LOC counts
         "package-lock.json",
         "yarn.lock",
@@ -109,7 +109,7 @@ def test_is_excluded_lock_files(tmp_path: Path) -> None:
 def test_is_excluded_hypergumbo_artifacts(tmp_path: Path) -> None:
     """Should exclude hypergumbo output artifacts by default.
 
-    The .hypergumbo directory and hypergumbo.results.json file are generated
+    The .hypergumbo directory and hypergumbo.results*.json files are generated
     by hypergumbo run and should not pollute sketch or analysis input.
     """
     # .hypergumbo directory
@@ -120,9 +120,25 @@ def test_is_excluded_hypergumbo_artifacts(tmp_path: Path) -> None:
     results_file = tmp_path / "hypergumbo.results.json"
     assert is_excluded(results_file, tmp_path) is True
 
+    # Budget-tiered output files (4k, 16k, 64k, etc.)
+    budget_files = [
+        "hypergumbo.results.4k.json",
+        "hypergumbo.results.16k.json",
+        "hypergumbo.results.64k.json",
+        "hypergumbo.results.2k.json",  # Custom budget
+        "hypergumbo.results.128k.json",  # Custom budget
+    ]
+    for budget_file in budget_files:
+        budget_path = tmp_path / budget_file
+        assert is_excluded(budget_path, tmp_path) is True, f"{budget_file} should be excluded"
+
     # hypergumbo.results.json in subdirectory (less common but should still match)
     nested_results = tmp_path / "subdir" / "hypergumbo.results.json"
     assert is_excluded(nested_results, tmp_path) is True
+
+    # Budget file in subdirectory should also be excluded
+    nested_budget = tmp_path / "output" / "hypergumbo.results.4k.json"
+    assert is_excluded(nested_budget, tmp_path) is True
 
 
 def test_find_files_respects_max_files(tmp_path: Path) -> None:

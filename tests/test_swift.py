@@ -484,3 +484,110 @@ class Counter {
         methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "() -> Int"
+
+
+class TestSwiftClosureCallAttribution:
+    """Tests for call edge attribution inside Swift closures.
+
+    Swift uses closures extensively (map, filter, completion handlers). Calls inside
+    these closures must be attributed to the enclosing function.
+    """
+
+    def test_call_inside_map_closure_attributed(self, tmp_path: Path) -> None:
+        """Calls inside map closures are attributed to enclosing function.
+
+        When you have:
+            func process() {
+                items.map { item in helper(item) }
+            }
+
+        The call to helper() should be attributed to process, not lost.
+        """
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "App.swift"
+        swift_file.write_text("""
+func helper(_ x: Int) -> Int {
+    return x * 2
+}
+
+func process() {
+    let items = [1, 2, 3]
+    let _ = items.map { item in helper(item) }
+}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        # Find symbols
+        process_func = next(
+            (s for s in result.symbols if s.name == "process" and s.kind == "function"),
+            None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "helper" and s.kind == "function"),
+            None,
+        )
+
+        assert process_func is not None, "Should find process function"
+        assert helper_func is not None, "Should find helper function"
+
+        # The call to helper() inside the closure should be attributed to process
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_func.id
+                and e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to helper() inside map closure should be attributed to process"
+
+    def test_call_inside_completion_handler_attributed(self, tmp_path: Path) -> None:
+        """Calls inside completion handler closures are attributed to enclosing function."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "Async.swift"
+        swift_file.write_text("""
+func doWork() {
+    print("working")
+}
+
+func performAsync(completion: () -> Void) {
+    completion()
+}
+
+func caller() {
+    performAsync {
+        doWork()
+    }
+}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        # Find symbols
+        caller_func = next(
+            (s for s in result.symbols if s.name == "caller" and s.kind == "function"),
+            None,
+        )
+        dowork_func = next(
+            (s for s in result.symbols if s.name == "doWork" and s.kind == "function"),
+            None,
+        )
+
+        assert caller_func is not None
+        assert dowork_func is not None
+
+        # The call to doWork() inside the closure should be attributed to caller
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == caller_func.id
+                and e.dst == dowork_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside completion handler should be attributed to caller"

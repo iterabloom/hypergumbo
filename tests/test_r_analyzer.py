@@ -204,6 +204,89 @@ process_data <- function(data) {
     assert functions[0].name == "process_data"
 
 
+class TestRNamespaceQualifiedCalls:
+    """Tests for R namespace-qualified call tracking (ADR-0007)."""
+
+    def test_extracts_namespace_qualified_call(self, tmp_path):
+        """Detects pkg::func() style calls."""
+        r_file = tmp_path / "script.R"
+        r_file.write_text("""
+library(dplyr)
+
+my_func <- function(data) {
+    result <- dplyr::filter(data, x > 0)
+    return(result)
+}
+""")
+        result = analyze_r_files(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        # Should have call to dplyr::filter
+        qualified_call = next((c for c in calls if "dplyr" in c.dst and "filter" in c.dst), None)
+        assert qualified_call is not None
+        assert qualified_call.evidence_type == "qualified_call"
+
+    def test_extracts_loaded_packages(self, tmp_path):
+        """Tracks packages loaded via library() for path hints."""
+        from hypergumbo.analyze.r_lang import _extract_loaded_packages
+        from tree_sitter_language_pack import get_parser
+
+        source = b"""
+library(dplyr)
+library(ggplot2)
+require(tidyr)
+"""
+        parser = get_parser("r")
+        tree = parser.parse(source)
+
+        packages = _extract_loaded_packages(tree.root_node, source)
+
+        assert "dplyr" in packages
+        assert "ggplot2" in packages
+        assert "tidyr" in packages
+
+    def test_extracts_loaded_packages_string_syntax(self, tmp_path):
+        """Tracks packages loaded with string syntax: library("pkg")."""
+        from hypergumbo.analyze.r_lang import _extract_loaded_packages
+        from tree_sitter_language_pack import get_parser
+
+        source = b'''
+library("stringr")
+require("tibble")
+'''
+        parser = get_parser("r")
+        tree = parser.parse(source)
+
+        packages = _extract_loaded_packages(tree.root_node, source)
+
+        assert "stringr" in packages
+        assert "tibble" in packages
+
+    def test_qualified_call_higher_confidence(self, tmp_path):
+        """Namespace-qualified calls get higher confidence scores."""
+        r_file = tmp_path / "script.R"
+        r_file.write_text("""
+my_func <- function(data) {
+    # Qualified call - explicit package reference
+    x <- stats::filter(data)
+    # Unqualified call
+    y <- print(x)
+    return(y)
+}
+""")
+        result = analyze_r_files(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        qualified = next((c for c in calls if "stats" in c.dst), None)
+        unqualified = next((c for c in calls if "print" in c.dst), None)
+
+        assert qualified is not None
+        assert unqualified is not None
+        # Qualified should have higher confidence
+        assert qualified.confidence >= 0.70  # External qualified
+        assert unqualified.confidence >= 0.70  # External unqualified
+
+
 class TestRSignatureExtraction:
     """Tests for R function signature extraction."""
 

@@ -1,0 +1,76 @@
+# Fastify framework patterns (ADR-0003)
+#
+# Fastify is a fast Node.js web framework. Routes are defined using
+# fastify.get(), fastify.post(), etc. or via route schemas.
+
+id: fastify
+language: javascript
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Fastify route handlers - fastify.get('/path', handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(fastify|app|server)\\.(get|post|put|delete|patch|options|head|all)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # Fastify route() method with schema
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(fastify|app|server)\\.route$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Fastify route methods
+  - concept: route
+    decorator: "^(fastify|app|server)\\.(get|post|put|delete|patch|options|head|all)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Fastify route() with options object
+  - concept: route
+    decorator: "^(fastify|app|server)\\.route$"
+
+  # Fastify plugin registration
+  - concept: middleware
+    decorator: "^(fastify|app|server)\\.register$"
+
+  # Fastify decorators
+  - concept: middleware
+    decorator: "^(fastify|app|server)\\.(decorate|decorateRequest|decorateReply)$"
+
+  # Fastify hooks
+  - concept: middleware
+    decorator: "^(fastify|app|server)\\.(addHook|onRequest|onResponse|onSend|onError|preParsing|preValidation|preHandler|preSerialization)$"
+
+  # Fastify error handler
+  - concept: error_handler
+    decorator: "^(fastify|app|server)\\.setErrorHandler$"
+
+  # Fastify 404 handler
+  - concept: error_handler
+    decorator: "^(fastify|app|server)\\.setNotFoundHandler$"
+
+  # Fastify schema
+  - concept: schema
+    decorator: "^(fastify|app|server)\\.addSchema$"
+
+  # Fastify content type parser
+  - concept: middleware
+    decorator: "^(fastify|app|server)\\.addContentTypeParser$"
+
+  # Fastify WebSocket (@fastify/websocket)
+  - concept: websocket_handler
+    decorator: "^(fastify|app|server)\\.websocket$"
+
+linkers:
+  - http
+  - websocket

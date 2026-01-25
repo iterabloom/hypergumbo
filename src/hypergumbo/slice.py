@@ -43,10 +43,12 @@ Entry Matching
 The entrypoint spec is matched flexibly:
 1. Exact node ID match (most specific)
 2. Exact file path match (all symbols in that file)
-3. Exact symbol name match
-4. Partial name match (contains)
+3. Path suffix match (relative paths match absolute paths ending with same suffix)
+4. Exact symbol name match
+5. Partial name match (contains)
 
 This lets users say `--entry login` and find `user_login`, `login_handler`, etc.
+Path suffix matching enables `--entry src/main.go` to match `/home/user/repo/src/main.go`.
 """
 from __future__ import annotations
 
@@ -57,6 +59,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
+from .paths import normalize_path, path_ends_with, is_test_file
 from .ranking import compute_centrality, apply_tier_weights
 
 
@@ -180,8 +183,9 @@ def find_entry_nodes(
     Matching rules (in order of priority):
     1. Exact match on node ID
     2. Exact match on file path
-    3. Exact match on symbol name
-    4. Partial match (contains) on symbol name
+    3. Path suffix match (relative path matches absolute path ending with suffix)
+    4. Exact match on symbol name
+    5. Partial match (contains) on symbol name
 
     Args:
         nodes: All available nodes.
@@ -205,6 +209,17 @@ def find_entry_nodes(
     if exact_path_matches:
         return exact_path_matches
 
+    # Try path suffix match (handles relative paths like "src/main.go")
+    # Only if entry_spec looks like a path (contains / or \)
+    if "/" in entry_spec or "\\" in entry_spec:
+        normalized_spec = normalize_path(entry_spec)
+        suffix_matches = [
+            n for n in nodes
+            if path_ends_with(n.path, normalized_spec)
+        ]
+        if suffix_matches:
+            return suffix_matches
+
     # Try exact name match
     exact_name_matches = [n for n in nodes if n.name == entry_spec]
     if exact_name_matches:
@@ -213,54 +228,6 @@ def find_entry_nodes(
     # Try partial name match (contains)
     partial_matches = [n for n in nodes if entry_spec in n.name]
     return partial_matches
-
-
-def _is_test_file(path: str) -> bool:
-    """Check if a path looks like a test file.
-
-    Excludes:
-    - Files starting with test_ or ending with _test.py/_test.js/etc.
-    - Go test files (*_test.go)
-    - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
-    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
-    """
-    # Common test file patterns
-    if "/test_" in path or "/tests/" in path:
-        return True
-    if path.startswith("test_") or path.startswith("tests/"):
-        return True
-    if "_test.py" in path or "_test.js" in path or "_test.ts" in path:
-        return True
-    if ".test.py" in path or ".test.js" in path or ".test.ts" in path:
-        return True
-    if "/spec/" in path or "_spec.py" in path or ".spec.js" in path:
-        return True
-
-    # Go test files
-    if "_test.go" in path:
-        return True
-
-    # Mock/fake file patterns
-    path_lower = path.lower()
-    if "_mock." in path_lower or "_fake." in path_lower:
-        return True
-    if "/mock_" in path_lower or "/fake_" in path_lower:
-        return True
-
-    # Mock/fake directories
-    path_parts = path.replace("\\", "/").split("/")
-    test_dirs = {
-        "fakes", "mocks", "testfakes", "testmocks",
-        "fixtures", "testdata", "testutils",
-    }
-    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
-    for part in path_parts:
-        part_lower = part.lower()
-        if part_lower in test_dirs:
-            return True
-        if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
-            return True
-    return False
 
 
 def slice_graph(
@@ -361,7 +328,7 @@ def slice_graph(
 
     # Initialize with entry nodes
     for entry in entry_nodes:
-        if query.exclude_tests and _is_test_file(entry.path):
+        if query.exclude_tests and is_test_file(entry.path):
             continue
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
@@ -405,7 +372,7 @@ def slice_graph(
                 continue
 
             # Filter test files
-            if query.exclude_tests and _is_test_file(next_node.path):
+            if query.exclude_tests and is_test_file(next_node.path):
                 continue
 
             # Check tier limit

@@ -123,13 +123,137 @@ def run_command(args: list[str], description: str) -> subprocess.CompletedProces
 
 
 def run_hypergumbo_sketch() -> str:
-    """Run hypergumbo sketch on itself."""
+    """Run hypergumbo sketch on the entire repo."""
     result = run_command(
-        [sys.executable, "-m", "hypergumbo", "sketch", str(REPO_ROOT / "src"),
-         "-t", "1500", "-x"],
+        [sys.executable, "-m", "hypergumbo", "sketch", str(REPO_ROOT),
+         "-t", "4000"],
         "hypergumbo sketch",
     )
     return result.stdout
+
+
+# AI tool folders to filter from structure output
+AI_TOOL_FOLDERS = {".gemini", ".codex", ".claude", ".continue", ".aider", ".clinerules", ".cursor"}
+
+
+def filter_ai_folders_from_structure(sketch: str) -> str:
+    """Remove AI tool folders from the Structure section of the sketch.
+
+    Filters out repo-root-level folders like .claude, .cursor, etc.
+    """
+    lines = sketch.split("\n")
+    result = []
+    in_structure = False
+    skip_until_unindent = False
+    skip_indent_level = 0
+
+    for line in lines:
+        # Detect Structure section
+        if line.startswith("## Structure"):
+            in_structure = True
+            result.append(line)
+            continue
+
+        # Detect end of Structure section (next ## header)
+        if in_structure and line.startswith("## ") and not line.startswith("## Structure"):
+            in_structure = False
+            skip_until_unindent = False
+
+        if in_structure:
+            # Check if this line references an AI tool folder at repo root level
+            # These appear as "├── .claude" or "└── .claude" at low indent
+            stripped = line.lstrip("│├└─ ")
+            folder_name = stripped.split()[0] if stripped.split() else ""
+
+            # Check for AI tool folder at root level (shallow indent)
+            # Root level items have minimal leading characters
+            leading_chars = len(line) - len(line.lstrip("│├└─ "))
+            is_root_level = leading_chars <= 4
+
+            if is_root_level and folder_name in AI_TOOL_FOLDERS:
+                # Skip this line and any children (more indented lines)
+                skip_until_unindent = True
+                skip_indent_level = leading_chars
+                continue
+
+            if skip_until_unindent:
+                current_indent = len(line) - len(line.lstrip("│├└─ "))
+                if current_indent <= skip_indent_level and line.strip():
+                    # Back to same or lower indent, stop skipping
+                    skip_until_unindent = False
+                else:
+                    # Still in AI folder subtree, skip
+                    continue
+
+        result.append(line)
+
+    return "\n".join(result)
+
+
+def remove_section_code_fences(sketch: str, sections: list[str]) -> str:
+    """Remove code fences (triple backticks) around specified sections.
+
+    Some sections use special characters (tree chars, config snippets) that
+    render better without being wrapped in a code fence in web markdown viewers.
+
+    Args:
+        sketch: The sketch content
+        sections: List of section names to process (e.g., ["Structure", "Configuration"])
+    """
+    lines = sketch.split("\n")
+    result = []
+    in_target_section = False
+    found_opening_fence = False
+    current_section = ""
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Detect target sections
+        for section in sections:
+            if line.startswith(f"## {section}"):
+                in_target_section = True
+                current_section = section
+                result.append(line)
+                i += 1
+                # Skip empty lines after header
+                while i < len(lines) and not lines[i].strip():
+                    result.append(lines[i])
+                    i += 1
+                # Check for opening code fence
+                if i < len(lines) and lines[i].strip() == "```":
+                    found_opening_fence = True
+                    i += 1  # Skip the opening fence
+                break
+        else:
+            # No section matched, continue normal processing
+
+            # In target section, look for closing fence
+            if in_target_section and found_opening_fence:
+                if line.strip() == "```":
+                    # Found closing fence - skip it and end section
+                    in_target_section = False
+                    found_opening_fence = False
+                    current_section = ""
+                    i += 1
+                    continue
+
+            # Detect end of target section (next ## header)
+            if in_target_section and line.startswith("## ") and not line.startswith(f"## {current_section}"):
+                in_target_section = False
+                found_opening_fence = False
+                current_section = ""
+
+            result.append(line)
+            i += 1
+            continue
+
+        # If we matched a section and are continuing, don't append twice
+        if not found_opening_fence:
+            continue
+
+    return "\n".join(result)
 
 
 def run_hypergumbo_analysis() -> dict:
@@ -239,10 +363,41 @@ def get_top_symbols(analysis: dict, limit: int = 20) -> list[dict]:
     return result
 
 
+def get_edge_type_distribution(analysis: dict) -> dict[str, int]:
+    """Get the distribution of edge types.
+
+    Returns a dict mapping edge type to count, sorted by count descending.
+    """
+    type_counts: dict[str, int] = defaultdict(int)
+    for edge in analysis.get("edges", []):
+        edge_type = edge.get("type", "unknown")
+        type_counts[edge_type] += 1
+
+    # Sort by count descending, then by name for determinism
+    return dict(sorted(type_counts.items(), key=lambda x: (-x[1], x[0])))
+
+
+def count_linkers() -> int:
+    """Count the number of linker modules (excluding __init__ and registry)."""
+    linkers_dir = REPO_ROOT / "src" / "hypergumbo" / "linkers"
+    if not linkers_dir.exists():
+        return 0
+    count = 0
+    for py_file in linkers_dir.glob("*.py"):
+        # Exclude __init__.py and registry.py
+        if py_file.name not in {"__init__.py", "registry.py"}:
+            count += 1
+    return count
+
+
 def generate_architecture_md() -> str:
     """Generate the ARCHITECTURE.md content."""
     print("Running hypergumbo sketch on itself...", file=sys.stderr)
     sketch = run_hypergumbo_sketch()
+
+    # Post-process sketch: filter AI folders and remove section code fences
+    sketch = filter_ai_folders_from_structure(sketch)
+    sketch = remove_section_code_fences(sketch, ["Structure", "Configuration"])
 
     print("Running hypergumbo analysis on itself...", file=sys.stderr)
     analysis = run_hypergumbo_analysis()
@@ -253,9 +408,11 @@ def generate_architecture_md() -> str:
     # Count stats
     analyzer_count = len(categories.get("Analyzers", []))
     linker_count = len(categories.get("Linkers", []))
+    linker_file_count = count_linkers()  # For data flow diagram (excludes registry.py)
     total_modules = sum(len(v) for v in categories.values())
     node_count = len(analysis.get("nodes", []))
     edge_count = len(analysis.get("edges", []))
+    edge_types = get_edge_type_distribution(analysis)
 
     # Get metadata for drift detection
     commit_sha = get_git_commit_sha()
@@ -280,7 +437,17 @@ def generate_architecture_md() -> str:
         f"hypergumbo analyzed its own source code and found:",
         f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers)",
         f"- **{node_count}** symbols (functions, classes, methods)",
-        f"- **{edge_count}** edges (calls, imports, instantiates)",
+        f"- **{edge_count}** edges by type:",
+    ]
+
+    # Add edge type breakdown
+    for edge_type, count in list(edge_types.items())[:6]:  # Top 6 types
+        lines.append(f"  - {edge_type}: {count}")
+    if len(edge_types) > 6:
+        other_count = sum(c for t, c in list(edge_types.items())[6:])
+        lines.append(f"  - other: {other_count}")
+
+    lines.extend([
         "",
         "## Sketch (hypergumbo on hypergumbo)",
         "",
@@ -288,26 +455,52 @@ def generate_architecture_md() -> str:
         sketch.strip(),
         "```",
         "",
-        "## Data Flow",
+        "## Data Flow (ADR-0003)",
         "",
         "```",
         "Source Files",
         "     │",
         "     ▼",
-        "┌─────────────┐     ┌─────────────┐",
-        "│  discovery  │────▶│   profile   │  Detect languages, frameworks",
-        "└─────────────┘     └─────────────┘",
-        "     │                    │",
-        "     ▼                    ▼",
-        "┌─────────────┐     ┌─────────────┐",
-        f"│  analyzers  │────▶│     IR      │  {node_count} Symbols + {edge_count} Edges",
-        "└─────────────┘     └─────────────┘",
-        "     │                    │",
-        "     ▼                    ▼",
-        "┌─────────────┐     ┌─────────────┐",
-        "│   linkers   │────▶│   merged    │  Cross-language edges",
-        "└─────────────┘     └─────────────┘",
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│                          PROFILE                                │",
+        "│  Detect languages (by file extension)                           │",
+        "│  Detect frameworks (by manifest markers, scoped to languages)   │",
+        "└─────────────────────────────────────────────────────────────────┘",
+        "     │",
+        "     ▼",
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│                         ANALYZERS                               │",
+        "│  Pure language processors - NO framework knowledge              │",
+        f"│  Output: {node_count} Symbols + {edge_count} Edges + UsageContexts".ljust(66) + "│",
+        "│  Rich metadata: decorators, base_classes, parameters            │",
+        "└─────────────────────────────────────────────────────────────────┘",
+        "     │",
+        "     ▼",
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│                       PATTERN SYSTEM                            │",
+        "│  ┌─────────────────────────────────────────────────────────┐    │",
+        "│  │  Convention Patterns (always loaded):                   │    │",
+        "│  │  - main-functions.yaml: main() entrypoints              │    │",
+        "│  │  - test-frameworks.yaml: test function detection        │    │",
+        "│  │  - language-conventions.yaml: CUDA/WGSL/COBOL/etc.      │    │",
+        "│  │  - config-conventions.yaml: NPM/Maven/Cargo deps        │    │",
+        "│  └─────────────────────────────────────────────────────────┘    │",
+        "│  ┌─────────────────────────────────────────────────────────┐    │",
+        "│  │  Framework Patterns (loaded when framework detected):   │    │",
+        "│  │  - 37 framework YAML files (fastapi, django, etc.)      │    │",
+        "│  └─────────────────────────────────────────────────────────┘    │",
+        "│  Output: Symbols enriched with meta.concepts                    │",
+        "└─────────────────────────────────────────────────────────────────┘",
+        "     │",
+        "     ▼",
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│                          LINKERS                                │",
+        "│  Cross-language edge creation                                   │",
+        "│  Match via meta.concepts (route paths, gRPC services, etc.)     │",
+        f"│  {linker_file_count} linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │",
+        "└─────────────────────────────────────────────────────────────────┘",
         "                          │",
+        "                          ▼",
         "          ┌───────────────┼───────────────┐",
         "          ▼               ▼               ▼",
         "    ┌──────────┐   ┌──────────┐   ┌──────────┐",
@@ -316,7 +509,7 @@ def generate_architecture_md() -> str:
         "    └──────────┘   └──────────┘   └──────────┘",
         "```",
         "",
-    ]
+    ])
 
     # Top symbols section
     if top_symbols:
@@ -406,7 +599,7 @@ def generate_architecture_md() -> str:
         "4. Create cross-language edges",
         "5. Add tests in `tests/test_<name>_linker.py`",
         "",
-        "## Framework Patterns Architecture (ADR-0003)",
+        "## Pattern System Architecture (ADR-0003)",
         "",
         "> **Note:** This section is manually maintained. See `docs/adr/0003-architectural-analysis-and-revision-plan.md` for the full design rationale.",
         "",
@@ -423,33 +616,67 @@ def generate_architecture_md() -> str:
         "     │",
         "     ▼",
         "┌─────────────────────────┐",
-        "│  FRAMEWORK_PATTERNS     │  Data-driven symbol enrichment",
-        "│  (framework_patterns.py)│  - YAML pattern files define framework patterns",
-        "└─────────────────────────┘  - Symbols enriched with concept metadata",
+        "│  PATTERN SYSTEM         │  Data-driven symbol enrichment",
+        "│  (framework_patterns.py)│  - Definition: decorators, base classes",
+        "│                         │  - Usage: UsageContext (v1.1.x)",
+        "│                         │  - Output: meta.concepts",
+        "│                         │",
+        "│  Convention patterns:   │  Always loaded (language-agnostic):",
+        "│  - main-functions       │  main() entrypoints",
+        "│  - test-frameworks      │  test function detection",
+        "│  - language-conventions │  CUDA/WGSL/COBOL/LaTeX/Starlark",
+        "│  - config-conventions   │  NPM/Maven/Cargo dependencies",
+        "│                         │",
+        "│  Framework patterns:    │  Loaded when framework detected:",
+        "│  - fastapi, django, etc │  37 framework YAML files",
+        "└─────────────────────────┘",
         "     │",
         "     ▼",
         "┌─────────────────┐",
         "│    Linkers      │  Cross-language edge creation",
-        "│   (http.py, etc)│  - Use concept metadata for matching",
-        "└─────────────────┘  - Fall back to legacy meta.route_path",
+        "│   (http.py, etc)│  - Match via meta.concepts",
+        "└─────────────────┘",
         "```",
         "",
         "### Key Components",
         "",
         "- **`framework_patterns.py`**: Loads and applies YAML pattern files",
-        "- **`frameworks/*.yaml`**: Pattern definitions for each framework",
-        "- **`meta.concepts`**: List of matched concepts on enriched symbols",
-        "- **`meta.annotations`/`meta.decorators`**: Raw metadata for pattern matching",
+        "- **`frameworks/*.yaml`**: 41 pattern files (4 convention + 37 framework)",
+        "- **`meta.concepts`**: List of matched concepts (single source of truth)",
+        "- **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching",
         "",
-        "### Adding a New Framework Pattern",
+        "### meta.concepts Structure",
         "",
+        "Enriched symbols have a `meta.concepts` list:",
+        "",
+        "```json",
+        '{',
+        '  "meta": {',
+        '    "concepts": [',
+        '      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},',
+        '      {"concept": "test_function", "framework": "test-frameworks"}',
+        '    ]',
+        '  }',
+        '}',
+        "```",
+        "",
+        "Linkers and entrypoint detection use `meta.concepts` exclusively.",
+        "",
+        "### Adding a New Pattern",
+        "",
+        "**Framework pattern** (loaded when framework detected):",
         "1. Create `src/hypergumbo/frameworks/<framework>.yaml`",
-        "2. Define patterns matching decorator/annotation names",
-        "3. Specify concept types (route, model, task, etc.)",
-        "4. Add extraction methods for path/method if needed",
-        "5. Add tests in `tests/test_framework_patterns.py`",
+        "2. Add `linkers:` section to enable relevant linkers",
+        "3. Add tests in `tests/test_framework_patterns.py`",
         "",
-        "Example pattern:",
+        "**Convention pattern** (always loaded):",
+        "1. Edit existing convention file or create new one",
+        "2. Use `language: multi` for cross-language patterns",
+        "3. Add to `enrich_symbols()` load list in `framework_patterns.py`",
+        "",
+        "Example patterns:",
+        "",
+        "**Definition-based (decorators/annotations):**",
         "```yaml",
         "id: myframework",
         "language: python",
@@ -461,18 +688,17 @@ def generate_architecture_md() -> str:
         '    extract_method: "decorator_suffix"',
         "```",
         "",
-        "### Migration Status (v1.0.x)",
+        "**Convention-based (symbol_name + symbol_kind + language):**",
+        "```yaml",
+        "id: test-frameworks",
+        "language: multi",
         "",
-        "Analyzer-level route detection is deprecated. Deprecation warnings fire when:",
-        "- Spring Boot/JAX-RS routes detected in Java",
-        "- Django URL patterns detected in Python",
-        "- ASP.NET Core routes detected in C#",
-        "- Axum/Actix routes detected in Rust",
-        "- Rails routes detected in Ruby",
-        "- Laravel routes detected in PHP",
-        "- Express routes detected in JavaScript/TypeScript",
-        "",
-        "Use `--frameworks` flag with YAML patterns instead.",
+        "patterns:",
+        "  - concept: test_function",
+        '    symbol_name: "^test_"',
+        '    symbol_kind: "^function$"',
+        '    language: "^python$"',
+        "```",
         "",
         "---",
         "",

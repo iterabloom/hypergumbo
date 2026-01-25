@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -101,6 +102,7 @@ class FileAnalysis:
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
     module_name: str  # Erlang module name from -module attribute
+    import_aliases: dict[str, str] = field(default_factory=dict)  # func -> module
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -124,6 +126,45 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
         if child.type == type_name:
             return child
     return None  # pragma: no cover - defensive fallback
+
+
+def _extract_import_aliases(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases from Erlang -import statements (ADR-0007).
+
+    Parses -import(module, [func/arity, ...]) and returns a mapping of
+    function_name -> module_name for path hint resolution.
+
+    Example:
+        -import(lists, [map/2, filter/2]).
+        => {"map": "lists", "filter": "lists"}
+
+    Returns:
+        Dict mapping function base name → module name for path_hint resolution.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(root_node):
+        if node.type == "import_attribute":
+            # First atom child is the module name
+            module_atom = _find_child_by_type(node, "atom")
+            if not module_atom:
+                continue  # pragma: no cover - defensive
+
+            module_name = _node_text(module_atom, source)
+
+            # Find all fa (function/arity) nodes
+            for child in node.children:
+                if child.type == "fa":
+                    # fa has atom (function name) child
+                    func_atom = _find_child_by_type(child, "atom")
+                    if func_atom:
+                        func_name = _node_text(func_atom, source)
+                        aliases[func_name] = module_name
+
+    return aliases
 
 
 def _extract_erlang_signature(
@@ -351,9 +392,10 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     module_registry: dict[str, str],  # module_name -> file_path
     run_id: str,
+    import_aliases: dict[str, str] | None = None,  # func -> module (ADR-0007)
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Erlang file.
 
@@ -433,8 +475,10 @@ def _extract_edges_from_file(
                             func_name = _node_text(func_atom, source)
                             # Try to find in registry
                             full_name = f"{mod_name}:{func_name}"
-                            callee = global_symbol_registry.get(full_name)
-                            if callee:
+                            lookup_result = resolver.lookup(full_name)
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.85 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -443,7 +487,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="remote_call",
-                                    confidence=0.85,
+                                    confidence=confidence,
                                 )
                                 edges.append(edge)
                 else:
@@ -451,8 +495,14 @@ def _extract_edges_from_file(
                     atom = _find_child_by_type(node, "atom")
                     if atom:
                         func_name = _node_text(atom, source)
-                        callee = local_symbols.get(func_name) or global_symbol_registry.get(func_name)
-                        if callee:
+                        # ADR-0007: Use import module as path_hint if available
+                        path_hint = None
+                        if import_aliases and func_name in import_aliases:
+                            path_hint = import_aliases[func_name]
+                        lookup_result = resolver.lookup(func_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -461,7 +511,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="local_call",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
 
@@ -533,6 +583,9 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
         file_symbols, module_name = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract import aliases for cross-file resolution (ADR-0007)
+        import_aliases = _extract_import_aliases(tree.root_node, source)
+
         # Register module
         if module_name:
             module_registry[module_name] = rel_path
@@ -540,11 +593,15 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
-            # Also register with module prefix for remote calls
-            if module_name and sym.kind == "function":
-                base_name = sym.meta.get("base_name", "") if sym.meta else ""
+            # Also register with module prefix for remote calls and base_name for local calls
+            if sym.kind == "function" and sym.meta:
+                base_name = sym.meta.get("base_name", "")
                 if base_name:
-                    global_symbol_registry[f"{module_name}:{base_name}"] = sym
+                    # Register by base_name for local function calls
+                    global_symbol_registry[base_name] = sym
+                    # Register with module prefix for remote calls
+                    if module_name:
+                        global_symbol_registry[f"{module_name}:{base_name}"] = sym
 
         file_analyses.append(FileAnalysis(
             path=rel_path,
@@ -552,11 +609,13 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
             tree=tree,
             symbols=file_symbols,
             module_name=module_name,
+            import_aliases=import_aliases,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -564,9 +623,10 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             module_registry,
             run_id,
+            import_aliases=fa.import_aliases,
         )
         all_edges.extend(edges)
 

@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -113,6 +114,7 @@ class FileAnalysis:
     source: bytes
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
+    import_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -402,6 +404,59 @@ def _find_enclosing_function(
     return None  # pragma: no cover - no enclosing function
 
 
+def _extract_import_hints(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import statements for disambiguation.
+
+    In Dart:
+        import 'path' as prefix; -> prefix maps to path
+        import 'path' show Name1, Name2; -> Name1 and Name2 map to path
+
+    Returns a dict mapping short names/prefixes to full import paths.
+    """
+    hints: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_specification":
+            continue
+
+        # Find the import path
+        import_path: Optional[str] = None
+        as_prefix: Optional[str] = None
+        show_names: list[str] = []
+        has_as = False
+
+        for child in node.children:
+            if child.type == "configurable_uri":
+                # Extract path from uri > string_literal
+                for sub in iter_tree(child):
+                    if sub.type == "string_literal":
+                        import_path = _node_text(sub, source).strip("'\"")
+                        break
+            elif child.type == "as":
+                has_as = True
+            elif child.type == "identifier" and has_as:
+                as_prefix = _node_text(child, source)
+            elif child.type == "combinator":
+                # Look for show followed by identifiers
+                is_show = False
+                for sub in child.children:
+                    if sub.type == "show":
+                        is_show = True
+                    elif sub.type == "identifier" and is_show:
+                        show_names.append(_node_text(sub, source))
+
+        if import_path:
+            if as_prefix:
+                hints[as_prefix] = import_path
+            for name in show_names:
+                hints[name] = import_path
+
+    return hints
+
+
 def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the import path from an import/export directive using iterative traversal."""
     for n in iter_tree(node):
@@ -412,23 +467,92 @@ def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - no string literal found
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a Dart function signature.
+
+    Dart function signatures look like:
+        int add(int x, int y) { ... }
+        void greet(String name) { ... }
+        void process(Database db, {bool verbose = false}) { ... }
+
+    Returns mapping like {"x": "int", "y": "int"} or {"db": "Database"}.
+    """
+    param_types: dict[str, str] = {}
+
+    # Find the formal_parameter_list child
+    params_node = _find_child_by_type(node, "formal_parameter_list")
+    if params_node is None:
+        return param_types  # pragma: no cover - no params in function
+
+    for child in params_node.children:
+        if child.type == "formal_parameter":
+            # formal_parameter contains type_identifier + identifier
+            param_type: Optional[str] = None
+            param_name: Optional[str] = None
+
+            for subchild in child.children:
+                if subchild.type == "type_identifier":
+                    param_type = _node_text(subchild, source)
+                    # Strip generics: List<T> -> List (defensive - tree-sitter usually separates generics)
+                    if "<" in param_type:  # pragma: no cover
+                        param_type = param_type.split("<")[0]
+                elif subchild.type == "identifier":
+                    # First identifier after type is the parameter name
+                    if param_type is not None and param_name is None:
+                        param_name = _node_text(subchild, source)
+
+            if param_type and param_name:
+                param_types[param_name] = param_type
+
+        elif child.type == "optional_formal_parameters":
+            # Handle optional/named parameters: {Database db, bool verbose}
+            for opt_child in child.children:
+                if opt_child.type == "formal_parameter":
+                    param_type = None
+                    param_name = None
+
+                    for subchild in opt_child.children:
+                        if subchild.type == "type_identifier":
+                            param_type = _node_text(subchild, source)
+                            if "<" in param_type:  # pragma: no cover - defensive
+                                param_type = param_type.split("<")[0]
+                        elif subchild.type == "identifier":
+                            if param_type is not None and param_name is None:
+                                param_name = _node_text(subchild, source)
+
+                    if param_type and param_name:
+                        param_types[param_name] = param_type
+
+    return param_types
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
+    import_hints: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call, import, and instantiation edges from a parsed Dart file."""
+    """Extract call, import, and instantiation edges from a parsed Dart file.
+
+    Args:
+        import_hints: Optional dict mapping short names to full import paths for disambiguation.
+    """
+    if import_hints is None:  # pragma: no cover - defensive default
+        import_hints = {}
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
-    # Build local symbol map for this file (name -> symbol)
-    local_symbols = {s.name: s for s in file_symbols}
-
     # Track functions by their enclosing scope
     function_scopes: dict[int, Symbol] = {}  # line -> symbol
+
+    # Variable type tracking: variable_name -> class_name
+    # Used for resolving method calls like db.save() to Database.save
+    var_types: dict[str, str] = {}
 
     # First pass: map lines to their symbols
     for sym in file_symbols:
@@ -436,6 +560,10 @@ def _extract_edges_from_file(
             function_scopes[sym.span.start_line] = sym
 
     for node in iter_tree(tree.root_node):
+        # Track parameter types from function declarations
+        if node.type == "function_signature":
+            param_types = _extract_param_types(node, source)
+            var_types.update(param_types)
         # Import/export directive
         if node.type == "import_or_export":
             import_path = _extract_import_path(node, source)
@@ -454,35 +582,74 @@ def _extract_edges_from_file(
                 edges.append(edge)
 
         # Expression statement with function call pattern:
-        # expression_statement > identifier + selector > argument_part > arguments
+        # expression_statement > identifier + selector(s)
+        # The AST can have multiple selectors: one for method name, one for arguments
+        # Example: db.save('test') -> identifier('db') + selector('.save') + selector("('test')")
         if node.type == "expression_statement":
             children = list(node.children)
-            for i, child in enumerate(children):
-                if child.type == "identifier":
-                    callee_name = _node_text(child, source)
-                    # Check if next sibling is selector with arguments
-                    if i + 1 < len(children) and children[i + 1].type == "selector":
-                        selector = children[i + 1]
-                        has_args = any(
-                            c.type == "argument_part" or c.type == "arguments"
-                            for c in selector.children
-                        )
-                        if has_args:
-                            caller = _find_enclosing_function(node, function_scopes)
-                            if caller:
-                                callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                                if callee:
-                                    edge = Edge.create(
-                                        src=caller.id,
-                                        dst=callee.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        origin=PASS_ID,
-                                        origin_run_id=run_id,
-                                        evidence_type="function_call",
-                                        confidence=0.85,
-                                    )
-                                    edges.append(edge)
+            first_ident = None
+            method_name = None
+            has_args = False
+
+            for child in children:
+                if child.type == "identifier" and first_ident is None:
+                    first_ident = _node_text(child, source)
+                elif child.type == "selector":
+                    # Check for method name in unconditional_assignable_selector
+                    for sel_child in child.children:
+                        if sel_child.type == "unconditional_assignable_selector":
+                            for sub in sel_child.children:
+                                if sub.type == "identifier":
+                                    method_name = _node_text(sub, source)
+                                    break
+                        # Check for arguments in this or any selector
+                        if sel_child.type in ("argument_part", "arguments"):
+                            has_args = True
+                    # Also check for argument_part directly in selector children
+                    if any(c.type == "argument_part" or c.type == "arguments" for c in child.children):
+                        has_args = True
+
+            if first_ident and has_args:
+                caller = _find_enclosing_function(node, function_scopes)
+                if caller:
+                    if method_name and first_ident in var_types:
+                        # Type-inferred method call: receiver.method()
+                        class_name = var_types[first_ident]
+                        qualified_name = f"{class_name}.{method_name}"
+                        path_hint = import_hints.get(class_name)
+                        lookup_result = resolver.lookup(qualified_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="method_call_type_inferred",
+                                confidence=confidence,
+                            )
+                            edges.append(edge)
+                    elif not method_name:
+                        # Simple function call: func()
+                        path_hint = import_hints.get(first_ident)
+                        lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="function_call",
+                                confidence=confidence,
+                            )
+                            edges.append(edge)
 
         # Method call in selector (obj.method()) - complex AST pattern
         if node.type == "selector":  # pragma: no cover - method call detection
@@ -498,8 +665,11 @@ def _extract_edges_from_file(
                         if has_args:
                             caller = _find_enclosing_function(node, function_scopes)
                             if caller:
-                                callee = local_symbols.get(method_name) or global_symbol_registry.get(method_name)
-                                if callee:
+                                path_hint = import_hints.get(method_name)
+                                lookup_result = resolver.lookup(method_name, path_hint=path_hint)
+                                if lookup_result.found and lookup_result.symbol:
+                                    callee = lookup_result.symbol
+                                    confidence = 0.80 * lookup_result.confidence
                                     edge = Edge.create(
                                         src=caller.id,
                                         dst=callee.id,
@@ -508,7 +678,7 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         evidence_type="method_call",
-                                        confidence=0.80,
+                                        confidence=confidence,
                                     )
                                     edges.append(edge)
 
@@ -520,8 +690,11 @@ def _extract_edges_from_file(
                     class_name = _node_text(child, source)
                     caller = _find_enclosing_function(node, function_scopes)
                     if caller:
-                        callee = local_symbols.get(class_name) or global_symbol_registry.get(class_name)
-                        if callee:
+                        path_hint = import_hints.get(class_name)
+                        lookup_result = resolver.lookup(class_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.90 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -530,9 +703,20 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="constructor_call",
-                                confidence=0.90,
+                                confidence=confidence,
                             )
                             edges.append(edge)
+
+                    # Track variable type from constructor assignment
+                    # Look for patterns like: var x = new ClassName() or final x = ClassName()
+                    # AST: initialized_variable_definition > identifier + new_expression
+                    parent = node.parent
+                    if parent and parent.type == "initialized_variable_definition":
+                        # Pattern: var x = new ClassName() or final x = new ClassName()
+                        var_name_node = _find_child_by_type(parent, "identifier")
+                        if var_name_node:
+                            var_name = _node_text(var_name_node, source)
+                            var_types[var_name] = class_name
                     break
 
         # Also detect ClassName() pattern (without new keyword) - look for type + arguments
@@ -546,8 +730,11 @@ def _extract_edges_from_file(
                     if i + 1 < len(children) and children[i + 1].type == "arguments":
                         caller = _find_enclosing_function(node, function_scopes)
                         if caller:
-                            callee = local_symbols.get(class_name) or global_symbol_registry.get(class_name)
-                            if callee:
+                            path_hint = import_hints.get(class_name)
+                            lookup_result = resolver.lookup(class_name, path_hint=path_hint)
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.90 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -556,7 +743,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="constructor_call",
-                                    confidence=0.90,
+                                    confidence=confidence,
                                 )
                                 edges.append(edge)
                     break
@@ -630,6 +817,9 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
         file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract import hints for disambiguation
+        import_hints = _extract_import_hints(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -639,11 +829,13 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
             source=source,
             tree=tree,
             symbols=file_symbols,
+            import_hints=import_hints,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -651,8 +843,9 @@ def analyze_dart(repo_root: Path) -> DartAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
+            import_hints=fa.import_hints,
         )
         all_edges.extend(edges)
 

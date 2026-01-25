@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -97,92 +98,6 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
         if child.type == type_name:
             return child
     return None
-
-
-# ASP.NET Core HTTP method attributes (deprecated - use aspnet.yaml patterns)
-ASPNET_HTTP_ATTRIBUTES = {
-    "HttpGet": "GET",
-    "HttpPost": "POST",
-    "HttpPut": "PUT",
-    "HttpDelete": "DELETE",
-    "HttpPatch": "PATCH",
-    "HttpHead": "HEAD",
-    "HttpOptions": "OPTIONS",
-}
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
-
-
-def _detect_aspnet_route(
-    node: "tree_sitter.Node", source: bytes
-) -> tuple[str | None, str | None]:
-    """Detect ASP.NET Core route attributes on a method.
-
-    Returns (http_method, route_path) if ASP.NET Core route attributes are found.
-
-    Supported patterns:
-    - [HttpGet], [HttpPost], [HttpPut], [HttpDelete], [HttpPatch]
-    - [HttpGet("{id}")] with route template
-
-    Args:
-        node: The method_declaration node.
-        source: The source code bytes.
-
-    Returns:
-        A tuple of (http_method, route_path), or (None, None) if not a route.
-    """
-    http_method = None
-    route_path = None
-
-    # In C# tree-sitter, attributes come before the method in an attribute_list
-    # We need to look at siblings preceding the method or check parent's children
-    # Actually, in tree-sitter-c-sharp, method_declaration contains attribute_list as child
-    for child in node.children:
-        if child.type == "attribute_list":
-            # attribute_list contains one or more attributes
-            for attr in child.children:
-                if attr.type == "attribute":
-                    # Get the attribute name
-                    attr_name_node = _find_child_by_type(attr, "identifier")
-                    if attr_name_node:
-                        attr_name = _node_text(attr_name_node, source)
-                        if attr_name in ASPNET_HTTP_ATTRIBUTES:
-                            http_method = ASPNET_HTTP_ATTRIBUTES[attr_name]
-
-                            # Check for route template in attribute_argument_list
-                            arg_list = _find_child_by_type(attr, "attribute_argument_list")
-                            if arg_list:
-                                for arg in arg_list.children:
-                                    if arg.type == "attribute_argument":
-                                        # Look for string literal
-                                        for arg_child in arg.children:
-                                            if arg_child.type == "string_literal":
-                                                route_path = _node_text(arg_child, source).strip('"')
-                                                break
-
-    if http_method:
-        return http_method, route_path
-    return None, None
 
 
 def _extract_annotations(
@@ -282,6 +197,61 @@ def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tr
 def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type text from a type node."""
     return _node_text(node, source)
+
+
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a method/constructor declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        void Process(Database db) {
+            db.Save();  // resolves to Database.Save
+        }
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only).
+    """
+    param_types: dict[str, str] = {}
+
+    # Type node types in C#
+    type_node_types = ("predefined_type", "generic_name", "array_type",
+                       "nullable_type", "qualified_name", "ref_type", "pointer_type")
+
+    # Find parameter_list node
+    params_node = _find_child_by_type(node, "parameter_list")
+    if params_node is None:
+        return param_types  # pragma: no cover - no params in method
+
+    # Extract parameter types
+    for child in params_node.children:
+        if child.type == "parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                # Type nodes
+                if subchild.type in type_node_types:
+                    param_type = _extract_type_text(subchild, source)
+                    # Strip generic parameters: List<T> -> List
+                    if "<" in param_type:
+                        param_type = param_type.split("<")[0]
+                    # Strip array brackets: int[] -> int
+                    if "[" in param_type:
+                        param_type = param_type.split("[")[0]
+                    # Strip nullable: int? -> int
+                    param_type = param_type.rstrip("?")
+                # Custom types use identifier
+                elif subchild.type == "identifier":
+                    if param_type is None:
+                        # First identifier is the type
+                        param_type = _node_text(subchild, source)
+                    else:
+                        # Second identifier is the name
+                        param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                param_types[param_name] = param_type
+
+    return param_types
 
 
 def _extract_csharp_signature(
@@ -392,6 +362,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    using_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -414,6 +385,62 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - defensive
 
 
+def _extract_using_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract using directive aliases from a parsed C# tree.
+
+    Maps type names to their full namespace paths for disambiguation:
+    - using System.Collections.Generic; -> Generic: System.Collections.Generic
+    - using MyApp.Services; -> Services: MyApp.Services
+    - using Svc = MyApp.Services; -> Svc: MyApp.Services
+
+    Returns dict mapping local alias/name -> full namespace path.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "using_directive":
+            continue
+
+        # Check if this is an aliased using (has = child)
+        # Structure: using_directive { identifier, =, qualified_name }
+        has_equals = any(child.type == "=" for child in node.children)
+
+        if has_equals:
+            # Handle 'using Alias = Namespace.Type;' (aliased using)
+            # First identifier is the alias, qualified_name is the path
+            alias_node = _find_child_by_type(node, "identifier")
+            path_node = _find_child_by_type(node, "qualified_name")
+            if alias_node and path_node:
+                alias = _node_text(alias_node, source)
+                full_path = _node_text(path_node, source)
+                if alias and full_path:
+                    aliases[alias] = full_path
+            continue
+
+        # Handle regular 'using Namespace.Type;'
+        name_node = _find_child_by_type(node, "qualified_name")
+        if name_node:
+            full_path = _node_text(name_node, source)
+            if full_path and "." in full_path:
+                # Last segment is the imported name
+                name = full_path.rsplit(".", 1)[-1]
+                if name:
+                    aliases[name] = full_path
+            continue
+
+        # Handle simple 'using Namespace;'
+        id_node = _find_child_by_type(node, "identifier")
+        if id_node:
+            name = _node_text(id_node, source)
+            if name:
+                aliases[name] = name
+
+    return aliases
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -429,7 +456,10 @@ def _extract_symbols_from_file(
     except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
         return FileAnalysis()
 
-    analysis = FileAnalysis()
+    # Extract using aliases for disambiguation
+    using_aliases = _extract_using_aliases(tree, source)
+
+    analysis = FileAnalysis(using_aliases=using_aliases)
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the identifier name from a declaration node."""
@@ -559,27 +589,13 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                # Check for ASP.NET Core route attributes (deprecated - use YAML)
-                http_method, route_path = _detect_aspnet_route(node, source)
-                if http_method:
-                    _emit_route_deprecation_warning("ASP.NET Core")
-
                 # Extract all annotations for FRAMEWORK_PATTERNS phase
                 annotations = _extract_annotations(node, source)
 
                 # Build meta dict
                 meta: dict[str, object] | None = None
-                stable_id: str | None = None
-
-                if http_method or route_path or annotations:
-                    meta = {}
-                    if route_path:
-                        meta["route_path"] = route_path
-                    if http_method:
-                        meta["http_method"] = http_method
-                        stable_id = http_method
-                    if annotations:
-                        meta["annotations"] = annotations
+                if annotations:
+                    meta = {"annotations": annotations}
 
                 # Extract signature
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
@@ -599,7 +615,6 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=stable_id,
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)
@@ -708,11 +723,24 @@ def _extract_edges_from_file(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
+    using_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+
+    Type inference tracks types from:
+    - Constructor calls: var db = new Database() -> db has type Database
+    - Method/constructor parameters: void Process(Database db) -> db has type Database
+
+    Args:
+        using_aliases: Optional dict mapping type names to namespace paths for disambiguation.
     """
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
+    if using_aliases is None:  # pragma: no cover - defensive default
+        using_aliases = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -721,6 +749,8 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
+    # Track variable types for type inference: var_name -> class_name
+    var_types: dict[str, str] = {}
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the method name being called from an invocation expression."""
@@ -757,10 +787,61 @@ def _extract_edges_from_file(
                     origin_run_id=run.execution_id,
                 ))
 
+        # Method/constructor declarations - extract parameter types for type inference
+        elif node.type in ("method_declaration", "constructor_declaration"):
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
+
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
+                # Check for member_access_expression (receiver.method() pattern)
+                member_access = _find_child_by_type(node, "member_access_expression")
+                if member_access:
+                    # Extract receiver and method name
+                    identifiers = _find_children_by_type(member_access, "identifier")
+                    if len(identifiers) >= 2:
+                        receiver_name = _node_text(identifiers[0], source)
+                        method_name = _node_text(identifiers[-1], source)
+
+                        # Try type inference: receiver.method() -> ClassName.method
+                        if receiver_name in var_types:
+                            class_name = var_types[receiver_name]
+                            qualified_name = f"{class_name}.{method_name}"
+                            if qualified_name in local_symbols:
+                                callee = local_symbols[qualified_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call_type_inferred",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                continue
+                            else:
+                                # Use type's import path for disambiguation
+                                import_hint = using_aliases.get(class_name)
+                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="method_call_type_inferred",
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                                    continue
+
+                # Fallback to original simple name resolution
                 callee_name = get_callee_name(node)
                 if callee_name:
                     # Check local symbols first
@@ -776,52 +857,78 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    # Check global symbols
-                    elif callee_name in global_symbols:
-                        callee = global_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="method_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                    # Check global symbols via resolver
+                    else:
+                        # Use import path for disambiguation
+                        import_hint = using_aliases.get(callee_name)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="method_call",
+                                confidence=0.80 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
-            if current_function is not None:
-                type_node = _find_child_by_type(node, "identifier")
-                if type_node:
-                    type_name = _node_text(type_node, source)
-                    # Check if it's a known class
-                    if type_name in local_symbols:
-                        target = local_symbols[type_name]
+            type_node = _find_child_by_type(node, "identifier")
+            type_name = _node_text(type_node, source) if type_node else None
+
+            if current_function is not None and type_name:
+                # Check if it's a known class
+                if type_name in local_symbols:
+                    target = local_symbols[type_name]
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        evidence_type="object_creation",
+                        confidence=0.90,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+                else:
+                    # Use import path for disambiguation
+                    import_hint = using_aliases.get(type_name)
+                    lookup_result = resolver.lookup(type_name, path_hint=import_hint)
+                    if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=target.id,
+                            dst=lookup_result.symbol.id,
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
                             evidence_type="object_creation",
-                            confidence=0.90,
+                            confidence=0.85 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    elif type_name in global_symbols:
-                        target = global_symbols[type_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=target.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            evidence_type="object_creation",
-                            confidence=0.85,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+
+            # Track variable type for type inference
+            # C#: var db = new Database() or Database db = new Database()
+            if type_name and node.parent:
+                parent = node.parent
+                # Check for variable_declarator (var x = new Class())
+                if parent.type == "variable_declarator":
+                    var_name_node = _find_child_by_type(parent, "identifier")
+                    if var_name_node:
+                        var_name = _node_text(var_name_node, source)
+                        var_types[var_name] = type_name
+                # Check for equals_value_clause in a variable_declaration
+                # (alternative AST pattern - defensive code)
+                elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
+                    grandparent = parent.parent
+                    if grandparent and grandparent.type == "variable_declarator":
+                        var_name_node = _find_child_by_type(grandparent, "identifier")
+                        if var_name_node:
+                            var_name = _node_text(var_name_node, source)
+                            var_types[var_name] = type_name
 
     return edges
 
@@ -881,6 +988,7 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
             global_symbols[symbol.name] = symbol
 
     # Pass 2: Extract edges
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -888,7 +996,8 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            cs_file, parser, analysis.symbol_by_name, global_symbols, run
+            cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            using_aliases=analysis.using_aliases
         )
         all_edges.extend(edges)
 

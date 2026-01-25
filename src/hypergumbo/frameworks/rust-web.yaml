@@ -1,69 +1,94 @@
-# Rust Web Framework patterns (ADR-0003 v1.0.x)
+# Rust Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches common Rust web frameworks: Actix-web, Axum, Rocket, Warp.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Rust uses attribute macros and proc macros for route definitions.
+# Definition-based patterns (v1.0.x): Match annotations for Actix-web, Rocket
+# Usage-based patterns (v1.1.x): Match call-based routing for Axum
 
 id: rust-web
 language: rust
 
 patterns:
-  # Actix-web route attributes
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for Axum call-based routing
+
+  # Axum route handlers - .route("/path", get(handler))
   - concept: route
-    annotation: "^actix_web::get$"
+    usage:
+      kind: "^call$"
+      name: "^route\\.(get|post|put|patch|delete|head|options|trace)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Actix-web route attributes (both short form #[get] and qualified #[actix_web::get])
+  - concept: route
+    annotation: "^(actix_web::)?get$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::post$"
+    annotation: "^(actix_web::)?post$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::put$"
+    annotation: "^(actix_web::)?put$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::delete$"
+    annotation: "^(actix_web::)?delete$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^actix_web::patch$"
+    annotation: "^(actix_web::)?patch$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?head$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?options$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?trace$"
     extract_path: "args[0]"
 
   # Actix-web route macro (generic)
   - concept: route
-    annotation: "^actix_web::route$"
+    annotation: "^(actix_web::)?route$"
     extract_path: "args[0]"
 
-  # Rocket route attributes
+  # Rocket route attributes (both short form and qualified)
   - concept: route
-    annotation: "^rocket::get$"
-    extract_path: "args[0]"
-
-  - concept: route
-    annotation: "^rocket::post$"
+    annotation: "^(rocket::)?get$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^rocket::put$"
+    annotation: "^(rocket::)?post$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^rocket::delete$"
+    annotation: "^(rocket::)?put$"
     extract_path: "args[0]"
 
   - concept: route
-    annotation: "^rocket::patch$"
+    annotation: "^(rocket::)?delete$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(rocket::)?patch$"
     extract_path: "args[0]"
 
   # Rocket generic route
   - concept: route
-    annotation: "^rocket::route$"
+    annotation: "^(rocket::)?route$"
     extract_path: "args[0]"
 
-  # Axum route patterns (method routing via function names)
-  # Axum uses Router::route("/path", get(handler)) pattern
-  # These are typically detected via the handler function context
+  # Axum middleware
   - concept: middleware
     annotation: "^axum::middleware::from_fn$"
 

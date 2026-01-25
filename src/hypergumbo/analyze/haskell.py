@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -91,6 +92,7 @@ class FileAnalysis:
     source: bytes
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -285,20 +287,54 @@ def _find_enclosing_function_haskell(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Optional[Symbol]:
     """Find the function that contains this node by walking up parents."""
     current = node.parent
     while current:
         if current.type in ("function", "bind"):
             name = _get_function_name(current, source)
-            # Check local symbols first, then global
             if name in local_symbols:
                 return local_symbols[name]
-            if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                return global_symbol_registry[name]  # pragma: no cover
         current = current.parent
     return None  # pragma: no cover - no enclosing function
+
+
+def _extract_import_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases for disambiguation.
+
+    In Haskell:
+        import qualified Data.Map as M -> M maps to Data.Map
+
+    Returns a dict mapping alias names to full module paths.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import":
+            continue
+
+        # Check for 'as' keyword followed by alias
+        module_name: Optional[str] = None
+        alias_name: Optional[str] = None
+        has_as = False
+
+        for child in node.children:
+            if child.type == "module" and not has_as:
+                # This is the main module being imported
+                module_name = _node_text(child, source)
+            elif child.type == "as":
+                has_as = True
+            elif child.type == "module" and has_as:
+                # This is the alias
+                alias_name = _node_text(child, source)
+
+        if module_name and alias_name:
+            aliases[alias_name] = module_name
+
+    return aliases
 
 
 def _extract_edges_from_file(
@@ -306,15 +342,21 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
+    import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Haskell file.
+
+    Args:
+        import_aliases: Optional dict mapping module aliases to full paths.
 
     Detects:
     - import: Import statements
     - apply: Function application (calls)
     """
+    if import_aliases is None:  # pragma: no cover - defensive default
+        import_aliases = {}
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
@@ -345,9 +387,21 @@ def _extract_edges_from_file(
             if node.children:
                 first_child = node.children[0]
                 callee_name = None
+                path_hint: Optional[str] = None
 
                 if first_child.type == "variable":
                     callee_name = _node_text(first_child, source)
+                elif first_child.type == "qualified":
+                    # Qualified call: M.lookup
+                    module_node = _find_child_by_type(first_child, "module")
+                    var_node = _find_child_by_type(first_child, "variable")
+                    if module_node and var_node:
+                        # Get module alias (M) from module_id
+                        module_id_node = _find_child_by_type(module_node, "module_id")
+                        if module_id_node:
+                            alias = _node_text(module_id_node, source)
+                            path_hint = import_aliases.get(alias)
+                        callee_name = _node_text(var_node, source)
                 elif first_child.type == "apply":  # pragma: no cover - curried application
                     # Curried application - get innermost function
                     innermost = first_child  # pragma: no cover
@@ -359,12 +413,14 @@ def _extract_edges_from_file(
                 if callee_name and callee_name not in ("print", "putStrLn", "return"):
                     # Find the caller (enclosing function)
                     caller = _find_enclosing_function_haskell(
-                        node, source, local_symbols, global_symbol_registry
+                        node, source, local_symbols
                     )
                     if caller:
-                        # Try to resolve callee
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                        # Try to resolve callee via resolver only
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -373,7 +429,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_application",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
                         else:
@@ -460,6 +516,9 @@ def analyze_haskell(repo_root: Path) -> HaskellAnalysisResult:
         file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract import aliases for disambiguation
+        import_aliases = _extract_import_aliases(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -469,11 +528,13 @@ def analyze_haskell(repo_root: Path) -> HaskellAnalysisResult:
             source=source,
             tree=tree,
             symbols=file_symbols,
+            import_aliases=import_aliases,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -481,8 +542,9 @@ def analyze_haskell(repo_root: Path) -> HaskellAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
+            import_aliases=fa.import_aliases,
         )
         all_edges.extend(edges)
 

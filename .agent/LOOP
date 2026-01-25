@@ -1,0 +1,3 @@
+# Autonomous loop sentinel
+# Remove this file to allow agent to stop
+# See ADR-0008 for governance protocol

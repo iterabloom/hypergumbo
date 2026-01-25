@@ -1,0 +1,1114 @@
+#!/usr/bin/env python3
+"""
+bakeoff - Automated hypergumbo bakeoff runner and analyzer
+
+This script orchestrates the bakeoff-analyze-fix cycle:
+1. Selects a cohort of repos from a pool
+2. Runs hypergumbo analysis on each repo
+3. Diagnoses issues and generates structured reports
+4. Tracks convergence across iterations
+
+## PHILOSOPHY: Iterate to Convergence
+
+The goal is to run the SAME set of questions/diagnostics repeatedly on a cohort
+until you stop getting meaningfully different results. This is convergence.
+
+Key principles:
+- **Depth over breadth**: Investigate one issue deeply before moving to the next
+- **Repeat until boring**: Ask the same questions until answers stop changing
+- **Generalize from specifics**: When you find an issue in one analyzer, check others
+- **Distinguish nitpicking from real problems**: Focus on issues that matter
+
+The process:
+1. Select cohort → run → diagnose → find issues
+2. For each issue:
+   a. Investigate the root cause
+   b. Ask: "What analogous issues might exist elsewhere?"
+   c. Check those analogous cases (even if you think they're fine)
+   d. Fix both the specific issue and its siblings
+3. Re-run on SAME cohort → diagnose
+4. If new issues emerge, repeat step 2
+5. If no new CRITICAL/HIGH issues for 2+ iterations, cohort is CONVERGED
+6. Move to next cohort
+
+Usage:
+    # Initialize a new bakeoff session
+    ./scripts/bakeoff init --pool ~/whole_bunch_of_repos --workdir ~/bakeoff-session
+
+    # Select next cohort (5 smallest unused repos)
+    ./scripts/bakeoff cohort --count 5
+
+    # Run hypergumbo on current cohort
+    ./scripts/bakeoff run
+
+    # Diagnose and generate issue report
+    ./scripts/bakeoff diagnose
+
+    # Check convergence status
+    ./scripts/bakeoff status
+
+    # Full cycle: run + diagnose
+    ./scripts/bakeoff cycle
+
+    # List detected issues (machine-readable)
+    ./scripts/bakeoff issues --format json
+
+    # Show diagnostic questions to ask (for human/agent analysis)
+    ./scripts/bakeoff questions
+
+Environment:
+    BAKEOFF_WORKDIR: Override workdir location
+    BAKEOFF_POOL: Override repo pool location
+"""
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Optional
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+DEFAULT_COHORT_SIZE = 6
+COMPACT_THRESHOLD_MB = 20
+MAX_REPO_SIZE_MB = 100  # Skip very large repos for fast iteration
+
+# Issue severity levels
+SEVERITY_CRITICAL = "CRITICAL"
+SEVERITY_HIGH = "HIGH"
+SEVERITY_MEDIUM = "MEDIUM"
+SEVERITY_LOW = "LOW"
+
+# Flag to severity mapping
+FLAG_SEVERITY = {
+    "NO_CALL_EDGES": SEVERITY_CRITICAL,
+    "EXPECTED_ROUTES_BUT_FOUND_0": SEVERITY_HIGH,
+    "ROUTES_WEAKLY_LINKED_TO_HANDLERS": SEVERITY_MEDIUM,
+    "ENTRYPOINTS_DOMINATED_BY_TESTS": SEVERITY_HIGH,
+    "AUTO_LIKELY_PICKS_NON_DOMINANT_LANGUAGE": SEVERITY_MEDIUM,
+    "LOW_CROSS_FILE_CALL_RESOLUTION": SEVERITY_MEDIUM,
+}
+
+# Languages where call edges are expected (procedural/OO languages)
+CALL_EDGE_EXPECTED_LANGS = {
+    "python", "javascript", "typescript", "java", "kotlin", "scala",
+    "c", "cpp", "rust", "go", "csharp", "fsharp", "swift", "ruby",
+    "php", "elixir", "erlang", "haskell", "ocaml", "clojure",
+    "dart", "julia", "r", "lua", "perl",
+}
+
+# Languages where call edges are NOT expected (declarative/config)
+CALL_EDGE_NOT_EXPECTED_LANGS = {
+    "make", "cmake", "dockerfile", "yaml", "json", "toml", "xml",
+    "css", "html", "markdown", "sql", "graphql", "protobuf",
+    "terraform", "nix",
+}
+
+# Flag to likely code location mapping
+FLAG_CODE_HINTS = {
+    "NO_CALL_EDGES": "Check {lang} analyzer call extraction (analyze/{lang}.py)",
+    "EXPECTED_ROUTES_BUT_FOUND_0": "Check {lang} framework patterns (frameworks/{framework}.yaml)",
+    "ROUTES_WEAKLY_LINKED_TO_HANDLERS": "Check route→handler edge creation in framework patterns",
+    "ENTRYPOINTS_DOMINATED_BY_TESTS": "Check entrypoint scoring in entrypoints.py or ranking.py",
+    "AUTO_LIKELY_PICKS_NON_DOMINANT_LANGUAGE": "Check entrypoint ranking - add path taxonomy penalties",
+    "LOW_CROSS_FILE_CALL_RESOLUTION": "Check {lang} analyzer's symbol_resolution integration",
+}
+
+
+# =============================================================================
+# Data structures
+# =============================================================================
+
+@dataclass
+class RepoInfo:
+    """Information about a repository."""
+    name: str
+    path: str
+    size_bytes: int
+    size_mb: float
+    languages: list = field(default_factory=list)
+
+
+@dataclass
+class Issue:
+    """A detected issue from bakeoff analysis."""
+    id: str
+    severity: str
+    flag: str
+    repo: str
+    language: str
+    description: str
+    code_hint: str
+    metrics: dict = field(default_factory=dict)
+    first_seen_iteration: int = 0
+    resolved_iteration: Optional[int] = None
+
+
+@dataclass
+class BakeoffState:
+    """Persistent state for a bakeoff session."""
+    session_id: str
+    pool_path: str
+    workdir: str
+    current_cohort: list = field(default_factory=list)
+    cohort_number: int = 0
+    iteration: int = 0
+    tested_repos: list = field(default_factory=list)
+    issues: list = field(default_factory=list)
+    convergence_history: list = field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+# =============================================================================
+# Utility functions
+# =============================================================================
+
+def get_dir_size(path: str) -> int:
+    """Get directory size in bytes."""
+    total = 0
+    try:
+        for entry in os.scandir(path):
+            if entry.is_file(follow_symlinks=False):
+                total += entry.stat().st_size
+            elif entry.is_dir(follow_symlinks=False):
+                total += get_dir_size(entry.path)
+    except PermissionError:
+        pass
+    return total
+
+
+def detect_languages(repo_path: str) -> list:
+    """Detect primary languages in a repo by file extensions."""
+    ext_count = {}
+    lang_map = {
+        ".py": "python", ".js": "javascript", ".ts": "typescript",
+        ".go": "go", ".rs": "rust", ".c": "c", ".cpp": "cpp", ".h": "c",
+        ".java": "java", ".kt": "kotlin", ".scala": "scala",
+        ".rb": "ruby", ".php": "php", ".swift": "swift",
+        ".cs": "csharp", ".fs": "fsharp", ".ex": "elixir", ".erl": "erlang",
+    }
+
+    try:
+        for root, _, files in os.walk(repo_path):
+            # Skip hidden and vendor directories
+            if any(p.startswith(".") or p in ("node_modules", "vendor", "deps", "__pycache__")
+                   for p in root.split(os.sep)):
+                continue
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in lang_map:
+                    lang = lang_map[ext]
+                    ext_count[lang] = ext_count.get(lang, 0) + 1
+    except PermissionError:
+        pass
+
+    # Return top 3 languages
+    sorted_langs = sorted(ext_count.items(), key=lambda x: x[1], reverse=True)
+    return [lang for lang, _ in sorted_langs[:3]]
+
+
+def load_state(workdir: str) -> Optional[BakeoffState]:
+    """Load bakeoff state from workdir."""
+    state_path = os.path.join(workdir, "state.json")
+    if not os.path.exists(state_path):
+        return None
+
+    with open(state_path, "r") as f:
+        data = json.load(f)
+
+    return BakeoffState(
+        session_id=data.get("session_id", ""),
+        pool_path=data.get("pool_path", ""),
+        workdir=data.get("workdir", workdir),
+        current_cohort=data.get("current_cohort", []),
+        cohort_number=data.get("cohort_number", 0),
+        iteration=data.get("iteration", 0),
+        tested_repos=data.get("tested_repos", []),
+        issues=[Issue(**i) for i in data.get("issues", [])],
+        convergence_history=data.get("convergence_history", []),
+        created_at=data.get("created_at", ""),
+        updated_at=data.get("updated_at", ""),
+    )
+
+
+def save_state(state: BakeoffState):
+    """Save bakeoff state to workdir."""
+    state.updated_at = datetime.datetime.now().isoformat()
+    state_path = os.path.join(state.workdir, "state.json")
+
+    data = asdict(state)
+    with open(state_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def run_cmd(cmd: list, cwd: str = None, timeout: int = 600) -> tuple:
+    """Run a command and return (returncode, stdout, stderr)."""
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "Command timed out"
+    except Exception as e:
+        return -1, "", str(e)
+
+
+# =============================================================================
+# Commands
+# =============================================================================
+
+def cmd_init(args):
+    """Initialize a new bakeoff session."""
+    pool_path = os.path.abspath(os.path.expanduser(args.pool))
+    workdir = os.path.abspath(os.path.expanduser(args.workdir))
+
+    if not os.path.isdir(pool_path):
+        print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
+        return 1
+
+    os.makedirs(workdir, exist_ok=True)
+    os.makedirs(os.path.join(workdir, "cohorts"), exist_ok=True)
+    os.makedirs(os.path.join(workdir, "out"), exist_ok=True)
+    os.makedirs(os.path.join(workdir, "diag"), exist_ok=True)
+
+    session_id = hashlib.sha256(f"{pool_path}:{workdir}:{time.time()}".encode()).hexdigest()[:12]
+
+    state = BakeoffState(
+        session_id=session_id,
+        pool_path=pool_path,
+        workdir=workdir,
+        created_at=datetime.datetime.now().isoformat(),
+    )
+    save_state(state)
+
+    print(f"Initialized bakeoff session: {session_id}")
+    print(f"  Pool: {pool_path}")
+    print(f"  Workdir: {workdir}")
+    print()
+    print("Next: Run `bakeoff cohort` to select repos for testing")
+    return 0
+
+
+def cmd_cohort(args):
+    """Select next cohort of repos."""
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found. Run `bakeoff init` first.", file=sys.stderr)
+        return 1
+
+    pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
+
+    # Scan pool for available repos
+    print(f"Scanning pool: {pool_path}")
+    available = []
+
+    for entry in os.scandir(pool_path):
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith("."):
+            continue
+        if entry.name in state.tested_repos:
+            continue
+
+        size_bytes = get_dir_size(entry.path)
+        size_mb = size_bytes / (1024 * 1024)
+
+        if size_mb > MAX_REPO_SIZE_MB:
+            continue
+
+        available.append(RepoInfo(
+            name=entry.name,
+            path=entry.path,
+            size_bytes=size_bytes,
+            size_mb=size_mb,
+            languages=detect_languages(entry.path),
+        ))
+
+    # Sort by size (smallest first)
+    available.sort(key=lambda r: r.size_bytes)
+
+    # Strategic selection: try to get language diversity within size constraints
+    count = args.count or DEFAULT_COHORT_SIZE
+    cohort = []
+    seen_langs = set()
+    size_limit_mb = 20  # Start with small repos
+
+    # Phase 1: Pick repos that add new languages
+    for r in available:
+        if len(cohort) >= count:
+            break
+        if r.size_mb > size_limit_mb:
+            continue
+
+        primary_lang = r.languages[0] if r.languages else None
+        if primary_lang and primary_lang not in seen_langs:
+            cohort.append(r)
+            seen_langs.add(primary_lang)
+
+    # Phase 2: Fill remaining slots with smallest remaining repos
+    if len(cohort) < count:
+        for r in available:
+            if len(cohort) >= count:
+                break
+            if r not in cohort and r.size_mb <= size_limit_mb:
+                cohort.append(r)
+
+    # Phase 3: If still not enough, expand size limit
+    if len(cohort) < count:
+        size_limit_mb = 50
+        for r in available:
+            if len(cohort) >= count:
+                break
+            if r not in cohort and r.size_mb <= size_limit_mb:
+                cohort.append(r)
+
+    # Phase 4: Take whatever's left
+    if len(cohort) < count:
+        for r in available:
+            if len(cohort) >= count:
+                break
+            if r not in cohort:
+                cohort.append(r)
+
+    if not cohort:
+        print("No more repos available in pool!")
+        return 1
+
+    # Update state
+    state.cohort_number += 1
+    state.iteration = 0
+    state.current_cohort = [r.name for r in cohort]
+    save_state(state)
+
+    # Write cohort metadata
+    cohort_dir = os.path.join(workdir, "cohorts", f"cohort-{state.cohort_number:03d}")
+    os.makedirs(cohort_dir, exist_ok=True)
+
+    metadata = {
+        "cohort_number": state.cohort_number,
+        "created_at": datetime.datetime.now().isoformat(),
+        "repos": [asdict(r) for r in cohort],
+    }
+    with open(os.path.join(cohort_dir, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"\nSelected cohort #{state.cohort_number} ({len(cohort)} repos):")
+    print()
+    for r in cohort:
+        langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+        print(f"  {r.name:40s} {r.size_mb:6.1f}MB  [{langs}]")
+
+    print()
+    print(f"Remaining in pool: {len(available) - len(cohort)}")
+    print()
+    print("Next: Run `bakeoff run` to analyze these repos")
+    return 0
+
+
+def cmd_run(args):
+    """Run hypergumbo on current cohort."""
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found. Run `bakeoff init` first.", file=sys.stderr)
+        return 1
+
+    if not state.current_cohort:
+        print("Error: No cohort selected. Run `bakeoff cohort` first.", file=sys.stderr)
+        return 1
+
+    pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
+
+    # Increment iteration first, then create output directory
+    state.iteration += 1
+    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    os.makedirs(out_dir, exist_ok=True)
+    save_state(state)
+
+    print(f"Bakeoff run: cohort #{state.cohort_number}, iteration #{state.iteration}")
+    print(f"Output: {out_dir}")
+    print()
+
+    for repo_name in state.current_cohort:
+        repo_path = os.path.join(pool_path, repo_name)
+        repo_out = os.path.join(out_dir, repo_name)
+        os.makedirs(repo_out, exist_ok=True)
+
+        print(f"[{repo_name}]")
+        start_time = time.time()
+
+        # Run hypergumbo commands
+        commands = [
+            ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
+            ("routes", ["hypergumbo", "routes", "--input", os.path.join(repo_out, "hg.json")]),
+            ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
+            ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
+            ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
+        ]
+
+        # Check if compact is needed
+        hg_path = os.path.join(repo_out, "hg.json")
+
+        for cmd_name, cmd in commands:
+            print(f"  {cmd_name}...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd(cmd, timeout=300)
+
+            # Save outputs
+            if stdout:
+                with open(os.path.join(repo_out, f"{cmd_name}.txt"), "w") as f:
+                    f.write(stdout)
+            if stderr:
+                with open(os.path.join(repo_out, f"{cmd_name}.err"), "w") as f:
+                    f.write(stderr)
+            with open(os.path.join(repo_out, f"{cmd_name}.exit"), "w") as f:
+                f.write(str(rc))
+
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # Run compact if hg.json is large
+        if os.path.exists(hg_path):
+            hg_size_mb = os.path.getsize(hg_path) / (1024 * 1024)
+            if hg_size_mb > COMPACT_THRESHOLD_MB:
+                print(f"  compact (hg.json={hg_size_mb:.1f}MB)...", end=" ", flush=True)
+                rc, _, stderr = run_cmd([
+                    "hypergumbo", "compact",
+                    "--input", hg_path,
+                    "--max-symbols", "100",
+                    "--out", os.path.join(repo_out, "hg.compact.json"),
+                ])
+                print("OK" if rc == 0 else f"FAIL({rc})")
+
+        elapsed = time.time() - start_time
+        with open(os.path.join(repo_out, "time.txt"), "w") as f:
+            f.write(f"{elapsed:.1f}s\n")
+        print(f"  done ({elapsed:.1f}s)")
+        print()
+
+    print(f"Run complete. Output: {out_dir}")
+    print()
+    print("Next: Run `bakeoff diagnose` to analyze results")
+    return 0
+
+
+def cmd_diagnose(args):
+    """Diagnose issues from current run."""
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found.", file=sys.stderr)
+        return 1
+
+    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    diag_dir = os.path.join(workdir, "diag", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    os.makedirs(diag_dir, exist_ok=True)
+
+    if not os.path.isdir(out_dir):
+        print(f"Error: No output found at {out_dir}. Run `bakeoff run` first.", file=sys.stderr)
+        return 1
+
+    print(f"Diagnosing: {out_dir}")
+    print(f"Output: {diag_dir}")
+    print()
+
+    # Try to run hypergumbo_diag.py if available
+    diag_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "hypergumbo_diag.py")
+    if not os.path.exists(diag_script):
+        # Look in bakeoff dir
+        diag_script = os.path.join(workdir, "hypergumbo_diag.py")
+
+    if os.path.exists(diag_script):
+        print("Running hypergumbo_diag.py...")
+        rc, stdout, stderr = run_cmd(["python3", diag_script, out_dir, diag_dir])
+        if rc != 0:
+            print(f"Warning: diag script failed: {stderr[:200]}")
+
+    # Parse hg.json files directly to extract issues
+    issues = []
+
+    for repo_name in state.current_cohort:
+        hg_path = os.path.join(out_dir, repo_name, "hg.json")
+        if not os.path.exists(hg_path):
+            continue
+
+        try:
+            with open(hg_path) as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to parse {hg_path}: {e}")
+            continue
+
+        nodes = data.get("nodes", [])
+        edges = data.get("edges", [])
+        entrypoints = data.get("entrypoints", [])
+
+        # Compute metrics
+        lang_count = {}
+        for n in nodes:
+            lang = n.get("language", "")
+            if lang:
+                lang_count[lang] = lang_count.get(lang, 0) + 1
+        dom_lang = max(lang_count.items(), key=lambda x: x[1])[0] if lang_count else ""
+
+        edge_types = {}
+        calls_total = 0
+        for e in edges:
+            t = e.get("type", "")
+            edge_types[t] = edge_types.get(t, 0) + 1
+            if t == "calls":
+                calls_total += 1
+
+        routes = sum(1 for n in nodes if any(
+            c.get("concept") == "route" for c in ((n.get("meta") or {}).get("concepts") or [])
+        ))
+
+        metrics = {
+            "nodes": len(nodes),
+            "edges": len(edges),
+            "calls": calls_total,
+            "routes": routes,
+            "entrypoints": len(entrypoints),
+            "dominant_language": dom_lang,
+        }
+
+        # Detect flags
+        flags = []
+
+        # NO_CALL_EDGES: Only flag if dominant language should have calls
+        if calls_total == 0 and len(nodes) > 10:
+            if dom_lang.lower() in CALL_EDGE_EXPECTED_LANGS:
+                flags.append("NO_CALL_EDGES")
+            # If dom_lang is in NOT_EXPECTED, this is fine - don't flag
+
+        if routes == 0 and any(x in repo_name.lower() for x in ["api", "server", "web", "http", "rest"]):
+            flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
+
+        # Create issues
+        for flag in flags:
+            severity = FLAG_SEVERITY.get(flag, SEVERITY_MEDIUM)
+            hint = FLAG_CODE_HINTS.get(flag, "").format(lang=dom_lang, framework="unknown")
+
+            issue_id = hashlib.sha256(f"{repo_name}:{flag}:{state.cohort_number}".encode()).hexdigest()[:8]
+
+            issues.append(Issue(
+                id=issue_id,
+                severity=severity,
+                flag=flag,
+                repo=repo_name,
+                language=dom_lang,
+                description=f"{flag} detected in {repo_name}",
+                code_hint=hint,
+                metrics=metrics,
+                first_seen_iteration=state.iteration,
+            ))
+
+    # Update state with issues
+    # Check for recurring issues
+    existing_ids = {i.id for i in state.issues}
+    new_issues = [i for i in issues if i.id not in existing_ids]
+
+    state.issues.extend(new_issues)
+
+    # Record convergence data
+    convergence_point = {
+        "iteration": state.iteration,
+        "cohort": state.cohort_number,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "total_issues": len(issues),
+        "new_issues": len(new_issues),
+        "critical": sum(1 for i in issues if i.severity == SEVERITY_CRITICAL),
+        "high": sum(1 for i in issues if i.severity == SEVERITY_HIGH),
+    }
+    state.convergence_history.append(convergence_point)
+    save_state(state)
+
+    # Write issues to file
+    issues_path = os.path.join(diag_dir, "issues.json")
+    with open(issues_path, "w") as f:
+        json.dump([asdict(i) for i in issues], f, indent=2)
+
+    # Print summary
+    print(f"\nIssues found: {len(issues)} ({len(new_issues)} new)")
+    print()
+
+    by_severity = {}
+    for i in issues:
+        by_severity.setdefault(i.severity, []).append(i)
+
+    for sev in [SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW]:
+        if sev in by_severity:
+            print(f"{sev}: {len(by_severity[sev])}")
+            for i in by_severity[sev][:3]:
+                print(f"  - [{i.repo}] {i.flag}")
+
+    print()
+    print("Next: Run `bakeoff status` to check convergence")
+    return 0
+
+
+def cmd_status(args):
+    """Show bakeoff session status."""
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found.", file=sys.stderr)
+        return 1
+
+    print(f"Bakeoff Session: {state.session_id}")
+    print(f"  Pool: {state.pool_path}")
+    print(f"  Workdir: {state.workdir}")
+    print(f"  Created: {state.created_at}")
+    print()
+    print(f"Current cohort: #{state.cohort_number}")
+    print(f"  Repos: {', '.join(state.current_cohort)}")
+    print(f"  Iteration: {state.iteration}")
+    print()
+    print(f"Tested repos: {len(state.tested_repos)}")
+    print(f"Total issues: {len(state.issues)}")
+
+    # Convergence check
+    print()
+    if len(state.convergence_history) >= 2:
+        recent = state.convergence_history[-2:]
+        prev_critical = recent[0].get("critical", 0)
+        curr_critical = recent[1].get("critical", 0)
+        prev_high = recent[0].get("high", 0)
+        curr_high = recent[1].get("high", 0)
+        prev_new = recent[0].get("new_issues", 0)
+        curr_new = recent[1].get("new_issues", 0)
+
+        print("Convergence analysis:")
+        print(f"  Iteration {state.iteration - 1}: {prev_critical} CRITICAL, {prev_high} HIGH, {prev_new} new")
+        print(f"  Iteration {state.iteration}:   {curr_critical} CRITICAL, {curr_high} HIGH, {curr_new} new")
+
+        if curr_critical == 0 and curr_high == 0 and curr_new == 0:
+            print()
+            print("  STATUS: CONVERGED")
+            print("  This cohort is stable. Ready for next cohort.")
+            print()
+            print("  Next steps:")
+            print("    1. ./scripts/bakeoff cohort  # Select new repos")
+            print("    2. ./scripts/bakeoff cycle   # Run analysis")
+        elif curr_critical <= prev_critical and curr_high <= prev_high and curr_new <= prev_new:
+            print()
+            print("  STATUS: IMPROVING")
+            print("  Issues are being resolved. Keep iterating on fixes.")
+            print()
+            print("  Next steps:")
+            print("    1. Review issues: ./scripts/bakeoff issues --format json")
+            print("    2. Investigate root causes and analogous issues")
+            print("    3. Fix issues, then: ./scripts/bakeoff cycle")
+        else:
+            print()
+            print("  STATUS: NEEDS WORK")
+            print("  New or unresolved issues found.")
+            print()
+            print("  Next steps:")
+            print("    1. Review questions: ./scripts/bakeoff questions")
+            print("    2. Investigate issues deeply, check analogous cases")
+            print("    3. Fix issues, then: ./scripts/bakeoff cycle")
+    elif len(state.convergence_history) == 1:
+        last = state.convergence_history[0]
+        print(f"First iteration: {last.get('critical', 0)} CRITICAL, {last.get('high', 0)} HIGH")
+        print()
+        print("  Next steps:")
+        print("    1. Review issues: ./scripts/bakeoff issues --format json")
+        print("    2. For each issue, ask: What analogous issues might exist?")
+        print("    3. Fix issues, then: ./scripts/bakeoff cycle")
+    else:
+        print("No iterations yet. Run: ./scripts/bakeoff cycle")
+
+    return 0
+
+
+def cmd_issues(args):
+    """List issues in machine-readable format."""
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found.", file=sys.stderr)
+        return 1
+
+    issues = [asdict(i) for i in state.issues]
+
+    if args.format == "json":
+        print(json.dumps(issues, indent=2))
+    else:
+        for i in issues:
+            print(f"[{i['severity']}] {i['repo']}: {i['flag']}")
+            print(f"  Hint: {i['code_hint']}")
+            print()
+
+    return 0
+
+
+def cmd_cycle(args):
+    """Run full cycle: run + diagnose."""
+    rc = cmd_run(args)
+    if rc != 0:
+        return rc
+    return cmd_diagnose(args)
+
+
+def cmd_questions(args):
+    """Show diagnostic questions to ask when analyzing bakeoff results."""
+    questions = """
+# Bakeoff Diagnostic Questions
+
+Ask these questions repeatedly until you stop getting interesting answers.
+
+## For Each Repo
+
+### Call Graph Quality
+1. What is the calls_resolved% and calls_crossfile%?
+2. If low: What patterns exist in the source that should produce call edges but don't?
+3. Are calls inside anonymous functions (lambdas, closures, callbacks) being captured?
+4. Are calls at module/file scope (not inside any function) being captured?
+
+### Route Detection
+1. Does the repo have HTTP handlers? (Check for express, gin, flask, etc.)
+2. If routes=0 but handlers exist: What patterns are not being detected?
+3. If routes>0 but route_link%<30: Why aren't routes connecting to handlers?
+
+### Entrypoints
+1. Are entrypoints dominated by tests or vendored code?
+2. Is the "best entrypoint" in the dominant language?
+3. Does auto-slice from best entrypoint produce a meaningful subgraph?
+
+## Generalization Questions
+
+When you find an issue, ask:
+
+1. **What is the root cause?** (e.g., "enclosing function detection doesn't handle X")
+2. **What OTHER patterns share this root cause?**
+   - Same language, different context (callbacks vs top-level)
+   - Different language, same pattern (closures in Go, Rust, Java, etc.)
+3. **Even if you think the analogous cases are fine, CHECK THEM.**
+   The goal is to find issues you didn't expect.
+
+## Convergence Signals
+
+You've converged on a cohort when:
+- Running the cycle produces no NEW critical or high severity issues
+- You've investigated all open issues and fixed or documented them
+- Re-running diagnostics gives the same results (boring is good!)
+
+Then it's time for a new cohort.
+
+## Avoiding Unproductive Loops
+
+Signs you're nitpicking (vs finding real problems):
+- The "issue" only affects synthetic/edge case code
+- The fix would be disproportionately complex
+- The behavior is arguably correct (external calls being unresolved is expected)
+
+Signs it's a real problem:
+- The missing edges affect real application code
+- The pattern is common (callbacks, closures are everywhere)
+- The fix would be generally applicable
+
+When in doubt, check if the issue affects the bakeoff repos in practice.
+"""
+    print(questions)
+    return 0
+
+
+def cmd_loop(args):
+    """Run the bakeoff loop: auto-progress cohorts and iterations.
+
+    This is the main orchestrator for autonomous bakeoff runs. It:
+    1. Checks current state
+    2. If converged on current cohort: selects next cohort
+    3. Runs a cycle (run + diagnose)
+    4. Outputs structured status for agent consumption
+
+    Use --max-iterations to limit total cycles. Use --dry-run to see what would happen.
+    """
+    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found. Run 'bakeoff init' first.", file=sys.stderr)
+        return 1
+
+    max_iter = args.max_iterations or 100
+    iterations_run = 0
+
+    while iterations_run < max_iter:
+        # Check if we need a new cohort
+        need_new_cohort = False
+        if not state.current_cohort:
+            need_new_cohort = True
+            reason = "No cohort selected"
+        elif len(state.convergence_history) >= 2:
+            recent = state.convergence_history[-2:]
+            curr = recent[1]
+            if curr.get("critical", 0) == 0 and curr.get("high", 0) == 0 and curr.get("new_issues", 0) == 0:
+                need_new_cohort = True
+                reason = "Converged on current cohort"
+
+        if need_new_cohort:
+            print(f"\n=== Selecting new cohort (reason: {reason}) ===\n")
+            if args.dry_run:
+                print("[DRY RUN] Would select new cohort")
+            else:
+                # Create args object for cohort selection
+                cohort_args = argparse.Namespace(count=args.cohort_size, workdir=workdir)
+                rc = cmd_cohort(cohort_args)
+                if rc != 0:
+                    print("Error selecting cohort", file=sys.stderr)
+                    return rc
+                # Reload state after cohort selection
+                state = load_state(workdir)
+                if not state:  # pragma: no cover
+                    return 1
+
+        # Run a cycle
+        print(f"\n=== Running cycle (cohort #{state.cohort_number}, iteration {state.iteration + 1}) ===\n")
+        if args.dry_run:
+            print("[DRY RUN] Would run cycle")
+        else:
+            cycle_args = argparse.Namespace(workdir=workdir)
+            rc = cmd_cycle(cycle_args)
+            if rc != 0:
+                print("Error running cycle", file=sys.stderr)
+                return rc
+            # Reload state after cycle
+            state = load_state(workdir)
+            if not state:  # pragma: no cover
+                return 1
+
+        iterations_run += 1
+
+        # Output structured status
+        print("\n" + "=" * 60)
+        print("BAKEOFF STATUS")
+        print("=" * 60)
+        print(f"Session: {state.session_id}")
+        print(f"Cohort: #{state.cohort_number} ({', '.join(state.current_cohort)})")
+        print(f"Iteration: {state.iteration}")
+        print(f"Issues: {len(state.issues)}")
+
+        if state.convergence_history:
+            last = state.convergence_history[-1]
+            print(f"\nLast cycle:")
+            print(f"  CRITICAL: {last.get('critical', 0)}")
+            print(f"  HIGH: {last.get('high', 0)}")
+            print(f"  New issues: {last.get('new_issues', 0)}")
+
+        # Check convergence and decide whether to continue
+        if len(state.convergence_history) >= 2:
+            recent = state.convergence_history[-2:]
+            curr = recent[1]
+            if curr.get("critical", 0) == 0 and curr.get("high", 0) == 0 and curr.get("new_issues", 0) == 0:
+                # Converged - loop will select new cohort next iteration
+                print("\nSTATUS: CONVERGED")
+                print("This cohort is stable. Will select new cohort in next iteration.")
+            elif curr.get("critical", 0) > 0 or curr.get("high", 0) > 0:
+                # Has issues - agent should investigate
+                print("\nSTATUS: NEEDS_INVESTIGATION")
+                print("Critical or high severity issues detected.")
+                print("\nNext steps for agent:")
+                print("  1. Review issues: ./scripts/bakeoff issues --format json")
+                print("  2. For each issue, ask: What analogous issues might exist?")
+                print("  3. Fix issues in hypergumbo")
+                print("  4. Run: ./scripts/bakeoff loop --continue")
+                # Exit loop to let agent investigate
+                if not args.auto_continue:
+                    return 0
+            else:
+                print("\nSTATUS: IMPROVING")
+                print("Issues decreasing. Continuing...")
+        else:
+            # First iteration
+            last = state.convergence_history[-1] if state.convergence_history else {}
+            if last.get("critical", 0) > 0 or last.get("high", 0) > 0:
+                print("\nSTATUS: NEEDS_INVESTIGATION")
+                print("Issues found in first iteration.")
+                if not args.auto_continue:
+                    return 0
+
+    print(f"\nReached max iterations ({max_iter})")
+    return 0
+
+
+def cmd_scan(args):
+    """Scan repo pool and show available repos by language/size."""
+    pool_path = os.path.expanduser(args.pool)
+
+    if not os.path.isdir(pool_path):
+        print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
+        return 1
+
+    print(f"Scanning: {pool_path}")
+    print()
+
+    repos = []
+    for entry in os.scandir(pool_path):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+
+        size_bytes = get_dir_size(entry.path)
+        size_mb = size_bytes / (1024 * 1024)
+        languages = detect_languages(entry.path)
+
+        repos.append(RepoInfo(
+            name=entry.name,
+            path=entry.path,
+            size_bytes=size_bytes,
+            size_mb=size_mb,
+            languages=languages,
+        ))
+
+    # Sort by size
+    repos.sort(key=lambda r: r.size_bytes)
+
+    # Organize by primary language
+    by_lang = {}
+    for r in repos:
+        lang = r.languages[0] if r.languages else "unknown"
+        by_lang.setdefault(lang, []).append(r)
+
+    # Print summary
+    print(f"Total repos: {len(repos)}")
+    print()
+
+    print("By primary language:")
+    for lang, lang_repos in sorted(by_lang.items(), key=lambda x: -len(x[1])):
+        print(f"  {lang:15s}: {len(lang_repos):3d} repos")
+    print()
+
+    # Print size distribution
+    size_buckets = {"<1MB": 0, "1-10MB": 0, "10-50MB": 0, "50-100MB": 0, ">100MB": 0}
+    for r in repos:
+        if r.size_mb < 1:
+            size_buckets["<1MB"] += 1
+        elif r.size_mb < 10:
+            size_buckets["1-10MB"] += 1
+        elif r.size_mb < 50:
+            size_buckets["10-50MB"] += 1
+        elif r.size_mb < 100:
+            size_buckets["50-100MB"] += 1
+        else:
+            size_buckets[">100MB"] += 1
+
+    print("By size:")
+    for bucket, count in size_buckets.items():
+        print(f"  {bucket:10s}: {count:3d} repos")
+    print()
+
+    # Suggest cohorts
+    limit = args.limit or 30
+    print(f"Smallest {limit} repos:")
+    for r in repos[:limit]:
+        langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+        print(f"  {r.name:40s} {r.size_mb:6.1f}MB  [{langs}]")
+
+    return 0
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Automated hypergumbo bakeoff runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    # init
+    p_init = subparsers.add_parser("init", help="Initialize bakeoff session")
+    p_init.add_argument("--pool", required=True, help="Path to repo pool")
+    p_init.add_argument("--workdir", required=True, help="Working directory for outputs")
+
+    # cohort
+    p_cohort = subparsers.add_parser("cohort", help="Select next cohort")
+    p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
+    p_cohort.add_argument("--workdir", help="Override workdir")
+
+    # run
+    p_run = subparsers.add_parser("run", help="Run hypergumbo on cohort")
+    p_run.add_argument("--workdir", help="Override workdir")
+
+    # diagnose
+    p_diag = subparsers.add_parser("diagnose", help="Diagnose issues")
+    p_diag.add_argument("--workdir", help="Override workdir")
+
+    # status
+    p_status = subparsers.add_parser("status", help="Show session status")
+    p_status.add_argument("--workdir", help="Override workdir")
+
+    # issues
+    p_issues = subparsers.add_parser("issues", help="List issues")
+    p_issues.add_argument("--workdir", help="Override workdir")
+    p_issues.add_argument("--format", choices=["json", "text"], default="text")
+
+    # cycle
+    p_cycle = subparsers.add_parser("cycle", help="Run full cycle")
+    p_cycle.add_argument("--workdir", help="Override workdir")
+
+    # scan
+    p_scan = subparsers.add_parser("scan", help="Scan repo pool")
+    p_scan.add_argument("--pool", required=True, help="Path to repo pool")
+    p_scan.add_argument("--limit", type=int, default=30, help="Number of repos to show")
+
+    # questions
+    subparsers.add_parser("questions", help="Show diagnostic questions to ask")
+
+    # loop
+    p_loop = subparsers.add_parser("loop", help="Run bakeoff loop (cohort → cycle → check)")
+    p_loop.add_argument("--workdir", help="Override workdir")
+    p_loop.add_argument("--max-iterations", type=int, default=10, help="Max iterations (default: 10)")
+    p_loop.add_argument("--cohort-size", type=int, default=DEFAULT_COHORT_SIZE, help="Repos per cohort")
+    p_loop.add_argument("--dry-run", action="store_true", help="Show what would happen without running")
+    p_loop.add_argument("--auto-continue", action="store_true", help="Continue even when issues found")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    commands = {
+        "init": cmd_init,
+        "cohort": cmd_cohort,
+        "run": cmd_run,
+        "diagnose": cmd_diagnose,
+        "status": cmd_status,
+        "issues": cmd_issues,
+        "cycle": cmd_cycle,
+        "scan": cmd_scan,
+        "questions": cmd_questions,
+        "loop": cmd_loop,
+    }
+
+    return commands[args.command](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -10,7 +10,7 @@ def test_stable_id_computed_for_functions(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("def greet(name): pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -25,7 +25,7 @@ def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("class User: pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -42,7 +42,7 @@ def test_stable_id_survives_rename(tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("def bar(x): pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -60,7 +60,7 @@ def test_stable_id_changes_with_signature(tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("def func(x, y): pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -81,7 +81,7 @@ def test_stable_id_changes_with_decorators(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -100,7 +100,7 @@ def test_shape_id_computed_for_functions(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("def greet(name): pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -117,7 +117,7 @@ def test_shape_id_same_for_same_structure(tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("def bar(y): pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -140,7 +140,7 @@ def test_shape_id_different_for_different_structure(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -168,7 +168,7 @@ def test_shape_id_ignores_variable_names(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -184,7 +184,7 @@ def test_output_includes_scheme_identifiers(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("def main(): pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -203,7 +203,7 @@ def test_stable_id_different_param_defaults(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -228,7 +228,7 @@ def test_stable_id_varargs_kwargs(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -251,7 +251,7 @@ def test_stable_id_decorator_attribute(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -274,7 +274,7 @@ def test_stable_id_decorator_call(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -296,7 +296,7 @@ def test_stable_id_decorator_attribute_call(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 

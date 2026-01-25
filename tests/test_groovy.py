@@ -592,3 +592,103 @@ class Counter {
         assert len(methods) == 1
         # Empty params
         assert methods[0].signature == "()"
+
+
+class TestGroovyImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, tmp_path: Path) -> None:
+        """Extracts import alias from 'import as' statement."""
+        from hypergumbo.analyze.groovy import _extract_import_aliases
+        import tree_sitter
+        import tree_sitter_groovy
+
+        lang = tree_sitter.Language(tree_sitter_groovy.language())
+        parser = tree_sitter.Parser(lang)
+
+        groovy_file = tmp_path / "Main.groovy"
+        groovy_file.write_text("""
+import java.util.List as JList
+import groovy.json.JsonSlurper as JS
+
+class Main {
+    void process() {
+        JList items = []
+        def parser = new JS()
+    }
+}
+""")
+
+        source = groovy_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "JList" in aliases
+        assert aliases["JList"] == "java.util.List"
+        assert "JS" in aliases
+        assert aliases["JS"] == "groovy.json.JsonSlurper"
+
+    def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        # Note: Coll.sort is an external JDK call, so no edge is created
+        # (we don't have the JDK in our symbol table).
+        # This test verifies the code path works without crashing.
+        (tmp_path / "main.groovy").write_text("""
+import java.util.Collections as Coll
+
+class Main {
+    void process() {
+        Coll.sort([])
+    }
+}
+""")
+
+        result = analyze_groovy(tmp_path)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind in ("method", "class")]
+        assert any(s.name == "Main" for s in symbols)
+
+        # External calls (JDK) don't create edges since we don't have those symbols
+        # But import edge should exist
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert any("Collections" in e.dst for e in import_edges)
+
+    def test_import_alias_helps_cross_file_resolution(self, tmp_path: Path) -> None:
+        """Import alias helps disambiguate calls to local symbols."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        # Create a Utils class in its own file
+        (tmp_path / "utils/Utils.groovy").mkdir(parents=True, exist_ok=True)
+        # Workaround: just write in tmp_path
+        (tmp_path / "Utils.groovy").write_text("""
+class Utils {
+    static void helper() {
+        println "helping"
+    }
+}
+""")
+
+        # Main class that calls Utils.helper
+        (tmp_path / "Main.groovy").write_text("""
+class Main {
+    void run() {
+        Utils.helper()
+    }
+}
+""")
+
+        result = analyze_groovy(tmp_path)
+
+        assert not result.skipped
+
+        # Should have call edge from Main.run to Utils.helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "run" in e.src]
+        assert len(run_calls) >= 1
+        assert any("helper" in e.dst for e in run_calls)

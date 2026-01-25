@@ -1,152 +1,196 @@
 # hypergumbo
 
-Get a quick overview of any codebase, sized to fit your context window.
+[![CI](https://codeberg.org/iterabloom/hypergumbo/badges/workflows/ci.yml/badge.svg?branch=dev)](https://codeberg.org/iterabloom/hypergumbo/actions)
+[![PyPI](https://img.shields.io/pypi/v/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
+[![License](https://img.shields.io/pypi/l/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
+[![Coverage](https://img.shields.io/endpoint?url=https://codeberg.org/iterabloom/hypergumbo/raw/branch/badges/coverage.json)](https://codeberg.org/iterabloom/hypergumbo)
 
-**Requires Python 3.10+**
+hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase.
 
 ```bash
-pip install hypergumbo              # from PyPI
-pip install git+https://codeberg.org/iterabloom/hypergumbo.git  # from source
-hypergumbo .
+pip install hypergumbo
 ```
 
-**Intel Mac users:** Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](docs/INTEL_MAC.md) for a Docker-based workaround.
+> Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
+
+```bash
+git clone https://codeberg.org/iterabloom/hypergumbo
+hypergumbo hypergumbo/
+```
 
 Output:
-```markdown
-# my-project
+
+```bash
+# hypergumbo
+
+Two Outputs **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected). **Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
 
 ## Overview
-Python (72%), TypeScript (18%), Markdown (10%) · 84 files · ~12,400 LOC
+Python (91%), Markdown (6%), Yaml (2%)
+335 files    (201 non-test + 134 test)
+~130,574 LOC (~66,411 non-test + ~64,163 test)
 
 ## Structure
-- `src/` — Source code
-- `tests/` — Tests
-- `docs/` — Documentation
+
+` ` `
+hypergumbo/
+├── .github
+│   └── workflows
+│       ├── release-mirror.yml
+│       └── [and 2 other items]
+├── docs
+│   ├── hypergumbo-spec.md
+│   └── [and 20 other items]
+├── scripts
+│   ├── auto-pr
+│   └── [and 16 other items]
+├── src
+│   └── hypergumbo
+│       ├── ir.py
+│       └── [and 29 other items]
+├── tests
+│   ├── test_sketch.py
+│   └── [and 133 other items]
+├── package.json
+├── pyproject.toml
+└── [and 20 other items]
+` ` `
 
 ## Frameworks
-- fastapi
-- pytest
 
-## Key Symbols
-### `src/api/routes.py`
-- `create_user` (function) ★
-- `get_user` (function) ★
-...
+- openai
+- pytest
+- pytorch
+- transformers
+
+## Tests
+
+135 test files · pytest, unittest
+
+*~92% estimated coverage (1329/1442 functions called by tests)*
+
+## Configuration
+[...]
 ```
+
+**[See full example output](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output.md)** | **[With --with-source](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output-with-source.md)**
 
 Use `-t` to control the token budget:
 ```bash
-hypergumbo . -t 500   # concise overview
-hypergumbo . -t 2000  # include symbols and entry points
+hypergumbo . -t 1000   # brief overview (structure only)
+hypergumbo . -t 4000   # good balance for most LLMs
+hypergumbo . -t 8000   # detailed with many symbols
 ```
+
+## Two Outputs
+
+**Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected).
+
+**Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
 
 ## CLI Commands
 
 ```bash
-hypergumbo [path]            # default: generate Markdown sketch
-hypergumbo . -t 1000         # sketch with 1000 token budget
-hypergumbo . -x              # exclude test files (faster on large codebases)
-hypergumbo run [path]        # full analysis → hypergumbo.results.json
-hypergumbo slice --entry X   # extract subgraph from entry point
-hypergumbo slice --entry X --reverse  # find all callers of X
-hypergumbo routes [path]     # list HTTP routes (FastAPI, Flask, Express, etc.)
-hypergumbo search <query>    # search symbols by name pattern
-hypergumbo init [path]       # initialize .hypergumbo/ capsule
-hypergumbo init --assistant llm  # use LLM to generate analysis plan
-hypergumbo catalog           # list available analysis passes
-hypergumbo export-capsule    # export shareable capsule tarball
-hypergumbo build-grammars    # build Lean/Wolfram grammars from source
+hypergumbo [path]              # Markdown sketch (default)
+hypergumbo run [path]          # Full JSON behavior map
+hypergumbo slice --entry X     # Subgraph from entry point
+hypergumbo routes [path]       # List HTTP routes
+hypergumbo search <query>      # Search symbols
+hypergumbo symbols [path]      # Browse symbols with connectivity
+hypergumbo explain <symbol>    # Detailed symbol info
+hypergumbo test-coverage       # Analyze test coverage (transitive)
+hypergumbo catalog             # List analysis passes
 ```
 
-## What It Does
+Useful flags:
+```bash
+hypergumbo . -x                # exclude test files (faster)
+hypergumbo . --with-source     # append full source code
+hypergumbo . --no-progress     # hide progress indicator (on by default)
+hypergumbo --help --all        # comprehensive help for all commands
+```
 
-**Default mode** (`hypergumbo .`) generates a Markdown sketch with:
-- Language breakdown and LOC count
-- Directory structure with labels
-- Framework detection
-- Key symbols ranked by graph centrality (★ = most called)
-- Entry points (CLI, HTTP routes, etc.)
+Results are automatically cached in `~/.cache/hypergumbo/`. Just run:
+```bash
+hypergumbo .    # auto-runs analysis if no cache exists, then generates sketch
+```
 
-**Full analysis** (`hypergumbo run`) outputs a JSON behavior map with:
-- **Nodes**: Functions, classes, methods, interfaces with location and stable IDs
-- **Edges**: Relationships between symbols (calls, imports, instantiates, extends, implements)
-- **Cross-language edges**: 13 linkers connect symbols across language boundaries (see table below)
+The cache auto-invalidates when source files change. See [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CACHE.md) for details.
 
-**LLM-assisted init** (`hypergumbo init --assistant llm`) demonstrates LLM integration
-patterns but provides no practical advantage over the default template-based approach.
-Since analyzers are language-level (not framework-level), both methods select the same
-passes. This feature exists as a technical scaffold showing how to integrate OpenRouter,
-OpenAI, or local models via the [llm](https://pypi.org/project/llm/) package. It may be
-removed in a future release.
+See `hypergumbo --help` for all options.
 
-### Supported Languages (54 Analyzers)
+## What It Understands
 
-| Category | Languages |
-|----------|-----------|
-| **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
-| **Systems** | C, C++, Zig, Objective-C, CUDA, Fortran |
-| **Smart Contracts** | Solidity |
-| **Hardware** | Verilog, VHDL, GLSL, WGSL |
-| **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
-| **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
-| **Frontend** | Elm, Vue, Svelte, HTML |
-| **Proof/Formal** | Agda, Lean*, Wolfram* |
-| **Legacy/Academic** | COBOL, LaTeX |
+- **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md))
+- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md))
+- **37 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
 
-\* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI).
-Run `hypergumbo build-grammars` to enable these analyzers.
+## How It Works
 
-All analyzers detect symbols and edges (calls, imports, instantiates, extends, implements). See [CHANGELOG.md](CHANGELOG.md) for details.
+1. **Profile**: Scan the repo for languages, file counts, LOC
+2. **Analyze**: Run language-specific analyzers to extract symbols and edges
+3. **Link**: Connect symbols across language boundaries (JS fetch → Python route)
+4. **Enrich**: Detect frameworks via YAML pattern matching
+5. **Output**: Generate Markdown sketch or JSON behavior map
 
-### Cross-Language Linkers (13 Linkers)
+### The Internal Representation
 
-Linkers run automatically during `hypergumbo run` to connect symbols across language boundaries:
+All analyzers produce the same IR types:
 
-| Linker | Description |
-|--------|-------------|
-| JNI | Java `native` methods ↔ C JNI implementations |
-| IPC | Electron IPC, Web Workers, `postMessage` patterns |
-| WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
-| Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
-| Swift/ObjC | `@objc` annotations, `#selector()`, bridging headers |
-| gRPC | Protobuf services, stubs, and servicer implementations |
-| HTTP | `fetch()`, `axios`, `requests` → route handlers (URL pattern matching) |
-| GraphQL | `gql` queries/mutations → schema definitions |
-| GraphQL Resolver | Resolver implementations → schema type definitions |
-| Message Queue | Kafka, RabbitMQ, SQS, Redis Pub/Sub topic matching |
-| Database Query | SQL in app code → table definitions in schema files |
-| Event Sourcing | EventEmitter, Django signals, Spring events |
-| Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
+- **Symbol**: A code element (function, class, method) with name, location, and stable ID
+- **Edge**: A relationship between symbols (calls, imports, extends, implements)
+- **Span**: Source location (file, line, column)
+
+This uniform IR is what allows 67 language analyzers and 15 cross-language linkers to work together coherently.
+
+## Architecture
+
+```
+src/hypergumbo/
+├── cli.py              # Entry point, argument parsing
+├── profile.py          # Repository scanning (languages, LOC)
+├── ir.py               # Internal representation (Symbol, Edge, Span)
+├── sketch.py           # Markdown generation with token budgeting
+├── ranking.py          # Graph centrality for symbol importance
+├── analyze/            # 67 language analyzers
+├── linkers/            # 15 cross-language linkers
+├── frameworks/         # 37 YAML pattern definitions
+└── selection/          # Token budget allocation
+```
+
+Key design choices:
+- **Registry pattern**: Analyzers and linkers self-register via decorators
+- **Two-pass analysis**: First collect symbols, then resolve edges (enables cross-file references)
+- **Provenance tracking**: Every edge records which analyzer/linker created it
+- **YAML-driven patterns**: Framework detection is declarative, not hardcoded
 
 ## Development
-
-To contribute to hypergumbo:
 
 ```bash
 git clone https://codeberg.org/iterabloom/hypergumbo.git
 cd hypergumbo
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
-hypergumbo build-grammars  # optional: enables Lean and Wolfram analyzers
-pytest
+pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 ```
 
-All agent instructions live in [AGENTS.md](AGENTS.md). Vendor-specific files
-(`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the AGENTS.md canonical source.
+100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
 
-See [CHANGELOG.md](CHANGELOG.md) for implementation progress.
+## Links
 
-## Security
-
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
+- [docs/USE-CASES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/USE-CASES.md) — Practical workflows and examples
+- [CHANGELOG.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/CHANGELOG.md) — Implementation history
+- [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) — All 67 supported languages
+- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — All 15 cross-language linkers
+- [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/hypergumbo-spec.md) — Detailed specification
+- [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CITATIONS.md) — Paper citations for embedding models
+- [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CACHE.md) — Caching architecture
+- [SECURITY.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/SECURITY.md) — Vulnerability reporting
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE)
+[AGPL-3.0-or-later](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/LICENSE)
 
-![Hypergumbo logo](docs/hypergumbo%20FINAL%20halfres.jpg)
-
+![Hypergumbo logo](https://codeberg.org/iterabloom/hypergumbo/raw/branch/dev/docs/hypergumbo%20FINAL%20halfres.jpg)
 

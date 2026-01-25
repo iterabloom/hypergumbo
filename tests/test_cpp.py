@@ -448,6 +448,60 @@ void create() {
         # create should instantiate Widget
         assert len(instantiate_edges) >= 1
 
+    def test_prefers_definition_over_declaration_for_call_edges(
+        self, tmp_path: Path
+    ) -> None:
+        """Call edges point to definitions (.cpp), not declarations (.h).
+
+        This ensures transitive coverage estimation works correctly.
+        When caller() calls process(), the edge should point to the
+        definition in impl.cpp (which has outgoing calls), not the
+        declaration in header.h (which has none).
+        """
+        # Header with declaration (no function body)
+        header = tmp_path / "header.h"
+        header.write_text("""
+void process();
+void helper();
+""")
+
+        # Source with definitions (has function body with calls)
+        impl = tmp_path / "impl.cpp"
+        impl.write_text("""
+#include "header.h"
+
+void helper() {
+    // No calls
+}
+
+void process() {
+    helper();  // Calls helper
+}
+""")
+
+        # Test file that calls process
+        test_file = tmp_path / "test.cpp"
+        test_file.write_text("""
+#include "header.h"
+
+void test_process() {
+    process();  // Should resolve to impl.cpp definition
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        # Find the edge from test_process -> process
+        test_to_process_edge = None
+        for e in result.edges:
+            if "test_process" in e.src and "process" in e.dst:
+                test_to_process_edge = e
+                break
+
+        assert test_to_process_edge is not None
+        assert "impl.cpp" in test_to_process_edge.dst
+        assert "header.h" not in test_to_process_edge.dst
+
 
 class TestCppSignatureExtraction:
     """Tests for C++ function signature extraction."""
@@ -530,4 +584,49 @@ class TestCppSignatureExtraction:
         get_sym = next((s for s in result.symbols if s.name == "getName"), None)
         assert get_sym is not None
         assert "std::string" in get_sym.signature
+
+
+class TestCppNamespaceAliases:
+    """Tests for C++ namespace alias tracking (ADR-0007)."""
+
+    def test_extracts_namespace_alias(self, tmp_path: Path) -> None:
+        """Extracts namespace aliases from namespace_alias_definition."""
+        from hypergumbo.analyze.cpp import _extract_namespace_aliases
+        import tree_sitter
+        import tree_sitter_cpp
+
+        source = b"""
+namespace fs = std::filesystem;
+namespace io = std::iostream;
+"""
+        lang = tree_sitter.Language(tree_sitter_cpp.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+
+        aliases = _extract_namespace_aliases(tree.root_node, source)
+
+        assert "fs" in aliases
+        assert aliases["fs"] == "std::filesystem"
+        assert "io" in aliases
+        assert aliases["io"] == "std::iostream"
+
+    def test_namespace_alias_provides_path_hint(self, tmp_path: Path) -> None:
+        """Namespace aliases are stored in FileAnalysis for call resolution."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        (tmp_path / "test.cpp").write_text("""
+namespace MyNS = Some::Namespace;
+
+void caller() {
+    MyNS::helper();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        # The alias should be extracted (checking via result)
+        # Since we can't directly check FileAnalysis, we verify no crash
+        assert not result.skipped
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "caller" for s in funcs)
 

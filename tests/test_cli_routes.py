@@ -24,7 +24,10 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "get",  # HTTP GET marker
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
             },
             {
                 "id": "python:src/api.py:6-10:create_user:function",
@@ -33,7 +36,10 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "post",  # HTTP POST marker
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
+                },
             },
             {
                 "id": "python:src/utils.py:1-5:helper:function",
@@ -42,7 +48,7 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/utils.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                # No stable_id - not a route
+                # No concepts - not a route
             },
         ],
         "edges": [],
@@ -79,7 +85,10 @@ def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "get",
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/data", "method": "GET"}]
+                },
             },
             {
                 "id": "javascript:src/api.js:1-5:getData:function",
@@ -88,7 +97,10 @@ def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:
                 "language": "javascript",
                 "path": "src/api.js",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "get",
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/data", "method": "GET"}]
+                },
             },
         ],
         "edges": [],
@@ -154,7 +166,10 @@ def test_cmd_routes_with_input_file(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "delete",
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "DELETE"}]
+                },
             },
         ],
         "edges": [],
@@ -187,8 +202,8 @@ def test_cmd_routes_input_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_cmd_routes_no_results_file(tmp_path: Path) -> None:
-    """Routes fails if no results file exists."""
+def test_cmd_routes_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Routes auto-runs analysis if no results file exists."""
     args = FakeArgs()
     args.path = str(tmp_path)
     args.input = None
@@ -196,7 +211,10 @@ def test_cmd_routes_no_results_file(tmp_path: Path) -> None:
 
     result = cmd_routes(args)
 
-    assert result == 1
+    # Auto-runs analysis and succeeds (even if no routes found)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "No cached results found, running analysis" in err
 
 
 def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
@@ -211,7 +229,10 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/users.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "get",
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
             },
             {
                 "id": "python:src/users.py:6-10:create_user:function",
@@ -220,7 +241,10 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/users.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "post",
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
+                },
             },
             {
                 "id": "python:src/posts.py:1-5:get_posts:function",
@@ -229,7 +253,10 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/posts.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "get",
+                "stable_id": "sha256:ghi789",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/posts", "method": "GET"}]
+                },
             },
         ],
         "edges": [],
@@ -252,7 +279,7 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
-    """Routes with meta.route_path display the route path."""
+    """Routes with meta.concepts display the route path."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -263,8 +290,10 @@ def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "get",
-                "meta": {"route_path": "/users/{id}"},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
             },
             {
                 "id": "python:src/api.py:6-10:create_user:function",
@@ -273,8 +302,10 @@ def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "post",
-                "meta": {"route_path": "/users"},
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
+                },
             },
         ],
         "edges": [],
@@ -354,6 +385,46 @@ def test_cmd_routes_with_concept_metadata(tmp_path: Path, capsys) -> None:
     assert "->" in out  # Route path arrow
 
 
+def test_cmd_routes_concept_without_path(tmp_path: Path, capsys) -> None:
+    """Routes with concept but no path display method and name only."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_users:function",
+                "name": "get_users",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    # Route concept with method but no path
+                    "concepts": [{"concept": "route", "method": "GET"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Route without path should display method and name (no arrow)
+    assert "get_users" in out
+    assert "GET" in out
+    assert "->" not in out  # No route path arrow since there's no path
+
+
 def test_main_with_routes(tmp_path: Path, capsys) -> None:
     """Main with routes command."""
     behavior_map = {
@@ -366,7 +437,10 @@ def test_main_with_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "put",
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/items/{id}", "method": "PUT"}]
+                },
             },
         ],
         "edges": [],
@@ -380,3 +454,40 @@ def test_main_with_routes(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "update_item" in out
+
+
+def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
+    """Routes prints output summary to stdout."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_items:function",
+                "name": "get_items",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/items", "method": "GET"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "[hypergumbo routes] Using 1 cached" in out
+    assert "Output: stdout" in out

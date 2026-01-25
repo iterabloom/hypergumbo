@@ -211,6 +211,151 @@ end Main;
         assert any("Calculator" in dst for dst in imported)
 
 
+class TestAdaCallResolution:
+    """Tests for Ada call resolution."""
+
+    def test_procedure_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges for procedure calls."""
+        (temp_repo / "calculator.adb").write_text('''
+package body Calculator is
+   procedure Helper is
+   begin
+      null;
+   end Helper;
+
+   procedure Main is
+   begin
+      Helper;
+   end Main;
+end Calculator;
+''')
+
+        result = analyze_ada(temp_repo)
+
+        # Should have a "calls" edge from Main to Helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # Check we have edge from Main calling Helper
+        main_calls = [e for e in call_edges if "Main" in e.src]
+        assert len(main_calls) >= 1
+        assert any("Helper" in e.dst for e in main_calls)
+
+    def test_function_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges for function calls."""
+        (temp_repo / "math.adb").write_text('''
+package body Math is
+   function Double(X : Integer) return Integer is
+   begin
+      return X * 2;
+   end Double;
+
+   function Quadruple(X : Integer) return Integer is
+   begin
+      return Double(Double(X));
+   end Quadruple;
+end Math;
+''')
+
+        result = analyze_ada(temp_repo)
+
+        # Should have call edges from Quadruple to Double
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        quad_calls = [e for e in call_edges if "Quadruple" in e.src]
+        assert len(quad_calls) >= 1
+        assert any("Double" in e.dst for e in quad_calls)
+
+    def test_external_procedure_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external procedure calls with lower confidence."""
+        (temp_repo / "io_test.adb").write_text('''
+package body IO_Test is
+   procedure Print_Hello is
+   begin
+      Put_Line("Hello");
+   end Print_Hello;
+end IO_Test;
+''')
+
+        result = analyze_ada(temp_repo)
+
+        # Should have call edge to external Put_Line
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("Put_Line" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "test.adb").write_text('''
+package body Test is
+   procedure Internal is
+   begin
+      null;
+   end Internal;
+
+   procedure Caller is
+   begin
+      Internal;
+   end Caller;
+end Test;
+''')
+
+        result = analyze_ada(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the edge from Caller to Internal
+        resolved_call = next((e for e in call_edges if "Internal" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence (usually 1.0)
+        assert resolved_call.confidence > 0.70
+
+    def test_qualified_procedure_call(self, temp_repo: Path) -> None:
+        """Handles qualified procedure calls with dotted names."""
+        (temp_repo / "io_qualified.adb").write_text('''
+package body IO_Qualified is
+   procedure Show is
+   begin
+      Ada.Text_IO.Put_Line("Hello");
+   end Show;
+end IO_Qualified;
+''')
+
+        result = analyze_ada(temp_repo)
+
+        # Should have call edge with last identifier (Put_Line) from qualified name
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # The target should be Put_Line, not Ada.Text_IO.Put_Line
+        assert any("Put_Line" in e.dst for e in call_edges)
+
+    def test_external_function_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external function calls with lower confidence."""
+        (temp_repo / "func_test.adb").write_text('''
+package body Func_Test is
+   function Process(X : Integer) return Integer is
+      Y : Integer;
+   begin
+      Y := External_Func(X);
+      return Y;
+   end Process;
+end Func_Test;
+''')
+
+        result = analyze_ada(temp_repo)
+
+        # Should have call edge to external function
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst and "function" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("External_Func" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+
 class TestAdaAnalysisUnavailable:
     """Tests for handling unavailable tree-sitter."""
 
@@ -241,3 +386,35 @@ end Test;
         assert result.run is not None
         assert result.run.pass_id == "ada-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestAdaPackageRenames:
+    """Tests for package renaming declaration tracking."""
+
+    def test_extracts_package_renames(self, temp_repo: Path) -> None:
+        """Extracts package renaming declarations."""
+        from hypergumbo.analyze.ada import _extract_package_renames
+
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("ada")
+
+        ada_file = temp_repo / "main.adb"
+        ada_file.write_text("""
+with Ada.Text_IO;
+package TIO renames Ada.Text_IO;
+
+procedure Main is
+begin
+   TIO.Put_Line("Hello");
+end Main;
+""")
+
+        source = ada_file.read_bytes()
+        tree = parser.parse(source)
+
+        renames = _extract_package_renames(tree, source)
+
+        # 'TIO' should map to 'Ada.Text_IO'
+        assert "TIO" in renames
+        assert renames["TIO"] == "Ada.Text_IO"

@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -140,6 +141,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -464,14 +466,59 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_import_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases for disambiguation.
+
+    In Julia:
+        import Pkg as P -> P maps to Pkg
+
+    Returns a dict mapping alias names to module names.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type not in ("import_statement", "using_statement"):
+            continue
+
+        # Find import_alias child (e.g., Pkg as P)
+        alias_node = _find_child_by_type(node, "import_alias")
+        if alias_node:
+            module_name = None
+            alias_name = None
+            found_as = False
+
+            for child in alias_node.children:
+                if child.type == "identifier":
+                    if not found_as:
+                        module_name = _node_text(child, source)
+                    else:
+                        alias_name = _node_text(child, source)
+                elif child.type == "as":
+                    found_as = True
+
+            if module_name and alias_name:
+                aliases[alias_name] = module_name
+
+    return aliases
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
+    import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file."""
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
+    if import_aliases is None:  # pragma: no cover - defensive
+        import_aliases = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -511,10 +558,26 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function_julia(node, source, local_symbols)
             if current_function is not None:
-                id_node = _find_child_by_type(node, "identifier")
-                if id_node:
-                    callee_name = _node_text(id_node, source)
+                callee_name: Optional[str] = None
+                path_hint: Optional[str] = None
 
+                # Check for qualified call (field_expression: P.add)
+                field_node = _find_child_by_type(node, "field_expression")
+                if field_node:
+                    # Get receiver and method from field_expression
+                    identifiers = [c for c in field_node.children if c.type == "identifier"]
+                    if len(identifiers) >= 2:
+                        receiver = _node_text(identifiers[0], source)
+                        callee_name = _node_text(identifiers[-1], source)
+                        # Look up receiver in import aliases
+                        path_hint = import_aliases.get(receiver)
+                else:
+                    # Simple call
+                    id_node = _find_child_by_type(node, "identifier")
+                    if id_node:
+                        callee_name = _node_text(id_node, source)
+
+                if callee_name:
                     # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
@@ -528,19 +591,20 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    # Check global symbols
-                    elif callee_name in global_symbols:
-                        callee = global_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="function_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                    # Check global symbols via resolver
+                    else:
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.80 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
     return edges
 
@@ -587,6 +651,15 @@ def analyze_julia(repo_root: Path) -> JuliaAnalysisResult:
     for julia_file in find_julia_files(repo_root):
         all_files.append(julia_file)
         analysis = _extract_symbols_from_file(julia_file, parser, run)
+
+        # Extract import aliases for this file
+        try:
+            source = julia_file.read_bytes()
+            tree = parser.parse(source)
+            analysis.import_aliases = _extract_import_aliases(tree, source)
+        except (OSError, IOError):  # pragma: no cover
+            pass
+
         if analysis.symbols:
             file_analyses[julia_file] = analysis
         else:
@@ -599,6 +672,7 @@ def analyze_julia(repo_root: Path) -> JuliaAnalysisResult:
             global_symbols[symbol.name] = symbol
 
     # Pass 2: Extract edges
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -606,7 +680,8 @@ def analyze_julia(repo_root: Path) -> JuliaAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            julia_file, parser, analysis.symbol_by_name, global_symbols, run
+            julia_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            import_aliases=analysis.import_aliases,
         )
         all_edges.extend(edges)
 
@@ -614,7 +689,8 @@ def analyze_julia(repo_root: Path) -> JuliaAnalysisResult:
     for julia_file in all_files:
         if julia_file not in file_analyses:
             edges = _extract_edges_from_file(
-                julia_file, parser, {}, global_symbols, run
+                julia_file, parser, {}, global_symbols, run, resolver,
+                import_aliases={},
             )
             all_edges.extend(edges)
 

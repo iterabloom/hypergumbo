@@ -193,6 +193,76 @@ void main() {}
         assert any("std.string" in dst for dst in imported)
 
 
+class TestDCallResolution:
+    """Tests for D call resolution."""
+
+    def test_function_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges for function calls."""
+        (temp_repo / "math.d").write_text('''
+module math;
+
+int double_it(int x) {
+    return x * 2;
+}
+
+int quadruple(int x) {
+    return double_it(double_it(x));
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        # Should have call edges from quadruple to double_it
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        quad_calls = [e for e in call_edges if "quadruple" in e.src]
+        assert len(quad_calls) >= 1
+        assert any("double_it" in e.dst for e in quad_calls)
+
+    def test_external_function_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external function calls with lower confidence."""
+        (temp_repo / "io_test.d").write_text('''
+module io_test;
+
+void print_hello() {
+    writeln("Hello");
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        # Should have call edge to external writeln
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("writeln" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "test.d").write_text('''
+module test;
+
+void internal_func() {
+}
+
+void caller() {
+    internal_func();
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the edge from caller to internal_func
+        resolved_call = next((e for e in call_edges if "internal_func" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence (usually 1.0)
+        assert resolved_call.confidence > 0.70
+
+
 class TestDAnalysisUnavailable:
     """Tests for handling unavailable tree-sitter."""
 
@@ -223,3 +293,62 @@ void hello() {}
         assert result.run is not None
         assert result.run.pass_id == "d-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestDImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, temp_repo: Path) -> None:
+        """Extracts import alias from 'import alias = module' statement."""
+        from hypergumbo.analyze.d_lang import _extract_import_aliases
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("d")
+
+        d_file = temp_repo / "main.d"
+        d_file.write_text("""
+module main;
+
+import math = std.math;
+import io = std.stdio;
+
+void main() {
+    math.sin(3.14);
+}
+""")
+
+        source = d_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "math" in aliases
+        assert aliases["math"] == "std.math"
+        assert "io" in aliases
+        assert aliases["io"] == "std.stdio"
+
+    def test_qualified_call_uses_alias(self, temp_repo: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        (temp_repo / "main.d").write_text("""
+module main;
+
+import math = std.math;
+
+void calculate() {
+    math.sin(3.14);
+}
+""")
+
+        result = analyze_d(temp_repo)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "calculate" for s in symbols)
+
+        # Should have call edges from calculate
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        calc_calls = [e for e in call_edges if "calculate" in e.src]
+        # Should have at least the sin call
+        assert len(calc_calls) >= 1

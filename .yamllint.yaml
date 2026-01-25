@@ -1,0 +1,44 @@
+# yamllint configuration for hypergumbo YAML files
+# Validates framework patterns and config files
+
+extends: default
+
+rules:
+  # Allow slightly longer lines for readability (regex patterns can be long)
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # Require consistent indentation (2 spaces)
+  indentation:
+    spaces: 2
+    indent-sequences: true
+
+  # Disallow trailing spaces
+  trailing-spaces: enable
+
+  # Require document start marker for multi-document files only
+  document-start: disable
+
+  # Allow empty values (e.g., `prefix_from_parent:` without value)
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+
+  # Require consistent truthy values (true/false, not yes/no)
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+
+  # Comments must have a space after #
+  comments:
+    require-starting-space: true
+    min-spaces-from-content: 1
+
+  # Don't enforce strict comment indentation
+  comments-indentation: disable
+
+  # Don't enforce specific quoting style - allow both quoted and unquoted
+  # Many of our YAML files have regex patterns that benefit from quotes
+  quoted-strings: disable

@@ -58,7 +58,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..symbol_resolution import NameResolver, ListNameResolver
 from .base import (
     AnalysisResult,
     find_child_by_field,
@@ -317,36 +318,15 @@ def _extract_namespace_imports(
 
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
-# Deprecated - use express.yaml, hapi.yaml, koa.yaml patterns
+# Note: Express-style route detection uses function calls (app.get, router.post) rather
+# than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
+# enables YAML patterns for call-based frameworks.
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 # Known router/app receiver names for route detection (ADR-0003)
 # Only calls like app.get(), router.post(), etc. are treated as routes.
 # This prevents false positives from test mocks like fetchMock.get().
 ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
-
 
 # Use find_child_by_field from base.py (imported above)
 _find_child_by_field = find_child_by_field
@@ -425,6 +405,63 @@ def _extract_jsts_signature(
         sig += ret_text
 
     return sig
+
+
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a function declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        function process(client: Client) {
+            client.send();  // resolves to Client.send
+        }
+
+    Only works for TypeScript code with explicit type annotations.
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only).
+    """
+    param_types: dict[str, str] = {}
+
+    # Find parameters node - structure varies by function type
+    params_node = None
+    if node.type == "function_declaration":
+        params_node = _find_child_by_field(node, "parameters")
+    elif node.type == "arrow_function":
+        params_node = _find_child_by_field(node, "parameters")
+    elif node.type in ("method_definition", "function"):
+        params_node = _find_child_by_field(node, "parameters")
+
+    if not params_node:
+        return param_types
+
+    for child in params_node.children:
+        if child.type in ("required_parameter", "optional_parameter"):
+            param_name = None
+            param_type = None
+
+            for subchild in child.children:
+                if subchild.type == "identifier" and param_name is None:
+                    param_name = _node_text(subchild, source)
+                elif subchild.type == "type_annotation":
+                    # type_annotation contains type_identifier or other type nodes
+                    for type_child in subchild.children:
+                        if type_child.type == "type_identifier":
+                            param_type = _node_text(type_child, source)
+                            break
+                        elif type_child.type == "generic_type":  # pragma: no cover
+                            # Extract base type from generic: Array<T> -> Array
+                            for gc in type_child.children:
+                                if gc.type == "type_identifier":
+                                    param_type = _node_text(gc, source)
+                                    break
+                            break
+
+            if param_name and param_type:
+                param_types[param_name] = param_type
+
+    return param_types
 
 
 def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -611,6 +648,608 @@ def _find_route_handler_in_call(
                 return last_arg, handler_name, True
 
     return None, None, False  # pragma: no cover
+
+
+def _extract_express_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Express-style route calls.
+
+    Creates UsageContext records that capture how handler functions are used
+    in app.get(), router.post(), etc. calls. These are matched against YAML
+    patterns in the enrichment phase.
+
+    Args:
+        tree: The parsed tree-sitter tree
+        source: Source file bytes
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols by name
+        line_offset: Line offset for Svelte/Vue script blocks
+        symbol_by_position: Lookup table for symbols by (path, line, col) - enables
+            linking inline handlers to their Symbol objects
+
+    Returns:
+        List of UsageContext records for Express route patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        http_method, route_path = _detect_route_call(node, source)
+        if not http_method:
+            continue
+
+        # Find the handler in this route call
+        handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
+        if not handler_node:  # pragma: no cover
+            continue
+
+        # Try to resolve handler to a symbol reference
+        handler_ref = None
+        if handler_name and handler_name in symbol_by_name:
+            # External handler - look up by name
+            handler_ref = symbol_by_name[handler_name].id
+        elif handler_node and symbol_by_position:
+            # Inline handler - look up by position
+            # The Symbol was created at the handler node's position
+            handler_line = handler_node.start_point[0] + 1 + line_offset
+            handler_col = handler_node.start_point[1]
+            position_key = (str(file_path), handler_line, handler_col)
+            if position_key in symbol_by_position:
+                handler_ref = symbol_by_position[position_key].id
+
+        # Get the receiver name (app, router, express, etc.)
+        receiver_name = None
+        for child in node.children:
+            if child.type == "member_expression":
+                receiver_name = _get_receiver_name(child, source)
+                break
+
+        # Build the full call name (e.g., "app.get", "router.post")
+        call_name = f"{receiver_name}.{http_method.lower()}" if receiver_name else http_method.lower()
+
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        # Normalize route path
+        normalized_path = route_path if route_path and route_path.startswith("/") else f"/{route_path}" if route_path else "/"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="args[last]",  # Handler is typically last argument
+            path=str(file_path),
+            span=span,
+            symbol_ref=handler_ref,
+            metadata={
+                "route_path": normalized_path,
+                "http_method": http_method,
+                "handler_name": handler_name,
+                "receiver": receiver_name,
+                "is_external_handler": is_external,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
+def _extract_object_properties(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str | None]:
+    """Extract key-value pairs from a JavaScript object literal.
+
+    Handles:
+    - Regular properties: { method: 'GET', path: '/users' }
+    - Shorthand properties: { method, path }
+    - Function values: { handler: function() {} }
+
+    Returns a dict of property names to their string values (or None for complex values).
+    """
+    properties: dict[str, str | None] = {}
+
+    if node.type != "object":  # pragma: no cover
+        return properties
+
+    for child in node.children:
+        if child.type == "pair":
+            # Regular property: key: value
+            # Key is before the colon, value is after
+            key_node = None
+            value_node = None
+            seen_colon = False
+            for pair_child in child.children:
+                if pair_child.type == ":":
+                    seen_colon = True
+                elif not seen_colon:
+                    # Before colon: this is the key
+                    if pair_child.type in ("property_identifier", "string"):
+                        key_node = pair_child
+                else:
+                    # After colon: this is the value
+                    if pair_child.type not in (",", ):
+                        value_node = pair_child
+
+            if key_node:
+                key = _node_text(key_node, source)
+                if key.startswith(("'", '"')):  # pragma: no cover
+                    key = key[1:-1]
+
+                # Extract value based on type
+                if value_node:
+                    if value_node.type == "string":
+                        val = _node_text(value_node, source)
+                        properties[key] = val[1:-1] if len(val) >= 2 else val
+                    elif value_node.type == "identifier":
+                        properties[key] = _node_text(value_node, source)
+                    elif value_node.type in ("function_expression", "arrow_function"):
+                        # For inline functions, record a special marker
+                        properties[key] = "<inline_function>"
+                    else:  # pragma: no cover
+                        properties[key] = None  # Complex value
+
+        elif child.type == "shorthand_property_identifier":
+            # Shorthand: { method } -> method: method
+            name = _node_text(child, source)
+            properties[name] = name
+
+    return properties
+
+
+def _extract_hapi_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Hapi server.route() calls.
+
+    Hapi uses config objects for routing:
+    - server.route({ method: 'GET', path: '/users', handler: getUsersHandler })
+    - server.route([{ method: 'GET', path: '/' }, { method: 'POST', path: '/' }])
+
+    Args:
+        tree: The parsed tree-sitter tree
+        source: Source file bytes
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+        line_offset: Line offset for embedded script blocks
+
+    Returns:
+        List of UsageContext records for Hapi route patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        # Check if this is a server.route() or server.routes() call
+        func_node = None
+        for child in node.children:
+            if child.type == "member_expression":
+                func_node = child
+                break
+
+        if not func_node:
+            continue
+
+        # Check for .route or .routes method
+        method_name = None
+        receiver_name = None
+        for child in func_node.children:
+            if child.type == "property_identifier":
+                method_name = _node_text(child, source)
+            elif child.type == "identifier":
+                receiver_name = _node_text(child, source)
+            elif child.type == "member_expression":  # pragma: no cover
+                receiver_name = _node_text(child, source)
+
+        if method_name not in ("route", "routes"):
+            continue
+
+        # Find arguments
+        args_node = None
+        for child in node.children:
+            if child.type == "arguments":
+                args_node = child
+                break
+
+        if not args_node:  # pragma: no cover
+            continue
+
+        # Extract route configs from arguments
+        route_configs: list[dict[str, str | None]] = []
+
+        for arg in args_node.children:
+            if arg.type == "object":
+                # Single route config: { method, path, handler }
+                props = _extract_object_properties(arg, source)
+                if props.get("path") or props.get("method"):
+                    route_configs.append(props)
+            elif arg.type == "array":
+                # Array of route configs: [{ ... }, { ... }]
+                for elem in arg.children:
+                    if elem.type == "object":
+                        props = _extract_object_properties(elem, source)
+                        if props.get("path") or props.get("method"):
+                            route_configs.append(props)
+
+        # Create UsageContext for each route config
+        for config in route_configs:
+            route_path = config.get("path")
+            http_method = config.get("method")
+            handler_name = config.get("handler")
+
+            # Skip if no useful info
+            if not route_path and not http_method:  # pragma: no cover
+                continue
+
+            # Try to resolve handler to a symbol reference
+            handler_ref = None
+            if handler_name and handler_name != "<inline_function>" and handler_name in symbol_by_name:
+                handler_ref = symbol_by_name[handler_name].id
+
+            call_name = f"{receiver_name}.{method_name}" if receiver_name else method_name
+
+            span = Span(
+                start_line=node.start_point[0] + 1 + line_offset,
+                end_line=node.end_point[0] + 1 + line_offset,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            )
+
+            # Normalize route path
+            normalized_path = route_path if route_path and route_path.startswith("/") else f"/{route_path}" if route_path else "/"
+
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=call_name,
+                position="args[0]",  # Config object is first argument
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "route_path": normalized_path,
+                    "http_method": http_method.upper() if http_method else "GET",
+                    "handler_name": handler_name if handler_name != "<inline_function>" else None,
+                    "receiver": receiver_name,
+                    "config_based": True,  # Mark as config-object pattern
+                },
+            )
+            contexts.append(ctx)
+
+    return contexts
+
+
+def _infer_nextjs_route(file_path: Path) -> str | None:
+    """Infer Next.js route from file path.
+
+    Converts file paths to routes:
+    - pages/index.js → /
+    - pages/about.js → /about
+    - pages/api/users.js → /api/users
+    - pages/posts/[id].js → /posts/:id
+    - pages/posts/[...slug].js → /posts/*
+    - app/page.tsx → /
+    - app/about/page.tsx → /about
+    - app/api/users/route.ts → /api/users
+
+    Returns None if file is not a Next.js page/route.
+    """
+    parts = file_path.parts
+
+    # Find pages/ or app/ directory
+    page_index = None
+    route_type = None
+    for i, part in enumerate(parts):
+        if part == "pages":
+            page_index = i
+            route_type = "pages"
+            break
+        elif part == "app":
+            page_index = i
+            route_type = "app"
+            break
+
+    if page_index is None:
+        return None
+
+    # Get the path parts after pages/ or app/
+    route_parts = list(parts[page_index + 1:])
+    if not route_parts:  # pragma: no cover
+        return None
+
+    # Get filename without extension
+    filename = route_parts[-1]
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+
+    # Handle App Router conventions
+    if route_type == "app":
+        # Only page.tsx, route.ts, etc. are valid routes
+        if stem not in ("page", "route", "loading", "error", "layout"):  # pragma: no cover
+            return None
+        # Remove the special filename from route
+        route_parts = route_parts[:-1]
+    else:
+        # Pages Router: replace filename stem
+        route_parts[-1] = stem
+
+    # Build the route path
+    route_segments = []
+    for part in route_parts:
+        if part == "index":
+            continue  # index.js → /
+        elif part.startswith("[...") and part.endswith("]"):
+            # Catch-all route: [...slug] → *
+            route_segments.append("*")
+        elif part.startswith("[") and part.endswith("]"):
+            # Dynamic route: [id] → :id
+            param = part[1:-1]
+            route_segments.append(f":{param}")
+        else:
+            route_segments.append(part)
+
+    route = "/" + "/".join(route_segments) if route_segments else "/"
+    return route
+
+
+def _extract_nextjs_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Next.js file-based routing.
+
+    Detects:
+    - Files in pages/ or app/ directories
+    - Default exports (page components)
+    - Named exports (getServerSideProps, getStaticProps, etc.)
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    # Check if this file is a Next.js page
+    route_path = _infer_nextjs_route(file_path)
+    if not route_path:
+        return contexts
+
+    # Determine if this is an API route
+    is_api_route = "/api/" in route_path or route_path.startswith("/api")
+
+    # Check if this is an App Router route.ts file
+    filename = file_path.name
+    is_route_file = filename.startswith("route.")  # route.ts, route.js
+
+    # App Router HTTP method handlers (exported from route.ts files)
+    HTTP_HANDLERS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
+    # Look for exports
+    for node in iter_tree(tree.root_node):
+        if node.type != "export_statement":
+            continue
+
+        # Check for export default
+        is_default = False
+        export_name = None
+
+        for child in node.children:
+            if child.type == "default":
+                is_default = True
+            elif child.type == "function_declaration":
+                name = _find_name_in_children(child, source)
+                if name:
+                    export_name = name
+            elif child.type == "identifier":  # pragma: no cover
+                export_name = _node_text(child, source)
+            elif child.type == "export_clause":  # pragma: no cover
+                # Named exports: export { getServerSideProps }
+                for ec_child in child.children:
+                    if ec_child.type == "export_specifier":
+                        for spec_child in ec_child.children:
+                            if spec_child.type == "identifier":
+                                export_name = _node_text(spec_child, source)
+                                break
+
+        # Meaningful exports for Next.js
+        meaningful_exports = {"getServerSideProps", "getStaticProps", "getStaticPaths",
+                              "generateStaticParams", "generateMetadata"}
+
+        # For route.ts files, also include HTTP method handlers
+        if is_route_file:
+            meaningful_exports.update(HTTP_HANDLERS)
+
+        # Create UsageContext for meaningful exports
+        if is_default or export_name in meaningful_exports:
+            span = Span(
+                start_line=node.start_point[0] + 1 + line_offset,
+                end_line=node.end_point[0] + 1 + line_offset,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            )
+
+            # Resolve symbol reference
+            handler_ref = None
+            if export_name and export_name in symbol_by_name:
+                handler_ref = symbol_by_name[export_name].id
+
+            context_name = "export.default" if is_default else f"export.{export_name}"
+            concept_type = "api_route" if is_api_route else "page"
+
+            ctx = UsageContext.create(
+                kind="export",
+                context_name=context_name,
+                position="file",  # File-based pattern
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "route_path": route_path,
+                    "http_method": "GET" if not is_api_route else "ANY",
+                    "export_name": export_name,
+                    "is_default": is_default,
+                    "is_api_route": is_api_route,
+                    "concept": concept_type,
+                },
+            )
+            contexts.append(ctx)
+
+    return contexts
+
+
+def _is_index_file(file_path: Path) -> bool:
+    """Check if a file is an index file (library entry point).
+
+    Index files are the entry points for libraries, defining the public API.
+    Supports various extensions used in JavaScript/TypeScript projects.
+    """
+    stem = file_path.stem  # filename without extension
+    return stem == "index"
+
+
+def _extract_library_export_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for library exports from index files.
+
+    Libraries (as opposed to applications) expose their public API through
+    exports from index files (index.ts, index.js, etc.). These exports are
+    entry points for library consumers.
+
+    Detects:
+    - export default X
+    - export function name() {}
+    - export class Name {}
+    - export const name = ...
+    - export { name1, name2 }
+    - export { name as alias }
+
+    Note: Re-exports (export * from './module') are not currently detected
+    as they require import resolution to determine the exported symbols.
+
+    Returns a list of UsageContext records for YAML pattern matching.
+    """
+    contexts: list[UsageContext] = []
+
+    # Only process index files
+    if not _is_index_file(file_path):
+        return contexts
+
+    # Look for exports
+    for node in iter_tree(tree.root_node):
+        if node.type != "export_statement":
+            continue
+
+        # Check for export default
+        is_default = False
+        export_names: list[str] = []
+
+        for child in node.children:
+            if child.type == "default":
+                is_default = True
+            elif child.type == "function_declaration":
+                name = _find_name_in_children(child, source)
+                if name:
+                    export_names.append(name)
+            elif child.type == "class_declaration":
+                name = _find_name_in_children(child, source)
+                if name:
+                    export_names.append(name)
+            elif child.type == "lexical_declaration":
+                # export const x = ..., export let y = ...
+                for decl in child.children:
+                    if decl.type == "variable_declarator":
+                        for dc in decl.children:
+                            if dc.type == "identifier":
+                                export_names.append(_node_text(dc, source))
+                                break
+            elif child.type == "identifier":
+                # export default SomeIdentifier
+                export_names.append(_node_text(child, source))
+            elif child.type == "export_clause":
+                # Named exports: export { name1, name2, name3 as alias }
+                for ec_child in child.children:
+                    if ec_child.type == "export_specifier":
+                        # Get the local name (first identifier) for symbol lookup
+                        # and the exported name (second identifier or alias)
+                        local_name = None
+                        for spec_child in ec_child.children:
+                            if spec_child.type == "identifier":
+                                if local_name is None:
+                                    local_name = _node_text(spec_child, source)
+                                # If there's an alias, we still use local name for lookup
+                        if local_name:
+                            export_names.append(local_name)
+
+        # Create span for the export statement
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        if is_default:
+            # Default export - may or may not have a name
+            export_name = export_names[0] if export_names else None
+            handler_ref = None
+            if export_name and export_name in symbol_by_name:
+                handler_ref = symbol_by_name[export_name].id
+
+            ctx = UsageContext.create(
+                kind="library_export",
+                context_name="export.default",
+                position="default",
+                path=str(file_path),
+                span=span,
+                symbol_ref=handler_ref,
+                metadata={
+                    "export_name": export_name,
+                    "is_default": True,
+                },
+            )
+            contexts.append(ctx)
+        else:
+            # Named exports - create a context for each export
+            for export_name in export_names:
+                handler_ref = None
+                if export_name in symbol_by_name:
+                    handler_ref = symbol_by_name[export_name].id
+
+                ctx = UsageContext.create(
+                    kind="library_export",
+                    context_name=f"export.{export_name}",
+                    position="named",
+                    path=str(file_path),
+                    span=span,
+                    symbol_ref=handler_ref,
+                    metadata={
+                        "export_name": export_name,
+                        "is_default": False,
+                    },
+                )
+                contexts.append(ctx)
+
+    return contexts
 
 
 def _detect_nestjs_decorator(
@@ -800,6 +1439,10 @@ def _extract_decorators(
     Decorators appear as sibling nodes before the decorated node,
     or as children with type 'decorator' in some grammars.
 
+    Handles TypeScript export patterns:
+    - @Decorator export class Foo {} -> decorator is sibling in export_statement
+    - The decorator comes before 'export' keyword but decorates the class
+
     Returns list of decorator info dicts: [{"name": str, "args": list, "kwargs": dict}]
     """
     decorators: list[dict[str, object]] = []
@@ -822,16 +1465,20 @@ def _extract_decorators(
 
         if idx is not None:
             # Look backward for decorator siblings
+            # For export_statement: children are [decorator, export, class_declaration]
+            # We need to skip 'export' keyword to find decorators
             for i in range(idx - 1, -1, -1):
                 sibling = parent.children[i]
                 if sibling.type == "decorator":
                     dec_info = _extract_decorator_info(sibling, source)
                     if dec_info["name"]:
                         decorators.insert(0, dec_info)  # Maintain order
+                elif sibling.type in ("comment", "export"):
+                    # Skip comments and 'export' keyword to find decorators
+                    continue
                 else:
-                    # Stop at non-decorator (e.g., another method or statement)
-                    if sibling.type not in ("comment", "decorator"):
-                        break
+                    # Stop at any other node (e.g., another statement)
+                    break
 
     return decorators
 
@@ -921,11 +1568,11 @@ def _extract_symbols(
         if id(node) in processed_handlers:
             continue
 
-        # Express-style route handler detection: app.get('/path', handler) - deprecated
+        # Express-style route handler detection: app.get('/path', handler)
+        # This also emits UsageContext records (v1.1.x) for YAML pattern matching.
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
-                _emit_route_deprecation_warning("Express")
                 handler_node, handler_name, is_external = _find_route_handler_in_call(node, source)
                 if handler_node:
                     # Mark the handler as processed to avoid extracting it again
@@ -1181,18 +1828,16 @@ def _extract_symbols(
                 current_class_name = _get_class_context(node, source)
                 full_name = f"{current_class_name}.{name}" if current_class_name else name
 
-                http_method, route_path = _detect_nestjs_decorator(node, source)
+                http_method, _method_route_path = _detect_nestjs_decorator(node, source)
                 stable_id = http_method if http_method else None
 
-                # Build meta with decorators and route_path
+                # Build meta with decorators
+                # Note: Route path combination is handled by enrichment via prefix_from_parent
+                # in the NestJS YAML pattern definition (see nestjs.yaml)
                 meta: dict[str, object] | None = None
                 decorators = _extract_decorators(node, source)
-                if decorators or route_path:
-                    meta = {}
-                    if decorators:
-                        meta["decorators"] = decorators
-                    if route_path:
-                        meta["route_path"] = route_path
+                if decorators:
+                    meta = {"decorators": decorators}
 
                 signature = _extract_jsts_signature(node, source)
 
@@ -1246,10 +1891,15 @@ def _get_enclosing_function(
     source: bytes,
     file_path: Path,
     global_symbols: dict[str, Symbol],
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function/method.
 
     Returns the Symbol for the enclosing function, or None if not inside one.
+
+    For arrow functions passed as callbacks (not assigned to variables), looks up
+    the symbol by position using symbol_by_position. This enables call attribution
+    for patterns like: app.get('/', (req, res) => { helper(); })
     """
     current = node.parent
     while current is not None:
@@ -1273,9 +1923,9 @@ def _get_enclosing_function(
                             return sym
             return None  # pragma: no cover
 
-        # Arrow functions assigned to variables
+        # Arrow functions - try variable assignment first, then position lookup
         if current.type == "arrow_function":
-            # Walk up to find the variable_declarator
+            # First, try to find a variable_declarator parent (assigned arrow fn)
             parent = current.parent
             while parent is not None:
                 if parent.type == "variable_declarator":
@@ -1291,7 +1941,19 @@ def _get_enclosing_function(
                 if parent.type in ("lexical_declaration", "variable_declaration", "program"):
                     break
                 parent = parent.parent
-            return None  # pragma: no cover
+
+            # If not assigned to variable, try position-based lookup
+            # This handles callback arrow functions like route handlers
+            if symbol_by_position:
+                arrow_line = current.start_point[0] + 1  # 1-indexed
+                arrow_col = current.start_point[1]
+                position_key = (str(file_path), arrow_line, arrow_col)
+                if position_key in symbol_by_position:
+                    return symbol_by_position[position_key]
+
+            # Not found by position - continue walking up to find containing
+            # named function (e.g., callback inside a named function)
+            # Don't return None here; let the loop continue
 
         current = current.parent
     return None  # pragma: no cover
@@ -1308,11 +1970,17 @@ def _extract_edges(
     global_classes: dict[str, Symbol],
     line_offset: int = 0,
     namespace_imports: dict[str, str] | None = None,
+    resolver: NameResolver | None = None,
+    method_resolver: ListNameResolver | None = None,
+    class_resolver: NameResolver | None = None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
     Uses global symbol registries to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+    Optionally uses NameResolver for suffix-based matching and confidence tracking.
+    Uses symbol_by_position to attribute calls inside callback arrow functions.
 
     Handles:
     - Direct calls: helper(), ClassName()
@@ -1320,11 +1988,20 @@ def _extract_edges(
     - Namespace calls: alias.func(), alias.Class() (via namespace_imports)
     - Object instantiation: new ClassName()
 
-    Note: Type inference only tracks types from direct constructor calls
-    (client = new Client()), not from function returns (client = getClient()).
+    Type inference tracks types from:
+    - Constructor calls: const client = new Client() -> client has type Client
+    - Function parameters (TypeScript): function process(client: Client) -> client has type Client
+
+    Type inference does NOT track types from function returns (const client = getClient()).
     """
     if namespace_imports is None:
         namespace_imports = {}
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
+    if method_resolver is None:  # pragma: no cover - defensive
+        method_resolver = ListNameResolver(global_methods)
+    if class_resolver is None:  # pragma: no cover - defensive
+        class_resolver = NameResolver(global_classes)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -1349,6 +2026,13 @@ def _extract_edges(
                     )
                     edges.append(edge)
                     break
+
+        # Function/method declarations - extract parameter types for type inference
+        elif node.type in ("function_declaration", "method_definition", "arrow_function"):
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
 
         # Call expressions
         elif node.type == "call_expression":
@@ -1400,25 +2084,28 @@ def _extract_edges(
                             edges.append(edge)
                             break
                 else:
-                    # Regular function call
-                    current_function = _get_enclosing_function(node, source, file_path, global_symbols)
-                    if current_function and func_name in global_symbols:
-                        callee_symbol = global_symbols[func_name]
-                        edge = Edge.create(
-                            src=current_function.id,
-                            dst=callee_symbol.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1 + line_offset,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_call_direct",
-                            confidence=0.85,
-                        )
-                        edges.append(edge)
+                    # Regular function call - use resolver for suffix matching
+                    current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
+                    if current_function:
+                        lookup_result = resolver.lookup(func_name)
+                        if lookup_result.found:
+                            # Scale confidence by resolver's confidence multiplier
+                            edge_confidence = 0.85 * lookup_result.confidence
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_direct",
+                                confidence=edge_confidence,
+                            )
+                            edges.append(edge)
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
-                current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
                 if current_function:
                     method_name = None
                     obj_node = None
@@ -1437,17 +2124,17 @@ def _extract_edges(
                         # Case 1: this.method()
                         if is_this_call and current_class_name:
                             full_name = f"{current_class_name}.{method_name}"
-                            if full_name in global_symbols:
-                                target_sym = global_symbols[full_name]
+                            lookup_result = resolver.lookup(full_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_this",
-                                    confidence=0.95,
+                                    confidence=0.95 * lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -1455,19 +2142,21 @@ def _extract_edges(
                         # Case 2: alias.func() via namespace import
                         elif obj_name and obj_name in namespace_imports:
                             # This is a namespace call: alias.func() or alias.Class()
-                            # Resolve via global symbols using method_name directly
-                            if method_name in global_symbols:
-                                target_sym = global_symbols[method_name]
-                                is_class = target_sym.kind == "class"
+                            # Resolve via global symbols using import path as hint
+                            # to disambiguate when same name exists in multiple modules
+                            import_path = namespace_imports[obj_name]
+                            lookup_result = resolver.lookup(method_name, path_hint=import_path)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                is_class = lookup_result.symbol.kind == "class"
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="instantiates" if is_class else "calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                    confidence=0.90,
+                                    confidence=0.90 * lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -1476,48 +2165,50 @@ def _extract_edges(
                         elif obj_name and obj_name in var_types:
                             type_class_name = var_types[obj_name]
                             full_name = f"{type_class_name}.{method_name}"
-                            if full_name in global_symbols:
-                                target_sym = global_symbols[full_name]
+                            lookup_result = resolver.lookup(full_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
-                                    confidence=0.85,
+                                    confidence=0.85 * lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
 
                         # Case 4: Fallback - method name match with low confidence
-                        if not edge_added and method_name in global_methods:
-                            for target_sym in global_methods[method_name]:
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=target_sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1 + line_offset,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_method_inferred",
-                                    confidence=0.60,
-                                )
-                                edges.append(edge)
+                        if not edge_added:
+                            lookup_result = method_resolver.lookup(method_name)
+                            if lookup_result.found and lookup_result.candidates:
+                                for target_sym in lookup_result.candidates:
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=target_sym.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_method_inferred",
+                                        confidence=0.60 * lookup_result.confidence,
+                                    )
+                                    edges.append(edge)
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
             class_name = None
             target_sym = None
+            lookup_confidence = 1.0  # Default for exact match
+            ns_import_path: str | None = None  # Path hint for namespace imports
 
             for child in node.children:
                 if child.type == "identifier":
                     # new ClassName()
                     class_name = _node_text(child, source)
-                    if class_name in global_classes:
-                        target_sym = global_classes[class_name]
                     break
                 elif child.type == "member_expression":
                     # new namespace.ClassName()
@@ -1530,9 +2221,16 @@ def _extract_edges(
                             cls_name = _node_text(mc, source)
                     if ns_name and ns_name in namespace_imports and cls_name:
                         class_name = cls_name
-                        if cls_name in global_classes:
-                            target_sym = global_classes[cls_name]
+                        # Track import path for disambiguation
+                        ns_import_path = namespace_imports[ns_name]
                     break
+
+            # Resolve class via class_resolver, using import path for disambiguation
+            if class_name:
+                lookup_result = class_resolver.lookup(class_name, path_hint=ns_import_path)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    target_sym = lookup_result.symbol
+                    lookup_confidence = lookup_result.confidence
 
             # Emit instantiates edge
             if current_function and target_sym:
@@ -1544,7 +2242,7 @@ def _extract_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_new",
-                    confidence=0.95,
+                    confidence=0.95 * lookup_confidence,
                 )
                 edges.append(edge)
 
@@ -1868,9 +2566,13 @@ def analyze_javascript(
     global_symbols: dict[str, Symbol] = {}
     global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
+    # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
+    symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
+        # Index by position for inline handler lookup in UsageContext creation
+        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind == "method":
             method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
             if method_name not in global_methods:
@@ -1880,14 +2582,47 @@ def analyze_javascript(
             global_classes[sym.name] = sym
 
     # Pass 2: Extract edges using global symbol registry
+    resolver = NameResolver(global_symbols)
+    method_resolver = ListNameResolver(global_methods)
+    class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
             global_symbols, global_methods, global_classes, pf.line_offset,
-            pf.namespace_imports or {}
+            pf.namespace_imports or {},
+            resolver, method_resolver, class_resolver,
+            symbol_by_position,
         )
         all_edges.extend(edges)
+
+    # Pass 3: Extract usage contexts for call-based frameworks (v1.1.x)
+    all_usage_contexts: list[UsageContext] = []
+    for pf in parsed_files:
+        # Express-style route calls (app.get, router.post, etc.)
+        usage_contexts = _extract_express_usage_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset,
+            symbol_by_position,
+        )
+        all_usage_contexts.extend(usage_contexts)
+
+        # Hapi config-object route calls (server.route({ method, path, handler }))
+        hapi_contexts = _extract_hapi_usage_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(hapi_contexts)
+
+        # Next.js file-based route exports (pages/ and app/ directories)
+        nextjs_contexts = _extract_nextjs_usage_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(nextjs_contexts)
+
+        # Library exports from index files (index.ts, index.js, etc.)
+        library_contexts = _extract_library_export_contexts(
+            pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
+        )
+        all_usage_contexts.extend(library_contexts)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
@@ -1896,5 +2631,6 @@ def analyze_javascript(
     return JsAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

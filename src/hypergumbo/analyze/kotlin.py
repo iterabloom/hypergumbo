@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -185,14 +186,55 @@ def _extract_kotlin_signature(
     return signature
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a function declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        fun process(client: Client) {
+            client.send()  // resolves to Client.send
+        }
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only).
+    """
+    param_types: dict[str, str] = {}
+
+    for child in node.children:
+        if child.type == "function_value_parameters":
+            for subchild in child.children:
+                if subchild.type == "parameter":
+                    param_name = None
+                    param_type = None
+                    for pc in subchild.children:
+                        if pc.type == "identifier" and param_name is None:
+                            param_name = _node_text(pc, source)
+                        elif pc.type in ("user_type", "nullable_type", "function_type"):
+                            type_text = _node_text(pc, source)
+                            # Extract base type name (strip nullable ?, generics <>, etc.)
+                            if type_text:
+                                # Remove nullable suffix
+                                type_text = type_text.rstrip("?")
+                                # Remove generic parameters
+                                if "<" in type_text:  # pragma: no cover
+                                    type_text = type_text.split("<")[0]
+                                param_type = type_text
+                    if param_name and param_type:
+                        param_types[param_name] = param_type
+
+    return param_types
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
-    Note on type inference: Variable method calls (e.g., obj.method()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (val obj = MyClass()) but NOT from function returns (val obj = getMyClass()).
-    This covers ~90% of real-world cases with minimal complexity.
+    Type inference tracks types from:
+    - Constructor calls: val obj = MyClass() -> obj has type MyClass
+    - Function parameters: fun process(client: Client) -> client has type Client
+
+    Type inference does NOT track types from function returns (val obj = getMyClass()).
     """
 
     symbols: list[Symbol] = field(default_factory=list)
@@ -360,6 +402,7 @@ def _extract_edges_from_file(
     global_symbols: dict[str, Symbol],
     imports: dict[str, str],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -368,6 +411,8 @@ def _extract_edges_from_file(
     - Navigation calls: Object.method(), instance.method()
     - Type inference from constructor assignments: val x = ClassName()
     """
+    if resolver is None:
+        resolver = NameResolver(global_symbols)
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -422,6 +467,13 @@ def _extract_edges_from_file(
                     if type_name and type_name[0].isupper():
                         var_types[var_name] = type_name
 
+        # Function declarations - extract parameter types for type inference
+        elif node.type == "function_declaration":
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
+
         # Detect function calls
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
@@ -457,14 +509,14 @@ def _extract_edges_from_file(
                         enclosing_class = _get_enclosing_class(node, source)
                         if enclosing_class:
                             candidate = f"{enclosing_class}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.90,
+                                    confidence=0.90 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_this",
@@ -478,14 +530,16 @@ def _extract_edges_from_file(
                         # Case 2: Object.method() - static/object call
                         if receiver_name in class_symbols:
                             candidate = f"{receiver_name}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            # Use import path as hint for disambiguation
+                            import_hint = imports.get(receiver_name)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.95,
+                                    confidence=0.95 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_static",
@@ -496,14 +550,16 @@ def _extract_edges_from_file(
                         elif receiver_name in var_types:
                             type_class_name = var_types[receiver_name]
                             candidate = f"{type_class_name}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            # Use import path of the type as hint for disambiguation
+                            import_hint = imports.get(type_class_name)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.85,
+                                    confidence=0.85 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_type_inferred",
@@ -513,14 +569,16 @@ def _extract_edges_from_file(
                         # Case 4: Fallback - try qualified name directly
                         if not edge_added:  # pragma: no cover
                             candidate = f"{receiver_name}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            # Use import path as hint if receiver is an imported name
+                            import_hint = imports.get(receiver_name)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.75,
+                                    confidence=0.75 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -544,19 +602,22 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    # Check global symbols
-                    elif callee_name in global_symbols:
-                        callee = global_symbols[callee_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="function_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                    # Check global symbols via resolver
+                    else:
+                        # Use import path as hint for disambiguation
+                        import_hint = imports.get(callee_name)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.80 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
     return edges
 
@@ -616,6 +677,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
             global_symbols[symbol.name] = symbol
 
     # Pass 2: Extract edges
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -624,7 +686,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
 
         edges = _extract_edges_from_file(
             kt_file, parser, analysis.symbol_by_name, global_symbols,
-            analysis.imports, run
+            analysis.imports, run, resolver
         )
         all_edges.extend(edges)
 

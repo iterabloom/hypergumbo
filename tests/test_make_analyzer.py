@@ -40,6 +40,33 @@ CFLAGS = -Wall -O2
     assert "CFLAGS" in names
 
 
+def test_variable_deduplication(tmp_path):
+    """Test that repeated variable assignments only emit one symbol.
+
+    Makefiles often use VAR := initial followed by VAR += additions.
+    We should only emit one symbol for the variable, not multiple.
+    """
+    makefile = tmp_path / "Makefile"
+    makefile.write_text("""
+CFLAGS := -Wall
+CFLAGS += -O2
+CFLAGS += -g
+ASFLAGS := $(CFLAGS)
+ASFLAGS += -DFOO
+ASFLAGS += -DBAR
+""")
+    result = analyze_make_files(tmp_path)
+
+    assert not result.skipped
+    variables = [s for s in result.symbols if s.kind == "variable"]
+    names = [v.name for v in variables]
+
+    # Should have exactly one symbol per variable name
+    assert names.count("CFLAGS") == 1
+    assert names.count("ASFLAGS") == 1
+    assert len(variables) == 2
+
+
 def test_analyze_target(tmp_path):
     """Test detection of target rules."""
     makefile = tmp_path / "Makefile"

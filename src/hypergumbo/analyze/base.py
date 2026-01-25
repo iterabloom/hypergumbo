@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, Symbol, UsageContext
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -46,6 +46,7 @@ class AnalysisResult:
     Attributes:
         symbols: List of detected symbols (functions, classes, etc.)
         edges: List of relationships between symbols (calls, imports, etc.)
+        usage_contexts: List of usage contexts for call-based pattern matching (v1.1.x)
         run: Provenance tracking for the analysis pass
         skipped: Whether the analysis was skipped (e.g., missing dependency)
         skip_reason: Human-readable reason for skipping
@@ -53,6 +54,7 @@ class AnalysisResult:
 
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""

@@ -1,15 +1,29 @@
-# Express.js framework patterns (ADR-0003 v1.0.x)
+# Express.js framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Express.js routing and middleware patterns.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Note: Express uses method chaining (app.get(), router.post()) similar to
-# Flask 2.0+. The decorator patterns here match against extracted call metadata.
+# Definition-based patterns (v1.0.x): Match decorator-style metadata
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
 id: express
 language: javascript
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
+
+  # Express route handlers - app.get('/path', handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|router|express|server|fastify|koa)\\.(get|post|put|delete|patch|options|head|all)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Express route handlers - app.get(), app.post(), etc.
   - concept: route
     decorator: "^(app|router|express)\\.(get|post|put|delete|patch|options|head|all)$"
@@ -64,6 +78,18 @@ patterns:
   # Express validator
   - concept: middleware
     decorator: "^(body|query|param|check|validationResult)$"
+
+  # Socket.io event handlers
+  - concept: websocket_handler
+    decorator: "^(socket|io)\\.on$"
+
+  # Socket.io emit (for connection patterns)
+  - concept: websocket_emitter
+    decorator: "^(socket|io)\\.(emit|broadcast)$"
+
+  # Socket.io namespace
+  - concept: websocket_namespace
+    decorator: "^io\\.of$"
 
 linkers:
   - http

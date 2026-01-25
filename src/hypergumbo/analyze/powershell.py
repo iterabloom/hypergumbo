@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -210,14 +211,21 @@ def _make_powershell_symbol(
     )
 
 
-def _find_enclosing_function_powershell(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Find the enclosing function name by walking up parents."""
+def _find_enclosing_function_powershell(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function Symbol by walking up parents."""
     current = node.parent
-    while current:
+    while current is not None:
         if current.type == "function_statement":
             name_node = _find_child_by_type(current, "function_name")
             if name_node:
-                return _node_text(name_node, source).strip()
+                name = _node_text(name_node, source).strip()
+                sym = local_symbols.get(name)
+                if sym:
+                    return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -270,17 +278,15 @@ def _process_using_command(
             ))
 
 
-def _extract_symbols_and_edges(
+def _extract_powershell_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
     run_id: str,
-) -> tuple[list[Symbol], list[Edge]]:
-    """Extract all symbols and edges from a parsed PowerShell file."""
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    function_names: set[str] = set()  # Track defined functions
-
+    symbols: list[Symbol],
+    symbol_registry: dict[str, Symbol],
+) -> None:
+    """Extract symbols from a parsed PowerShell file (pass 1)."""
     for node in iter_tree(tree.root_node):
         if node.type == "function_statement":
             # Process a function, filter, or workflow definition
@@ -299,13 +305,27 @@ def _extract_symbols_and_edges(
             name_node = _find_child_by_type(node, "function_name")
             if name_node:
                 func_name = _node_text(name_node, source).strip()
-                function_names.add(func_name)
                 sig = _extract_function_signature(node, source)
-                symbols.append(_make_powershell_symbol(
+                sym = _make_powershell_symbol(
                     file_path, run_id, node, func_name, kind, signature=sig
-                ))
+                )
+                symbols.append(sym)
+                # Register functions for call resolution
+                if kind in ("function", "filter", "workflow"):
+                    symbol_registry[func_name] = sym
 
-        elif node.type == "command":
+
+def _extract_powershell_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    edges: list[Edge],
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+) -> None:
+    """Extract edges from a parsed PowerShell file (pass 2)."""
+    for node in iter_tree(tree.root_node):
+        if node.type == "command":
             command_name_node = _find_child_by_type(node, "command_name")
             if command_name_node:
                 command_name = _node_text(command_name_node, source).strip()
@@ -316,21 +336,35 @@ def _extract_symbols_and_edges(
                     _process_using_command(node, source, file_path, edges)
                 else:
                     # Check if inside a function
-                    caller = _find_enclosing_function_powershell(node, source)
+                    caller = _find_enclosing_function_powershell(node, source, local_symbols)
                     if caller:
+                        # Use resolver for callee resolution
+                        lookup_result = resolver.lookup(command_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            dst_id = lookup_result.symbol.id
+                            confidence = 0.85 * lookup_result.confidence
+                        else:
+                            # External cmdlet or function
+                            dst_id = f"powershell:external:{command_name}:function"
+                            confidence = 0.70
+
                         edges.append(Edge(
                             id=_make_edge_id(),
-                            src=_make_file_id(file_path),
-                            dst=f"powershell:?:?:{command_name}:function",
+                            src=caller.id,
+                            dst=dst_id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
+                            confidence=confidence,
+                            origin=PASS_ID,
                         ))
-
-    return symbols, edges
 
 
 def analyze_powershell(repo_root: Path) -> PowerShellAnalysisResult:
     """Analyze all PowerShell files in the repository.
+
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges (imports + calls) using NameResolver
 
     Args:
         repo_root: Path to the repository root.
@@ -352,20 +386,38 @@ def analyze_powershell(repo_root: Path) -> PowerShellAnalysisResult:
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
+    # Global symbol registry for cross-file resolution
+    global_symbol_registry: dict[str, Symbol] = {}
+
+    # Store parsed files for pass 2
+    parsed_files: list[tuple[str, bytes, object]] = []
+
+    # Pass 1: Extract symbols from all files
     for file_path in find_powershell_files(repo_root):
         try:
             source = file_path.read_bytes()
             tree = parser.parse(source)
 
             rel_path = str(file_path.relative_to(repo_root))
-            symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
+            _extract_powershell_symbols(tree, source, rel_path, run_id, all_symbols, global_symbol_registry)
 
-            all_symbols.extend(symbols)
-            all_edges.extend(edges)
+            # Store for pass 2
+            parsed_files.append((rel_path, source, tree))
             files_analyzed += 1
 
         except (OSError, IOError):  # pragma: no cover - defensive
             continue  # Skip files we can't read
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract edges using resolver
+    for rel_path, source, tree in parsed_files:
+        # Build local symbol map for this file (functions/filters/workflows)
+        local_symbols = {s.name: s for s in all_symbols
+                         if s.path == rel_path and s.kind in ("function", "filter", "workflow")}
+
+        _extract_powershell_edges(tree, source, rel_path, all_edges, local_symbols, resolver)  # type: ignore
 
     duration_ms = int((time.time() - start_time) * 1000)
 

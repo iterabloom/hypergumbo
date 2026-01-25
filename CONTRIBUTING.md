@@ -36,6 +36,34 @@ If you prefer manual control without installing CLI tools like `tea`:
 ## Canonical forge
 Codeberg is the source of truth for issues/PRs. GitHub is a mirror.
 
+## Testing
+
+### Running Tests Locally
+
+```bash
+# Fast parallel run with coverage
+pytest -n auto --cov=src --cov-fail-under=100
+
+# Sequential run (for debugging)
+pytest --cov=src --cov-fail-under=100
+```
+
+### Embedding Tests and sentence-transformers
+
+Some tests require `sentence-transformers` (which depends on PyTorch) for testing embedding-based features like `sketch_precomputed`.
+
+**CI behavior:** CI does **not** attempt to install sentence-transformers. It only checks if it's already available. If not installed, embedding-dependent tests are skipped. This keeps CI fast and avoids flaky installs on resource-constrained runners.
+
+**Local development:** To run embedding tests locally, install sentence-transformers:
+
+```bash
+pip install sentence-transformers
+```
+
+This works on most development machines where PyTorch wheels are available (Linux x86_64, macOS, Windows).
+
+**Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
+
 ---
 
 ## auto-pr Documentation
@@ -47,10 +75,50 @@ The `scripts/auto-pr` script automates the entire PR lifecycle: push, CI polling
 1. **Push** — Pushes your branch using Forgejo's AGit workflow (`refs/for/dev/<branch>`)
 2. **Create PR** — The push automatically creates a PR on Codeberg
 3. **Poll CI** — Waits for CI status checks to complete (polls every 10 seconds)
-4. **Merge** — Automatically merges when CI passes
+4. **Merge** — Uses **fast-forward merge** by default (preserves commit bodies + DCO)
 5. **Cleanup** — Switches back to `dev`, pulls, and deletes the local feature branch
 
 If the remote is unavailable (503 errors, network issues), the PR is **queued locally** and can be pushed later with `./scripts/auto-pr flush`.
+
+### Merge Strategy
+
+**Default: Fast-forward merge** — Your original commits are preserved exactly as-is, including:
+- Full commit message bodies
+- DCO `Signed-off-by` lines
+- Commit SHAs remain unchanged
+
+**If branch has diverged:** The script will prompt you to rebase first:
+```bash
+git fetch origin dev
+git rebase origin/dev
+./scripts/auto-pr
+```
+
+**Emergency fallback: `--squash`** — Only if fast-forward fails, rebasing fails, and it's an emergency:
+```bash
+./scripts/auto-pr --squash
+```
+This will:
+- Warn and ask for confirmation
+- Squash merge with `[from <sha>]` in subject for traceability
+- Attach original commit body as a **git note** on the squash commit
+- Push notes to remote
+
+### Git Notes (for historical commits)
+
+Some historical commits (Jan 9-22 2026) were squash-merged before fast-forward was the default.
+Their original bodies are preserved as git notes.
+
+```bash
+# Fetch notes from remote
+git fetch origin refs/notes/*:refs/notes/*
+
+# View commits with notes
+git log --show-notes
+
+# Show note for specific commit
+git notes show <sha>
+```
 
 ### Requirements
 
@@ -83,6 +151,9 @@ FORGEJO_TOKEN=your_token_here
 
 # Custom title and description
 ./scripts/auto-pr "feat: add new feature" "Detailed description here"
+
+# Force squash merge (emergency only - use only if fast-forward and rebasing both fail)
+./scripts/auto-pr --squash
 
 # Queue management (when remote is unavailable)
 ./scripts/auto-pr list    # Show queued PRs

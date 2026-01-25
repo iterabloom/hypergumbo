@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -280,7 +281,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     package_name: str,
     run_id: str,
 ) -> list[Edge]:
@@ -360,9 +361,11 @@ def _extract_edges_from_file(
                                       "lc", "uc", "lcfirst", "ucfirst", "scalar", "wantarray"):
                     caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
                     if caller:
-                        # Try to resolve callee
-                        callee = local_symbols.get(func_name) or global_symbol_registry.get(func_name)
-                        if callee:
+                        # Resolve callee using resolver only
+                        lookup_result = resolver.lookup(func_name)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -371,7 +374,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_call",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
                         else:
@@ -397,8 +400,11 @@ def _extract_edges_from_file(
                 method_name = _node_text(method_node, source)
                 caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
                 if caller:
-                    callee = local_symbols.get(method_name) or global_symbol_registry.get(method_name)
-                    if callee:
+                    # Resolve callee using resolver only
+                    lookup_result = resolver.lookup(method_name)
+                    if lookup_result.found and lookup_result.symbol:
+                        callee = lookup_result.symbol
+                        confidence = 0.75 * lookup_result.confidence
                         edge = Edge.create(
                             src=caller.id,
                             dst=callee.id,
@@ -407,7 +413,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="method_call",
-                            confidence=0.75,
+                            confidence=confidence,
                         )
                         edges.append(edge)
 
@@ -498,6 +504,7 @@ def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -505,7 +512,7 @@ def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             fa.package_name,
             run_id,
         )

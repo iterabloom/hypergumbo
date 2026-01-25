@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -90,6 +91,7 @@ class FileAnalysis:
     source: bytes
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
+    module_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -275,7 +277,6 @@ def _find_enclosing_ocaml_function(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Optional[Symbol]:
     """Find the function that contains this node by walking up the parent chain."""
     current = node.parent
@@ -284,13 +285,48 @@ def _find_enclosing_ocaml_function(
             let_binding = _find_child_by_type(current, "let_binding")
             if let_binding:
                 name = _get_let_binding_name(let_binding, source)
-                # Check local symbols first, then global
                 if name in local_symbols:
                     return local_symbols[name]
-                if name in global_symbol_registry:  # pragma: no cover - cross-file case
-                    return global_symbol_registry[name]  # pragma: no cover
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+def _extract_module_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract module aliases for disambiguation.
+
+    In OCaml:
+        module L = List -> L maps to List
+
+    Returns a dict mapping alias names to full module names.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "module_definition":
+            continue
+
+        # Find module_binding: module L = List
+        binding = _find_child_by_type(node, "module_binding")
+        if not binding:  # pragma: no cover - defensive for malformed AST
+            continue
+
+        # Get alias name (first module_name in binding)
+        alias_node = _find_child_by_type(binding, "module_name")
+        if not alias_node:  # pragma: no cover - defensive for malformed AST
+            continue
+
+        alias_name = _node_text(alias_node, source)
+
+        # Get original module path (after =)
+        module_path = _find_child_by_type(binding, "module_path")
+        if module_path:
+            original = _node_text(module_path, source)
+            aliases[alias_name] = original
+
+    return aliases
 
 
 def _extract_edges_from_file(
@@ -298,15 +334,21 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
+    module_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed OCaml file.
+
+    Args:
+        module_aliases: Optional dict mapping module aliases to full names.
 
     Detects:
     - open_module: Import statements
     - application_expression: Function application (calls)
     """
+    if module_aliases is None:  # pragma: no cover - defensive default
+        module_aliases = {}
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
@@ -337,19 +379,30 @@ def _extract_edges_from_file(
             if node.children:
                 first_child = node.children[0]
                 callee_name = None
+                path_hint: Optional[str] = None
 
                 if first_child.type == "value_path":
                     value_name = _find_child_by_type(first_child, "value_name")
                     if value_name:
                         callee_name = _node_text(value_name, source)
 
+                    # Check for module prefix (L.map -> module_path 'L')
+                    module_path = _find_child_by_type(first_child, "module_path")
+                    if module_path:
+                        module_name_node = _find_child_by_type(module_path, "module_name")
+                        if module_name_node:
+                            module_alias = _node_text(module_name_node, source)
+                            path_hint = module_aliases.get(module_alias)
+
                 if callee_name and callee_name not in ("print_int", "print_string", "print_endline", "print_newline"):
                     # Find the caller (enclosing function)
-                    caller = _find_enclosing_ocaml_function(node, source, local_symbols, global_symbol_registry)
+                    caller = _find_enclosing_ocaml_function(node, source, local_symbols)
                     if caller:
-                        # Try to resolve callee
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                        # Resolve callee via global resolver
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -358,7 +411,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_application",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
                         else:
@@ -445,6 +498,9 @@ def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
         file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract module aliases for disambiguation
+        module_aliases = _extract_module_aliases(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -454,11 +510,13 @@ def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
             source=source,
             tree=tree,
             symbols=file_symbols,
+            module_aliases=module_aliases,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -466,8 +524,9 @@ def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
+            module_aliases=fa.module_aliases,
         )
         all_edges.extend(edges)
 

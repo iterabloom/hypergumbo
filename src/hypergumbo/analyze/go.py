@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from .base import (
     AnalysisResult,
     FileAnalysis,
@@ -53,6 +53,7 @@ from .base import (
     node_text,
 )
 from .registry import register_analyzer
+from ..symbol_resolution import ListNameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -63,6 +64,10 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # Go web framework HTTP method names
 # Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
 # Fiber uses lowercase: Get, Post, Put, Delete, Patch, Head, Options
+#
+# Note: Go web framework route detection uses method calls (r.GET, e.POST) rather
+# than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
+# enables YAML patterns for call-based frameworks.
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
@@ -362,6 +367,10 @@ def _get_enclosing_function(
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function/method.
 
+    For calls inside anonymous functions (func_literal), continues walking up
+    to find the containing named function. This enables call attribution for
+    patterns like: go func() { helper() }()
+
     Args:
         node: The current node.
         source: Source bytes for extracting text.
@@ -378,36 +387,11 @@ def _get_enclosing_function(
                 func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
+        # For func_literal (anonymous functions), continue walking up
+        # to find the containing named function rather than returning None
+        # This handles: go func() { helper() }(), callbacks, etc.
         current = current.parent
     return None  # pragma: no cover - defensive
-
-
-def _resolve_callee(
-    callee_name: str,
-    candidates: list[Symbol],
-    import_path_hint: str | None,
-) -> Symbol | None:
-    """Resolve the best callee from a list of candidates using import path hint.
-
-    When multiple symbols have the same name (e.g., RegisterCheckoutServiceServer
-    in multiple genproto directories), use the import path to pick the right one.
-    """
-    if not candidates:
-        return None  # pragma: no cover - defensive
-
-    if len(candidates) == 1:
-        return candidates[0]
-
-    # Multiple candidates - try to disambiguate using import path
-    if import_path_hint:
-        dir_hint = _import_path_to_dir_hint(import_path_hint)
-        if dir_hint:
-            for candidate in candidates:
-                if dir_hint in candidate.path:
-                    return candidate
-
-    # Fallback: return first candidate (legacy behavior)
-    return candidates[0]
 
 
 def _extract_edges_from_file(
@@ -417,6 +401,7 @@ def _extract_edges_from_file(
     global_symbols: dict[str, list[Symbol]],
     run: AnalysisRun,
     import_aliases: dict[str, str] | None = None,
+    resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -425,6 +410,8 @@ def _extract_edges_from_file(
     """
     if import_aliases is None:
         import_aliases = {}
+    if resolver is None:
+        resolver = ListNameResolver(global_symbols)
 
     try:
         source = file_path.read_bytes()
@@ -509,42 +496,43 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
-                        # Check global symbols with disambiguation
-                        elif callee_name in global_symbols:
-                            candidates = global_symbols[callee_name]
-                            callee = _resolve_callee(callee_name, candidates, import_path_hint)
-                            if callee:
+                        # Check global symbols with disambiguation via ListNameResolver
+                        else:
+                            lookup_result = resolver.lookup(callee_name, path_hint=import_path_hint)
+                            if lookup_result.found:
+                                # Scale base confidence by resolver's confidence multiplier
+                                edge_confidence = 0.80 * lookup_result.confidence
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=callee.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="function_call",
-                                    confidence=0.80,
+                                    confidence=edge_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
-                        # Bug #2 fix: Create edge for external/unresolved method calls
-                        # This enables linkers to potentially match across languages
-                        elif func_node.type == "selector_expression":
-                            # For s.Method() where Method is external, create unresolved edge
-                            # Use the import path if available to make the ID more specific
-                            if import_path_hint:
-                                # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
-                                dst_id = f"go:{import_path_hint}:0-0:{callee_name}:unresolved"
-                            else:
-                                # Fallback: use "external" as the path
-                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="unresolved_method_call",
-                                confidence=0.50,  # Lower confidence for unresolved
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                            # Bug #2 fix: Create edge for external/unresolved method calls
+                            # This enables linkers to potentially match across languages
+                            elif func_node.type == "selector_expression":
+                                # For s.Method() where Method is external, create unresolved edge
+                                # Use the import path if available to make the ID more specific
+                                if import_path_hint:
+                                    # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
+                                    dst_id = f"go:{import_path_hint}:0-0:{callee_name}:unresolved"
+                                else:
+                                    # Fallback: use "external" as the path
+                                    dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="unresolved_method_call",
+                                    confidence=0.50,  # Lower confidence for unresolved
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
 
     return edges
 
@@ -642,6 +630,126 @@ def _extract_go_routes(
     return routes
 
 
+def _extract_go_usage_contexts(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Go web framework route calls.
+
+    Creates UsageContext records that capture how handler functions are used
+    in Gin/Echo/Chi/Fiber route registration calls. These are matched against
+    YAML patterns in the enrichment phase.
+
+    Supported patterns:
+    - Gin: r.GET("/path", handler), router.POST("/users", createUser)
+    - Echo: e.GET("/path", handler), echo.POST("/users", createUser)
+    - Chi: r.Get("/path", handler), router.Post("/users", createUser)
+    - Fiber: app.Get("/path", handler), app.Post("/users", createUser)
+
+    Args:
+        node: The root tree-sitter node
+        source: Source file bytes
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+
+    Returns:
+        List of UsageContext records for Go route patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for n in iter_tree(node):
+        if n.type != "call_expression":
+            continue
+
+        func_node = find_child_by_field(n, "function")
+        if not func_node or func_node.type != "selector_expression":
+            continue
+
+        # Get the method name (e.g., GET, POST, Get, Post)
+        field_node = find_child_by_field(func_node, "field")
+        if not field_node:  # pragma: no cover
+            continue
+
+        method_name = node_text(field_node, source)
+        if method_name not in GO_HTTP_METHODS:
+            continue
+
+        # Get the receiver name (e.g., r, router, e, echo, app)
+        operand_node = find_child_by_field(func_node, "operand")
+        receiver_name = node_text(operand_node, source) if operand_node else None
+
+        # Extract arguments
+        args_node = find_child_by_field(n, "arguments")
+        if not args_node:  # pragma: no cover
+            continue
+
+        route_path = None
+        handler_name = None
+
+        for arg in args_node.children:
+            # First string literal is the route path
+            if arg.type == "interpreted_string_literal" and route_path is None:
+                content_node = find_child_by_type(arg, "interpreted_string_literal_content")
+                if content_node:
+                    route_path = node_text(content_node, source)
+                else:  # pragma: no cover
+                    route_path = node_text(arg, source).strip('"')
+
+            # Handler is usually an identifier after the path
+            elif arg.type == "identifier" and route_path is not None:
+                handler_name = node_text(arg, source)
+                break
+
+            # Handler could also be a selector (pkg.Handler)
+            elif arg.type == "selector_expression" and route_path is not None:
+                handler_name = node_text(arg, source)
+                break
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Try to resolve handler to a symbol reference
+        handler_ref = None
+        if handler_name and handler_name in symbol_by_name:
+            handler_ref = symbol_by_name[handler_name].id
+
+        # Normalize method name to uppercase
+        normalized_method = method_name.upper()
+
+        # Build full call name (e.g., "r.GET", "router.Post")
+        call_name = f"{receiver_name}.{method_name}" if receiver_name else method_name
+
+        # Normalize route path
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        span = Span(
+            start_line=n.start_point[0] + 1,
+            end_line=n.end_point[0] + 1,
+            start_col=n.start_point[1],
+            end_col=n.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="args[last]",  # Handler is typically last argument
+            path=str(file_path),
+            span=span,
+            symbol_ref=handler_ref,
+            metadata={
+                "route_path": normalized_path,
+                "http_method": normalized_method,
+                "handler_name": handler_name,
+                "receiver": receiver_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 @register_analyzer("go", priority=50)
 def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     """Analyze all Go files in a repository.
@@ -707,9 +815,10 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
                     global_symbols[symbol.name] = []
                 global_symbols[symbol.name].append(symbol)
 
-    # Pass 2: Extract edges and routes
+    # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
 
     for go_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -726,6 +835,12 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
             tree = parser.parse(source)
             routes = _extract_go_routes(tree.root_node, source, go_file, run)
             all_symbols.extend(routes)
+
+            # Extract usage contexts for YAML pattern matching (v1.1.x)
+            usage_contexts = _extract_go_usage_contexts(
+                tree.root_node, source, go_file, analysis.symbol_by_name
+            )
+            all_usage_contexts.extend(usage_contexts)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
 
@@ -736,5 +851,6 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

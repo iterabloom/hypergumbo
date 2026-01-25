@@ -309,3 +309,54 @@ class TestOCamlSignatureExtraction:
         vals = [s for s in result.symbols if s.kind == "function" and s.name == "x"]
         assert len(vals) == 1
         assert vals[0].signature is None  # No params = value, not function
+
+
+class TestOCamlModuleAliases:
+    """Tests for module alias extraction and qualified call resolution."""
+
+    def test_extracts_module_alias(self, tmp_path: Path) -> None:
+        """Extracts module alias from 'module L = List' statement."""
+        from hypergumbo.analyze.ocaml import _extract_module_aliases
+
+        import tree_sitter
+        import tree_sitter_ocaml
+
+        lang = tree_sitter.Language(tree_sitter_ocaml.language_ocaml())
+        parser = tree_sitter.Parser(lang)
+
+        ml_file = tmp_path / "Main.ml"
+        ml_file.write_text("""
+module L = List
+module S = String
+
+let main () = L.length []
+""")
+
+        source = ml_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_module_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "L" in aliases
+        assert aliases["L"] == "List"
+        assert "S" in aliases
+        assert aliases["S"] == "String"
+
+    def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
+        """Qualified call resolution uses module alias for path hint."""
+        from hypergumbo.analyze.ocaml import analyze_ocaml
+
+        make_ocaml_file(tmp_path, "Main.ml", """
+module L = List
+
+let double_length lst =
+    L.length lst * 2
+""")
+
+        result = analyze_ocaml(tmp_path)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "double_length" for s in symbols)

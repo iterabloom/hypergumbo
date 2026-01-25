@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -48,8 +49,12 @@ PASS_VERSION = "hypergumbo-0.1.0"
 
 
 def find_c_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all C files in the repository."""
-    yield from find_files(repo_root, ["*.c", "*.h"])
+    """Yield all C files in the repository.
+
+    Headers (.h) are yielded before source files (.c) so that
+    definitions can replace declarations when building the symbol registry.
+    """
+    yield from find_files(repo_root, ["*.h", "*.c"])
 
 
 def is_c_tree_sitter_available() -> bool:
@@ -361,12 +366,16 @@ def _extract_edges(
     file_path: Path,
     run: AnalysisRun,
     global_symbols: dict[str, Symbol],
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
+
     edges: list[Edge] = []
 
     for node in iter_tree(tree.root_node):
@@ -378,14 +387,14 @@ def _extract_edges(
                 func_node = node.child_by_field_name("function")
                 if func_node and func_node.type == "identifier":
                     callee_name = _node_text(func_node, source)
-                    if callee_name in global_symbols:
-                        target_sym = global_symbols[callee_name]
+                    lookup_result = resolver.lookup(callee_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
-                            dst=target_sym.id,
+                            dst=lookup_result.symbol.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            confidence=0.95,
+                            confidence=0.95 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
@@ -421,7 +430,8 @@ def _analyze_c_file(
     for sym in symbols:
         global_symbols[sym.name] = sym
 
-    edges = _extract_edges(tree, source, file_path, run, global_symbols)
+    resolver = NameResolver(global_symbols)
+    edges = _extract_edges(tree, source, file_path, run, global_symbols, resolver)
     return symbols, edges, True
 
 
@@ -480,17 +490,30 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
             files_skipped += 1
 
     # Build global symbol registry
+    # Prefer function definitions (.c files) over declarations (.h files)
+    # This ensures call edges point to the implementation (with outgoing calls)
+    # rather than the header declaration (no outgoing calls)
     global_symbols: dict[str, Symbol] = {}
 
     for sym in all_symbols:
-        global_symbols[sym.name] = sym
+        existing = global_symbols.get(sym.name)
+        if existing is None:
+            global_symbols[sym.name] = sym
+        else:
+            # Prefer .c (definition) over .h (declaration)
+            sym_is_source = sym.path.endswith('.c')
+            existing_is_source = existing.path.endswith('.c')
+            if sym_is_source and not existing_is_source:
+                global_symbols[sym.name] = sym
+            # If both are source files, prefer the later one (already in dict)
 
     # Pass 2: Extract edges using global symbol registry
+    resolver = NameResolver(global_symbols)
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
-            global_symbols
+            global_symbols, resolver
         )
         all_edges.extend(edges)
 

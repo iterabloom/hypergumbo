@@ -518,3 +518,223 @@ end
         macros = [s for s in result.symbols if s.kind == "macro" and "debug" in s.name]
         assert len(macros) == 1
         assert macros[0].signature == "(expr)"
+
+
+class TestAliasHintsExtraction:
+    """Tests for alias hints extraction for disambiguation."""
+
+    def test_extracts_simple_alias(self, tmp_path: Path) -> None:
+        """Extracts alias directives using last component of module path."""
+        from hypergumbo.analyze.elixir import (
+            _extract_alias_hints,
+            is_elixir_tree_sitter_available,
+        )
+
+        if not is_elixir_tree_sitter_available():
+            pytest.skip("tree-sitter-elixir not available")
+
+        import tree_sitter_language_pack
+        import tree_sitter
+
+        lang = tree_sitter_language_pack.get_language("elixir")
+        parser = tree_sitter.Parser(lang)
+
+        ex_file = tmp_path / "main.ex"
+        ex_file.write_text("""
+defmodule Main do
+  alias MyApp.Services.UserService
+  alias MyApp.Math.Calculator
+
+  def run do
+    UserService.create()
+    Calculator.add(1, 2)
+  end
+end
+""")
+
+        source = ex_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_alias_hints(tree, source)
+
+        # Last component of module path should be the short name
+        assert "UserService" in hints
+        assert hints["UserService"] == "MyApp.Services.UserService"
+        assert "Calculator" in hints
+        assert hints["Calculator"] == "MyApp.Math.Calculator"
+
+    def test_extracts_alias_with_as_option(self, tmp_path: Path) -> None:
+        """Extracts alias directives with 'as:' custom alias."""
+        from hypergumbo.analyze.elixir import (
+            _extract_alias_hints,
+            is_elixir_tree_sitter_available,
+        )
+
+        if not is_elixir_tree_sitter_available():
+            pytest.skip("tree-sitter-elixir not available")
+
+        import tree_sitter_language_pack
+        import tree_sitter
+
+        lang = tree_sitter_language_pack.get_language("elixir")
+        parser = tree_sitter.Parser(lang)
+
+        ex_file = tmp_path / "main.ex"
+        ex_file.write_text("""
+defmodule Main do
+  alias MyApp.Services.UserService, as: Svc
+
+  def run do
+    Svc.create()
+  end
+end
+""")
+
+        source = ex_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_alias_hints(tree, source)
+
+        # Custom alias should be used
+        assert "Svc" in hints
+        assert hints["Svc"] == "MyApp.Services.UserService"
+
+    def test_extracts_alias_with_other_options(self, tmp_path: Path) -> None:
+        """Falls back to last component when alias has options but not 'as:'."""
+        from hypergumbo.analyze.elixir import (
+            _extract_alias_hints,
+            is_elixir_tree_sitter_available,
+        )
+
+        if not is_elixir_tree_sitter_available():
+            pytest.skip("tree-sitter-elixir not available")
+
+        import tree_sitter_language_pack
+        import tree_sitter
+
+        lang = tree_sitter_language_pack.get_language("elixir")
+        parser = tree_sitter.Parser(lang)
+
+        ex_file = tmp_path / "main.ex"
+        ex_file.write_text("""
+defmodule Main do
+  alias MyApp.Services.UserService, warn: false
+
+  def run do
+    UserService.create()
+  end
+end
+""")
+
+        source = ex_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_alias_hints(tree, source)
+
+        # Should use last component when as: is not present
+        assert "UserService" in hints
+        assert hints["UserService"] == "MyApp.Services.UserService"
+
+
+class TestElixirPhoenixUsageContext:
+    """Tests for Phoenix router DSL usage context extraction."""
+
+    def test_phoenix_get_route(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Phoenix get route."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  scope "/api" do
+    get "/users", UserController, :index
+    post "/users", UserController, :create
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+        assert len(result.usage_contexts) >= 2
+
+        get_ctx = next((c for c in result.usage_contexts if c.context_name == "get"), None)
+        assert get_ctx is not None
+        assert get_ctx.kind == "call"
+        assert get_ctx.metadata["route_path"] == "/users"
+        assert get_ctx.metadata["http_method"] == "GET"
+        assert get_ctx.metadata["controller"] == "UserController"
+        assert get_ctx.metadata["action"] == "index"
+
+    def test_phoenix_post_route(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Phoenix post route."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  post "/users", UserController, :create
+end
+''')
+        result = analyze_elixir(tmp_path)
+        post_ctx = next((c for c in result.usage_contexts if c.context_name == "post"), None)
+        assert post_ctx is not None
+        assert post_ctx.metadata["http_method"] == "POST"
+
+    def test_phoenix_resources_route(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for Phoenix resources route."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  resources "/posts", PostController
+end
+''')
+        result = analyze_elixir(tmp_path)
+        res_ctx = next((c for c in result.usage_contexts if c.context_name == "resources"), None)
+        assert res_ctx is not None
+        assert res_ctx.metadata["http_method"] == "RESOURCES"
+        assert res_ctx.metadata["route_path"] == "/posts"
+        assert res_ctx.metadata["controller"] == "PostController"
+
+    def test_phoenix_route_with_path_only(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for route with minimal args."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  get "/health", HealthController, :check
+end
+''')
+        result = analyze_elixir(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.context_name == "get"), None)
+        assert ctx is not None
+        assert ctx.position == "args[0]"
+
+    def test_phoenix_all_http_methods(self, tmp_path: Path) -> None:
+        """Extracts UsageContext for all HTTP methods."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  get "/", PageController, :home
+  put "/users/:id", UserController, :update
+  patch "/users/:id", UserController, :patch
+  delete "/users/:id", UserController, :delete
+  head "/ping", HealthController, :head
+  options "/api", ApiController, :options
+end
+''')
+        result = analyze_elixir(tmp_path)
+        methods = {c.metadata["http_method"] for c in result.usage_contexts}
+        assert "GET" in methods
+        assert "PUT" in methods
+        assert "PATCH" in methods
+        assert "DELETE" in methods
+        assert "HEAD" in methods
+        assert "OPTIONS" in methods

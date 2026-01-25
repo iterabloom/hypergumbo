@@ -4,9 +4,10 @@ import pytest
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.entrypoints import (
     detect_entrypoints,
+    Entrypoint,
     EntrypointKind,
-    _is_test_file,
 )
+from hypergumbo.paths import is_test_file
 
 
 def make_symbol(
@@ -18,6 +19,7 @@ def make_symbol(
     language: str = "python",
     decorators: list[str] | None = None,
     meta: dict | None = None,
+    supply_chain_tier: int = 1,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -35,3187 +37,97 @@ def make_symbol(
         origin_run_id="uuid:test",
         stable_id=stable_id,
         meta=meta,
+        supply_chain_tier=supply_chain_tier,
     )
 
 
-class TestFastAPIEntrypoints:
-    """Tests for FastAPI route detection."""
-
-    def test_detect_app_get_decorator(self) -> None:
-        """Detect @app.get decorated functions."""
-        sym = make_symbol("get_user", decorators=["get"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        assert entrypoints[0].symbol_id == sym.id
-        assert entrypoints[0].kind == EntrypointKind.HTTP_ROUTE
-
-    def test_detect_app_post_decorator(self) -> None:
-        """Detect @app.post decorated functions."""
-        sym = make_symbol("create_user", decorators=["post"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        assert entrypoints[0].kind == EntrypointKind.HTTP_ROUTE
-
-    def test_detect_router_decorator(self) -> None:
-        """Detect @router.get/post decorated functions."""
-        sym = make_symbol("list_items", decorators=["router"])
-        nodes = [sym]
-
-        # router decorator alone doesn't make it a route
-        entrypoints = detect_entrypoints(nodes, [])
-        # But combined patterns should work
-        # For now, we detect common route decorators
-
-    def test_detect_route_decorator(self) -> None:
-        """Detect @app.route decorated functions."""
-        sym = make_symbol("handle_request", decorators=["route"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        assert entrypoints[0].kind == EntrypointKind.HTTP_ROUTE
-
-
-class TestFlaskEntrypoints:
-    """Tests for Flask route detection."""
-
-    def test_detect_flask_route(self) -> None:
-        """Detect Flask @app.route decorated functions."""
-        sym = make_symbol("index", decorators=["route"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        assert entrypoints[0].kind == EntrypointKind.HTTP_ROUTE
-
-
-class TestCLIEntrypoints:
-    """Tests for CLI entrypoint detection."""
-
-    def test_detect_main_guard(self) -> None:
-        """Detect if __name__ == '__main__' pattern."""
-        # The main function in a file with main guard
-        sym = make_symbol("main", path="src/cli.py")
-        nodes = [sym]
-
-        # We need a way to indicate this is a main-guarded function
-        # For now, detect by name pattern
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-    def test_detect_cli_by_name(self) -> None:
-        """Detect CLI entry by function name patterns."""
-        sym = make_symbol("cli", path="src/app.py")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-    def test_detect_click_command(self) -> None:
-        """Detect Click CLI commands."""
-        sym = make_symbol("run_server", decorators=["command"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        assert entrypoints[0].kind == EntrypointKind.CLI_COMMAND
-
-    def test_c_main_detected_as_cli(self) -> None:
-        """C main function is detected as CLI_MAIN."""
-        sym = make_symbol("main", path="src/main.c", language="c")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-    def test_cpp_main_detected_as_cli(self) -> None:
-        """C++ main function is detected as CLI_MAIN."""
-        sym = make_symbol("main", path="src/main.cpp", language="cpp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-    def test_glsl_main_not_detected_as_cli(self) -> None:
-        """GLSL shader main function is NOT detected as CLI_MAIN."""
-        sym = make_symbol("main", path="shaders/vertex.glsl", language="glsl")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        # GLSL main is a shader entry point, not a CLI entry point
-        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-    def test_hlsl_main_not_detected_as_cli(self) -> None:
-        """HLSL shader main function is NOT detected as CLI_MAIN."""
-        sym = make_symbol("main", path="shaders/pixel.hlsl", language="hlsl")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-    def test_wgsl_main_not_detected_as_cli(self) -> None:
-        """WGSL shader main function is NOT detected as CLI_MAIN."""
-        sym = make_symbol("main", path="shaders/compute.wgsl", language="wgsl")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert not any(e.kind == EntrypointKind.CLI_MAIN for e in entrypoints)
-
-
-class TestElectronEntrypoints:
-    """Tests for Electron app detection."""
-
-    def test_detect_electron_js(self) -> None:
-        """Detect Electron main process file."""
-        sym = make_symbol("createWindow", path="src/electron.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert any(e.kind == EntrypointKind.ELECTRON_MAIN for e in entrypoints)
-
-    def test_detect_preload_js(self) -> None:
-        """Detect Electron preload script."""
-        sym = make_symbol("contextBridge", path="src/preload.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert any(e.kind == EntrypointKind.ELECTRON_PRELOAD for e in entrypoints)
-
-    def test_generic_renderer_not_matched(self) -> None:
-        """Generic renderer.js is NOT matched to avoid false positives."""
-        sym = make_symbol("render", path="src/renderer.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        # Should not detect as Electron - too generic, causes false positives
-        assert not any(e.label.startswith("Electron") for e in entrypoints)
-
-    def test_one_entry_per_file(self) -> None:
-        """Multiple symbols in same Electron file produce only one entry."""
-        sym1 = make_symbol("createWindow", path="src/electron.js", language="javascript")
-        sym2 = make_symbol("setupMenu", path="src/electron.js", language="javascript")
-        sym3 = make_symbol("handleIPC", path="src/electron.js", language="javascript")
-        nodes = [sym1, sym2, sym3]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        # Should only have one Electron main entry, not three
-        electron_entries = [e for e in entrypoints if e.kind == EntrypointKind.ELECTRON_MAIN]
-        assert len(electron_entries) == 1
-
-
-class TestEntrypointResult:
-    """Tests for Entrypoint result structure."""
-
-    def test_entrypoint_has_required_fields(self) -> None:
-        """Entrypoint contains symbol_id, kind, and confidence."""
-        sym = make_symbol("get_user", decorators=["get"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        ep = entrypoints[0]
-        assert ep.symbol_id == sym.id
-        assert ep.kind == EntrypointKind.HTTP_ROUTE
-        assert 0.0 <= ep.confidence <= 1.0
-        assert ep.label is not None
-
-    def test_entrypoint_to_dict(self) -> None:
-        """Entrypoint serializes to dict."""
-        sym = make_symbol("get_user", decorators=["get"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-        d = entrypoints[0].to_dict()
-
-        assert "symbol_id" in d
-        assert "kind" in d
-        assert "confidence" in d
-        assert "label" in d
-
-
-class TestMultipleEntrypoints:
-    """Tests for detecting multiple entrypoints."""
-
-    def test_detect_multiple_routes(self) -> None:
-        """Detect multiple HTTP routes in same file."""
-        sym1 = make_symbol("get_user", decorators=["get"], start_line=10)
-        sym2 = make_symbol("create_user", decorators=["post"], start_line=20)
-        sym3 = make_symbol("helper", start_line=30)  # Not an entrypoint
-        nodes = [sym1, sym2, sym3]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
-        assert len(route_eps) == 2
-
-    def test_no_entrypoints(self) -> None:
-        """Return empty list when no entrypoints found."""
-        sym = make_symbol("helper_function")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        # May still detect by name patterns, but helper_function is not one
-        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
-        assert len(route_eps) == 0
-
-
-class TestEntrypointConfidence:
-    """Tests for entrypoint confidence scoring."""
-
-    def test_decorator_high_confidence(self) -> None:
-        """Decorator-based detection has high confidence."""
-        sym = make_symbol("get_user", decorators=["get"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert entrypoints[0].confidence >= 0.9
-
-    def test_name_pattern_lower_confidence(self) -> None:
-        """Name-based detection has lower confidence."""
-        sym = make_symbol("main")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_MAIN]
-        if cli_eps:
-            assert cli_eps[0].confidence < 0.9
-
-
-class TestAsyncHandlers:
-    """Tests for async handler detection."""
-
-    def test_detect_async_route(self) -> None:
-        """Detect async HTTP handlers."""
-        # Async functions are still functions, detected by decorator
-        sym = make_symbol("async_get_user", decorators=["get"])
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        assert len(entrypoints) == 1
-        assert entrypoints[0].kind == EntrypointKind.HTTP_ROUTE
-
-
-class TestDjangoEntrypoints:
-    """Tests for Django URL route detection.
-
-    Django uses path() or url() calls in urls.py files to map URLs to views.
-    Detection strategy: If a urls.py file imports a function, that function
-    is likely a Django view entrypoint.
-    """
-
-    def test_detect_django_view_by_urls_import(self) -> None:
-        """Detect Django views imported by urls.py."""
-
-        # views.py: index function
-        view_func = make_symbol("index", path="myapp/views.py")
-
-        # urls.py: imports index from views
-        urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
-
-        # Import edge from urls.py to the view function
-        import_edge = Edge.create(
-            src=urls_file.id,
-            dst=view_func.id,
-            edge_type="imports",
-            line=1,
-        )
-
-        nodes = [view_func, urls_file]
-        edges = [import_edge]
-
-        entrypoints = detect_entrypoints(nodes, edges)
-
-        # The view function should be detected as Django view entrypoint
-        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
-        assert len(django_eps) == 1
-        assert django_eps[0].symbol_id == view_func.id
-
-    def test_detect_multiple_django_views(self) -> None:
-        """Detect multiple views imported by urls.py."""
-
-        # Multiple view functions
-        view1 = make_symbol("index", path="myapp/views.py", start_line=1)
-        view2 = make_symbol("detail", path="myapp/views.py", start_line=10)
-        view3 = make_symbol("helper", path="myapp/utils.py")  # Not in urls.py
-
-        urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
-
-        # Import edges from urls.py
-        edge1 = Edge.create(src=urls_file.id, dst=view1.id, edge_type="imports", line=1)
-        edge2 = Edge.create(src=urls_file.id, dst=view2.id, edge_type="imports", line=2)
-
-        nodes = [view1, view2, view3, urls_file]
-        edges = [edge1, edge2]
-
-        entrypoints = detect_entrypoints(nodes, edges)
-
-        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
-        assert len(django_eps) == 2
-        assert {e.symbol_id for e in django_eps} == {view1.id, view2.id}
-
-    def test_django_view_confidence(self) -> None:
-        """Django view detection has appropriate confidence score."""
-
-        view_func = make_symbol("index", path="myapp/views.py")
-        urls_file = make_symbol("file", kind="file", path="myapp/urls.py")
-        import_edge = Edge.create(src=urls_file.id, dst=view_func.id, edge_type="imports", line=1)
-
-        nodes = [view_func, urls_file]
-        edges = [import_edge]
-
-        entrypoints = detect_entrypoints(nodes, edges)
-
-        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
-        assert len(django_eps) == 1
-        # Should have high confidence - urls.py imports are intentional
-        assert django_eps[0].confidence >= 0.85
-
-    def test_django_urls_nested_path(self) -> None:
-        """Detect views from nested urls.py files (app/urls.py)."""
-
-        view_func = make_symbol("api_list", path="api/views.py")
-        urls_file = make_symbol("file", kind="file", path="api/urls.py")
-        import_edge = Edge.create(src=urls_file.id, dst=view_func.id, edge_type="imports", line=1)
-
-        nodes = [view_func, urls_file]
-        edges = [import_edge]
-
-        entrypoints = detect_entrypoints(nodes, edges)
-
-        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
-        assert len(django_eps) == 1
-
-    def test_django_ignore_non_urls_imports(self) -> None:
-        """Non-urls.py imports don't trigger Django view detection."""
-
-        # views.py imports from utils.py - this is NOT a Django route
-        view_func = make_symbol("helper", path="myapp/utils.py")
-        views_file = make_symbol("file", kind="file", path="myapp/views.py")
-        import_edge = Edge.create(src=views_file.id, dst=view_func.id, edge_type="imports", line=1)
-
-        nodes = [view_func, views_file]
-        edges = [import_edge]
-
-        entrypoints = detect_entrypoints(nodes, edges)
-
-        # Should not detect as Django view - views.py importing utils.py is not a route
-        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
-        assert len(django_eps) == 0
-
-    def test_django_view_label(self) -> None:
-        """Django view entrypoints have descriptive labels."""
-
-        view_func = make_symbol("article_detail", path="blog/views.py")
-        urls_file = make_symbol("file", kind="file", path="blog/urls.py")
-        import_edge = Edge.create(src=urls_file.id, dst=view_func.id, edge_type="imports", line=1)
-
-        nodes = [view_func, urls_file]
-        edges = [import_edge]
-
-        entrypoints = detect_entrypoints(nodes, edges)
-
-        django_eps = [e for e in entrypoints if e.kind == EntrypointKind.DJANGO_VIEW]
-        assert len(django_eps) == 1
-        assert "Django" in django_eps[0].label or "view" in django_eps[0].label.lower()
-
-
-class TestExpressEntrypoints:
-    """Tests for Express.js route detection.
-
-    Express uses app.get/post/etc. or router.get/post/etc. to define routes.
-    Detection strategy: Functions in files that match route patterns
-    (routes.js, routes/*.js, router.js) or files that import express.
-    """
-
-    def test_detect_express_route_in_routes_file(self) -> None:
-        """Detect functions in routes.js as Express routes."""
-        sym = make_symbol("getUsers", path="src/routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-        assert express_eps[0].symbol_id == sym.id
-
-    def test_detect_express_route_in_router_file(self) -> None:
-        """Detect functions in router.js as Express routes."""
-        sym = make_symbol("createUser", path="api/router.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-
-    def test_detect_express_route_in_routes_directory(self) -> None:
-        """Detect functions in routes/*.js as Express routes."""
-        sym = make_symbol("deleteItem", path="src/routes/items.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-
-    def test_detect_express_route_typescript(self) -> None:
-        """Detect Express routes in TypeScript files."""
-        sym = make_symbol("updateUser", path="src/routes/users.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-
-    def test_detect_multiple_express_routes(self) -> None:
-        """Detect multiple route handlers in same file."""
-        sym1 = make_symbol("getUser", path="src/routes.js", language="javascript", start_line=10)
-        sym2 = make_symbol("createUser", path="src/routes.js", language="javascript", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 2
-
-    def test_express_route_confidence(self) -> None:
-        """Express route detection has medium-high confidence."""
-        sym = make_symbol("handler", path="routes/api.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-        # File pattern based - medium-high confidence
-        assert express_eps[0].confidence >= 0.80
-
-    def test_express_route_label(self) -> None:
-        """Express route entrypoints have descriptive labels."""
-        sym = make_symbol("getProducts", path="src/routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-        assert "Express" in express_eps[0].label or "route" in express_eps[0].label.lower()
-
-    def test_express_non_route_file_not_detected(self) -> None:
-        """Functions in non-route files are not detected as Express routes."""
-        sym = make_symbol("helper", path="src/utils.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 0
-
-    def test_express_only_js_ts_files(self) -> None:
-        """Only JavaScript/TypeScript files are detected as Express routes."""
-        # Python file named routes.py should NOT be detected as Express
-        sym = make_symbol("get_users", path="src/routes.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 0
-
-    def test_express_file_symbol_not_detected(self) -> None:
-        """File symbols in route files are not detected as routes."""
-        sym = make_symbol("file", kind="file", path="src/routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 0
-
-    def test_express_tsx_files_not_detected(self) -> None:
-        """TSX files in routes directory are React components, not Express routes.
-
-        React file-based routing (TanStack Router, Next.js app router) uses
-        routes/*.tsx for components, which should not be detected as Express routes.
-        """
-        sym = make_symbol("Dashboard", path="frontend/src/routes/index.tsx", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 0
-
-    def test_express_jsx_files_not_detected(self) -> None:
-        """JSX files in routes directory are React components, not Express routes."""
-        sym = make_symbol("App", path="frontend/src/routes/App.jsx", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 0
-
-
-class TestNestJSEntrypoints:
-    """Tests for NestJS controller detection.
-
-    NestJS uses @Controller decorator on classes and @Get/@Post/etc.
-    decorators on methods. Detection strategy: Files matching the
-    *.controller.ts naming convention.
-    """
-
-    def test_detect_nestjs_controller_file(self) -> None:
-        """Detect methods in *.controller.ts as NestJS endpoints."""
-        sym = make_symbol("findAll", path="src/users.controller.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 1
-        assert nestjs_eps[0].symbol_id == sym.id
-
-    def test_detect_nestjs_class_controller(self) -> None:
-        """Detect classes in *.controller.ts as NestJS controllers."""
-        sym = make_symbol("UsersController", kind="class", path="src/users.controller.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 1
-
-    def test_detect_nestjs_in_controllers_directory(self) -> None:
-        """Detect files in controllers/ directory as NestJS."""
-        sym = make_symbol("getUsers", path="src/controllers/users.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 1
-
-    def test_detect_multiple_nestjs_methods(self) -> None:
-        """Detect multiple methods in same controller file."""
-        sym1 = make_symbol("findAll", path="src/users.controller.ts", language="typescript", start_line=10)
-        sym2 = make_symbol("create", path="src/users.controller.ts", language="typescript", start_line=20)
-        sym3 = make_symbol("delete", path="src/users.controller.ts", language="typescript", start_line=30)
-        nodes = [sym1, sym2, sym3]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 3
-
-    def test_nestjs_controller_confidence(self) -> None:
-        """NestJS controller detection has high confidence."""
-        sym = make_symbol("findOne", path="src/items.controller.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 1
-        # File pattern based - high confidence for .controller.ts
-        assert nestjs_eps[0].confidence >= 0.85
-
-    def test_nestjs_controller_label(self) -> None:
-        """NestJS controller entrypoints have descriptive labels."""
-        sym = make_symbol("update", path="src/products.controller.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 1
-        assert "NestJS" in nestjs_eps[0].label or "controller" in nestjs_eps[0].label.lower()
-
-    def test_nestjs_only_typescript(self) -> None:
-        """Only TypeScript files are detected as NestJS controllers."""
-        # JavaScript file should NOT be detected
-        sym = make_symbol("findAll", path="src/users.controller.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        # NestJS is TypeScript-only framework
-        assert len(nestjs_eps) == 0
-
-    def test_nestjs_file_symbol_not_detected(self) -> None:
-        """File symbols in controller files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/users.controller.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 0
-
-    def test_nestjs_non_controller_file_not_detected(self) -> None:
-        """Non-controller TypeScript files are not detected as NestJS."""
-        sym = make_symbol("helper", path="src/users.service.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        nestjs_eps = [e for e in entrypoints if e.kind == EntrypointKind.NESTJS_CONTROLLER]
-        assert len(nestjs_eps) == 0
-
-
-class TestSpringBootEntrypoints:
-    """Tests for Spring Boot controller detection.
-
-    Spring Boot uses @Controller and @RestController annotations on classes.
-    Detection strategy: Files matching *Controller.java or *Resource.java,
-    or files in a controller/ or controllers/ directory.
-    """
-
-    def test_detect_spring_controller_file(self) -> None:
-        """Detect methods in *Controller.java as Spring endpoints."""
-        sym = make_symbol("getUsers", path="src/main/java/com/app/UserController.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 1
-        assert spring_eps[0].symbol_id == sym.id
-
-    def test_detect_spring_rest_resource_file(self) -> None:
-        """Detect methods in *Resource.java as Spring endpoints."""
-        sym = make_symbol("createUser", path="src/main/java/com/app/UserResource.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 1
-
-    def test_detect_spring_in_controller_directory(self) -> None:
-        """Detect files in controller/ directory as Spring."""
-        sym = make_symbol("listProducts", path="src/main/java/com/app/controller/Products.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 1
-
-    def test_detect_spring_kotlin(self) -> None:
-        """Detect Spring endpoints in Kotlin files."""
-        sym = make_symbol("getItems", path="src/main/kotlin/com/app/ItemController.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 1
-
-    def test_detect_multiple_spring_methods(self) -> None:
-        """Detect multiple methods in same controller file."""
-        sym1 = make_symbol("getAll", path="src/main/java/UserController.java", language="java", start_line=10)
-        sym2 = make_symbol("create", path="src/main/java/UserController.java", language="java", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 2
-
-    def test_spring_controller_confidence(self) -> None:
-        """Spring controller detection has high confidence."""
-        sym = make_symbol("handleRequest", path="src/main/java/ApiController.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 1
-        assert spring_eps[0].confidence >= 0.85
-
-    def test_spring_controller_label(self) -> None:
-        """Spring controller entrypoints have descriptive labels."""
-        sym = make_symbol("update", path="src/main/java/ProductController.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 1
-        assert "Spring" in spring_eps[0].label or "controller" in spring_eps[0].label.lower()
-
-    def test_spring_only_java_kotlin(self) -> None:
-        """Only Java/Kotlin files are detected as Spring controllers."""
-        # TypeScript file should NOT be detected
-        sym = make_symbol("getUsers", path="src/UserController.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 0
-
-    def test_spring_file_symbol_not_detected(self) -> None:
-        """File symbols in controller files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/main/java/UserController.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 0
-
-    def test_spring_non_controller_file_not_detected(self) -> None:
-        """Non-controller Java files are not detected as Spring."""
-        sym = make_symbol("helper", path="src/main/java/UserService.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        spring_eps = [e for e in entrypoints if e.kind == EntrypointKind.SPRING_CONTROLLER]
-        assert len(spring_eps) == 0
-
-
-class TestRailsEntrypoints:
-    """Tests for Rails controller detection.
-
-    Rails uses *_controller.rb naming convention in app/controllers/.
-    Actions are public methods inside controller classes.
-    """
-
-    def test_detect_rails_controller_file(self) -> None:
-        """Detect methods in *_controller.rb as Rails actions."""
-        sym = make_symbol("index", path="app/controllers/users_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 1
-        assert rails_eps[0].symbol_id == sym.id
-
-    def test_detect_rails_nested_controller(self) -> None:
-        """Detect controllers in nested namespaces."""
-        sym = make_symbol("show", path="app/controllers/api/v1/users_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 1
-
-    def test_detect_rails_application_controller(self) -> None:
-        """Detect ApplicationController as base controller."""
-        sym = make_symbol("ApplicationController", kind="class", path="app/controllers/application_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 1
-
-    def test_detect_multiple_rails_actions(self) -> None:
-        """Detect multiple actions in same controller."""
-        sym1 = make_symbol("index", path="app/controllers/posts_controller.rb", language="ruby", start_line=10)
-        sym2 = make_symbol("show", path="app/controllers/posts_controller.rb", language="ruby", start_line=20)
-        sym3 = make_symbol("create", path="app/controllers/posts_controller.rb", language="ruby", start_line=30)
-        nodes = [sym1, sym2, sym3]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 3
-
-    def test_rails_controller_confidence(self) -> None:
-        """Rails controller detection has high confidence."""
-        sym = make_symbol("update", path="app/controllers/items_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 1
-        assert rails_eps[0].confidence >= 0.85
-
-    def test_rails_controller_label(self) -> None:
-        """Rails controller entrypoints have descriptive labels."""
-        sym = make_symbol("destroy", path="app/controllers/comments_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 1
-        assert "Rails" in rails_eps[0].label or "controller" in rails_eps[0].label.lower()
-
-    def test_rails_only_ruby_files(self) -> None:
-        """Only Ruby files are detected as Rails controllers."""
-        # Python file should NOT be detected
-        sym = make_symbol("index", path="app/controllers/users_controller.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 0
-
-    def test_rails_file_symbol_not_detected(self) -> None:
-        """File symbols in controller files are not detected."""
-        sym = make_symbol("file", kind="file", path="app/controllers/users_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 0
-
-    def test_rails_non_controller_file_not_detected(self) -> None:
-        """Non-controller Ruby files are not detected as Rails."""
-        sym = make_symbol("helper", path="app/models/user.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 0
-
-    def test_rails_requires_controllers_directory(self) -> None:
-        """Controller files must be in app/controllers/ directory."""
-        # A file named *_controller.rb elsewhere should NOT be detected
-        sym = make_symbol("index", path="lib/users_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rails_eps = [e for e in entrypoints if e.kind == EntrypointKind.RAILS_CONTROLLER]
-        assert len(rails_eps) == 0
-
-
-class TestPhoenixEntrypoints:
-    """Tests for Phoenix controller detection.
-
-    Phoenix uses *_controller.ex naming convention in lib/*_web/controllers/.
-    Also detects LiveView files (*_live.ex in lib/*_web/live/).
-    """
-
-    def test_detect_phoenix_controller_file(self) -> None:
-        """Detect functions in *_controller.ex as Phoenix endpoints."""
-        sym = make_symbol("index", path="lib/myapp_web/controllers/user_controller.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 1
-        assert phoenix_eps[0].symbol_id == sym.id
-
-    def test_detect_phoenix_nested_controller(self) -> None:
-        """Detect controllers in nested namespaces."""
-        sym = make_symbol("show", path="lib/myapp_web/controllers/api/v1/user_controller.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 1
-
-    def test_detect_phoenix_liveview(self) -> None:
-        """Detect LiveView files as Phoenix endpoints."""
-        sym = make_symbol("mount", path="lib/myapp_web/live/user_live.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 1
-
-    def test_detect_multiple_phoenix_actions(self) -> None:
-        """Detect multiple actions in same controller."""
-        sym1 = make_symbol("index", path="lib/app_web/controllers/page_controller.ex", language="elixir", start_line=10)
-        sym2 = make_symbol("show", path="lib/app_web/controllers/page_controller.ex", language="elixir", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 2
-
-    def test_phoenix_controller_confidence(self) -> None:
-        """Phoenix controller detection has high confidence."""
-        sym = make_symbol("create", path="lib/myapp_web/controllers/post_controller.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 1
-        assert phoenix_eps[0].confidence >= 0.85
-
-    def test_phoenix_controller_label(self) -> None:
-        """Phoenix controller entrypoints have descriptive labels."""
-        sym = make_symbol("delete", path="lib/myapp_web/controllers/item_controller.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 1
-        assert "Phoenix" in phoenix_eps[0].label or "controller" in phoenix_eps[0].label.lower()
-
-    def test_phoenix_only_elixir_files(self) -> None:
-        """Only Elixir files are detected as Phoenix controllers."""
-        # Ruby file should NOT be detected
-        sym = make_symbol("index", path="lib/myapp_web/controllers/user_controller.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 0
-
-    def test_phoenix_file_symbol_not_detected(self) -> None:
-        """File symbols in controller files are not detected."""
-        sym = make_symbol("file", kind="file", path="lib/myapp_web/controllers/user_controller.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 0
-
-    def test_phoenix_non_controller_file_not_detected(self) -> None:
-        """Non-controller Elixir files are not detected as Phoenix."""
-        sym = make_symbol("helper", path="lib/myapp/user.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 0
-
-    def test_phoenix_requires_web_controllers_path(self) -> None:
-        """Controller files must be in proper Phoenix path."""
-        # A *_controller.ex outside _web/controllers should NOT be detected
-        sym = make_symbol("index", path="lib/myapp/user_controller.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        phoenix_eps = [e for e in entrypoints if e.kind == EntrypointKind.PHOENIX_CONTROLLER]
-        assert len(phoenix_eps) == 0
-
-
-class TestGoFrameworkEntrypoints:
-    """Tests for Go framework route detection.
-
-    Go web frameworks (Gin, Echo, Fiber, Chi) typically use:
-    - *_handler.go or *_controller.go naming
-    - handlers/, controllers/, or routes/ directories
-    """
-
-    def test_detect_go_handler_file(self) -> None:
-        """Detect functions in *_handler.go as Go endpoints."""
-        sym = make_symbol("GetUser", path="internal/handlers/user_handler.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 1
-        assert go_eps[0].symbol_id == sym.id
-
-    def test_detect_go_controller_file(self) -> None:
-        """Detect functions in *_controller.go as Go endpoints."""
-        sym = make_symbol("CreatePost", path="internal/api/post_controller.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 1
-
-    def test_detect_go_handlers_directory(self) -> None:
-        """Detect files in handlers/ directory as Go endpoints."""
-        sym = make_symbol("ListItems", path="pkg/handlers/items.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 1
-
-    def test_detect_go_controllers_directory(self) -> None:
-        """Detect files in controllers/ directory as Go endpoints."""
-        sym = make_symbol("DeleteUser", path="app/controllers/user.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 1
-
-    def test_detect_multiple_go_handlers(self) -> None:
-        """Detect multiple handlers in same file."""
-        sym1 = make_symbol("GetUser", path="handlers/user_handler.go", language="go", start_line=10)
-        sym2 = make_symbol("CreateUser", path="handlers/user_handler.go", language="go", start_line=30)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 2
-
-    def test_go_handler_confidence(self) -> None:
-        """Go handler detection has high confidence."""
-        sym = make_symbol("UpdateItem", path="internal/handlers/item_handler.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 1
-        assert go_eps[0].confidence >= 0.85
-
-    def test_go_handler_label(self) -> None:
-        """Go handler entrypoints have descriptive labels."""
-        sym = make_symbol("DeleteOrder", path="handlers/order_handler.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 1
-        assert "Go" in go_eps[0].label or "handler" in go_eps[0].label.lower()
-
-    def test_go_only_go_files(self) -> None:
-        """Only Go files are detected as Go handlers."""
-        # Python file should NOT be detected
-        sym = make_symbol("get_user", path="handlers/user_handler.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 0
-
-    def test_go_file_symbol_not_detected(self) -> None:
-        """File symbols in handler files are not detected."""
-        sym = make_symbol("file", kind="file", path="handlers/user_handler.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 0
-
-    def test_go_non_handler_file_not_detected(self) -> None:
-        """Non-handler Go files are not detected."""
-        sym = make_symbol("helper", path="internal/utils/helpers.go", language="go")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        go_eps = [e for e in entrypoints if e.kind == EntrypointKind.GO_HANDLER]
-        assert len(go_eps) == 0
-
-
-class TestLaravelEntrypoints:
-    """Tests for Laravel controller detection.
-
-    Laravel uses *Controller.php files in app/Http/Controllers/.
-    Routes are defined in routes/*.php files.
-    """
-
-    def test_detect_laravel_controller_file(self) -> None:
-        """Detect functions in *Controller.php as Laravel endpoints."""
-        sym = make_symbol("index", path="app/Http/Controllers/UserController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 1
-        assert laravel_eps[0].symbol_id == sym.id
-
-    def test_detect_laravel_nested_controller(self) -> None:
-        """Detect controllers in nested namespaces."""
-        sym = make_symbol("show", path="app/Http/Controllers/Api/V1/UserController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 1
-
-    def test_detect_laravel_class_controller(self) -> None:
-        """Detect controller classes."""
-        sym = make_symbol("UserController", kind="class", path="app/Http/Controllers/UserController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 1
-
-    def test_detect_multiple_laravel_actions(self) -> None:
-        """Detect multiple actions in same controller."""
-        sym1 = make_symbol("index", path="app/Http/Controllers/PostController.php", language="php", start_line=10)
-        sym2 = make_symbol("store", path="app/Http/Controllers/PostController.php", language="php", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 2
-
-    def test_laravel_controller_confidence(self) -> None:
-        """Laravel controller detection has high confidence."""
-        sym = make_symbol("update", path="app/Http/Controllers/ItemController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 1
-        assert laravel_eps[0].confidence >= 0.85
-
-    def test_laravel_controller_label(self) -> None:
-        """Laravel controller entrypoints have descriptive labels."""
-        sym = make_symbol("destroy", path="app/Http/Controllers/OrderController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 1
-        assert "Laravel" in laravel_eps[0].label or "controller" in laravel_eps[0].label.lower()
-
-    def test_laravel_only_php_files(self) -> None:
-        """Only PHP files are detected as Laravel controllers."""
-        # Python file should NOT be detected
-        sym = make_symbol("index", path="app/Http/Controllers/UserController.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 0
-
-    def test_laravel_file_symbol_not_detected(self) -> None:
-        """File symbols in controller files are not detected."""
-        sym = make_symbol("file", kind="file", path="app/Http/Controllers/UserController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 0
-
-    def test_laravel_non_controller_file_not_detected(self) -> None:
-        """Non-controller PHP files are not detected as Laravel."""
-        sym = make_symbol("helper", path="app/Models/User.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 0
-
-    def test_laravel_requires_controllers_path(self) -> None:
-        """Controller files must be in app/Http/Controllers/."""
-        # A *Controller.php outside the proper path should NOT be detected
-        sym = make_symbol("index", path="src/UserController.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        laravel_eps = [e for e in entrypoints if e.kind == EntrypointKind.LARAVEL_CONTROLLER]
-        assert len(laravel_eps) == 0
-
-
-class TestRustEntrypoints:
-    """Tests for Rust web framework handler detection.
-
-    Rust web frameworks (Actix-web, Axum, Rocket, Warp) typically use:
-    - *_handler.rs or *_controller.rs files
-    - handlers/ or controllers/ directories
-    """
-
-    def test_detect_rust_handler_file(self) -> None:
-        """Detect functions in *_handler.rs as Rust handlers."""
-        sym = make_symbol("get_user", path="src/user_handler.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 1
-        assert rust_eps[0].symbol_id == sym.id
-
-    def test_detect_rust_controller_file(self) -> None:
-        """Detect functions in *_controller.rs as Rust handlers."""
-        sym = make_symbol("create_user", path="src/user_controller.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 1
-
-    def test_detect_rust_handlers_directory(self) -> None:
-        """Detect functions in handlers/ directory."""
-        sym = make_symbol("list_users", path="src/handlers/users.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 1
-
-    def test_detect_rust_controllers_directory(self) -> None:
-        """Detect functions in controllers/ directory."""
-        sym = make_symbol("delete_user", path="src/controllers/user.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 1
-
-    def test_detect_multiple_rust_handlers(self) -> None:
-        """Detect multiple handlers in same file."""
-        sym1 = make_symbol("create", path="src/api_handler.rs", language="rust", start_line=10)
-        sym2 = make_symbol("update", path="src/api_handler.rs", language="rust", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 2
-
-    def test_rust_handler_confidence(self) -> None:
-        """Rust handler detection has appropriate confidence."""
-        sym = make_symbol("handle_request", path="src/handlers/api.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 1
-        assert rust_eps[0].confidence >= 0.80
-
-    def test_rust_handler_label(self) -> None:
-        """Rust handler entrypoints have descriptive labels."""
-        sym = make_symbol("get_items", path="src/item_handler.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 1
-        assert "Rust" in rust_eps[0].label or "handler" in rust_eps[0].label.lower()
-
-    def test_rust_only_rust_files(self) -> None:
-        """Only Rust files are detected as Rust handlers."""
-        # Python file should NOT be detected
-        sym = make_symbol("get_user", path="src/user_handler.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 0
-
-    def test_rust_file_symbol_not_detected(self) -> None:
-        """File symbols in handler files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/user_handler.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 0
-
-    def test_rust_non_handler_file_not_detected(self) -> None:
-        """Non-handler Rust files are not detected."""
-        sym = make_symbol("helper", path="src/utils.rs", language="rust")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        rust_eps = [e for e in entrypoints if e.kind == EntrypointKind.RUST_HANDLER]
-        assert len(rust_eps) == 0
-
-
-class TestAspNetCoreEntrypoints:
-    """Tests for ASP.NET Core controller detection.
-
-    ASP.NET Core uses *Controller.cs files, typically in a Controllers/ directory.
-    Web API controllers follow the same convention.
-    """
-
-    def test_detect_aspnet_controller_file(self) -> None:
-        """Detect methods in *Controller.cs as ASP.NET Core endpoints."""
-        sym = make_symbol("GetUser", path="Controllers/UserController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 1
-        assert aspnet_eps[0].symbol_id == sym.id
-
-    def test_detect_aspnet_nested_controller(self) -> None:
-        """Detect controllers in nested namespaces."""
-        sym = make_symbol("Create", path="src/Api/Controllers/V1/ItemController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 1
-
-    def test_detect_aspnet_controllers_directory(self) -> None:
-        """Detect controllers in Controllers/ directory."""
-        sym = make_symbol("Index", path="Controllers/HomeController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 1
-
-    def test_detect_aspnet_class_symbol(self) -> None:
-        """Detect controller class symbols."""
-        sym = make_symbol("UserController", kind="class", path="Controllers/UserController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 1
-
-    def test_detect_multiple_aspnet_actions(self) -> None:
-        """Detect multiple actions in same controller."""
-        sym1 = make_symbol("GetAll", path="Controllers/ProductController.cs", language="csharp", start_line=10)
-        sym2 = make_symbol("GetById", path="Controllers/ProductController.cs", language="csharp", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 2
-
-    def test_aspnet_controller_confidence(self) -> None:
-        """ASP.NET Core controller detection has high confidence."""
-        sym = make_symbol("Update", path="Controllers/OrderController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 1
-        assert aspnet_eps[0].confidence >= 0.85
-
-    def test_aspnet_controller_label(self) -> None:
-        """ASP.NET Core controller entrypoints have descriptive labels."""
-        sym = make_symbol("Delete", path="Controllers/CustomerController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 1
-        assert "ASP.NET" in aspnet_eps[0].label or "controller" in aspnet_eps[0].label.lower()
-
-    def test_aspnet_only_csharp_files(self) -> None:
-        """Only C# files are detected as ASP.NET controllers."""
-        # Python file should NOT be detected
-        sym = make_symbol("GetUser", path="Controllers/UserController.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 0
-
-    def test_aspnet_file_symbol_not_detected(self) -> None:
-        """File symbols in controller files are not detected."""
-        sym = make_symbol("file", kind="file", path="Controllers/UserController.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 0
-
-    def test_aspnet_non_controller_file_not_detected(self) -> None:
-        """Non-controller C# files are not detected as ASP.NET."""
-        sym = make_symbol("Helper", path="Services/UserService.cs", language="csharp")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aspnet_eps = [e for e in entrypoints if e.kind == EntrypointKind.ASPNET_CONTROLLER]
-        assert len(aspnet_eps) == 0
-
-
-class TestSinatraEntrypoints:
-    """Tests for Sinatra (Ruby) route detection.
-
-    Sinatra is a lightweight Ruby web framework that uses DSL-based routing.
-    Common patterns include app.rb, application.rb, and files in routes/.
-    """
-
-    def test_detect_sinatra_app_file(self) -> None:
-        """Detect methods in app.rb as Sinatra routes."""
-        sym = make_symbol("get_index", path="app.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 1
-        assert sinatra_eps[0].symbol_id == sym.id
-
-    def test_detect_sinatra_application_file(self) -> None:
-        """Detect methods in application.rb as Sinatra routes."""
-        sym = make_symbol("post_users", path="application.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 1
-
-    def test_detect_sinatra_server_file(self) -> None:
-        """Detect methods in server.rb as Sinatra routes."""
-        sym = make_symbol("handle_request", path="server.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 1
-
-    def test_detect_sinatra_routes_directory(self) -> None:
-        """Detect methods in routes/ directory."""
-        sym = make_symbol("show_user", path="routes/users.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 1
-
-    def test_detect_multiple_sinatra_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("index", path="app.rb", language="ruby", start_line=10)
-        sym2 = make_symbol("create", path="app.rb", language="ruby", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 2
-
-    def test_sinatra_route_confidence(self) -> None:
-        """Sinatra route detection has appropriate confidence."""
-        sym = make_symbol("update", path="app.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 1
-        assert sinatra_eps[0].confidence >= 0.80
-
-    def test_sinatra_route_label(self) -> None:
-        """Sinatra route entrypoints have descriptive labels."""
-        sym = make_symbol("delete_item", path="app.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 1
-        assert "Sinatra" in sinatra_eps[0].label or "route" in sinatra_eps[0].label.lower()
-
-    def test_sinatra_only_ruby_files(self) -> None:
-        """Only Ruby files are detected as Sinatra routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("get_index", path="app.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 0
-
-    def test_sinatra_file_symbol_not_detected(self) -> None:
-        """File symbols in Sinatra files are not detected."""
-        sym = make_symbol("file", kind="file", path="app.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 0
-
-    def test_sinatra_non_route_file_not_detected(self) -> None:
-        """Non-route Ruby files are not detected as Sinatra."""
-        sym = make_symbol("helper", path="lib/utils.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 0
-
-    def test_sinatra_test_file_not_detected(self) -> None:
-        """Test files named app.rb are not detected as Sinatra routes."""
-        # This was a real bug: test/integration/app.rb was misdetected in Sinatra repo
-        syms = [
-            make_symbol("TestApp", path="test/integration/app.rb", language="ruby"),
-            make_symbol("describe", path="spec/app.rb", language="ruby"),
-            make_symbol("helper", path="tests/server.rb", language="ruby"),
-        ]
-
-        entrypoints = detect_entrypoints(syms, [])
-
-        sinatra_eps = [e for e in entrypoints if e.kind == EntrypointKind.SINATRA_ROUTE]
-        assert len(sinatra_eps) == 0
-
-
-class TestKtorEntrypoints:
-    """Tests for Ktor (Kotlin) route detection.
-
-    Ktor is a Kotlin web framework. Routes are typically defined in
-    files named *Routes.kt, *Routing.kt, or in routes/routing directories.
-    """
-
-    def test_detect_ktor_routes_file(self) -> None:
-        """Detect functions in *Routes.kt as Ktor routes."""
-        sym = make_symbol("getUsers", path="src/UserRoutes.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 1
-        assert ktor_eps[0].symbol_id == sym.id
-
-    def test_detect_ktor_routing_file(self) -> None:
-        """Detect functions in *Routing.kt as Ktor routes."""
-        sym = make_symbol("configureRouting", path="src/ApiRouting.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 1
-
-    def test_detect_ktor_routes_directory(self) -> None:
-        """Detect functions in routes/ directory."""
-        sym = make_symbol("createUser", path="src/routes/Users.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 1
-
-    def test_detect_ktor_routing_directory(self) -> None:
-        """Detect functions in routing/ directory."""
-        sym = make_symbol("deleteItem", path="src/routing/Items.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 1
-
-    def test_detect_multiple_ktor_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("listProducts", path="src/ProductRoutes.kt", language="kotlin", start_line=10)
-        sym2 = make_symbol("getProduct", path="src/ProductRoutes.kt", language="kotlin", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 2
-
-    def test_ktor_route_confidence(self) -> None:
-        """Ktor route detection has appropriate confidence."""
-        sym = make_symbol("updateOrder", path="src/OrderRoutes.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 1
-        assert ktor_eps[0].confidence >= 0.80
-
-    def test_ktor_route_label(self) -> None:
-        """Ktor route entrypoints have descriptive labels."""
-        sym = make_symbol("cancelOrder", path="src/OrderRoutes.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 1
-        assert "Ktor" in ktor_eps[0].label or "route" in ktor_eps[0].label.lower()
-
-    def test_ktor_only_kotlin_files(self) -> None:
-        """Only Kotlin files are detected as Ktor routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("getUsers", path="src/UserRoutes.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 0
-
-    def test_ktor_file_symbol_not_detected(self) -> None:
-        """File symbols in Ktor files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/UserRoutes.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 0
-
-    def test_ktor_non_route_file_not_detected(self) -> None:
-        """Non-route Kotlin files are not detected as Ktor."""
-        sym = make_symbol("helper", path="src/utils/Helper.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        ktor_eps = [e for e in entrypoints if e.kind == EntrypointKind.KTOR_ROUTE]
-        assert len(ktor_eps) == 0
-
-
-class TestVaporEntrypoints:
-    """Tests for Vapor (Swift) route detection.
-
-    Vapor is a Swift web framework. Routes are typically defined in
-    Controllers/*Controller.swift or routes.swift files.
-    """
-
-    def test_detect_vapor_controller_file(self) -> None:
-        """Detect methods in *Controller.swift as Vapor routes."""
-        sym = make_symbol("index", path="Sources/App/Controllers/UserController.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 1
-        assert vapor_eps[0].symbol_id == sym.id
-
-    def test_detect_vapor_routes_file(self) -> None:
-        """Detect methods in routes.swift as Vapor routes."""
-        sym = make_symbol("configureRoutes", path="Sources/App/routes.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 1
-
-    def test_detect_vapor_controllers_directory(self) -> None:
-        """Detect methods in Controllers/ directory."""
-        sym = make_symbol("create", path="Sources/App/Controllers/TodoController.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 1
-
-    def test_detect_vapor_routes_directory(self) -> None:
-        """Detect methods in routes/ directory."""
-        sym = make_symbol("setup", path="Sources/App/Routes/UserRoutes.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 1
-
-    def test_detect_multiple_vapor_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("list", path="Sources/App/Controllers/ItemController.swift", language="swift", start_line=10)
-        sym2 = make_symbol("show", path="Sources/App/Controllers/ItemController.swift", language="swift", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 2
-
-    def test_vapor_route_confidence(self) -> None:
-        """Vapor route detection has appropriate confidence."""
-        sym = make_symbol("update", path="Sources/App/Controllers/OrderController.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 1
-        assert vapor_eps[0].confidence >= 0.80
-
-    def test_vapor_route_label(self) -> None:
-        """Vapor route entrypoints have descriptive labels."""
-        sym = make_symbol("delete", path="Sources/App/Controllers/ProductController.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 1
-        assert "Vapor" in vapor_eps[0].label or "route" in vapor_eps[0].label.lower()
-
-    def test_vapor_only_swift_files(self) -> None:
-        """Only Swift files are detected as Vapor routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("index", path="Sources/App/Controllers/UserController.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 0
-
-    def test_vapor_file_symbol_not_detected(self) -> None:
-        """File symbols in Vapor files are not detected."""
-        sym = make_symbol("file", kind="file", path="Sources/App/Controllers/UserController.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 0
-
-    def test_vapor_non_route_file_not_detected(self) -> None:
-        """Non-route Swift files are not detected as Vapor."""
-        sym = make_symbol("helper", path="Sources/App/Services/UserService.swift", language="swift")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        vapor_eps = [e for e in entrypoints if e.kind == EntrypointKind.VAPOR_ROUTE]
-        assert len(vapor_eps) == 0
-
-
-class TestPlugEntrypoints:
-    """Tests for Plug (Elixir) route detection.
-
-    Plug is Elixir's HTTP middleware library. Routes are typically defined in
-    router.ex files or files ending in _router.ex.
-    """
-
-    def test_detect_plug_router_file(self) -> None:
-        """Detect functions in router.ex as Plug routes."""
-        sym = make_symbol("match", path="lib/myapp/router.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 1
-        assert plug_eps[0].symbol_id == sym.id
-
-    def test_detect_plug_named_router(self) -> None:
-        """Detect functions in *_router.ex as Plug routes."""
-        sym = make_symbol("call", path="lib/myapp/api_router.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 1
-
-    def test_detect_plug_in_plugs_directory(self) -> None:
-        """Detect functions in plugs/ directory."""
-        sym = make_symbol("init", path="lib/myapp/plugs/auth.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 1
-
-    def test_detect_plug_endpoint(self) -> None:
-        """Detect functions in *_plug.ex files."""
-        sym = make_symbol("call", path="lib/myapp/auth_plug.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 1
-
-    def test_detect_multiple_plug_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("get_user", path="lib/myapp/router.ex", language="elixir", start_line=10)
-        sym2 = make_symbol("create_user", path="lib/myapp/router.ex", language="elixir", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 2
-
-    def test_plug_route_confidence(self) -> None:
-        """Plug route detection has appropriate confidence."""
-        sym = make_symbol("call", path="lib/myapp/router.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 1
-        assert plug_eps[0].confidence >= 0.80
-
-    def test_plug_route_label(self) -> None:
-        """Plug route entrypoints have descriptive labels."""
-        sym = make_symbol("match", path="lib/myapp/router.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 1
-        assert "Plug" in plug_eps[0].label or "route" in plug_eps[0].label.lower()
-
-    def test_plug_only_elixir_files(self) -> None:
-        """Only Elixir files are detected as Plug routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("match", path="lib/myapp/router.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 0
-
-    def test_plug_file_symbol_not_detected(self) -> None:
-        """File symbols in Plug files are not detected."""
-        sym = make_symbol("file", kind="file", path="lib/myapp/router.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 0
-
-    def test_plug_non_route_file_not_detected(self) -> None:
-        """Non-route Elixir files are not detected as Plug."""
-        sym = make_symbol("helper", path="lib/myapp/utils.ex", language="elixir")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        plug_eps = [e for e in entrypoints if e.kind == EntrypointKind.PLUG_ROUTE]
-        assert len(plug_eps) == 0
-
-
-class TestHapiEntrypoints:
-    """Tests for Hapi (Node.js) route detection.
-
-    Hapi is a Node.js web framework. Routes are typically defined in
-    files named *routes.js/ts or in routes/ directory.
-    """
-
-    def test_detect_hapi_routes_file(self) -> None:
-        """Detect functions in *routes.js as Hapi routes."""
-        sym = make_symbol("getUsers", path="src/userRoutes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 1
-        assert hapi_eps[0].symbol_id == sym.id
-
-    def test_detect_hapi_routes_ts_file(self) -> None:
-        """Detect functions in *routes.ts as Hapi routes."""
-        sym = make_symbol("createUser", path="src/apiRoutes.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 1
-
-    def test_detect_hapi_routes_directory(self) -> None:
-        """Detect functions in plugins/ directory (Hapi-specific)."""
-        # Note: routes/ is shared with Express, plugins/ is Hapi-specific
-        sym = make_symbol("listItems", path="src/plugins/items.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 1
-
-    def test_detect_hapi_plugins_directory(self) -> None:
-        """Detect functions in plugins/ directory (Hapi convention)."""
-        sym = make_symbol("register", path="src/plugins/auth.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 1
-
-    def test_detect_multiple_hapi_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("get", path="src/userRoutes.js", language="javascript", start_line=10)
-        sym2 = make_symbol("post", path="src/userRoutes.js", language="javascript", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 2
-
-    def test_hapi_route_confidence(self) -> None:
-        """Hapi route detection has appropriate confidence."""
-        sym = make_symbol("handler", path="src/plugins/api.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 1
-        assert hapi_eps[0].confidence >= 0.80
-
-    def test_hapi_route_label(self) -> None:
-        """Hapi route entrypoints have descriptive labels."""
-        sym = make_symbol("deleteUser", path="src/userRoutes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 1
-        assert "Hapi" in hapi_eps[0].label or "route" in hapi_eps[0].label.lower()
-
-    def test_hapi_only_js_ts_files(self) -> None:
-        """Only JS/TS files are detected as Hapi routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("getUsers", path="src/userRoutes.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 0
-
-    def test_hapi_file_symbol_not_detected(self) -> None:
-        """File symbols in Hapi files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/userRoutes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 0
-
-    def test_hapi_non_route_file_not_detected(self) -> None:
-        """Non-route JS files are not detected as Hapi."""
-        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 0
-
-    def test_hapi_tsx_files_not_detected(self) -> None:
-        """TSX files in routes/ are React components, not Hapi routes."""
-        sym = make_symbol("Dashboard", path="frontend/src/routes/dashboard.tsx", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        hapi_eps = [e for e in entrypoints if e.kind == EntrypointKind.HAPI_ROUTE]
-        assert len(hapi_eps) == 0
-
-
-class TestFastifyEntrypoints:
-    """Tests for Fastify (Node.js) route detection."""
-
-    def test_detect_fastify_routes_file(self) -> None:
-        """Detect functions in *.routes.js as Fastify routes."""
-        sym = make_symbol("getUsers", path="src/user.routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 1
-
-    def test_detect_fastify_routes_ts_file(self) -> None:
-        """Detect functions in *.routes.ts as Fastify routes."""
-        sym = make_symbol("createOrder", path="src/order.routes.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 1
-
-    def test_detect_fastify_route_singular_file(self) -> None:
-        """Detect functions in *.route.js (singular) as Fastify routes."""
-        sym = make_symbol("getProduct", path="src/product.route.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 1
-
-    def test_detect_fastify_schema_file(self) -> None:
-        """Detect functions in *.schema.js as Fastify schema (route adjacent)."""
-        sym = make_symbol("validateUser", path="src/user.schema.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 1
-
-    def test_detect_multiple_fastify_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("get", path="src/api.routes.js", language="javascript", start_line=10)
-        sym2 = make_symbol("post", path="src/api.routes.js", language="javascript", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 2
-
-    def test_fastify_route_confidence(self) -> None:
-        """Fastify route detection has appropriate confidence."""
-        sym = make_symbol("handler", path="src/item.routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 1
-        assert fastify_eps[0].confidence >= 0.80
-
-    def test_fastify_route_label(self) -> None:
-        """Fastify route entrypoints have descriptive labels."""
-        sym = make_symbol("deleteUser", path="src/user.routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 1
-        assert "Fastify" in fastify_eps[0].label or "route" in fastify_eps[0].label.lower()
-
-    def test_fastify_only_js_ts_files(self) -> None:
-        """Only JS/TS files are detected as Fastify routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("getUsers", path="src/user.routes.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 0
-
-    def test_fastify_file_symbol_not_detected(self) -> None:
-        """File symbols in Fastify files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/user.routes.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 0
-
-    def test_fastify_non_route_file_not_detected(self) -> None:
-        """Non-route JS files are not detected as Fastify."""
-        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        fastify_eps = [e for e in entrypoints if e.kind == EntrypointKind.FASTIFY_ROUTE]
-        assert len(fastify_eps) == 0
-
-
-class TestKoaEntrypoints:
-    """Tests for Koa (Node.js) route detection."""
-
-    def test_detect_koa_router_file(self) -> None:
-        """Detect functions in *.router.js as Koa routes."""
-        sym = make_symbol("getUsers", path="src/user.router.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 1
-
-    def test_detect_koa_router_ts_file(self) -> None:
-        """Detect functions in *.router.ts as Koa routes."""
-        sym = make_symbol("createOrder", path="src/order.router.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 1
-
-    def test_detect_koa_controller_file(self) -> None:
-        """Detect functions in *.controller.js as Koa controllers."""
-        sym = make_symbol("getProduct", path="src/product.controller.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 1
-
-    def test_detect_koa_middleware_file(self) -> None:
-        """Detect functions in *.middleware.js as Koa middleware."""
-        sym = make_symbol("authCheck", path="src/auth.middleware.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 1
-
-    def test_detect_multiple_koa_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("get", path="src/api.router.js", language="javascript", start_line=10)
-        sym2 = make_symbol("post", path="src/api.router.js", language="javascript", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 2
-
-    def test_koa_route_confidence(self) -> None:
-        """Koa route detection has appropriate confidence."""
-        sym = make_symbol("handler", path="src/item.router.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 1
-        assert koa_eps[0].confidence >= 0.80
-
-    def test_koa_route_label(self) -> None:
-        """Koa route entrypoints have descriptive labels."""
-        sym = make_symbol("deleteUser", path="src/user.router.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 1
-        assert "Koa" in koa_eps[0].label or "route" in koa_eps[0].label.lower()
-
-    def test_koa_only_js_ts_files(self) -> None:
-        """Only JS/TS files are detected as Koa routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("getUsers", path="src/user.router.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 0
-
-    def test_koa_file_symbol_not_detected(self) -> None:
-        """File symbols in Koa files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/user.router.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 0
-
-    def test_koa_non_route_file_not_detected(self) -> None:
-        """Non-route JS files are not detected as Koa."""
-        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 0
-
-    def test_koa_tsx_files_not_detected(self) -> None:
-        """TSX files with .controller. pattern are React, not Koa."""
-        sym = make_symbol("UserController", path="src/components/user.controller.tsx", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        koa_eps = [e for e in entrypoints if e.kind == EntrypointKind.KOA_ROUTE]
-        assert len(koa_eps) == 0
-
-
-class TestGrapeEntrypoints:
-    """Tests for Grape (Ruby) API detection."""
-
-    def test_detect_grape_api_file(self) -> None:
-        """Detect classes in *_api.rb as Grape APIs."""
-        sym = make_symbol("UsersAPI", path="lib/users_api.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 1
-
-    def test_detect_grape_api_directory(self) -> None:
-        """Detect classes in api/ directory as Grape APIs."""
-        sym = make_symbol("Users", path="app/api/v1/users.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 1
-
-    def test_detect_grape_endpoints_directory(self) -> None:
-        """Detect classes in endpoints/ directory as Grape endpoints."""
-        sym = make_symbol("ProductsEndpoint", path="lib/endpoints/products.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 1
-
-    def test_detect_grape_entities_directory(self) -> None:
-        """Detect classes in entities/ directory as Grape entities."""
-        sym = make_symbol("UserEntity", path="app/api/entities/user.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 1
-
-    def test_detect_multiple_grape_apis(self) -> None:
-        """Detect multiple APIs in same file."""
-        sym1 = make_symbol("get", path="app/api/users.rb", language="ruby", start_line=10)
-        sym2 = make_symbol("post", path="app/api/users.rb", language="ruby", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 2
-
-    def test_grape_api_confidence(self) -> None:
-        """Grape API detection has appropriate confidence."""
-        sym = make_symbol("handler", path="app/api/items.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 1
-        assert grape_eps[0].confidence >= 0.80
-
-    def test_grape_api_label(self) -> None:
-        """Grape API entrypoints have descriptive labels."""
-        sym = make_symbol("delete_user", path="lib/users_api.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 1
-        assert "Grape" in grape_eps[0].label or "API" in grape_eps[0].label
-
-    def test_grape_only_ruby_files(self) -> None:
-        """Only Ruby files are detected as Grape APIs."""
-        # Python file should NOT be detected
-        sym = make_symbol("UsersAPI", path="lib/users_api.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 0
-
-    def test_grape_file_symbol_not_detected(self) -> None:
-        """File symbols in Grape files are not detected."""
-        sym = make_symbol("file", kind="file", path="app/api/users.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 0
-
-    def test_grape_non_api_file_not_detected(self) -> None:
-        """Non-API Ruby files are not detected as Grape."""
-        sym = make_symbol("helper", path="lib/utils/helper.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 0
-
-    def test_grape_test_file_not_detected(self) -> None:
-        """Test files in api directory are not detected as Grape APIs."""
-        syms = [
-            make_symbol("describe", path="spec/api/users_spec.rb", language="ruby"),
-            make_symbol("test_api", path="test/users_api.rb", language="ruby"),
-        ]
-
-        entrypoints = detect_entrypoints(syms, [])
-
-        grape_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPE_API]
-        assert len(grape_eps) == 0
-
-
-class TestTornadoEntrypoints:
-    """Tests for Tornado (Python) handler detection."""
-
-    def test_detect_tornado_handler_file(self) -> None:
-        """Detect functions in *_handler.py as Tornado handlers."""
-        sym = make_symbol("UserHandler", path="app/user_handler.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 1
-
-    def test_detect_tornado_handlers_directory(self) -> None:
-        """Detect functions in handlers/ directory as Tornado handlers."""
-        sym = make_symbol("MainHandler", path="app/handlers/main.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 1
-
-    def test_detect_tornado_views_directory(self) -> None:
-        """Detect functions in views/ directory as Tornado views."""
-        sym = make_symbol("HomeView", path="app/views/home.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 1
-
-    def test_detect_tornado_websocket_handler(self) -> None:
-        """Detect WebSocket handlers."""
-        sym = make_symbol("ChatSocket", path="app/websocket_handler.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 1
-
-    def test_detect_multiple_tornado_handlers(self) -> None:
-        """Detect multiple handlers in same file."""
-        sym1 = make_symbol("get", path="app/handlers/api.py", language="python", start_line=10)
-        sym2 = make_symbol("post", path="app/handlers/api.py", language="python", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 2
-
-    def test_tornado_handler_confidence(self) -> None:
-        """Tornado handler detection has appropriate confidence."""
-        sym = make_symbol("Handler", path="app/handlers/items.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 1
-        assert tornado_eps[0].confidence >= 0.80
-
-    def test_tornado_handler_label(self) -> None:
-        """Tornado handler entrypoints have descriptive labels."""
-        sym = make_symbol("DeleteHandler", path="app/user_handler.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 1
-        assert "Tornado" in tornado_eps[0].label or "handler" in tornado_eps[0].label.lower()
-
-    def test_tornado_only_python_files(self) -> None:
-        """Only Python files are detected as Tornado handlers."""
-        # Ruby file should NOT be detected
-        sym = make_symbol("UserHandler", path="app/user_handler.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 0
-
-    def test_tornado_file_symbol_not_detected(self) -> None:
-        """File symbols in Tornado files are not detected."""
-        sym = make_symbol("file", kind="file", path="app/handlers/main.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 0
-
-    def test_tornado_non_handler_file_not_detected(self) -> None:
-        """Non-handler Python files are not detected as Tornado."""
-        sym = make_symbol("helper", path="app/utils/helper.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 0
-
-    def test_tornado_test_file_not_detected(self) -> None:
-        """Test files ending in _handler.py are not detected as Tornado handlers."""
-        # This was a real bug: tests/test_user_error_handler.py was misdetected
-        syms = [
-            make_symbol("test_handler", path="tests/test_user_error_handler.py", language="python"),
-            make_symbol("TestClass", path="test/test_handler.py", language="python"),
-            make_symbol("test_func", path="spec/user_handler_test.py", language="python"),
-            # Cover spec_ prefix pattern: file in handlers/ dir with spec_ prefix
-            make_symbol("spec_func", path="app/handlers/spec_user.py", language="python"),
-            # Cover _spec.py suffix pattern: file ending in _handler.py but also _spec.py
-            make_symbol("describe", path="app/user_handler_spec.py", language="python"),
-        ]
-
-        entrypoints = detect_entrypoints(syms, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 0
-
-    def test_tornado_non_web_handlers_not_detected(self) -> None:
-        """Non-web handler patterns are excluded (error, signal, event handlers)."""
-        syms = [
-            make_symbol("ErrorHandler", path="app/error_handler.py", language="python"),
-            make_symbol("SignalHandler", path="app/signal_handler.py", language="python"),
-            make_symbol("EventHandler", path="app/event_handler.py", language="python"),
-            make_symbol("ExceptionHandler", path="app/exception_handler.py", language="python"),
-            make_symbol("LoggingHandler", path="app/logging_handler.py", language="python"),
-            make_symbol("LogHandler", path="app/log_handler.py", language="python"),
-        ]
-
-        entrypoints = detect_entrypoints(syms, [])
-
-        tornado_eps = [e for e in entrypoints if e.kind == EntrypointKind.TORNADO_HANDLER]
-        assert len(tornado_eps) == 0
-
-
-class TestAiohttpEntrypoints:
-    """Tests for Aiohttp (Python) view detection."""
-
-    def test_detect_aiohttp_view_file(self) -> None:
-        """Detect classes in *_view.py as Aiohttp views."""
-        sym = make_symbol("UserView", path="app/user_view.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 1
-
-    def test_detect_aiohttp_resource_file(self) -> None:
-        """Detect classes in *_resource.py as Aiohttp resources."""
-        sym = make_symbol("UserResource", path="app/user_resource.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 1
-
-    def test_detect_aiohttp_resources_directory(self) -> None:
-        """Detect classes in resources/ directory as Aiohttp resources."""
-        sym = make_symbol("ProductResource", path="app/resources/product.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 1
-
-    def test_detect_aiohttp_routes_file(self) -> None:
-        """Detect handlers in routes.py file."""
-        sym = make_symbol("setup_routes", path="app/routes.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 1
-
-    def test_detect_multiple_aiohttp_views(self) -> None:
-        """Detect multiple views in same file."""
-        sym1 = make_symbol("get", path="app/user_view.py", language="python", start_line=10)
-        sym2 = make_symbol("post", path="app/user_view.py", language="python", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 2
-
-    def test_aiohttp_view_confidence(self) -> None:
-        """Aiohttp view detection has appropriate confidence."""
-        sym = make_symbol("Handler", path="app/user_view.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 1
-        assert aiohttp_eps[0].confidence >= 0.80
-
-    def test_aiohttp_view_label(self) -> None:
-        """Aiohttp view entrypoints have descriptive labels."""
-        sym = make_symbol("DeleteView", path="app/user_view.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 1
-        assert "Aiohttp" in aiohttp_eps[0].label or "view" in aiohttp_eps[0].label.lower()
-
-    def test_aiohttp_only_python_files(self) -> None:
-        """Only Python files are detected as Aiohttp views."""
-        # Ruby file should NOT be detected
-        sym = make_symbol("UserView", path="app/user_view.rb", language="ruby")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 0
-
-    def test_aiohttp_file_symbol_not_detected(self) -> None:
-        """File symbols in Aiohttp files are not detected."""
-        sym = make_symbol("file", kind="file", path="app/user_view.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 0
-
-    def test_aiohttp_non_view_file_not_detected(self) -> None:
-        """Non-view Python files are not detected as Aiohttp."""
-        sym = make_symbol("helper", path="app/utils/helper.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 0
-
-    def test_aiohttp_test_file_not_detected(self) -> None:
-        """Test files ending in _view.py are not detected as Aiohttp views."""
-        syms = [
-            make_symbol("test_view", path="tests/test_view.py", language="python"),
-            make_symbol("TestView", path="test/user_view_test.py", language="python"),
-        ]
-
-        entrypoints = detect_entrypoints(syms, [])
-
-        aiohttp_eps = [e for e in entrypoints if e.kind == EntrypointKind.AIOHTTP_VIEW]
-        assert len(aiohttp_eps) == 0
-
-
-class TestSlimEntrypoints:
-    """Tests for Slim (PHP) route detection."""
-
-    def test_detect_slim_routes_file(self) -> None:
-        """Detect functions in routes.php as Slim routes."""
-        sym = make_symbol("registerRoutes", path="src/routes.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 1
-
-    def test_detect_slim_middleware_file(self) -> None:
-        """Detect functions in *Middleware.php as Slim middleware."""
-        sym = make_symbol("AuthMiddleware", path="src/AuthMiddleware.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 1
-
-    def test_detect_slim_actions_directory(self) -> None:
-        """Detect classes in Actions/ directory as Slim actions."""
-        sym = make_symbol("CreateUserAction", path="src/Actions/CreateUserAction.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 1
-
-    def test_detect_slim_handlers_directory(self) -> None:
-        """Detect classes in Handlers/ directory as Slim handlers."""
-        sym = make_symbol("HomeHandler", path="src/Handlers/HomeHandler.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 1
-
-    def test_detect_multiple_slim_routes(self) -> None:
-        """Detect multiple routes in same file."""
-        sym1 = make_symbol("get", path="src/routes.php", language="php", start_line=10)
-        sym2 = make_symbol("post", path="src/routes.php", language="php", start_line=20)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 2
-
-    def test_slim_route_confidence(self) -> None:
-        """Slim route detection has appropriate confidence."""
-        sym = make_symbol("handler", path="src/routes.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 1
-        assert slim_eps[0].confidence >= 0.80
-
-    def test_slim_route_label(self) -> None:
-        """Slim route entrypoints have descriptive labels."""
-        sym = make_symbol("deleteUser", path="src/routes.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 1
-        assert "Slim" in slim_eps[0].label or "route" in slim_eps[0].label.lower()
-
-    def test_slim_only_php_files(self) -> None:
-        """Only PHP files are detected as Slim routes."""
-        # Python file should NOT be detected
-        sym = make_symbol("handler", path="src/routes.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 0
-
-    def test_slim_file_symbol_not_detected(self) -> None:
-        """File symbols in Slim files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/routes.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 0
-
-    def test_slim_non_route_file_not_detected(self) -> None:
-        """Non-route PHP files are not detected as Slim."""
-        sym = make_symbol("helper", path="src/Utils/Helper.php", language="php")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        slim_eps = [e for e in entrypoints if e.kind == EntrypointKind.SLIM_ROUTE]
-        assert len(slim_eps) == 0
-
-
-class TestMicronautEntrypoints:
-    """Tests for Micronaut (Java/Kotlin) HTTP client detection.
-
-    Micronaut HTTP clients are distinct from controllers - they're declarative
-    interfaces for calling external services. Controllers use the same patterns
-    as Spring and are detected by Spring detection.
-    """
-
-    def test_detect_micronaut_client_java(self) -> None:
-        """Detect Micronaut HTTP client from *Client.java naming."""
-        sym = make_symbol("UserClient", path="src/main/java/UserClient.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 1
-        assert micronaut_eps[0].symbol_id == sym.id
-
-    def test_detect_micronaut_client_kotlin(self) -> None:
-        """Detect Micronaut HTTP client from *Client.kt naming."""
-        sym = make_symbol("OrderClient", path="src/main/kotlin/OrderClient.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 1
-
-    def test_detect_micronaut_client_directory(self) -> None:
-        """Detect clients in client/ directory."""
-        sym = make_symbol("getUsers", path="src/main/java/client/UserApi.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 1
-
-    def test_detect_multiple_micronaut_clients(self) -> None:
-        """Detect multiple Micronaut HTTP clients."""
-        sym1 = make_symbol("UserClient", path="src/UserClient.java", language="java")
-        sym2 = make_symbol("OrderClient", path="src/OrderClient.kt", language="kotlin")
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 2
-
-    def test_micronaut_client_confidence(self) -> None:
-        """Micronaut client has medium-high confidence."""
-        sym = make_symbol("UserClient", path="src/UserClient.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert micronaut_eps[0].confidence == 0.85
-
-    def test_micronaut_client_label(self) -> None:
-        """Micronaut client has appropriate label."""
-        sym = make_symbol("UserClient", path="src/UserClient.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert micronaut_eps[0].label == "Micronaut controller"
-
-    def test_micronaut_only_java_kotlin_files(self) -> None:
-        """Only Java/Kotlin files are detected as Micronaut clients."""
-        # Python file should NOT be detected
-        sym = make_symbol("UserClient", path="src/UserClient.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 0
-
-    def test_micronaut_file_symbol_not_detected(self) -> None:
-        """File symbols in Micronaut files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/UserClient.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 0
-
-    def test_micronaut_non_client_file_not_detected(self) -> None:
-        """Non-client Java files are not detected as Micronaut."""
-        sym = make_symbol("Helper", path="src/utils/Helper.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 0
-
-    def test_grpc_service_client_not_detected(self) -> None:
-        """gRPC stub wrappers (*ServiceClient) are NOT Micronaut clients.
-
-        Files like AdServiceClient.java are typically gRPC stub wrappers,
-        not Micronaut HTTP clients. They should be excluded.
-        """
-        sym = make_symbol("AdServiceClient", path="src/AdServiceClient.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 0
-
-    def test_grpc_client_not_detected(self) -> None:
-        """*GrpcClient.java files are NOT Micronaut clients."""
-        sym = make_symbol("UserGrpcClient", path="src/UserGrpcClient.java", language="java")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 0
-
-    def test_rpc_client_not_detected(self) -> None:
-        """*RpcClient.java files are NOT Micronaut clients."""
-        sym = make_symbol("OrderRpcClient", path="src/OrderRpcClient.kt", language="kotlin")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        micronaut_eps = [e for e in entrypoints if e.kind == EntrypointKind.MICRONAUT_CONTROLLER]
-        assert len(micronaut_eps) == 0
-
-
-class TestGraphQLServerEntrypoints:
-    """Tests for GraphQL server (Apollo, Yoga, Mercurius) detection.
-
-    GraphQL servers typically define resolvers in specific file patterns:
-    - resolvers.js/ts, schema.js/ts, typeDefs.js/ts
-    - *.resolver.js/ts, *.resolvers.js/ts
-    - Files in resolvers/ or graphql/ directories
-    """
-
-    def test_detect_graphql_resolvers_file(self) -> None:
-        """Detect functions in resolvers.js as GraphQL resolvers."""
-        sym = make_symbol("Query", path="src/resolvers.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-        assert graphql_eps[0].symbol_id == sym.id
-
-    def test_detect_graphql_resolvers_ts_file(self) -> None:
-        """Detect functions in resolvers.ts as GraphQL resolvers."""
-        sym = make_symbol("Mutation", path="src/resolvers.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_graphql_schema_file(self) -> None:
-        """Detect functions in schema.js as GraphQL schema."""
-        sym = make_symbol("typeDefs", path="src/schema.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_graphql_typedefs_file(self) -> None:
-        """Detect functions in typeDefs.ts as GraphQL type definitions."""
-        sym = make_symbol("UserType", path="src/typeDefs.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_graphql_resolver_suffix(self) -> None:
-        """Detect functions in *.resolver.ts as GraphQL resolvers."""
-        sym = make_symbol("getUser", path="src/user.resolver.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_graphql_resolvers_suffix(self) -> None:
-        """Detect functions in *.resolvers.js (plural) as GraphQL resolvers."""
-        sym = make_symbol("userResolvers", path="src/user.resolvers.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_graphql_resolvers_directory(self) -> None:
-        """Detect functions in resolvers/ directory as GraphQL resolvers."""
-        sym = make_symbol("userQuery", path="src/resolvers/user.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_graphql_graphql_directory(self) -> None:
-        """Detect functions in graphql/ directory as GraphQL server files."""
-        sym = make_symbol("schema", path="src/graphql/index.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-
-    def test_detect_multiple_graphql_resolvers(self) -> None:
-        """Detect multiple resolvers in same file."""
-        sym1 = make_symbol("Query", path="src/resolvers.ts", language="typescript", start_line=10)
-        sym2 = make_symbol("Mutation", path="src/resolvers.ts", language="typescript", start_line=50)
-        nodes = [sym1, sym2]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 2
-
-    def test_graphql_resolver_confidence(self) -> None:
-        """GraphQL resolver detection has appropriate confidence."""
-        sym = make_symbol("resolver", path="src/resolvers.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-        assert graphql_eps[0].confidence == 0.85
-
-    def test_graphql_resolver_label(self) -> None:
-        """GraphQL resolver entrypoints have descriptive labels."""
-        sym = make_symbol("Query", path="src/resolvers.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 1
-        assert "GraphQL" in graphql_eps[0].label or "resolver" in graphql_eps[0].label.lower()
-
-    def test_graphql_only_js_ts_files(self) -> None:
-        """Only JS/TS files are detected as GraphQL resolvers."""
-        # Python file should NOT be detected
-        sym = make_symbol("Query", path="src/resolvers.py", language="python")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
-    def test_graphql_file_symbol_not_detected(self) -> None:
-        """File symbols in GraphQL files are not detected."""
-        sym = make_symbol("file", kind="file", path="src/resolvers.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
-    def test_graphql_non_resolver_file_not_detected(self) -> None:
-        """Non-resolver JS files are not detected as GraphQL."""
-        sym = make_symbol("helper", path="src/utils/helper.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
-    def test_graphql_test_file_not_detected(self) -> None:
-        """Test files with resolver patterns are not detected."""
-        sym = make_symbol("Query", path="tests/resolvers.test.ts", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
-    def test_graphql_spec_file_not_detected(self) -> None:
-        """Spec files with resolver patterns are not detected."""
-        sym = make_symbol("Query", path="spec/resolvers.spec.js", language="javascript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
-    def test_graphql_tsx_files_not_detected(self) -> None:
-        """TSX files in graphql/ are React components, not GraphQL servers."""
-        sym = make_symbol("GraphQLProvider", path="src/graphql/Provider.tsx", language="typescript")
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
-    def test_graphql_non_graphql_resolvers_not_detected(self) -> None:
-        """Non-GraphQL resolver patterns are excluded (dns, promise, dependency)."""
-        syms = [
-            make_symbol("DnsResolver", path="src/dns-resolver.js", language="javascript"),
-            make_symbol("resolve", path="src/promise_resolver.ts", language="typescript"),
-            make_symbol("DependencyResolver", path="src/dependency-resolver.js", language="javascript"),
-            make_symbol("resolve", path="src/path_resolver.js", language="javascript"),
-            make_symbol("ModuleResolver", path="src/module-resolver.ts", language="typescript"),
-        ]
-
-        entrypoints = detect_entrypoints(syms, [])
-
-        graphql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
-        assert len(graphql_eps) == 0
-
 
 class TestIsTestFile:
-    """Tests for _is_test_file function."""
+    """Tests for is_test_file function."""
 
     def test_python_test_prefix(self) -> None:
         """Detect Python test_ prefix."""
-        assert _is_test_file("test_main.py")
-        assert _is_test_file("src/test_utils.py")
+        assert is_test_file("test_main.py")
+        assert is_test_file("src/test_utils.py")
 
     def test_python_test_suffix(self) -> None:
         """Detect Python _test.py suffix."""
-        assert _is_test_file("main_test.py")
-        assert _is_test_file("src/utils_test.py")
+        assert is_test_file("main_test.py")
+        assert is_test_file("src/utils_test.py")
 
     def test_python_spec_patterns(self) -> None:
         """Detect Python spec patterns."""
-        assert _is_test_file("spec_main.py")
-        assert _is_test_file("main_spec.py")
+        assert is_test_file("spec_main.py")
+        assert is_test_file("main_spec.py")
 
     def test_go_test_suffix(self) -> None:
         """Detect Go _test.go suffix."""
-        assert _is_test_file("main_test.go")
-        assert _is_test_file("pkg/handlers/user_test.go")
+        assert is_test_file("main_test.go")
+        assert is_test_file("pkg/handlers/user_test.go")
 
     def test_mock_filename_suffix(self) -> None:
         """Detect *_mock.* filename patterns."""
-        assert _is_test_file("user_mock.go")
-        assert _is_test_file("service_mock.py")
-        assert _is_test_file("src/handler_mock.ts")
+        assert is_test_file("user_mock.go")
+        assert is_test_file("service_mock.py")
+        assert is_test_file("src/handler_mock.ts")
 
     def test_mock_filename_prefix(self) -> None:
         """Detect mock_*.* filename patterns."""
-        assert _is_test_file("src/mock_user.go")
-        assert _is_test_file("mock_service.py")
+        assert is_test_file("src/mock_user.go")
+        assert is_test_file("mock_service.py")
 
     def test_fake_filename_suffix(self) -> None:
         """Detect *_fake.* filename patterns."""
-        assert _is_test_file("user_fake.go")
-        assert _is_test_file("src/handler_fake.ts")
+        assert is_test_file("user_fake.go")
+        assert is_test_file("src/handler_fake.ts")
 
     def test_fake_filename_prefix(self) -> None:
         """Detect fake_*.* filename patterns."""
-        assert _is_test_file("src/fake_user.go")
-        assert _is_test_file("fake_handler.go")
+        assert is_test_file("src/fake_user.go")
+        assert is_test_file("fake_handler.go")
 
     def test_fakes_directory(self) -> None:
         """Detect files in fakes/ directory."""
-        assert _is_test_file("pkg/rtc/transport/transportfakes/fake_handler.go")
-        assert _is_test_file("internal/fakes/mock_service.go")
+        assert is_test_file("pkg/rtc/transport/transportfakes/fake_handler.go")
+        assert is_test_file("internal/fakes/mock_service.go")
 
     def test_mocks_directory(self) -> None:
         """Detect files in mocks/ directory."""
-        assert _is_test_file("pkg/mocks/user_service.go")
-        assert _is_test_file("src/mocks/api_client.ts")
+        assert is_test_file("pkg/mocks/user_service.go")
+        assert is_test_file("src/mocks/api_client.ts")
 
     def test_fixtures_directory(self) -> None:
         """Detect files in fixtures/ directory."""
-        assert _is_test_file("tests/fixtures/sample_data.json")
-        assert _is_test_file("fixtures/test_user.py")
+        assert is_test_file("tests/fixtures/sample_data.json")
+        assert is_test_file("fixtures/test_user.py")
 
     def test_testdata_directory(self) -> None:
         """Detect files in testdata/ directory."""
-        assert _is_test_file("pkg/testdata/sample.txt")
-        assert _is_test_file("testdata/config.yaml")
+        assert is_test_file("pkg/testdata/sample.txt")
+        assert is_test_file("testdata/config.yaml")
 
     def test_testutils_directory(self) -> None:
         """Detect files in testutils/ directory."""
-        assert _is_test_file("pkg/testutils/helpers.go")
-        assert _is_test_file("testutils/factory.py")
+        assert is_test_file("pkg/testutils/helpers.go")
+        assert is_test_file("testutils/factory.py")
 
     def test_regular_file_not_detected(self) -> None:
         """Regular source files are not detected as test files."""
-        assert not _is_test_file("src/main.py")
-        assert not _is_test_file("pkg/handlers/user.go")
-        assert not _is_test_file("internal/api/routes.ts")
+        assert not is_test_file("src/main.py")
+        assert not is_test_file("pkg/handlers/user.go")
+        assert not is_test_file("internal/api/routes.ts")
 
     def test_case_insensitive_directories(self) -> None:
         """Directory matching is case-insensitive."""
-        assert _is_test_file("src/MOCKS/service.go")
-        assert _is_test_file("Fixtures/data.json")
-        assert _is_test_file("TESTDATA/sample.txt")
+        assert is_test_file("src/MOCKS/service.go")
+        assert is_test_file("Fixtures/data.json")
+        assert is_test_file("TESTDATA/sample.txt")
 
     def test_compound_directory_names(self) -> None:
         """Detect directories ending with 'fakes' or 'mocks'."""
         # These hit endswith("fakes") and endswith("mocks") specifically
-        assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
-        assert _is_test_file("internal/servicemocks/client.go")
+        assert is_test_file("pkg/rtc/transport/transportfakes/handler.go")
+        assert is_test_file("internal/servicemocks/client.go")
 
 
 class TestSemanticEntryDetection:
@@ -3356,40 +268,6 @@ class TestSemanticEntryDetection:
         # Models are not entrypoints
         assert len(entrypoints) == 0
 
-    def test_no_concepts_falls_back_to_path_heuristics(self) -> None:
-        """Without concept metadata, path heuristics still work as fallback."""
-        # Express route file but no concept metadata
-        sym = make_symbol(
-            "getUsers",
-            path="src/routes/users.js",
-            language="javascript",
-        )
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        # Should be detected by Express path heuristics
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-        # Path heuristics have lower confidence
-        assert express_eps[0].confidence < 0.95
-
-    def test_empty_concepts_list_falls_back(self) -> None:
-        """Empty concepts list falls back to path heuristics."""
-        sym = make_symbol(
-            "getUsers",
-            path="src/routes/users.js",
-            language="javascript",
-            meta={"concepts": []},
-        )
-        nodes = [sym]
-
-        entrypoints = detect_entrypoints(nodes, [])
-
-        # Should still be detected by Express path heuristics
-        express_eps = [e for e in entrypoints if e.kind == EntrypointKind.EXPRESS_ROUTE]
-        assert len(express_eps) == 1
-
     def test_react_router_not_detected_with_semantic(self) -> None:
         """React Router files without route concepts are NOT detected as routes.
 
@@ -3500,248 +378,1238 @@ class TestSemanticEntryDetection:
         assert len(route_eps) == 1
         # Should have a generic label
 
-
-class TestDeprecationWarnings:
-    """Tests for deprecation warnings on path-based heuristics.
-
-    ADR-0003 v0.9.x deprecates path-based entrypoint detection in favor
-    of semantic detection via concept metadata from FRAMEWORK_PATTERNS.
-    """
-
-    def test_express_route_emits_deprecation_warning(self) -> None:
-        """Express route detection via path emits deprecation warning."""
-        from hypergumbo import entrypoints as ep_module
-
+    def test_detect_controller_concept(self) -> None:
+        """Symbol with controller concept is detected as controller entrypoint."""
         sym = make_symbol(
-            "get_users",
-            path="src/routes/users.js",
-            language="javascript",
-            kind="function",
+            "UsersController",
+            kind="class",
+            path="src/controllers/users.ts",
+            meta={
+                "concepts": [
+                    {"concept": "controller", "framework": "nestjs"}
+                ]
+            },
         )
+        nodes = [sym]
 
-        # Reset the warning tracker so warning fires even if already seen
-        ep_module._deprecated_path_warnings_emitted.clear()
+        entrypoints = detect_entrypoints(nodes, [])
 
-        with pytest.warns(DeprecationWarning, match="path-based"):
-            detect_entrypoints([sym], [])
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].symbol_id == sym.id
+        assert ctrl_eps[0].confidence >= 0.95
+        assert "Nestjs" in ctrl_eps[0].label or "controller" in ctrl_eps[0].label.lower()
 
-    def test_nestjs_controller_emits_deprecation_warning(self) -> None:
-        """NestJS controller detection via path emits deprecation warning."""
-        from hypergumbo import entrypoints as ep_module
+    def test_detect_task_concept(self) -> None:
+        """Symbol with task concept is detected as background task entrypoint."""
+        sym = make_symbol(
+            "process_order",
+            path="src/jobs/orders.py",
+            meta={
+                "concepts": [
+                    {"concept": "task", "framework": "celery"}
+                ]
+            },
+        )
+        nodes = [sym]
 
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.BACKGROUND_TASK]
+        assert len(task_eps) == 1
+        assert task_eps[0].symbol_id == sym.id
+        assert task_eps[0].confidence >= 0.95
+
+    def test_detect_scheduled_task_concept(self) -> None:
+        """Symbol with scheduled_task concept is detected as scheduled task entrypoint."""
+        sym = make_symbol(
+            "cleanup_expired",
+            path="src/jobs/cleanup.java",
+            language="java",
+            meta={
+                "concepts": [
+                    {"concept": "scheduled_task", "framework": "spring-boot"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.SCHEDULED_TASK]
+        assert len(task_eps) == 1
+        assert task_eps[0].symbol_id == sym.id
+        assert task_eps[0].confidence >= 0.95
+
+    def test_detect_websocket_handler_concept(self) -> None:
+        """Symbol with websocket_handler concept is detected as websocket entrypoint."""
+        sym = make_symbol(
+            "handle_message",
+            path="src/websocket/chat.ts",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_handler", "framework": "nestjs"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].symbol_id == sym.id
+        assert ws_eps[0].confidence >= 0.95
+        assert "WebSocket" in ws_eps[0].label
+
+    def test_detect_websocket_gateway_concept(self) -> None:
+        """Symbol with websocket_gateway concept is detected as websocket entrypoint."""
+        sym = make_symbol(
+            "ChatGateway",
+            kind="class",
+            path="src/chat/chat.gateway.ts",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_gateway", "framework": "nestjs"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].confidence >= 0.95
+
+    def test_detect_event_handler_concept(self) -> None:
+        """Symbol with event_handler concept is detected as event handler entrypoint."""
+        sym = make_symbol(
+            "onUserCreated",
+            path="src/events/user.py",
+            meta={
+                "concepts": [
+                    {"concept": "event_handler", "framework": "django"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        event_eps = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(event_eps) == 1
+        assert event_eps[0].symbol_id == sym.id
+        assert event_eps[0].confidence >= 0.95
+
+    def test_detect_command_concept(self) -> None:
+        """Symbol with command concept is detected as CLI command entrypoint."""
+        sym = make_symbol(
+            "import_data",
+            path="src/management/commands/import_data.py",
+            meta={
+                "concepts": [
+                    {"concept": "command", "framework": "django"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].symbol_id == sym.id
+        assert cmd_eps[0].confidence >= 0.95
+
+    def test_detect_liveview_concept(self) -> None:
+        """Symbol with liveview concept is detected as controller entrypoint."""
+        sym = make_symbol(
+            "DashboardLive",
+            kind="module",
+            path="lib/myapp_web/live/dashboard_live.ex",
+            language="elixir",
+            meta={
+                "concepts": [
+                    {"concept": "liveview", "framework": "phoenix"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].symbol_id == sym.id
+        assert ctrl_eps[0].confidence >= 0.95
+        assert "LiveView" in ctrl_eps[0].label
+
+    def test_detect_graphql_resolver_concept(self) -> None:
+        """Symbol with graphql_resolver concept is detected as GraphQL entrypoint."""
+        sym = make_symbol(
+            "Query",
+            kind="class",
+            path="src/graphql/resolvers.ts",
+            meta={
+                "concepts": [
+                    {"concept": "graphql_resolver", "framework": "apollo"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        gql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(gql_eps) == 1
+        assert gql_eps[0].symbol_id == sym.id
+        assert gql_eps[0].confidence >= 0.95
+        assert "resolver" in gql_eps[0].label.lower()
+
+    def test_detect_graphql_schema_concept(self) -> None:
+        """Symbol with graphql_schema concept is detected as GraphQL entrypoint."""
+        sym = make_symbol(
+            "typeDefs",
+            path="src/graphql/schema.ts",
+            meta={
+                "concepts": [
+                    {"concept": "graphql_schema"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        gql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(gql_eps) == 1
+        assert gql_eps[0].confidence >= 0.95
+        assert "schema" in gql_eps[0].label.lower()
+
+    def test_multiple_different_concepts_first_wins(self) -> None:
+        """Symbol with multiple different concepts keeps only the first entrypoint.
+
+        The detect_entrypoints() deduplication keeps one entry per symbol_id.
+        This prevents duplicate entries when both semantic and path-based
+        detection would match the same symbol. The first-detected entry wins.
+        """
+        # A symbol that is both a route AND a controller (unusual but possible)
         sym = make_symbol(
             "UserController",
-            path="src/users/users.controller.ts",
-            language="typescript",
             kind="class",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                    {"concept": "controller", "framework": "fastapi"},
+                ]
+            },
         )
+        nodes = [sym]
 
-        ep_module._deprecated_path_warnings_emitted.clear()
+        entrypoints = detect_entrypoints(nodes, [])
 
-        with pytest.warns(DeprecationWarning, match="path-based"):
-            detect_entrypoints([sym], [])
+        # Only one entrypoint per symbol due to deduplication
+        sym_eps = [e for e in entrypoints if e.symbol_id == sym.id]
+        assert len(sym_eps) == 1
+        # First concept (route) wins
+        assert sym_eps[0].kind == EntrypointKind.HTTP_ROUTE
 
-    def test_cli_detection_no_deprecation_warning(self) -> None:
-        """CLI detection does NOT emit deprecation warning."""
-        from hypergumbo import entrypoints as ep_module
+    def test_duplicate_concept_types_deduplicated(self) -> None:
+        """Multiple concepts of the same type on one symbol produce one entrypoint."""
+        # Symbol with two route concepts (e.g., multiple HTTP methods)
+        sym = make_symbol(
+            "user_endpoint",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                    {"concept": "route", "path": "/users", "method": "POST"},
+                ]
+            },
+        )
+        nodes = [sym]
 
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only produce one entrypoint (first one wins)
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+    def test_concept_without_framework_uses_generic_label(self) -> None:
+        """Concept without framework info uses generic label."""
+        sym = make_symbol(
+            "process_job",
+            path="src/jobs/worker.py",
+            meta={
+                "concepts": [
+                    {"concept": "task"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.BACKGROUND_TASK]
+        assert len(task_eps) == 1
+        assert "task" in task_eps[0].label.lower()
+
+    def test_controller_without_framework_uses_generic_label(self) -> None:
+        """Controller concept without framework uses generic label."""
+        sym = make_symbol(
+            "UserController",
+            kind="class",
+            path="src/controllers/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "controller"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].label == "Controller"
+
+    def test_scheduled_task_without_framework_uses_generic_label(self) -> None:
+        """Scheduled task concept without framework uses generic label."""
+        sym = make_symbol(
+            "cleanup_job",
+            path="src/tasks/cleanup.py",
+            meta={
+                "concepts": [
+                    {"concept": "scheduled_task"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.SCHEDULED_TASK]
+        assert len(task_eps) == 1
+        assert task_eps[0].label == "Scheduled task"
+
+    def test_websocket_handler_without_framework_uses_generic_label(self) -> None:
+        """WebSocket handler concept without framework uses generic label."""
+        sym = make_symbol(
+            "handle_message",
+            path="src/ws/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_handler"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].label == "WebSocket handler"
+
+    def test_event_handler_without_framework_uses_generic_label(self) -> None:
+        """Event handler concept without framework uses generic label."""
+        sym = make_symbol(
+            "on_user_created",
+            path="src/events/handlers.py",
+            meta={
+                "concepts": [
+                    {"concept": "event_handler"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        event_eps = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(event_eps) == 1
+        assert event_eps[0].label == "Event handler"
+
+    def test_command_without_framework_uses_generic_label(self) -> None:
+        """Command concept without framework uses generic label."""
+        sym = make_symbol(
+            "migrate",
+            path="src/commands/migrate.py",
+            meta={
+                "concepts": [
+                    {"concept": "command"}  # No framework specified
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].label == "CLI command"
+
+    def test_duplicate_controller_concepts_deduplicated(self) -> None:
+        """Multiple controller concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "BaseController",
+            kind="class",
+            path="src/controllers/base.py",
+            meta={
+                "concepts": [
+                    {"concept": "controller", "framework": "django"},
+                    {"concept": "controller", "framework": "fastapi"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+
+    def test_duplicate_task_concepts_deduplicated(self) -> None:
+        """Multiple task concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "process_data",
+            path="src/jobs/processor.py",
+            meta={
+                "concepts": [
+                    {"concept": "task", "framework": "celery"},
+                    {"concept": "task", "framework": "rq"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.BACKGROUND_TASK]
+        assert len(task_eps) == 1
+
+    def test_duplicate_scheduled_task_concepts_deduplicated(self) -> None:
+        """Multiple scheduled_task concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "daily_cleanup",
+            path="src/jobs/scheduled.py",
+            meta={
+                "concepts": [
+                    {"concept": "scheduled_task"},
+                    {"concept": "scheduled_task"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        task_eps = [e for e in entrypoints if e.kind == EntrypointKind.SCHEDULED_TASK]
+        assert len(task_eps) == 1
+
+    def test_duplicate_websocket_concepts_deduplicated(self) -> None:
+        """Multiple websocket concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "ChatHandler",
+            kind="class",
+            path="src/ws/chat.py",
+            meta={
+                "concepts": [
+                    {"concept": "websocket_handler"},
+                    {"concept": "websocket_gateway"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+
+    def test_duplicate_event_handler_concepts_deduplicated(self) -> None:
+        """Multiple event_handler concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "handle_events",
+            path="src/events/handler.py",
+            meta={
+                "concepts": [
+                    {"concept": "event_handler", "framework": "django"},
+                    {"concept": "event_handler", "framework": "celery"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        event_eps = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(event_eps) == 1
+
+    def test_duplicate_command_concepts_deduplicated(self) -> None:
+        """Multiple command concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "run_command",
+            path="src/cli/commands.py",
+            meta={
+                "concepts": [
+                    {"concept": "command"},
+                    {"concept": "command"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+
+    def test_duplicate_graphql_concepts_deduplicated(self) -> None:
+        """Multiple graphql concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "Query",
+            kind="class",
+            path="src/graphql/query.py",
+            meta={
+                "concepts": [
+                    {"concept": "graphql_resolver"},
+                    {"concept": "graphql_schema"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        gql_eps = [e for e in entrypoints if e.kind == EntrypointKind.GRAPHQL_SERVER]
+        assert len(gql_eps) == 1
+
+    def test_liveview_and_controller_share_kind_deduplicated(self) -> None:
+        """LiveView and controller map to same kind, so are deduplicated.
+
+        Both 'liveview' and 'controller' concepts map to EntrypointKind.CONTROLLER.
+        When both are present, only one CONTROLLER entrypoint is created.
+        """
+        sym = make_symbol(
+            "DashboardLive",
+            kind="module",
+            path="lib/app_web/live/dashboard_live.ex",
+            language="elixir",
+            meta={
+                "concepts": [
+                    {"concept": "controller", "framework": "phoenix"},
+                    {"concept": "liveview", "framework": "phoenix"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        # Both concepts map to CONTROLLER, but only one entry is created
+        assert len(ctrl_eps) == 1
+
+    def test_detect_main_function_concept(self) -> None:
+        """Detect main_function concept from language convention patterns."""
         sym = make_symbol(
             "main",
-            path="src/main.py",
-            language="python",
             kind="function",
+            path="main.go",
+            language="go",
+            meta={
+                "concepts": [
+                    {"concept": "main_function", "framework": "main-functions"}
+                ]
+            },
         )
+        nodes = [sym]
 
-        ep_module._deprecated_path_warnings_emitted.clear()
+        entrypoints = detect_entrypoints(nodes, [])
 
-        # Should not raise DeprecationWarning
-        import warnings
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            detect_entrypoints([sym], [])
-            deprecation_warnings = [
-                x for x in w if issubclass(x.category, DeprecationWarning)
-            ]
-            assert len(deprecation_warnings) == 0
+        assert len(entrypoints) == 1
+        assert entrypoints[0].kind == EntrypointKind.MAIN_FUNCTION
+        assert entrypoints[0].confidence == 0.80  # Lower than framework patterns
+        assert "Go main()" in entrypoints[0].label
 
-    def test_semantic_detection_no_deprecation_warning(self) -> None:
-        """Semantic detection via concepts does NOT emit deprecation warning."""
-        from hypergumbo import entrypoints as ep_module
+    def test_main_function_without_language_uses_unknown(self) -> None:
+        """main_function entrypoint uses 'Unknown' when language is not set."""
+        sym = Symbol(
+            id="test:main.txt:1-10:main:function",
+            name="main",
+            kind="function",
+            language="",  # Empty language
+            path="main.txt",
+            span=Span(1, 10, 0, 100),
+            meta={
+                "concepts": [
+                    {"concept": "main_function", "framework": "main-functions"}
+                ]
+            },
+        )
+        nodes = [sym]
 
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert len(entrypoints) == 1
+        assert "Unknown main()" in entrypoints[0].label
+
+    def test_duplicate_main_function_concepts_deduplicated(self) -> None:
+        """Multiple main_function concepts on same symbol produce one entrypoint."""
         sym = make_symbol(
-            "get_users",
-            path="src/api/users.py",
-            language="python",
+            "main",
             kind="function",
-            meta={"concepts": [{"concept": "route", "method": "GET"}]},
+            path="main.py",
+            language="python",
+            meta={
+                "concepts": [
+                    {"concept": "main_function", "framework": "main-functions"},
+                    {"concept": "main_function", "framework": "main-functions"},
+                ]
+            },
         )
+        nodes = [sym]
 
-        ep_module._deprecated_path_warnings_emitted.clear()
+        entrypoints = detect_entrypoints(nodes, [])
 
-        # Should not raise DeprecationWarning
-        import warnings
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            detect_entrypoints([sym], [])
-            deprecation_warnings = [
-                x for x in w if issubclass(x.category, DeprecationWarning)
-            ]
-            assert len(deprecation_warnings) == 0
+        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(main_eps) == 1
 
-    def test_decorator_detection_no_deprecation_warning(self) -> None:
-        """Decorator-based HTTP route detection does NOT emit deprecation warning."""
-        from hypergumbo import entrypoints as ep_module
-
+    def test_detect_library_export_concept(self) -> None:
+        """Detects library_export concept and creates LIBRARY_EXPORT entrypoint."""
         sym = make_symbol(
-            "get_users",
-            path="src/api/users.py",
-            language="python",
+            "doSomething",
             kind="function",
-            decorators=["get", "route"],  # Decorators
+            path="index.ts",
+            language="typescript",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "doSomething",
+                        "is_default": "false",
+                    }
+                ]
+            },
         )
+        nodes = [sym]
 
-        ep_module._deprecated_path_warnings_emitted.clear()
+        entrypoints = detect_entrypoints(nodes, [])
 
-        # Should not raise DeprecationWarning
-        import warnings
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            detect_entrypoints([sym], [])
-            deprecation_warnings = [
-                x for x in w if issubclass(x.category, DeprecationWarning)
-            ]
-            assert len(deprecation_warnings) == 0
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.LIBRARY_EXPORT
+        assert ep.confidence == 0.75
+        assert "doSomething" in ep.label
 
-    def test_deprecation_warning_once_per_framework(self) -> None:
-        """Deprecation warning fires only once per framework per session."""
-        from hypergumbo import entrypoints as ep_module
+    def test_library_export_default_export(self) -> None:
+        """Default exports have appropriate label."""
+        sym = make_symbol(
+            "Hls",
+            kind="class",
+            path="index.ts",
+            language="typescript",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                        "export_name": "Hls",
+                        "is_default": True,  # Note: can be bool or string
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
 
-        sym1 = make_symbol(
-            "get_users",
-            path="src/routes/users.js",
+        entrypoints = detect_entrypoints(nodes, [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.LIBRARY_EXPORT
+        assert "default" in ep.label.lower()
+
+    def test_duplicate_library_export_concepts_deduplicated(self) -> None:
+        """Multiple library_export concepts on same symbol produce one entrypoint."""
+        sym = make_symbol(
+            "exportedFunc",
+            kind="function",
+            path="index.js",
             language="javascript",
-            kind="function",
+            meta={
+                "concepts": [
+                    {"concept": "library_export", "framework": "library-exports"},
+                    {"concept": "library_export", "framework": "library-exports"},
+                ]
+            },
         )
-        sym2 = make_symbol(
-            "get_orders",
-            path="src/routes/orders.js",
-            language="javascript",
-            kind="function",
-        )
+        nodes = [sym]
 
-        ep_module._deprecated_path_warnings_emitted.clear()
+        entrypoints = detect_entrypoints(nodes, [])
 
-        import warnings
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            detect_entrypoints([sym1], [])
-            detect_entrypoints([sym2], [])
-            express_warnings = [
-                x for x in w
-                if issubclass(x.category, DeprecationWarning)
-                and "Express" in str(x.message)
-            ]
-            # Only ONE warning for Express across both calls
-            assert len(express_warnings) == 1
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
 
 
 class TestConnectivityBasedRanking:
     """Tests for connectivity-based entrypoint ranking."""
 
     def test_entrypoints_sorted_by_connectivity(self) -> None:
-        """Entrypoints with more outgoing edges should rank higher."""
-        # Create three main() functions with same base confidence
-        main_a = make_symbol("main", path="a.py", language="python")
-        main_b = make_symbol("main", path="b.py", language="python")
-        main_c = make_symbol("main", path="c.py", language="python")
+        """Entrypoints with edges rank higher than those without."""
+        # Create three route handlers with same base confidence
+        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
+        route_a = make_symbol("route_a", path="a.py", language="python", meta=route_concepts)
+        route_b = make_symbol("route_b", path="b.py", language="python", meta=route_concepts)
+        route_c = make_symbol("route_c", path="c.py", language="python", meta=route_concepts)
 
-        # Create helper functions that main_b and main_c call
+        # Create helper functions that route_b and route_c call
         helper1 = make_symbol("helper1", path="helpers.py", language="python")
         helper2 = make_symbol("helper2", path="helpers.py", language="python", start_line=10, end_line=15)
         helper3 = make_symbol("helper3", path="helpers.py", language="python", start_line=20, end_line=25)
 
-        nodes = [main_a, main_b, main_c, helper1, helper2, helper3]
+        nodes = [route_a, route_b, route_c, helper1, helper2, helper3]
 
-        # main_a calls nothing (0 edges)
-        # main_b calls 1 helper (1 edge)
-        # main_c calls 3 helpers (3 edges)
+        # route_a calls nothing (0 edges)
+        # route_b calls 1 helper (1 edge)
+        # route_c calls 3 helpers (3 edges)
         edges = [
-            Edge.create(src=main_b.id, dst=helper1.id, edge_type="calls", line=2),
-            Edge.create(src=main_c.id, dst=helper1.id, edge_type="calls", line=2),
-            Edge.create(src=main_c.id, dst=helper2.id, edge_type="calls", line=3),
-            Edge.create(src=main_c.id, dst=helper3.id, edge_type="calls", line=4),
+            Edge.create(src=route_b.id, dst=helper1.id, edge_type="calls", line=2),
+            Edge.create(src=route_c.id, dst=helper1.id, edge_type="calls", line=2),
+            Edge.create(src=route_c.id, dst=helper2.id, edge_type="calls", line=3),
+            Edge.create(src=route_c.id, dst=helper3.id, edge_type="calls", line=4),
         ]
 
         entrypoints = detect_entrypoints(nodes, edges)
 
-        # Should find all three main functions
-        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
-        assert len(main_eps) == 3
+        # Should find all three routes
+        route_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 3
 
-        # main_c (3 edges) should rank first, main_b (1 edge) second, main_a (0 edges) last
-        assert main_eps[0].symbol_id == main_c.id, "main_c with 3 edges should rank first"
-        assert main_eps[1].symbol_id == main_b.id, "main_b with 1 edge should rank second"
-        assert main_eps[2].symbol_id == main_a.id, "main_a with 0 edges should rank last"
+        # Routes with edges should rank before route without edges
+        # Note: route_b and route_c both hit the 1.0 confidence cap, so they tie
+        # The key behavior is that route_a (no edges) is last
+        assert route_eps[2].symbol_id == route_a.id, "route_a with 0 edges should rank last"
+        # Both route_b and route_c should have higher confidence than route_a
+        assert route_eps[0].confidence >= route_eps[2].confidence
+        assert route_eps[1].confidence >= route_eps[2].confidence
 
     def test_connectivity_boost_increases_confidence(self) -> None:
         """Entrypoints with more edges should have higher confidence scores."""
-        main_isolated = make_symbol("main", path="isolated.py", language="python")
-        main_connected = make_symbol("main", path="connected.py", language="python")
+        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
+        route_isolated = make_symbol("route_isolated", path="isolated.py", language="python", meta=route_concepts)
+        route_connected = make_symbol("route_connected", path="connected.py", language="python", meta=route_concepts)
         helper = make_symbol("helper", path="helper.py", language="python")
 
-        nodes = [main_isolated, main_connected, helper]
+        nodes = [route_isolated, route_connected, helper]
 
-        # main_connected calls helper multiple times (simulated by multiple edges)
+        # route_connected calls helper multiple times (simulated by multiple edges)
         edges = [
-            Edge.create(src=main_connected.id, dst=helper.id, edge_type="calls", line=i)
+            Edge.create(src=route_connected.id, dst=helper.id, edge_type="calls", line=i)
             for i in range(10)  # 10 outgoing edges
         ]
 
         entrypoints = detect_entrypoints(nodes, edges)
 
-        main_eps = {ep.symbol_id: ep for ep in entrypoints if "main" in ep.symbol_id}
+        route_eps = {ep.symbol_id: ep for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
 
-        # Connected main should have higher confidence than isolated one
-        assert main_eps[main_connected.id].confidence > main_eps[main_isolated.id].confidence
+        # Connected route should have higher confidence than isolated one
+        assert route_eps[route_connected.id].confidence > route_eps[route_isolated.id].confidence
 
     def test_all_entrypoints_still_returned(self) -> None:
         """Connectivity ranking should not filter out any entrypoints."""
-        # Create many main functions
-        mains = [
-            make_symbol("main", path=f"file{i}.py", language="python", start_line=i)
+        # Create many route handlers with concept metadata
+        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
+        routes = [
+            make_symbol(f"route_{i}", path=f"file{i}.py", language="python", start_line=i, meta=route_concepts)
             for i in range(10)
         ]
         helper = make_symbol("helper", path="helper.py", language="python")
 
-        nodes = mains + [helper]
+        nodes = routes + [helper]
 
-        # Only first main has edges
-        edges = [Edge.create(src=mains[0].id, dst=helper.id, edge_type="calls", line=1)]
+        # Only first route has edges
+        edges = [Edge.create(src=routes[0].id, dst=helper.id, edge_type="calls", line=1)]
 
         entrypoints = detect_entrypoints(nodes, edges)
 
-        # All 10 main functions should be returned
-        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
-        assert len(main_eps) == 10, "All entrypoints should be returned regardless of connectivity"
+        # All 10 routes should be returned
+        route_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 10, "All entrypoints should be returned regardless of connectivity"
 
     def test_incoming_edges_not_counted(self) -> None:
         """Only outgoing edges should affect ranking, not incoming edges."""
-        main_caller = make_symbol("main", path="caller.py", language="python")
-        main_callee = make_symbol("main", path="callee.py", language="python")
+        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
+        route_caller = make_symbol("route_caller", path="caller.py", language="python", meta=route_concepts)
+        route_callee = make_symbol("route_callee", path="callee.py", language="python", meta=route_concepts)
         other = make_symbol("other", path="other.py", language="python")
 
-        nodes = [main_caller, main_callee, other]
+        nodes = [route_caller, route_callee, other]
 
-        # main_caller calls main_callee (main_callee has incoming edge, not outgoing)
-        # main_caller also calls other
+        # route_caller calls route_callee (route_callee has incoming edge, not outgoing)
+        # route_caller also calls other
         edges = [
-            Edge.create(src=main_caller.id, dst=main_callee.id, edge_type="calls", line=1),
-            Edge.create(src=main_caller.id, dst=other.id, edge_type="calls", line=2),
+            Edge.create(src=route_caller.id, dst=route_callee.id, edge_type="calls", line=1),
+            Edge.create(src=route_caller.id, dst=other.id, edge_type="calls", line=2),
         ]
 
         entrypoints = detect_entrypoints(nodes, edges)
-        main_eps = [ep for ep in entrypoints if "main" in ep.symbol_id]
+        route_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE]
 
-        # main_caller (2 outgoing) should rank before main_callee (0 outgoing)
-        assert main_eps[0].symbol_id == main_caller.id
-        assert main_eps[1].symbol_id == main_callee.id
+        # route_caller (2 outgoing) should rank before route_callee (0 outgoing)
+        assert route_eps[0].symbol_id == route_caller.id
+        assert route_eps[1].symbol_id == route_callee.id
+
+
+class TestLifecycleHookConceptDetection:
+    """Tests for lifecycle_hook concept-based entrypoint detection (ADR-0003 v1.1.x).
+
+    The lifecycle_hook concept is used by android.yaml to match Android lifecycle
+    methods like Activity.onCreate(), Application.onCreate(), etc.
+    """
+
+    def test_detect_android_activity_from_concept(self) -> None:
+        """lifecycle_hook concept with Activity base creates ANDROID_ACTIVITY entrypoint."""
+        symbol = make_symbol(
+            name="MainActivity.onCreate",
+            path="MainActivity.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "AppCompatActivity",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.ANDROID_ACTIVITY
+        assert ep.confidence == 0.95
+        assert "MainActivity" in ep.label
+
+    def test_detect_android_application_from_concept(self) -> None:
+        """lifecycle_hook concept with Application base creates ANDROID_APPLICATION entrypoint."""
+        symbol = make_symbol(
+            name="MyApp.onCreate",
+            path="MyApp.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Application",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.ANDROID_APPLICATION
+        assert ep.confidence == 0.95
+        assert "MyApp" in ep.label
+
+    def test_detect_android_fragment_from_concept(self) -> None:
+        """lifecycle_hook concept with Fragment base creates CONTROLLER entrypoint."""
+        symbol = make_symbol(
+            name="HomeFragment.onCreate",
+            path="HomeFragment.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Fragment",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.CONTROLLER
+        assert ep.confidence == 0.95
+        assert "Fragment" in ep.label
+
+    def test_detect_android_service_from_concept(self) -> None:
+        """lifecycle_hook concept with Service base creates CONTROLLER entrypoint."""
+        symbol = make_symbol(
+            name="BackgroundService.onCreate",
+            path="BackgroundService.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Service",
+                        "matched_method_name": "onCreate",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.CONTROLLER
+        assert "Service" in ep.label
+
+    def test_detect_android_broadcast_receiver_from_concept(self) -> None:
+        """lifecycle_hook concept with BroadcastReceiver base creates CONTROLLER entrypoint."""
+        symbol = make_symbol(
+            name="PushReceiver.onReceive",
+            path="PushReceiver.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "BroadcastReceiver",
+                        "matched_method_name": "onReceive",
+                    }
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+        assert ep.kind == EntrypointKind.CONTROLLER
+        assert "BroadcastReceiver" in ep.label
+
+    def test_no_duplicate_activity_entrypoints(self) -> None:
+        """Multiple lifecycle_hook concepts on same symbol don't create duplicates."""
+        symbol = make_symbol(
+            name="MainActivity.onCreate",
+            path="MainActivity.java",
+            language="java",
+            kind="method",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Activity",
+                        "matched_method_name": "onCreate",
+                    },
+                    # Duplicate concept entry (shouldn't happen, but handle gracefully)
+                    {
+                        "concept": "lifecycle_hook",
+                        "framework": "android",
+                        "matched_parent_base_class": "Activity",
+                        "matched_method_name": "onCreate",
+                    },
+                ]
+            },
+        )
+
+        entrypoints = detect_entrypoints([symbol], [])
+
+        # Should only create one entrypoint
+        activity_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.ANDROID_ACTIVITY]
+        assert len(activity_eps) == 1
+
+
+class TestEntrypointSerialization:
+    """Tests for Entrypoint serialization methods."""
+
+    def test_to_dict(self) -> None:
+        """Entrypoint.to_dict() returns correct dictionary structure."""
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:handler:function",
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.95,
+            label="HTTP GET /users",
+        )
+
+        result = ep.to_dict()
+
+        assert result == {
+            "symbol_id": "python:app.py:1-5:handler:function",
+            "kind": "http_route",
+            "confidence": 0.95,
+            "label": "HTTP GET /users",
+        }
+
+    def test_to_dict_all_kinds(self) -> None:
+        """to_dict() correctly serializes all EntrypointKind values."""
+        for kind in EntrypointKind:
+            ep = Entrypoint(
+                symbol_id="test:id",
+                kind=kind,
+                confidence=0.9,
+                label="Test",
+            )
+            result = ep.to_dict()
+            assert result["kind"] == kind.value
+
+
+class TestEntrypointRankingPenalties:
+    """Tests for test/vendor penalty-based ranking.
+
+    Entrypoints in test files or vendor code should be deprioritized
+    (lower confidence) rather than excluded entirely. This ensures:
+    - Production code entrypoints rank higher by default
+    - Test/vendor entrypoints are still discoverable if needed
+    - The full graph data is preserved
+    """
+
+    def test_test_file_penalty(self) -> None:
+        """Entrypoints in test files receive a 50% confidence penalty."""
+        # Production main function
+        prod_main = make_symbol(
+            "main",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # Test main function
+        test_main = make_symbol(
+            "main",
+            path="tests/test_app.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        nodes = [prod_main, test_main]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Both should be detected
+        assert len(entrypoints) == 2
+
+        # Production main should have higher confidence
+        prod_ep = next(e for e in entrypoints if "src/app.py" in e.symbol_id)
+        test_ep = next(e for e in entrypoints if "tests/test_app.py" in e.symbol_id)
+
+        # Base confidence is 0.80 for main_function
+        # Test file gets 50% penalty: 0.80 * 0.5 = 0.40
+        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert test_ep.confidence == pytest.approx(0.40, rel=0.01)
+
+        # Production should rank first
+        assert entrypoints[0].symbol_id == prod_main.id
+
+    def test_vendor_tier_penalty(self) -> None:
+        """Entrypoints in vendor code (tier >= 3) receive a 70% penalty."""
+        # First-party main function (tier 1)
+        first_party = make_symbol(
+            "main",
+            path="src/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # External dependency main function (tier 3)
+        vendor = make_symbol(
+            "main",
+            path="vendor/github.com/lib/main.go",
+            language="go",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=3,
+        )
+        nodes = [first_party, vendor]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Both should be detected
+        assert len(entrypoints) == 2
+
+        # First-party should have higher confidence
+        fp_ep = next(e for e in entrypoints if "src/main.go" in e.symbol_id)
+        vendor_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
+
+        # Base confidence is 0.80 for main_function
+        # Vendor gets 70% penalty: 0.80 * 0.3 = 0.24
+        assert fp_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert vendor_ep.confidence == pytest.approx(0.24, rel=0.01)
+
+        # First-party should rank first
+        assert entrypoints[0].symbol_id == first_party.id
+
+    def test_test_and_vendor_penalties_stack(self) -> None:
+        """Both penalties apply if entrypoint is in test file AND vendor code."""
+        # First-party production code
+        prod = make_symbol(
+            "main",
+            path="src/main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # Vendor test file (both penalties)
+        vendor_test = make_symbol(
+            "main",
+            path="vendor/lib/tests/test_main.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=3,
+        )
+        nodes = [prod, vendor_test]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        prod_ep = next(e for e in entrypoints if "src/main.py" in e.symbol_id)
+        vendor_test_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
+
+        # Base 0.80 * 0.5 (test penalty) * 0.3 (vendor penalty) = 0.12
+        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
+        assert vendor_test_ep.confidence == pytest.approx(0.12, rel=0.01)
+
+    def test_http_route_test_penalty(self) -> None:
+        """HTTP routes in test files also receive test penalty."""
+        # Production route
+        prod_route = make_symbol(
+            "get_users",
+            path="src/api/routes.py",
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        # Test route (e.g., mock endpoint in tests)
+        test_route = make_symbol(
+            "mock_get_users",
+            path="tests/conftest.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "route", "path": "/test/users", "method": "GET"}]},
+        )
+        nodes = [prod_route, test_route]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        prod_ep = next(e for e in entrypoints if "src/api" in e.symbol_id)
+        test_ep = next(e for e in entrypoints if "tests/" in e.symbol_id)
+
+        # Base confidence is 0.95 for HTTP routes
+        # Test file gets 50% penalty: 0.95 * 0.5 = 0.475
+        assert prod_ep.confidence == pytest.approx(0.95, rel=0.01)
+        assert test_ep.confidence == pytest.approx(0.475, rel=0.01)
+
+        # Production route should rank first
+        assert entrypoints[0].symbol_id == prod_route.id
+
+    def test_derived_artifact_penalty(self) -> None:
+        """Entrypoints in derived artifacts (tier 4) also receive vendor penalty."""
+        # First-party source
+        source = make_symbol(
+            "main",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # Transpiled output (tier 4)
+        derived = make_symbol(
+            "main",
+            path="dist/main.js",
+            language="javascript",
+            start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=4,
+        )
+        nodes = [source, derived]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        source_ep = next(e for e in entrypoints if "src/main.ts" in e.symbol_id)
+        derived_ep = next(e for e in entrypoints if "dist/main.js" in e.symbol_id)
+
+        # Derived (tier 4) should also get the vendor penalty (tier >= 3)
+        assert source_ep.confidence > derived_ep.confidence
+        assert derived_ep.confidence == pytest.approx(0.80 * 0.3, rel=0.01)
+
+    def test_connectivity_boost_still_applies_after_penalty(self) -> None:
+        """Connectivity boost is applied after penalties."""
+        # Test file main with high connectivity
+        test_main = make_symbol(
+            "main",
+            path="tests/test_main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # Create edges to give it connectivity
+        edges = [
+            Edge.create(
+                src=test_main.id,
+                dst=f"python:tests/helper.py:{i}-{i+1}:func{i}:function",
+                edge_type="calls",
+                line=i,
+                origin="test",
+                origin_run_id="test",
+            )
+            for i in range(10)  # 10 outgoing edges
+        ]
+        nodes = [test_main]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        assert len(entrypoints) == 1
+        ep = entrypoints[0]
+
+        # Base 0.80 * 0.5 (test penalty) = 0.40
+        # Plus connectivity boost: log(1 + 10) / 10 ≈ 0.24
+        # Total: 0.40 + 0.24 = 0.64 (capped at 0.25 boost)
+        # Actually: 0.40 + min(0.25, log(11)/10) = 0.40 + 0.24 = 0.64
+        assert ep.confidence > 0.40  # Should be boosted
+        assert ep.confidence < 0.80  # But still penalized
+
+    def test_ranking_order_respects_penalties(self) -> None:
+        """Final ranking correctly orders by penalized confidence."""
+        # High-confidence production route
+        prod_route = make_symbol(
+            "api_handler",
+            path="src/api.py",
+            meta={"concepts": [{"concept": "route", "path": "/api", "method": "GET"}]},
+            supply_chain_tier=1,
+        )
+        # Low-confidence test main
+        test_main = make_symbol(
+            "main",
+            path="tests/test_main.py",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=1,
+        )
+        # Medium-confidence vendor route
+        vendor_route = make_symbol(
+            "health_check",
+            path="vendor/lib/health.py",
+            start_line=20,
+            meta={"concepts": [{"concept": "route", "path": "/health", "method": "GET"}]},
+            supply_chain_tier=3,
+        )
+        nodes = [test_main, vendor_route, prod_route]  # Intentionally scrambled
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Expected order after penalties:
+        # 1. prod_route: 0.95 (no penalty)
+        # 2. test_main: 0.80 * 0.5 = 0.40
+        # 3. vendor_route: 0.95 * 0.3 = 0.285
+        assert len(entrypoints) == 3
+        assert entrypoints[0].symbol_id == prod_route.id
+        assert entrypoints[1].symbol_id == test_main.id
+        assert entrypoints[2].symbol_id == vendor_route.id

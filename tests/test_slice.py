@@ -92,6 +92,44 @@ class TestFindEntryNodes:
         assert len(matches) == 1
         assert matches[0].id == sym_a.id
 
+    def test_find_by_path_suffix(self) -> None:
+        """Match entry by path suffix (relative path matches absolute)."""
+        # Nodes have absolute paths as stored in behavior map
+        sym_a = make_symbol("func_a", path="/home/user/repo/src/auth.py")
+        sym_b = make_symbol("func_b", path="/home/user/repo/src/db.py")
+        nodes = [sym_a, sym_b]
+
+        # User provides relative path
+        matches = find_entry_nodes(nodes, "src/auth.py")
+
+        assert len(matches) == 1
+        assert matches[0].id == sym_a.id
+
+    def test_find_by_path_suffix_nested(self) -> None:
+        """Path suffix matching works for nested paths."""
+        sym_a = make_symbol("main", path="/home/user/project/src/frontend/main.go")
+        sym_b = make_symbol("main", path="/home/user/project/src/backend/main.go")
+        nodes = [sym_a, sym_b]
+
+        # Match specific nested path
+        matches = find_entry_nodes(nodes, "frontend/main.go")
+
+        assert len(matches) == 1
+        assert matches[0].id == sym_a.id
+
+    def test_find_by_path_suffix_no_partial_filename(self) -> None:
+        """Path suffix must match at directory boundary, not partial filename."""
+        sym_a = make_symbol("handler", path="/home/user/repo/src/auth.py")
+        sym_b = make_symbol("handler", path="/home/user/repo/src/unauth.py")
+        nodes = [sym_a, sym_b]
+
+        # "auth.py" should only match auth.py, not unauth.py
+        matches = find_entry_nodes(nodes, "src/auth.py")
+
+        assert len(matches) == 1
+        assert "auth.py" in matches[0].path
+        assert "unauth.py" not in matches[0].path
+
     def test_find_by_node_id(self) -> None:
         """Match entry by exact node ID."""
         sym_a = make_symbol("login", path="src/auth.py", start_line=10, end_line=20)
@@ -491,74 +529,74 @@ class TestIsTestFile:
 
     def test_test_underscore_prefix(self) -> None:
         """Detect test_ prefix in path."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("test_main.py")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("test_main.py")
 
     def test_tests_dir_prefix(self) -> None:
         """Detect tests/ directory prefix."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("tests/main.py")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("tests/main.py")
 
     def test_underscore_test_suffix(self) -> None:
         """Detect _test.py suffix."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("main_test.py")
-        assert _is_test_file("main_test.js")
-        assert _is_test_file("main_test.ts")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("main_test.py")
+        assert is_test_file("main_test.js")
+        assert is_test_file("main_test.ts")
 
     def test_dot_test_suffix(self) -> None:
         """Detect .test.py suffix."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("main.test.py")
-        assert _is_test_file("main.test.js")
-        assert _is_test_file("main.test.ts")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("main.test.py")
+        assert is_test_file("main.test.js")
+        assert is_test_file("main.test.ts")
 
     def test_spec_patterns(self) -> None:
         """Detect spec patterns."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("src/spec/main.py")
-        assert _is_test_file("main_spec.py")
-        assert _is_test_file("main.spec.js")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("src/spec/main.py")
+        assert is_test_file("main_spec.py")
+        assert is_test_file("main.spec.js")
 
     def test_not_test_file(self) -> None:
         """Non-test files return False."""
-        from hypergumbo.slice import _is_test_file
-        assert not _is_test_file("src/main.py")
-        assert not _is_test_file("utils.py")
+        from hypergumbo.paths import is_test_file
+        assert not is_test_file("src/main.py")
+        assert not is_test_file("utils.py")
 
     def test_go_test_suffix(self) -> None:
         """Detect Go _test.go suffix."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("main_test.go")
-        assert _is_test_file("pkg/handlers/user_test.go")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("main_test.go")
+        assert is_test_file("pkg/handlers/user_test.go")
 
     def test_mock_filename_patterns(self) -> None:
         """Detect *_mock.* and mock_*.* filename patterns."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("user_mock.go")
-        assert _is_test_file("src/mock_service.py")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("user_mock.go")
+        assert is_test_file("src/mock_service.py")
 
     def test_fake_filename_patterns(self) -> None:
         """Detect *_fake.* and fake_*.* filename patterns."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("handler_fake.ts")
-        assert _is_test_file("pkg/fake_client.go")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("handler_fake.ts")
+        assert is_test_file("pkg/fake_client.go")
 
     def test_mock_directories(self) -> None:
         """Detect files in fakes/, mocks/, fixtures/, testdata/, testutils/ directories."""
-        from hypergumbo.slice import _is_test_file
-        assert _is_test_file("pkg/fakes/handler.go")
-        assert _is_test_file("src/mocks/service.ts")
-        assert _is_test_file("tests/fixtures/data.json")
-        assert _is_test_file("pkg/testdata/sample.txt")
-        assert _is_test_file("internal/testutils/helpers.go")
+        from hypergumbo.paths import is_test_file
+        assert is_test_file("pkg/fakes/handler.go")
+        assert is_test_file("src/mocks/service.ts")
+        assert is_test_file("tests/fixtures/data.json")
+        assert is_test_file("pkg/testdata/sample.txt")
+        assert is_test_file("internal/testutils/helpers.go")
 
     def test_compound_directory_names(self) -> None:
         """Detect files in directories ending with 'fakes' or 'mocks'."""
-        from hypergumbo.slice import _is_test_file
+        from hypergumbo.paths import is_test_file
         # These hit endswith("fakes") and endswith("mocks") specifically
-        assert _is_test_file("pkg/rtc/transport/transportfakes/handler.go")
-        assert _is_test_file("internal/servicemocks/client.go")
+        assert is_test_file("pkg/rtc/transport/transportfakes/handler.go")
+        assert is_test_file("internal/servicemocks/client.go")
 
 
 class TestSliceEdgeCases:

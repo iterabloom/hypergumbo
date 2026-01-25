@@ -36,7 +36,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -45,30 +46,8 @@ if TYPE_CHECKING:
 PASS_ID = "ruby-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# HTTP methods for Rails route detection (deprecated - use rails.yaml patterns)
+# HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
 
 
 def find_ruby_files(repo_root: Path) -> Iterator[Path]:
@@ -91,6 +70,7 @@ class RubyAnalysisResult:
 
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
@@ -122,6 +102,73 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+def _snake_to_pascal(name: str) -> str:
+    """Convert snake_case to PascalCase.
+
+    Examples:
+        user_service -> UserService
+        http_client -> HttpClient
+        api -> Api
+    """
+    return "".join(word.capitalize() for word in name.split("_"))
+
+
+def _extract_require_hints(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract require/require_relative statements and infer class/module names.
+
+    Ruby convention maps snake_case file paths to PascalCase class names.
+    For example:
+        require 'user_service' -> hints that UserService class comes from this path
+        require 'math/calculator' -> hints that Calculator class comes from this path
+
+    Returns a dict mapping inferred class/module names to their require paths.
+    """
+    hints: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        # Get method name
+        method_node = None
+        for child in node.children:
+            if child.type == "identifier":
+                method_node = child
+                break
+
+        if not method_node:  # pragma: no cover - call nodes always have identifier
+            continue
+
+        callee_name = _node_text(method_node, source)
+        if callee_name not in ("require", "require_relative"):
+            continue
+
+        # Extract the require path from arguments
+        args_node = _find_child_by_field(node, "arguments")
+        if not args_node:  # pragma: no cover - require always has arguments
+            continue
+
+        for arg in args_node.children:
+            if arg.type == "string":
+                content_node = _find_child_by_type(arg, "string_content")
+                if content_node:
+                    require_path = _node_text(content_node, source)
+                    # Extract the last component and convert to PascalCase
+                    # 'math/calculator' -> 'calculator' -> 'Calculator'
+                    basename = require_path.rsplit("/", 1)[-1]
+                    # Remove .rb extension if present
+                    if basename.endswith(".rb"):
+                        basename = basename[:-3]
+                    if basename:
+                        class_name = _snake_to_pascal(basename)
+                        hints[class_name] = require_path
+
+    return hints
 
 
 def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> tuple[Optional[str], str]:
@@ -229,83 +276,154 @@ def _extract_ruby_signature(
     return f"({params_str})"
 
 
-def _detect_rails_route(
-    node: "tree_sitter.Node", source: bytes
-) -> tuple[str | None, str | None, str | None]:
-    """Detect Rails route DSL calls.
+def _extract_rails_routes(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+    run: AnalysisRun,
+) -> tuple[list[UsageContext], list[Symbol]]:
+    """Extract UsageContext records AND Symbol objects for Rails/Sinatra route DSL calls.
 
-    Returns (http_method, route_path, controller_action) if a route is found.
+    Detects patterns like:
+    - Rails: get '/users', to: 'users#index'
+    - Rails: post '/login', to: 'sessions#create'
+    - Rails: resources :users, resource :profile
+    - Sinatra: get '/path' do ... end
+    - Sinatra: post '/users' do ... end
 
-    Supported patterns:
-    - get '/path', to: 'controller#action'
-    - post '/path', to: 'controller#action'
-    - resources :name
+    The has_block metadata field distinguishes Sinatra (with block) from Rails (with to: option).
 
-    The call must be of form <http_method> <path> for HTTP routes,
-    or 'resources' <symbol> for resource routes.
+    Returns:
+        Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
+        Symbols have kind="route" which matches rails.yaml symbol_kind pattern.
     """
-    if node.type != "call":  # pragma: no cover
-        return None, None, None
+    contexts: list[UsageContext] = []
+    route_symbols: list[Symbol] = []
 
-    # Get the method name from identifier child
-    method_node = None
-    for child in node.children:
-        if child.type == "identifier":
-            method_node = child
-            break
+    for n in iter_tree(node):
+        if n.type != "call":
+            continue
 
-    if method_node is None:  # pragma: no cover
-        return None, None, None
+        # Get the method name
+        method_node = None
+        for child in n.children:
+            if child.type == "identifier":
+                method_node = child
+                break
 
-    method_name = _node_text(method_node, source).lower()
+        if method_node is None:  # pragma: no cover
+            continue
 
-    # Check if it's an HTTP method route
-    if method_name in HTTP_METHODS:
-        # Extract route path from first argument (should be a string)
-        args_node = _find_child_by_field(node, "arguments")
-        if args_node:
-            route_path = None
-            controller_action = None
-            for arg in args_node.children:
-                if arg.type == "string":
-                    content_node = _find_child_by_type(arg, "string_content")
-                    if content_node:
-                        route_path = _node_text(content_node, source)
-                        break
-                # Also check for string without string_content
-                elif arg.type == "string_content":  # pragma: no cover
-                    route_path = _node_text(arg, source)
+        method_name = _node_text(method_node, source).lower()
+
+        # Check if it's an HTTP method route or resources
+        if method_name not in HTTP_METHODS and method_name not in ("resources", "resource"):
+            continue
+
+        # Extract route path from first argument
+        args_node = _find_child_by_field(n, "arguments")
+        if not args_node:  # pragma: no cover
+            continue
+
+        route_path = None
+        controller_action = None
+
+        for arg in args_node.children:
+            # String path for HTTP method routes
+            if arg.type == "string" and method_name in HTTP_METHODS:
+                content_node = _find_child_by_type(arg, "string_content")
+                if content_node:
+                    route_path = _node_text(content_node, source)
                     break
-            # Try to extract controller#action from 'to:' option
-            for arg in args_node.children:
-                if arg.type == "pair":
-                    key_node = None
-                    value_node = None
-                    for pair_child in arg.children:
-                        if pair_child.type == "hash_key_symbol" or pair_child.type == "simple_symbol":
-                            key_text = _node_text(pair_child, source).strip(":")
-                            if key_text == "to":
-                                key_node = pair_child
-                        elif pair_child.type == "string":
-                            content = _find_child_by_type(pair_child, "string_content")
-                            if content:
-                                value_node = content
-                    if key_node and value_node:
-                        controller_action = _node_text(value_node, source)
-            # Only return if we found a valid route path (string argument)
-            if route_path:
-                return method_name, route_path, controller_action
+            # Symbol for resources/resource
+            elif arg.type == "simple_symbol" and method_name in ("resources", "resource"):
+                route_path = _node_text(arg, source).strip(":")
+                break
 
-    # Check if it's a resources/resource call
-    if method_name in ("resources", "resource"):
-        args_node = _find_child_by_field(node, "arguments")
-        if args_node:
-            for arg in args_node.children:
-                # Resources typically use symbols: resources :users
-                if arg.type == "simple_symbol":
-                    resource_name = _node_text(arg, source).strip(":")
-                    return "resources", resource_name, None
-    return None, None, None
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Try to extract controller#action from 'to:' option
+        for arg in args_node.children:
+            if arg.type == "pair":
+                for pair_child in arg.children:
+                    if pair_child.type in ("hash_key_symbol", "simple_symbol"):
+                        key_text = _node_text(pair_child, source).strip(":")
+                        if key_text == "to":
+                            for sibling in arg.children:
+                                if sibling.type == "string":
+                                    content = _find_child_by_type(sibling, "string_content")
+                                    if content:
+                                        controller_action = _node_text(content, source)
+
+        # Check for block (Sinatra style: get '/path' do ... end)
+        has_block = False
+        for child in n.children:
+            if child.type in ("do_block", "block"):
+                has_block = True
+                break
+
+        # Build metadata
+        http_method = method_name.upper() if method_name in HTTP_METHODS else "RESOURCES"
+        metadata: dict[str, str | bool] = {
+            "route_path": route_path,
+            "http_method": http_method,
+            "has_block": has_block,  # True for Sinatra-style, False for Rails-style
+        }
+        if controller_action:
+            metadata["controller_action"] = controller_action
+
+        # Create span
+        span = Span(
+            start_line=n.start_point[0] + 1,
+            end_line=n.end_point[0] + 1,
+            start_col=n.start_point[1],
+            end_col=n.end_point[1],
+        )
+
+        # Create UsageContext (for backwards compatibility)
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=method_name,  # e.g., "get", "post", "resources"
+            position="args[0]",
+            path=str(file_path),
+            span=span,
+            symbol_ref=None,  # Route DSL doesn't reference a handler symbol directly
+            metadata=metadata,
+        )
+        contexts.append(ctx)
+
+        # Create route Symbol (kind="route" matches rails.yaml pattern)
+        # This enables route detection and entrypoint detection for Rails apps
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        route_name = f"{http_method} {normalized_path}"
+        route_id = _make_symbol_id(
+            path=str(file_path),
+            start_line=span.start_line,
+            end_line=span.end_line,
+            name=route_name,
+            kind="route",
+        )
+        route_symbol = Symbol(
+            id=route_id,
+            name=route_name,
+            kind="route",
+            language="ruby",
+            path=str(file_path),
+            span=span,
+            meta={
+                "http_method": http_method,
+                "route_path": normalized_path,
+            },
+            origin=run.pass_id,
+            origin_run_id=run.execution_id,
+        )
+        if controller_action:
+            route_symbol.meta["controller_action"] = controller_action
+        route_symbols.append(route_symbol)
+
+    return contexts, route_symbols
 
 
 @dataclass
@@ -314,6 +432,7 @@ class FileAnalysis:
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    require_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_symbols_from_file(
@@ -420,45 +539,8 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
 
-        # Rails route detection (deprecated - use YAML patterns)
-        elif node.type == "call":
-            http_method, route_path, controller_action = _detect_rails_route(node, source)
-            if http_method:
-                _emit_route_deprecation_warning("Rails")
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-
-                # Build route name
-                if http_method == "resources":
-                    route_name = f"resources:{route_path}"
-                else:
-                    route_name = f"{http_method.upper()} {route_path or '/'}"
-
-                # Build meta
-                meta: dict[str, str] = {}
-                if route_path:
-                    meta["route_path"] = route_path
-                if controller_action:
-                    meta["controller_action"] = controller_action
-
-                symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, route_name, "route"),
-                    name=route_name,
-                    kind="route",
-                    language="ruby",
-                    path=str(file_path),
-                    span=Span(
-                        start_line=start_line,
-                        end_line=end_line,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    stable_id=http_method,
-                    meta=meta if meta else None,
-                )
-                analysis.symbols.append(symbol)
+    # Extract require hints for disambiguation
+    analysis.require_hints = _extract_require_hints(tree, source)
 
     return analysis
 
@@ -469,8 +551,18 @@ def _extract_edges_from_file(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
+    require_hints: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
+    """Extract call and import edges from a file.
+
+    Args:
+        require_hints: Optional dict mapping class/module names to require paths for disambiguation.
+    """
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
+    if require_hints is None:  # pragma: no cover - defensive default
+        require_hints = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -530,19 +622,22 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
-                        # Check global symbols
-                        elif callee_name in global_symbols:
-                            callee = global_symbols[callee_name]
-                            edges.append(Edge.create(
-                                src=current_method.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="method_call",
-                                confidence=0.80,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                        # Check global symbols via resolver
+                        else:
+                            # Use require hints for disambiguation
+                            path_hint = require_hints.get(callee_name)
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                edges.append(Edge.create(
+                                    src=current_method.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call",
+                                    confidence=0.80 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
 
         # Detect bare method calls (identifier nodes that are method names)
         elif node.type == "identifier":
@@ -563,19 +658,23 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                elif callee_name in global_symbols:
-                    callee = global_symbols[callee_name]
-                    if callee.kind == "method" and callee.id != current_method.id:
-                        edges.append(Edge.create(
-                            src=current_method.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="bare_method_call",
-                            confidence=0.70,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                else:
+                    # Use require hints for disambiguation
+                    path_hint = require_hints.get(callee_name)
+                    lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        callee = lookup_result.symbol
+                        if callee.kind == "method" and callee.id != current_method.id:
+                            edges.append(Edge.create(
+                                src=current_method.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="bare_method_call",
+                                confidence=0.70 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
     return edges
 
@@ -614,11 +713,12 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             skip_reason=f"Failed to load Ruby parser: {e}",
         )
 
-    # Pass 1: Extract all symbols
+    # Pass 1: Extract all symbols from all files
     file_analyses: dict[Path, FileAnalysis] = {}
+    all_rb_files: list[Path] = list(find_ruby_files(repo_root))
     files_skipped = 0
 
-    for rb_file in find_ruby_files(repo_root):
+    for rb_file in all_rb_files:
         analysis = _extract_symbols_from_file(rb_file, parser, run)
         if analysis.symbols:
             file_analyses[rb_file] = analysis
@@ -635,17 +735,35 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges
+    # Pass 2: Extract edges from files with symbols
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
 
     for rb_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            rb_file, parser, analysis.symbol_by_name, global_symbols, run
+            rb_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            require_hints=analysis.require_hints,
         )
         all_edges.extend(edges)
+
+    # Pass 3: Extract usage contexts AND route symbols from ALL files
+    # Route symbols enable route detection and entrypoint detection for Rails apps
+    for rb_file in all_rb_files:
+        try:
+            source = rb_file.read_bytes()
+            tree = parser.parse(source)
+            symbol_by_name = file_analyses.get(rb_file, FileAnalysis()).symbol_by_name
+            usage_contexts, route_symbols = _extract_rails_routes(
+                tree.root_node, source, rb_file, symbol_by_name, run
+            )
+            all_usage_contexts.extend(usage_contexts)
+            all_symbols.extend(route_symbols)
+        except (OSError, IOError):  # pragma: no cover
+            pass
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
@@ -654,5 +772,6 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
     return RubyAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
+        usage_contexts=all_usage_contexts,
         run=run,
     )

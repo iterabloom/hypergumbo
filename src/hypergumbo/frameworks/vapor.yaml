@@ -1,0 +1,70 @@
+# Vapor framework patterns (ADR-0003)
+#
+# Vapor is a Swift web framework. Routes are defined using
+# app.get(), app.post(), etc. Controllers extend RouteCollection.
+
+id: vapor
+language: swift
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Vapor route registration - app.get("path") { req in }
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|routes|router)\\.(get|post|put|delete|patch)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Vapor route methods
+  - concept: route
+    decorator: "^(app|routes|router)\\.(get|post|put|delete|patch|on)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Vapor grouped routes
+  - concept: route
+    decorator: "^(app|routes|router)\\.grouped$"
+
+  # Vapor RouteCollection conformance (Controllers)
+  - concept: controller
+    base_class: "^RouteCollection$"
+
+  # Vapor Middleware
+  - concept: middleware
+    base_class: "^(Middleware|AsyncMiddleware)$"
+
+  # Vapor Model (Fluent ORM)
+  - concept: model
+    base_class: "^Model$"
+
+  # Vapor Migration
+  - concept: migration
+    base_class: "^(Migration|AsyncMigration)$"
+
+  # Vapor Content (request/response types)
+  - concept: dto
+    base_class: "^Content$"
+
+  # Vapor WebSocket handlers
+  - concept: websocket_handler
+    decorator: "^webSocket$"
+
+  # Vapor authentication
+  - concept: auth
+    base_class: "^(Authenticatable|ModelAuthenticatable|SessionAuthenticatable)$"
+
+  # Vapor Queues (background jobs)
+  - concept: job
+    base_class: "^(Job|AsyncJob)$"
+
+  # Vapor Commands
+  - concept: command
+    base_class: "^(Command|AsyncCommand)$"
+
+linkers:
+  - http
+  - database_query

@@ -1,7 +1,7 @@
 """Tests for the internal representation (IR) layer."""
 from pathlib import Path
 
-from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo.analyze.py import analyze_python
 
 
@@ -425,3 +425,280 @@ def test_symbol_to_dict_includes_modifiers() -> None:
 
     assert "modifiers" in d
     assert d["modifiers"] == ["native", "public"]
+
+
+# ==================== USAGE CONTEXT TESTS ====================
+
+
+def test_usage_context_create() -> None:
+    """UsageContext.create should auto-generate ID."""
+    span = Span(start_line=5, end_line=5, start_col=0, end_col=50)
+    ctx = UsageContext.create(
+        kind="call",
+        context_name="path",
+        position="args[1]",
+        path="urls.py",
+        span=span,
+        symbol_ref="python:views.py:10-15:list_users:function",
+        metadata={"args": ["/users/", "views.list_users"]},
+    )
+
+    assert ctx.id.startswith("usage:sha256:")
+    assert ctx.kind == "call"
+    assert ctx.context_name == "path"
+    assert ctx.position == "args[1]"
+    assert ctx.path == "urls.py"
+    assert ctx.symbol_ref == "python:views.py:10-15:list_users:function"
+    assert ctx.metadata == {"args": ["/users/", "views.list_users"]}
+
+
+def test_usage_context_create_inline_handler() -> None:
+    """UsageContext.create should allow None symbol_ref for inline handlers."""
+    span = Span(start_line=10, end_line=12, start_col=0, end_col=30)
+    ctx = UsageContext.create(
+        kind="call",
+        context_name="app.get",
+        position="args[1]",
+        path="server.js",
+        span=span,
+        symbol_ref=None,  # Inline lambda handler
+        metadata={"args": ["/api", "<lambda>"]},
+    )
+
+    assert ctx.symbol_ref is None
+    assert ctx.kind == "call"
+
+
+def test_usage_context_create_defaults() -> None:
+    """UsageContext.create should provide defaults for optional fields."""
+    span = Span(start_line=1, end_line=1, start_col=0, end_col=20)
+    ctx = UsageContext.create(
+        kind="export",
+        context_name="module.exports",
+        position="default",
+        path="index.js",
+        span=span,
+    )
+
+    assert ctx.symbol_ref is None
+    assert ctx.metadata == {}
+
+
+def test_usage_context_to_dict() -> None:
+    """UsageContext.to_dict should serialize all fields."""
+    span = Span(start_line=5, end_line=5, start_col=0, end_col=50)
+    ctx = UsageContext.create(
+        kind="call",
+        context_name="path",
+        position="args[1]",
+        path="urls.py",
+        span=span,
+        symbol_ref="python:views.py:10-15:list_users:function",
+        metadata={"args": ["/users/", "views.list_users"]},
+    )
+    d = ctx.to_dict()
+
+    assert "id" in d
+    assert d["kind"] == "call"
+    assert d["context_name"] == "path"
+    assert d["symbol_ref"] == "python:views.py:10-15:list_users:function"
+    assert d["position"] == "args[1]"
+    assert d["metadata"] == {"args": ["/users/", "views.list_users"]}
+    assert d["path"] == "urls.py"
+    assert "span" in d
+    assert d["span"]["start_line"] == 5
+
+
+def test_usage_context_id_is_deterministic() -> None:
+    """Same inputs should produce the same UsageContext ID."""
+    span = Span(start_line=5, end_line=5, start_col=0, end_col=50)
+
+    ctx1 = UsageContext.create(
+        kind="call",
+        context_name="path",
+        position="args[1]",
+        path="urls.py",
+        span=span,
+    )
+    ctx2 = UsageContext.create(
+        kind="call",
+        context_name="path",
+        position="args[1]",
+        path="urls.py",
+        span=span,
+    )
+
+    assert ctx1.id == ctx2.id
+
+
+def test_usage_context_id_differs_for_different_inputs() -> None:
+    """Different inputs should produce different UsageContext IDs."""
+    span = Span(start_line=5, end_line=5, start_col=0, end_col=50)
+
+    ctx1 = UsageContext.create(
+        kind="call",
+        context_name="path",
+        position="args[1]",
+        path="urls.py",
+        span=span,
+    )
+    ctx2 = UsageContext.create(
+        kind="call",
+        context_name="re_path",  # Different context_name
+        position="args[1]",
+        path="urls.py",
+        span=span,
+    )
+
+    assert ctx1.id != ctx2.id
+
+
+def test_usage_context_all_kinds() -> None:
+    """UsageContext should accept all valid kind values."""
+    span = Span(start_line=1, end_line=1, start_col=0, end_col=10)
+
+    for kind in ["call", "data_value", "export", "macro"]:
+        ctx = UsageContext.create(
+            kind=kind,  # type: ignore[arg-type]
+            context_name="test",
+            position="test",
+            path="test.py",
+            span=span,
+        )
+        assert ctx.kind == kind
+
+
+# ==================== FROM_DICT TESTS ====================
+
+
+def test_span_from_dict() -> None:
+    """Span.from_dict should reconstruct Span from dict."""
+    d = {"start_line": 10, "end_line": 20, "start_col": 5, "end_col": 50}
+    span = Span.from_dict(d)
+
+    assert span.start_line == 10
+    assert span.end_line == 20
+    assert span.start_col == 5
+    assert span.end_col == 50
+
+
+def test_span_from_dict_with_defaults() -> None:
+    """Span.from_dict should use defaults for missing fields."""
+    span = Span.from_dict({})
+
+    assert span.start_line == 0
+    assert span.end_line == 0
+    assert span.start_col == 0
+    assert span.end_col == 0
+
+
+def test_symbol_from_dict() -> None:
+    """Symbol.from_dict should reconstruct Symbol from dict."""
+    d = {
+        "id": "python:src/api.py:10-20:process_request:function",
+        "name": "process_request",
+        "kind": "function",
+        "language": "python",
+        "path": "src/api.py",
+        "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 30},
+        "origin": "python-ast-v1",
+        "origin_run_id": "uuid:12345",
+        "origin_run_signature": "sha256:abcdef",
+        "stable_id": "stable:123",
+        "canonical_name": "api.process_request",
+        "supply_chain": {"tier": 1, "reason": "first_party"},
+        "cyclomatic_complexity": 5,
+        "lines_of_code": 10,
+        "signature": "(request: Request) -> Response",
+        "modifiers": ["async", "public"],
+    }
+
+    symbol = Symbol.from_dict(d)
+
+    assert symbol.id == "python:src/api.py:10-20:process_request:function"
+    assert symbol.name == "process_request"
+    assert symbol.kind == "function"
+    assert symbol.language == "python"
+    assert symbol.path == "src/api.py"
+    assert symbol.span.start_line == 10
+    assert symbol.span.end_line == 20
+    assert symbol.origin == "python-ast-v1"
+    assert symbol.supply_chain_tier == 1
+    assert symbol.supply_chain_reason == "first_party"
+    assert symbol.cyclomatic_complexity == 5
+    assert symbol.lines_of_code == 10
+    assert symbol.signature == "(request: Request) -> Response"
+    assert symbol.modifiers == ["async", "public"]
+
+
+def test_symbol_from_dict_with_defaults() -> None:
+    """Symbol.from_dict should use defaults for optional fields."""
+    d = {
+        "id": "python:test.py:1-5:foo:function",
+        "name": "foo",
+        "kind": "function",
+        "language": "python",
+        "path": "test.py",
+    }
+
+    symbol = Symbol.from_dict(d)
+
+    assert symbol.id == "python:test.py:1-5:foo:function"
+    assert symbol.name == "foo"
+    assert symbol.origin == ""
+    assert symbol.supply_chain_tier == 1  # Default
+    assert symbol.modifiers == []
+
+
+def test_edge_from_dict() -> None:
+    """Edge.from_dict should reconstruct Edge from dict."""
+    d = {
+        "id": "edge:sha256:abcdef123456",
+        "edge_key": "edgekey:sha256:123456",
+        "src": "python:a.py:1-5:caller:function",
+        "dst": "python:b.py:10-15:callee:function",
+        "type": "calls",
+        "line": 3,
+        "confidence": 0.95,
+        "origin": "python-ast-v1",
+        "origin_run_id": "uuid:12345",
+        "origin_run_signature": "sha256:abcdef",
+        "quality": {"score": 0.9, "reason": "direct call"},
+        "meta": {
+            "evidence_type": "ast_call_direct",
+            "evidence_lang": "python",
+        },
+    }
+
+    edge = Edge.from_dict(d)
+
+    assert edge.id == "edge:sha256:abcdef123456"
+    assert edge.edge_key == "edgekey:sha256:123456"
+    assert edge.src == "python:a.py:1-5:caller:function"
+    assert edge.dst == "python:b.py:10-15:callee:function"
+    assert edge.edge_type == "calls"
+    assert edge.line == 3
+    assert edge.confidence == 0.95
+    assert edge.origin == "python-ast-v1"
+    assert edge.evidence_type == "ast_call_direct"
+    assert edge.evidence_lang == "python"
+
+
+def test_edge_from_dict_with_defaults() -> None:
+    """Edge.from_dict should use defaults for optional fields."""
+    d = {
+        "src": "python:a.py:1-5:caller:function",
+        "dst": "python:b.py:10-15:callee:function",
+        "type": "calls",
+        "line": 5,
+    }
+
+    edge = Edge.from_dict(d)
+
+    assert edge.src == "python:a.py:1-5:caller:function"
+    assert edge.dst == "python:b.py:10-15:callee:function"
+    assert edge.edge_type == "calls"
+    assert edge.line == 5
+    assert edge.id == ""  # Default
+    assert edge.confidence == 0.85  # Default
+    assert edge.evidence_type == "ast_call_direct"  # Default

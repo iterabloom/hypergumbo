@@ -1,0 +1,76 @@
+# Tornado framework patterns (ADR-0003)
+#
+# Tornado is a Python async web framework. Handlers are classes
+# inheriting from RequestHandler with get(), post(), etc. methods.
+
+id: tornado
+language: python
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Tornado URLSpec routing - (r"/path", Handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(URLSpec|url)$"
+      position: "^args\\[1\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:GET"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Tornado RequestHandler (main handler class)
+  - concept: controller
+    base_class: "^RequestHandler$"
+
+  # Tornado WebSocketHandler
+  - concept: websocket_handler
+    base_class: "^WebSocketHandler$"
+
+  # Tornado StaticFileHandler
+  - concept: controller
+    base_class: "^StaticFileHandler$"
+
+  # Tornado ErrorHandler
+  - concept: error_handler
+    base_class: "^ErrorHandler$"
+
+  # Tornado RedirectHandler
+  - concept: controller
+    base_class: "^RedirectHandler$"
+
+  # Tornado FallbackHandler
+  - concept: controller
+    base_class: "^FallbackHandler$"
+
+  # Tornado authenticated decorator
+  - concept: auth
+    decorator: "^authenticated$"
+
+  # Tornado gen.coroutine (legacy async)
+  - concept: async
+    decorator: "^gen\\.coroutine$"
+
+  # Tornado run_on_executor
+  - concept: async
+    decorator: "^run_on_executor$"
+
+  # Tornado stream_request_body
+  - concept: middleware
+    decorator: "^stream_request_body$"
+
+  # Tornado Application (main app class)
+  - concept: application
+    base_class: "^Application$"
+
+  # Tornado IOLoop
+  - concept: runtime
+    decorator: "^IOLoop$"
+
+  # Tornado testing
+  - concept: test
+    base_class: "^AsyncHTTPTestCase$"
+
+linkers:
+  - http
+  - websocket

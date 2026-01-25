@@ -171,6 +171,66 @@ proc main() =
         assert any("os" in dst for dst in imported)
 
 
+class TestNimCallResolution:
+    """Tests for Nim call resolution."""
+
+    def test_proc_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges for proc calls."""
+        (temp_repo / "math.nim").write_text('''
+proc double(x: int): int =
+  x * 2
+
+proc quadruple(x: int): int =
+  double(double(x))
+''')
+
+        result = analyze_nim(temp_repo)
+
+        # Should have call edges from quadruple to double
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        quad_calls = [e for e in call_edges if "quadruple" in e.src]
+        assert len(quad_calls) >= 1
+        assert any("double" in e.dst for e in quad_calls)
+
+    def test_external_proc_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external proc calls with lower confidence."""
+        (temp_repo / "io_test.nim").write_text('''
+proc printHello() =
+  echo("Hello")
+''')
+
+        result = analyze_nim(temp_repo)
+
+        # Should have call edge to external echo
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("echo" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "test.nim").write_text('''
+proc internalProc() =
+  discard
+
+proc caller() =
+  internalProc()
+''')
+
+        result = analyze_nim(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the edge from caller to internalProc
+        resolved_call = next((e for e in call_edges if "internalProc" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence (usually 1.0)
+        assert resolved_call.confidence > 0.70
+
+
 class TestNimAnalysisUnavailable:
     """Tests for handling unavailable tree-sitter."""
 
@@ -200,3 +260,72 @@ proc hello() =
         assert result.run is not None
         assert result.run.pass_id == "nim-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestNimImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, temp_repo: Path) -> None:
+        """Extracts import alias from 'import as' statement."""
+        from hypergumbo.analyze.nim import _extract_import_aliases
+        from tree_sitter_language_pack import get_parser
+
+        parser = get_parser("nim")
+
+        nim_file = temp_repo / "Main.nim"
+        nim_file.write_text("""
+import strutils as su
+import os as osmod
+
+proc greet(name: string) =
+    echo su.strip(name)
+""")
+
+        source = nim_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "su" in aliases
+        assert aliases["su"] == "strutils"
+        assert "osmod" in aliases
+        assert aliases["osmod"] == "os"
+
+    def test_import_alias_creates_edge(self, temp_repo: Path) -> None:
+        """Import with alias creates import edge."""
+        (temp_repo / "main.nim").write_text("""
+import strutils as su
+
+proc greet(name: string) =
+    echo su.strip(name)
+""")
+
+        result = analyze_nim(temp_repo)
+
+        # Should have import edge for strutils
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        imported = {e.dst for e in import_edges}
+        assert any("strutils" in dst for dst in imported)
+
+    def test_qualified_call_uses_alias(self, temp_repo: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        (temp_repo / "main.nim").write_text("""
+import strutils as su
+
+proc processText(text: string) =
+    echo su.strip(text)
+""")
+
+        result = analyze_nim(temp_repo)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "processText" for s in symbols)
+
+        # Should have call edges from processText
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        proc_calls = [e for e in call_edges if "processText" in e.src]
+        # Should have at least the echo call
+        assert len(proc_calls) >= 1

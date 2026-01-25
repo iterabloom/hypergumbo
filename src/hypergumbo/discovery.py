@@ -55,7 +55,7 @@ DEFAULT_EXCLUDES = [
     "public",  # Hugo (common but may have false positives)
     # Hypergumbo output artifacts
     ".hypergumbo",
-    "hypergumbo.results.json",
+    "hypergumbo.results*.json",  # Matches .json, .4k.json, .16k.json, .64k.json, etc.
     # Lock files - generated, inflate LOC counts
     "package-lock.json",
     "yarn.lock",

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -278,8 +279,11 @@ def _extract_edges_from_file(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge."""
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
     edges: list[Edge] = []
     rel_path = str(file_path)
     file_id = _make_file_id(rel_path)
@@ -345,18 +349,20 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
-                            elif cmd_name in global_symbols:
-                                callee = global_symbols[cmd_name]
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=callee.id,
-                                    edge_type="calls",
-                                    line=line,
-                                    evidence_type="cross_file_call",
-                                    confidence=0.80,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                ))
+                            else:
+                                # Check global symbols via resolver
+                                lookup_result = resolver.lookup(cmd_name)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=line,
+                                        evidence_type="cross_file_call",
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
 
     return edges
 
@@ -408,11 +414,12 @@ def analyze_bash(root: Path) -> BashAnalysisResult:
                 global_symbols[sym.name] = sym
 
     # Pass 2: Extract edges using global symbol knowledge
+    resolver = NameResolver(global_symbols)
     all_edges: list[Edge] = []
 
     for bash_file, analysis in file_analyses.items():
         edges = _extract_edges_from_file(
-            bash_file, parser, analysis.symbol_by_name, global_symbols, run
+            bash_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
         )
         all_edges.extend(edges)
 
@@ -420,7 +427,7 @@ def analyze_bash(root: Path) -> BashAnalysisResult:
     for bash_file in all_files:
         if bash_file not in file_analyses:  # pragma: no cover
             edges = _extract_edges_from_file(
-                bash_file, parser, {}, global_symbols, run
+                bash_file, parser, {}, global_symbols, run, resolver
             )
             all_edges.extend(edges)
 

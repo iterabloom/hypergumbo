@@ -50,11 +50,16 @@ For combined ranking with all heuristics:
 """
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List
 
 from .ir import Symbol, Edge
 from .selection.filters import is_test_path
+
+logger = logging.getLogger(__name__)
 
 # Backwards compatibility alias - external code imports _is_test_path from here
 _is_test_path = is_test_path
@@ -359,3 +364,358 @@ def get_importance_threshold(
     index = int(len(scores) * (1 - percentile))
     index = max(0, min(index, len(scores) - 1))
     return scores[index]
+
+
+def compute_transitive_test_coverage(
+    test_ids: set[str],
+    target_ids: set[str],
+    call_edges: List[tuple[str, str]],
+) -> Dict[str, set[str]]:
+    """Compute which tests transitively reach each target using BFS.
+
+    This is the core test coverage algorithm shared between sketch.py and
+    cmd_test_coverage. Uses BFS from each test symbol to find all transitively
+    reachable production symbols.
+
+    If test_foo() calls helper() which calls core(), both helper and core
+    are considered "tested" by test_foo.
+
+    Args:
+        test_ids: Set of symbol IDs that are test functions/methods.
+        target_ids: Set of symbol IDs that are production functions/methods.
+        call_edges: List of (src, dst) tuples representing call relationships.
+
+    Returns:
+        Dictionary mapping target_id to set of test_ids that reach it.
+    """
+    from collections import deque
+
+    # Build call graph (src → list of dst)
+    call_graph: Dict[str, List[str]] = {}
+    for src, dst in call_edges:
+        if src and dst:
+            if src not in call_graph:
+                call_graph[src] = []
+            call_graph[src].append(dst)
+
+    # For each test symbol, BFS to find all transitively reachable targets
+    tests_per_target: Dict[str, set[str]] = {tid: set() for tid in target_ids}
+
+    for test_id in test_ids:
+        # BFS from this test symbol
+        visited: set[str] = set()
+        queue: deque[str] = deque([test_id])
+        visited.add(test_id)
+
+        while queue:
+            current = queue.popleft()
+            for neighbor in call_graph.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+
+        # All targets reachable from this test are "tested" by it
+        for target_id in visited & target_ids:
+            tests_per_target[target_id].add(test_id)
+
+    return tests_per_target
+
+
+def compute_raw_in_degree(
+    symbols: List[Symbol],
+    edges: List[Edge],
+) -> Dict[str, int]:
+    """Compute raw in-degree counts for each symbol.
+
+    Unlike compute_centrality() which normalizes to 0-1, this returns
+    raw counts (number of incoming edges). Useful when you need absolute
+    thresholds like "at least 2 callers".
+
+    Args:
+        symbols: List of symbols to count in-degree for.
+        edges: List of edges (calls, imports) between symbols.
+
+    Returns:
+        Dictionary mapping symbol ID to raw in-degree count.
+    """
+    symbol_ids = {s.id for s in symbols}
+    in_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+
+    for edge in edges:
+        target = edge.dst
+        if target and target in in_degree:
+            in_degree[target] += 1
+
+    return in_degree
+
+
+def compute_file_loc(file_path: Path) -> int:
+    """Count lines of code in a file.
+
+    Args:
+        file_path: Path to the file.
+
+    Returns:
+        Line count, or 0 if file cannot be read.
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            return sum(1 for _ in f)
+    except OSError:
+        return 0
+
+
+def compute_symbol_importance_density(
+    by_file: Dict[str, List[Symbol]],
+    in_degree: Dict[str, int],
+    repo_root: Path,
+    min_loc: int = 5,
+) -> Dict[str, float]:
+    """Compute symbol importance density for each file.
+
+    Density = sum(raw_in_degree of symbols in file) / LOC
+
+    Files with very few lines (below min_loc threshold) get a score of 0
+    to avoid small files with one important symbol from dominating.
+
+    Args:
+        by_file: Symbols grouped by file path.
+        in_degree: Raw in-degree counts for each symbol (from compute_raw_in_degree).
+        repo_root: Repository root path for resolving file paths.
+        min_loc: Minimum lines of code threshold. Files below this get 0 score.
+
+    Returns:
+        Dictionary mapping file paths to importance density scores.
+    """
+    density_scores: Dict[str, float] = {}
+
+    for file_path, symbols in by_file.items():
+        # Resolve absolute path
+        path_obj = Path(file_path)
+        if not path_obj.is_absolute():
+            abs_path = repo_root / file_path
+        else:
+            abs_path = path_obj
+
+        loc = compute_file_loc(abs_path)
+
+        if loc < min_loc:
+            density_scores[file_path] = 0.0
+            continue
+
+        # Sum raw in-degree of all symbols in file
+        total_in_degree = sum(in_degree.get(s.id, 0) for s in symbols)
+        density_scores[file_path] = total_in_degree / loc
+
+    return density_scores
+
+
+@dataclass
+class CentralityResult:
+    """Result from symbol mention centrality computation.
+
+    Attributes:
+        normalized_scores: Dict mapping file paths to normalized centrality scores
+            (in-degree sum / file size). Used for ranking files.
+        symbols_per_file: Dict mapping file paths to sets of symbol names mentioned
+            in that file. Used for accurate representativeness (unique symbols).
+        name_to_in_degree: Dict mapping symbol names to their in-degree values.
+            Used to compute in-degree sum for unique symbols.
+    """
+    normalized_scores: Dict[Path, float]
+    symbols_per_file: Dict[Path, set[str]]
+    name_to_in_degree: Dict[str, int]
+
+
+def compute_symbol_mention_centrality_batch(
+    files: List[Path],
+    symbols: List[Symbol],
+    in_degree: Dict[str, int],
+    min_in_degree: int = 2,
+    max_file_size: int = 100 * 1024,
+    progress_callback: "callable | None" = None,
+) -> CentralityResult:
+    """Compute symbol mention centrality for multiple files efficiently.
+
+    Uses parallelized Python regex with a combined alternation pattern for
+    O(files) complexity instead of O(files * symbols).
+
+    Args:
+        files: List of file paths to scan.
+        symbols: List of symbols to search for.
+        in_degree: Raw in-degree counts for each symbol.
+        min_in_degree: Only match symbols with at least this many callers.
+        max_file_size: Skip files larger than this (bytes). Default 100KB.
+        progress_callback: Optional callback(current, total) for progress.
+
+    Returns:
+        CentralityResult containing:
+        - normalized_scores: For ranking (in-degree/filesize)
+        - symbols_per_file: Per-file sets of mentioned symbol names
+        - name_to_in_degree: Symbol name to in-degree mapping
+    """
+    # Filter symbols by in-degree threshold and dedupe names
+    eligible_symbols = [
+        s for s in symbols
+        if in_degree.get(s.id, 0) >= min_in_degree
+    ]
+
+    # Build name -> total in-degree map (sum in-degrees for all symbols with same name)
+    # When a doc mentions a name, it documents all symbols with that name,
+    # so we sum their in-degrees (analogous to how Source Files counts each symbol).
+    name_to_in_degree: Dict[str, int] = {}
+    for s in eligible_symbols:
+        s_in_degree = in_degree.get(s.id, 0)
+        name_to_in_degree[s.name] = name_to_in_degree.get(s.name, 0) + s_in_degree
+
+    if not files:
+        return CentralityResult(
+            normalized_scores={},
+            symbols_per_file={},
+            name_to_in_degree=name_to_in_degree,
+        )
+
+    if not name_to_in_degree:
+        # No eligible symbols, return zeros
+        return CentralityResult(
+            normalized_scores=dict.fromkeys(files, 0.0),
+            symbols_per_file={f: set() for f in files},
+            name_to_in_degree=name_to_in_degree,
+        )
+
+    logger.debug(
+        "centrality: processing %d files with %d patterns",
+        len(files),
+        len(name_to_in_degree),
+    )
+    return _compute_centrality_with_python(
+        files, name_to_in_degree, max_file_size, progress_callback
+    )
+
+
+def _compute_centrality_with_python(
+    files: List[Path],
+    name_to_in_degree: Dict[str, int],
+    max_file_size: int,
+    progress_callback: "callable | None",
+) -> CentralityResult:
+    """Compute centrality using Python regex (fallback path).
+
+    Uses a single combined regex pattern for efficiency: O(files) instead of
+    O(files * symbols). The pattern matches all symbol names in one pass.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Build combined pattern ONCE: \b(name1|name2|...)\b
+    # This makes each file search O(1) instead of O(symbols)
+    escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
+    if escaped_names:
+        combined_pattern = re.compile(r'\b(' + '|'.join(escaped_names) + r')\b')
+    else:  # pragma: no cover - caller already handles empty symbols
+        combined_pattern = None
+
+    def _compute_one(f: Path) -> tuple[Path, float, set[str]]:
+        """Returns (path, normalized_score, matched_names)."""
+        try:
+            file_size = f.stat().st_size
+            if file_size > max_file_size:
+                return (f, 0.0, set())
+            content = f.read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            return (f, 0.0, set())
+
+        if not content:  # pragma: no cover - empty file
+            return (f, 0.0, set())
+
+        if combined_pattern is None:  # pragma: no cover - no symbols
+            return (f, 0.0, set())
+
+        # Find all matches in one pass (O(1) regex operation)
+        matched_names = set(combined_pattern.findall(content))
+
+        # Sum in-degrees of matched symbols
+        total_in_degree = sum(
+            name_to_in_degree.get(name, 0) for name in matched_names
+        )
+
+        score = total_in_degree / len(content) if content else 0.0
+        return (f, score, matched_names)
+
+    normalized_scores: Dict[Path, float] = {}
+    symbols_per_file: Dict[Path, set[str]] = {}
+
+    if progress_callback:
+        progress_callback(0, len(files))
+
+    max_workers = min(8, len(files)) if files else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_compute_one, f): f for f in files}
+        for i, future in enumerate(as_completed(futures)):
+            path, score, matched = future.result()
+            normalized_scores[path] = score
+            symbols_per_file[path] = matched
+            if progress_callback:
+                progress_callback(i + 1, len(files))
+
+    return CentralityResult(
+        normalized_scores=normalized_scores,
+        symbols_per_file=symbols_per_file,
+        name_to_in_degree=name_to_in_degree,
+    )
+
+
+def compute_symbol_mention_centrality(
+    file_path: Path,
+    symbols: List[Symbol],
+    in_degree: Dict[str, int],
+    min_in_degree: int = 2,
+    max_file_size: int = 100 * 1024,
+) -> float:
+    """Compute symbol mention centrality score for a file.
+
+    Scans file content for symbol name mentions (with word boundaries)
+    and sums the in-degree of matched symbols, normalized by character count.
+
+    This helps rank non-source files (docs, configs, templates) by how
+    much they reference important code symbols.
+
+    Args:
+        file_path: Path to the file to scan.
+        symbols: List of symbols to search for.
+        in_degree: Raw in-degree counts for each symbol.
+        min_in_degree: Only match symbols with at least this many callers.
+        max_file_size: Skip files larger than this (bytes). Default 100KB.
+
+    Returns:
+        Symbol mention centrality score (higher = more references to important symbols).
+    """
+    try:
+        file_size = file_path.stat().st_size
+        if file_size > max_file_size:
+            return 0.0
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return 0.0
+
+    if not content:
+        return 0.0
+
+    # Filter symbols by raw in-degree threshold
+    eligible_symbols = [
+        s for s in symbols
+        if in_degree.get(s.id, 0) >= min_in_degree
+    ]
+
+    # Match symbol names with word boundaries
+    total_in_degree = 0
+    matched_names: set[str] = set()
+
+    for sym in eligible_symbols:
+        if sym.name not in matched_names:
+            # Word-boundary match
+            pattern = r'\b' + re.escape(sym.name) + r'\b'
+            if re.search(pattern, content):
+                total_in_degree += in_degree.get(sym.id, 0)
+                matched_names.add(sym.name)
+
+    return total_in_degree / len(content) if content else 0.0

@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -149,12 +150,12 @@ def _extract_glsl_signature(func_def: "tree_sitter.Node", source: bytes) -> Opti
     return signature
 
 
-def _find_enclosing_function(
+def _find_enclosing_function_glsl(
     node: "tree_sitter.Node",
     source: bytes,
-    function_registry: dict[str, str],
-) -> Optional[str]:
-    """Find the enclosing function's symbol ID by walking up parent nodes."""
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function Symbol by walking up parent nodes."""
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
@@ -162,30 +163,27 @@ def _find_enclosing_function(
                 if child.type == "function_declarator":
                     func_name = _get_identifier(child, source)
                     if func_name:
-                        return function_registry.get(func_name.lower())
+                        return local_symbols.get(func_name.lower())
         current = current.parent
     return None  # pragma: no cover - no enclosing function found
 
 
-def _process_glsl_tree(
+def _extract_glsl_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
-    edges: list[Edge],
-    function_registry: dict[str, str],
+    local_symbols: dict[str, Symbol],
 ) -> None:
-    """Process GLSL AST tree to extract symbols and edges.
+    """Extract symbols from GLSL AST tree (pass 1).
 
     Args:
         tree: Tree-sitter tree to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
-        edges: List to append edges to
-        function_registry: Registry mapping function names to symbol IDs
+        local_symbols: Dict to register local function symbols for caller lookup
     """
-    # First pass: collect all function definitions to build registry
     for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
             # Find function declarator to get the name
@@ -220,7 +218,7 @@ def _process_glsl_tree(
                     signature=_extract_glsl_signature(node, source),
                 )
                 symbols.append(sym)
-                function_registry[func_name.lower()] = symbol_id
+                local_symbols[func_name.lower()] = sym
 
         # Struct definitions
         elif node.type == "struct_specifier":
@@ -296,21 +294,46 @@ def _process_glsl_tree(
                     )
                     symbols.append(sym)
 
-        # Function calls
-        elif node.type == "call_expression":
+
+def _extract_glsl_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    edges: list[Edge],
+    resolver: NameResolver,
+) -> None:
+    """Extract call edges from GLSL AST tree (pass 2).
+
+    Args:
+        tree: Tree-sitter tree to process
+        source: Source file bytes
+        local_symbols: Dict of local function symbols for caller lookup
+        edges: List to append edges to
+        resolver: NameResolver for callee lookup
+    """
+    for node in iter_tree(tree.root_node):
+        if node.type == "call_expression":
             func_name = _get_identifier(node, source)
-            current_function = _find_enclosing_function(node, source, function_registry)
-            if func_name and current_function:
+            caller = _find_enclosing_function_glsl(node, source, local_symbols)
+            if func_name and caller:
                 start_line = node.start_point[0] + 1
-                dst_id = function_registry.get(func_name.lower(), f"glsl:builtin:{func_name}")
+
+                # Try to resolve the callee
+                result = resolver.lookup(func_name.lower())
+                if result.symbol is not None:
+                    dst_id = result.symbol.id
+                    confidence = 0.85 * result.confidence
+                else:
+                    dst_id = f"glsl:builtin:{func_name}"
+                    confidence = 0.70
 
                 edge = Edge(
-                    id=_make_edge_id(current_function, dst_id, "calls"),
-                    src=current_function,
+                    id=_make_edge_id(caller.id, dst_id, "calls"),
+                    src=caller.id,
                     dst=dst_id,
                     edge_type="calls",
                     line=start_line,
-                    confidence=0.90 if func_name.lower() in function_registry else 0.70,
+                    confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static",
                 )
@@ -319,6 +342,8 @@ def _process_glsl_tree(
 
 def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
     """Analyze GLSL files in the repository.
+
+    Uses two-pass analysis for cross-file call resolution.
 
     Args:
         repo_root: Path to the repository root
@@ -343,9 +368,6 @@ def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
-    # Function registry for cross-file resolution: name -> symbol_id
-    function_registry: dict[str, str] = {}
-
     # Create parser
     try:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_glsl.language()))
@@ -358,26 +380,39 @@ def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
 
     glsl_files = list(find_glsl_files(repo_root))
 
+    # Collect file data for two-pass processing
+    file_data: list[tuple[Path, bytes, "tree_sitter.Tree"]] = []
+    file_local_symbols: dict[str, dict[str, Symbol]] = {}
+
+    # Pass 1: Extract all symbols from all files
     for glsl_path in glsl_files:
         try:
             rel_path = str(glsl_path.relative_to(repo_root))
             source = glsl_path.read_bytes()
             tree = parser.parse(source)
             files_analyzed += 1
+            file_data.append((glsl_path, source, tree))
 
-            # Process this file
-            _process_glsl_tree(
-                tree,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                function_registry,
-            )
+            local_symbols: dict[str, Symbol] = {}
+            _extract_glsl_symbols(tree, source, rel_path, symbols, local_symbols)
+            file_local_symbols[rel_path] = local_symbols
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
             warnings_list.append(f"Failed to parse {glsl_path}: {e}")  # pragma: no cover
+
+    # Build resolver from all function symbols
+    global_symbols: dict[str, Symbol] = {}
+    for sym in symbols:
+        if sym.kind == "function":
+            global_symbols[sym.name.lower()] = sym
+    resolver = NameResolver(global_symbols)
+
+    # Pass 2: Extract call edges using resolver
+    for glsl_path, source, tree in file_data:
+        rel_path = str(glsl_path.relative_to(repo_root))
+        local_symbols = file_local_symbols.get(rel_path, {})
+        _extract_glsl_edges(tree, source, local_symbols, edges, resolver)
 
     duration_ms = int((time.time() - start_time) * 1000)
 

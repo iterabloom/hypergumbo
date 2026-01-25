@@ -1,0 +1,65 @@
+# Ktor framework patterns (ADR-0003)
+#
+# Ktor is a Kotlin web framework using DSL-based routing.
+# Routes are defined using routing { }, get { }, post { }, etc.
+
+id: ktor
+language: kotlin
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Ktor DSL routing - routing { get("/path") { } }
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|delete|patch|head|options)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Ktor route handlers via routing DSL
+  - concept: route
+    decorator: "^(get|post|put|delete|patch|head|options)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name"
+
+  # Ktor Application extensions
+  - concept: controller
+    decorator: "^Application\\.(routing|install|intercept)$"
+
+  # Ktor routing module functions
+  - concept: controller
+    decorator: "^Route\\.(route|get|post|put|delete|patch|head|options)$"
+
+  # Ktor authentication
+  - concept: auth
+    decorator: "^authenticate$"
+
+  # Ktor Sessions
+  - concept: middleware
+    decorator: "^sessions$"
+
+  # Ktor WebSocket handlers
+  - concept: websocket_handler
+    decorator: "^webSocket$"
+
+  # Ktor exception handling
+  - concept: error_handler
+    decorator: "^(statusPages|exception)$"
+
+  # Ktor Content Negotiation
+  - concept: middleware
+    decorator: "^(contentNegotiation|json|xml)$"
+
+  # Ktor CORS
+  - concept: middleware
+    decorator: "^CORS$"
+
+  # Ktor CallLogging
+  - concept: middleware
+    decorator: "^callLogging$"
+
+linkers:
+  - http

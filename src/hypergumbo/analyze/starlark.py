@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -140,6 +141,7 @@ class _FileContext:
     symbols: list[Symbol]
     edges: list[Edge]
     target_ids: dict[str, str]
+    load_aliases: dict[str, str] = field(default_factory=dict)  # alias → source_path
 
 
 def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
@@ -202,7 +204,15 @@ def _process_assignment(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 
 def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a load statement."""
+    """Process a load statement.
+
+    Starlark load statements can have two forms:
+    - Direct: load("file.bzl", "symbol")        -> imports symbol as-is
+    - Aliased: load("file.bzl", alias = "symbol") -> imports symbol as alias
+
+    Both forms create import edges. Aliased imports also populate ctx.load_aliases
+    for use in call resolution with path_hint disambiguation.
+    """
     arg_list = _find_child_by_type(node, "argument_list")
     if not arg_list:
         return  # pragma: no cover
@@ -210,6 +220,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     # First argument is the source file
     source_file = None
     loaded_symbols = []
+    aliased_symbols: list[tuple[str, str]] = []  # (alias, original_name)
 
     for child in arg_list.children:
         if child.type == "string":
@@ -219,8 +230,18 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     source_file = content
                 else:
                     loaded_symbols.append(content)
+        elif child.type == "keyword_argument":
+            # Aliased import: alias = "original_name"
+            alias_node = _find_child_by_type(child, "identifier")
+            value_node = _find_child_by_type(child, "string")
+            if alias_node and value_node:
+                alias = _node_text(alias_node, ctx.source)
+                original_name = _extract_string_content(value_node, ctx.source)
+                if alias and original_name:
+                    aliased_symbols.append((alias, original_name))
 
-    if source_file and loaded_symbols:
+    if source_file:
+        # Create import edges for direct imports
         for sym in loaded_symbols:
             ctx.edges.append(
                 Edge(
@@ -234,6 +255,23 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     origin_run_id=ctx.run_id,
                 )
             )
+
+        # Create import edges for aliased imports and track aliases
+        for alias, original_name in aliased_symbols:
+            ctx.edges.append(
+                Edge(
+                    id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
+                    src=ctx.file_stable_id,
+                    dst=f"starlark:{source_file}:{original_name}",
+                    edge_type="imports",
+                    line=node.start_point[0] + 1,
+                    confidence=0.9,
+                    origin=PASS_ID,
+                    origin_run_id=ctx.run_id,
+                )
+            )
+            # Track alias for path_hint resolution
+            ctx.load_aliases[alias] = source_file
 
 
 def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str) -> None:
@@ -295,39 +333,129 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
             )
 
 
-def _process_call(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a call expression (load statement or rule invocation)."""
+def _find_enclosing_function_starlark(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function Symbol by walking up parents."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                name = _node_text(name_node, source)
+                sym = local_symbols.get(name)
+                if sym:
+                    return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
+def _get_call_target_name_starlark(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the target name from a call expression."""
     func_node = _find_child_by_type(node, "identifier")
-    if not func_node:
-        return  # pragma: no cover
+    if func_node:
+        return _node_text(func_node, source)
+    # Handle attribute access like module.function
+    attr_node = _find_child_by_type(node, "attribute")
+    if attr_node:
+        # Get the last identifier (the function name)
+        last_ident = None
+        for child in attr_node.children:
+            if child.type == "identifier":
+                last_ident = _node_text(child, source)
+        return last_ident
+    return None  # pragma: no cover - defensive
 
-    func_name = _node_text(func_node, ctx.source)
 
-    if func_name == "load":
-        _process_load(ctx, node)
-    else:
-        _process_target(ctx, node, func_name)
-
-
-def _process_node(ctx: _FileContext, root_node: "tree_sitter.Node") -> None:
-    """Process a tree-sitter node and its children."""
+def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
+                               symbol_registry: dict[str, Symbol]) -> None:
+    """Extract symbols from Starlark AST (pass 1)."""
     for node in iter_tree(root_node):
         if node.type == "function_definition":
             _process_function(ctx, node)
+            # Register function in symbol registry
+            name_node = _find_child_by_type(node, "identifier")
+            if name_node:
+                name = _node_text(name_node, ctx.source)
+                # Find the symbol we just added
+                for sym in reversed(ctx.symbols):
+                    if sym.name == name and sym.kind == "function":
+                        symbol_registry[name] = sym
+                        break
         elif node.type == "expression_statement":
-            # Check for assignment or call
+            # Check for assignment or call (targets)
             for child in node.children:
                 if child.type == "assignment":
                     _process_assignment(ctx, child)
                 elif child.type == "call":
-                    _process_call(ctx, child)
+                    # Only process load and target definitions in pass 1
+                    func_node = _find_child_by_type(child, "identifier")
+                    if func_node:
+                        func_name = _node_text(func_node, ctx.source)
+                        if func_name == "load":
+                            _process_load(ctx, child)
+                        else:
+                            _process_target(ctx, child, func_name)
+
+
+def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
+                            local_symbols: dict[str, Symbol],
+                            resolver: NameResolver,
+                            load_aliases: dict[str, str]) -> None:
+    """Extract call edges from Starlark AST (pass 2).
+
+    Uses load_aliases to provide path_hint for cross-file call resolution.
+    For aliased imports like `load(":rules.bzl", cr = "custom_rule")`,
+    a call to `cr()` will use `:rules.bzl` as path_hint for disambiguation.
+    """
+    for node in iter_tree(root_node):
+        if node.type == "call":
+            # Check if this is a function call inside a function
+            target_name = _get_call_target_name_starlark(node, ctx.source)
+            if target_name and target_name != "load":
+                caller = _find_enclosing_function_starlark(node, ctx.source, local_symbols)
+                if caller:
+                    # Check if this is an aliased call
+                    path_hint: Optional[str] = None
+                    original_name = target_name
+
+                    if target_name in load_aliases:
+                        # This is an aliased import, use path_hint for disambiguation
+                        path_hint = load_aliases[target_name]
+
+                    # Use resolver for callee resolution with path_hint
+                    lookup_result = resolver.lookup(original_name, path_hint=path_hint)
+                    if lookup_result.found and lookup_result.symbol:
+                        dst_id = lookup_result.symbol.id
+                        confidence = 0.85 * lookup_result.confidence
+                    else:
+                        # External/builtin function or rule
+                        dst_id = f"starlark:external:{target_name}:function"
+                        confidence = 0.70
+
+                    ctx.edges.append(Edge(
+                        id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
+                        src=caller.id,
+                        dst=dst_id,
+                        edge_type="calls",
+                        line=node.start_point[0] + 1,
+                        confidence=confidence,
+                        origin=PASS_ID,
+                        origin_run_id=ctx.run_id,
+                    ))
 
 
 def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:
     """Analyze Starlark files in a repository.
 
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges (imports + calls) using NameResolver
+
     Returns a StarlarkAnalysisResult with symbols for functions, targets, and variables,
-    plus edges for load statements and target dependencies.
+    plus edges for load statements, target dependencies, and function calls.
     """
     if not is_starlark_tree_sitter_available():
         warnings.warn("Starlark analysis skipped: tree-sitter-starlark unavailable")
@@ -349,6 +477,13 @@ def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:
     # Track targets by name for dependency resolution
     target_ids: dict[str, str] = {}
 
+    # Global symbol registry for cross-file resolution
+    global_symbol_registry: dict[str, Symbol] = {}
+
+    # Store parsed files for pass 2 (with load_aliases)
+    parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
+
+    # Pass 1: Extract symbols from all files
     for file_path in find_starlark_files(repo_root):
         try:
             source = file_path.read_bytes()
@@ -371,7 +506,31 @@ def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:
             target_ids=target_ids,
         )
 
-        _process_node(ctx, tree.root_node)
+        _extract_starlark_symbols(ctx, tree.root_node, global_symbol_registry)
+
+        # Store for pass 2 (including load_aliases for path_hint resolution)
+        parsed_files.append((rel_path, source, tree, ctx.load_aliases))
+
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
+
+    # Pass 2: Extract call edges
+    for rel_path, source, tree, load_aliases in parsed_files:
+        # Build local symbol map for this file (functions only)
+        local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+
+        ctx = _FileContext(
+            source=source,
+            rel_path=rel_path,
+            file_stable_id=f"starlark:{rel_path}:file:",
+            run_id=run_id,
+            symbols=[],  # Not adding symbols in pass 2
+            edges=edges,
+            target_ids=target_ids,
+            load_aliases=load_aliases,
+        )
+
+        _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
 
     duration_ms = int((time.time() - start_time) * 1000)
     return StarlarkAnalysisResult(

@@ -19,7 +19,7 @@ def test_detects_script_src_tag(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -50,7 +50,7 @@ def test_detects_multiple_script_tags(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -73,7 +73,7 @@ def test_ignores_inline_scripts_for_edges(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -99,7 +99,7 @@ def test_handles_both_quote_styles(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -122,7 +122,7 @@ def test_skips_unreadable_html_files(tmp_path: Path) -> None:
     broken_link.symlink_to(tmp_path / "nonexistent.html")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 

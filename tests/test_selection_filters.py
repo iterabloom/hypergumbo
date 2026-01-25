@@ -78,6 +78,21 @@ class TestIsTestPath:
         assert is_test_path("HandlerTest.kt")
         assert is_test_path("RepositoryTests.kt")
 
+    def test_python_tests_module(self):
+        """Python tests.py single-file module detected."""
+        assert is_test_path("tests.py")
+        assert is_test_path("src/tests.py")
+        # But not files that just contain 'tests'
+        assert not is_test_path("contests.py")
+
+    def test_ruby_rspec_files(self):
+        """Ruby RSpec *_spec.rb files detected."""
+        assert is_test_path("user_spec.rb")
+        assert is_test_path("spec/models/user_spec.rb")
+        assert is_test_path("app_spec.rb")
+        # But not files that just end in .rb
+        assert not is_test_path("helper.rb")
+
 
 class TestIsExamplePath:
     """Tests for is_example_path function."""

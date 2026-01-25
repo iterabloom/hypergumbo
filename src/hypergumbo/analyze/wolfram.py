@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -275,7 +276,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
     """Extract import and call edges from a parsed Wolfram file.
@@ -325,9 +326,9 @@ def _extract_edges_from_file(
                         if call_key not in seen_calls:
                             seen_calls.add(call_key)
                             # Check if it's a known symbol
-                            if func_name in global_symbol_registry:
-                                target = global_symbol_registry[func_name]
-                                target_id = target.id
+                            result = resolver.lookup(func_name)
+                            if result.found:
+                                target_id = result.symbol.id
                             else:
                                 # Create synthetic ID for built-in
                                 target_id = f"wolfram:builtin:0-0:{func_name}:function"
@@ -427,6 +428,7 @@ def analyze_wolfram(repo_root: Path) -> WolframAnalysisResult:
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -434,7 +436,7 @@ def analyze_wolfram(repo_root: Path) -> WolframAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
         )
         all_edges.extend(edges)

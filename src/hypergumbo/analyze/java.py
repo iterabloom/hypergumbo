@@ -69,6 +69,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import (
     AnalysisResult,
     is_grammar_available,
@@ -205,6 +206,71 @@ def _extract_java_signature(
     return signature
 
 
+def _extract_param_types(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter name -> type mapping from a method/constructor declaration.
+
+    This enables type inference for method calls on parameters, e.g.:
+        void process(Client client) {
+            client.send();  // resolves to Client.send
+        }
+
+    Returns:
+        Dict mapping parameter names to their type names (simple name only, not qualified).
+    """
+    param_types: dict[str, str] = {}
+
+    # Find formal_parameters node
+    params_node = None
+    for child in node.children:
+        if child.type == "formal_parameters":
+            params_node = child
+            break
+
+    if params_node is None:  # pragma: no cover
+        return param_types
+
+    # Extract parameter types
+    for child in params_node.children:
+        if child.type == "formal_parameter":
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                    # Extract just the base type name (e.g., "Client" from "Client<T>")
+                    param_type = _extract_type_text(subchild, source)
+                    # Strip generic parameters for lookup
+                    if "<" in param_type:
+                        param_type = param_type.split("<")[0]
+                    # Strip array brackets
+                    if "[" in param_type:
+                        param_type = param_type.split("[")[0]
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                param_types[param_name] = param_type
+        elif child.type == "spread_parameter":  # pragma: no cover
+            # Varargs: String... args - rarely used
+            param_type = None
+            param_name = None
+            for subchild in child.children:
+                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                    param_type = _extract_type_text(subchild, source)
+                    if "<" in param_type:
+                        param_type = param_type.split("<")[0]
+                elif subchild.type == "variable_declarator":
+                    for vchild in subchild.children:
+                        if vchild.type == "identifier":
+                            param_name = _node_text(vchild, source)
+                elif subchild.type == "identifier":
+                    param_name = _node_text(subchild, source)
+            if param_type and param_name:
+                param_types[param_name] = param_type
+
+    return param_types
+
+
 def _has_native_modifier(node: "tree_sitter.Node", source: bytes) -> bool:
     """Check if a method declaration has the 'native' modifier."""
     for child in node.children:
@@ -241,230 +307,6 @@ def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
                 if mod_child.type in JAVA_METHOD_MODIFIERS:
                     modifiers.append(mod_child.type)
     return modifiers
-
-
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
-
-
-# Spring Boot route annotation mappings (deprecated - use spring.yaml patterns)
-SPRING_MAPPING_ANNOTATIONS = {
-    "GetMapping": "GET",
-    "PostMapping": "POST",
-    "PutMapping": "PUT",
-    "DeleteMapping": "DELETE",
-    "PatchMapping": "PATCH",
-}
-
-# JAX-RS HTTP method annotations (marker annotations without arguments)
-JAXRS_HTTP_ANNOTATIONS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
-
-
-def _detect_spring_boot_route(
-    node: "tree_sitter.Node", source: bytes
-) -> tuple[str | None, str | None]:
-    """Detect Spring Boot route annotations on a method.
-
-    Returns (http_method, route_path) if a Spring Boot route annotation is found.
-
-    Supported patterns:
-    - @GetMapping("/path") -> ("GET", "/path")
-    - @PostMapping("/path") -> ("POST", "/path")
-    - @PutMapping, @DeleteMapping, @PatchMapping
-    - @RequestMapping(value = "/path", method = RequestMethod.GET)
-
-    Args:
-        node: The method_declaration node.
-        source: The source code bytes.
-
-    Returns:
-        A tuple of (http_method, route_path), or (None, None) if not a route.
-    """
-    # Look for modifiers child which contains annotations
-    for child in node.children:
-        if child.type == "modifiers":
-            # Iterate through annotations in modifiers
-            for annotation in child.children:
-                if annotation.type in ("annotation", "marker_annotation"):
-                    # Get the annotation name
-                    annotation_name = None
-                    annotation_args = None
-
-                    for ann_child in annotation.children:
-                        if ann_child.type == "identifier":
-                            annotation_name = _node_text(ann_child, source)
-                        elif ann_child.type == "annotation_argument_list":
-                            annotation_args = ann_child
-
-                    if not annotation_name:  # pragma: no cover
-                        continue
-
-                    # Check for @GetMapping, @PostMapping, etc.
-                    if annotation_name in SPRING_MAPPING_ANNOTATIONS:
-                        http_method = SPRING_MAPPING_ANNOTATIONS[annotation_name]
-                        route_path = _extract_spring_route_path(annotation_args, source)
-                        return http_method, route_path
-
-                    # Check for @RequestMapping with method attribute
-                    if annotation_name == "RequestMapping":
-                        return _parse_request_mapping(annotation_args, source)
-
-    return None, None
-
-
-def _extract_spring_route_path(
-    args_node: Optional["tree_sitter.Node"], source: bytes
-) -> str | None:
-    """Extract route path from annotation arguments.
-
-    Handles:
-    - @GetMapping("/path")
-    - @GetMapping(value = "/path")
-    - @GetMapping(path = "/path")
-    """
-    if args_node is None:  # pragma: no cover
-        return None
-
-    for child in args_node.children:
-        # Simple string argument: @GetMapping("/path")
-        if child.type == "string_literal":
-            return _node_text(child, source).strip('"')
-
-        # Named argument: @GetMapping(value = "/path")
-        if child.type == "element_value_pair":
-            key = None
-            value = None
-            for pair_child in child.children:
-                if pair_child.type == "identifier":
-                    key = _node_text(pair_child, source)
-                elif pair_child.type == "string_literal":
-                    value = _node_text(pair_child, source).strip('"')
-            if key in ("value", "path") and value:
-                return value
-
-    return None  # pragma: no cover
-
-
-def _parse_request_mapping(
-    args_node: Optional["tree_sitter.Node"], source: bytes
-) -> tuple[str | None, str | None]:
-    """Parse @RequestMapping annotation with method attribute.
-
-    Handles:
-    - @RequestMapping(value = "/path", method = RequestMethod.GET)
-    - @RequestMapping(path = "/path", method = RequestMethod.POST)
-    """
-    if args_node is None:  # pragma: no cover
-        return None, None
-
-    route_path = None
-    http_method = None
-
-    for child in args_node.children:
-        if child.type == "element_value_pair":
-            key = None
-            value_node = None
-            # The first identifier is the key, everything else (except '=') is the value
-            found_key = False
-            for pair_child in child.children:
-                if pair_child.type == "identifier" and not found_key:
-                    key = _node_text(pair_child, source)
-                    found_key = True
-                elif pair_child.type not in ("=", ):
-                    value_node = pair_child
-
-            if key in ("value", "path") and value_node:
-                if value_node.type == "string_literal":
-                    route_path = _node_text(value_node, source).strip('"')
-
-            if key == "method" and value_node:
-                # Handle RequestMethod.GET, field_access, or just identifier (GET)
-                method_text = _node_text(value_node, source)
-                # Extract the method name (e.g., "GET" from "RequestMethod.GET")
-                if "." in method_text:
-                    http_method = method_text.split(".")[-1].upper()
-                else:
-                    http_method = method_text.upper()
-
-    return http_method, route_path
-
-
-def _detect_jaxrs_route(
-    node: "tree_sitter.Node", source: bytes
-) -> tuple[str | None, str | None]:
-    """Detect JAX-RS route annotations on a method.
-
-    Returns (http_method, route_path) if JAX-RS route annotations are found.
-
-    Supported patterns:
-    - @GET, @POST, @PUT, @DELETE, @PATCH (marker annotations)
-    - @Path("/{id}") for route path
-
-    Args:
-        node: The method_declaration node.
-        source: The source code bytes.
-
-    Returns:
-        A tuple of (http_method, route_path), or (None, None) if not a route.
-    """
-    http_method = None
-    route_path = None
-
-    # Look for modifiers child which contains annotations
-    for child in node.children:
-        if child.type == "modifiers":
-            # Iterate through annotations in modifiers
-            for annotation in child.children:
-                if annotation.type == "marker_annotation":
-                    # Marker annotation: @GET, @POST, etc. (no arguments)
-                    for ann_child in annotation.children:
-                        if ann_child.type == "identifier":
-                            name = _node_text(ann_child, source)
-                            if name in JAXRS_HTTP_ANNOTATIONS:
-                                http_method = name.upper()
-                                break
-
-                elif annotation.type == "annotation":
-                    # Regular annotation: @Path("/route")
-                    annotation_name = None
-                    annotation_args = None
-
-                    for ann_child in annotation.children:
-                        if ann_child.type == "identifier":
-                            annotation_name = _node_text(ann_child, source)
-                        elif ann_child.type == "annotation_argument_list":
-                            annotation_args = ann_child
-
-                    if annotation_name == "Path" and annotation_args:
-                        # Extract path from @Path("/route")
-                        for arg in annotation_args.children:
-                            if arg.type == "string_literal":
-                                route_path = _node_text(arg, source).strip('"')
-                                break
-
-    # Only return if we found an HTTP method annotation
-    if http_method:
-        return http_method, route_path
-    return None, None
 
 
 def _get_java_parser() -> Optional["tree_sitter.Parser"]:
@@ -551,6 +393,33 @@ def _get_class_ancestors(
         current = current.parent
     # Reverse because we walked from inner to outer
     return list(reversed(ancestors))
+
+
+def _get_parent_class_base_classes(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Get base classes of the immediate parent class/interface containing this node.
+
+    Walks up the tree to find the first enclosing class/interface declaration,
+    then extracts its base classes (extends/implements).
+
+    This is used to enrich method metadata with parent class inheritance info,
+    enabling framework patterns to match methods by their parent class's base classes
+    (e.g., matching onCreate() in classes that extend Activity).
+
+    Args:
+        node: The node to start from (typically a method_declaration).
+        source: The source code bytes.
+
+    Returns:
+        List of base class names, or empty list if no parent class or no base classes.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "interface_declaration"):
+            return _extract_base_classes(current, source)
+        current = current.parent
+    return []  # pragma: no cover - defensive: methods always inside a class in valid Java
 
 
 def _java_value_to_python(
@@ -834,25 +703,11 @@ def _extract_symbols(
                 # Extract all modifiers for the modifiers field
                 modifiers = _extract_modifiers(node, source)
 
-                # Check for Spring Boot route annotations (deprecated - use YAML)
-                http_method, route_path = _detect_spring_boot_route(node, source)
-                detected_framework = "Spring" if http_method else None
-
-                # If not Spring Boot, check for JAX-RS annotations (deprecated)
-                if not http_method:
-                    http_method, route_path = _detect_jaxrs_route(node, source)
-                    if http_method:
-                        detected_framework = "JAX-RS"
-
-                # Emit deprecation warning for analyzer-level route detection
-                if detected_framework:
-                    _emit_route_deprecation_warning(detected_framework)
-
                 # Build meta dict
                 meta: dict[str, object] | None = None
-                stable_id: str | None = None
 
                 # Extract all annotations for rich metadata
+                # Route detection is now handled by YAML patterns (ADR-0003 v1.0.x)
                 decorators = _extract_annotations(node, source)
                 if decorators:
                     meta = {"decorators": decorators}
@@ -862,14 +717,13 @@ def _extract_symbols(
                         meta = {}
                     meta["is_native"] = True
 
-                if http_method or route_path:
-                    if meta is None:  # pragma: no cover
+                # Extract parent class base_classes for lifecycle hook detection (ADR-0003 v1.1.x)
+                # This enables YAML patterns to match methods like onCreate() in Activity subclasses
+                parent_base_classes = _get_parent_class_base_classes(node, source)
+                if parent_base_classes:
+                    if meta is None:
                         meta = {}
-                    if route_path:
-                        meta["route_path"] = route_path
-                    if http_method:
-                        meta["http_method"] = http_method
-                        stable_id = http_method
+                    meta["parent_base_classes"] = parent_base_classes
 
                 # Extract signature
                 signature = _extract_java_signature(node, source, is_constructor=False)
@@ -884,7 +738,6 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
                 )
@@ -958,11 +811,14 @@ def _extract_edges(
     global_symbols: dict[str, Symbol],
     class_symbols: dict[str, Symbol],
     imports: dict[str, str] | None = None,
+    resolver: NameResolver | None = None,
+    class_resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+    Optionally uses NameResolver for suffix-based matching and confidence tracking.
 
     Handles:
     - Direct method calls: method(), this.method()
@@ -970,11 +826,16 @@ def _extract_edges(
     - Variable method calls: variable.method() (with type inference)
     - Object instantiation: new ClassName()
 
-    Note: Type inference only tracks types from direct constructor calls
-    (stub = new Client()), not from factory methods (stub = Client.create()).
+    Type inference tracks types from:
+    - Constructor calls: stub = new Client() -> stub has type Client
+    - Method/constructor parameters: void process(Client client) -> client has type Client
     """
     if imports is None:
         imports = {}
+    if resolver is None:
+        resolver = NameResolver(global_symbols)
+    if class_resolver is None:
+        class_resolver = NameResolver(class_symbols)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -1034,6 +895,15 @@ def _extract_edges(
                                                 )
                                                 edges.append(edge)
 
+        # Method/constructor declarations - extract parameter types for type inference
+        elif node.type in ("method_declaration", "constructor_declaration"):
+            param_types = _extract_param_types(node, source)
+            # Add parameter types to var_types for method call resolution
+            # Note: This is file-scoped, not method-scoped, but variable name collisions
+            # across methods are rare in practice
+            for param_name, param_type in param_types.items():
+                var_types[param_name] = param_type
+
         # Method invocations
         elif node.type == "method_invocation":
             current_method = _get_enclosing_method(node, source, global_symbols)
@@ -1066,14 +936,16 @@ def _extract_edges(
                     if receiver_name is None or receiver_name == "this":
                         if current_class:
                             candidate = f"{current_class}.{method_name}"
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found:
+                                # Scale confidence by resolver's confidence multiplier
+                                edge_confidence = 0.95 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=current_method.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.95,
+                                    confidence=edge_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -1084,14 +956,15 @@ def _extract_edges(
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
                         candidate = f"{receiver_name}.{method_name}"
-                        if candidate in global_symbols:
-                            target_sym = global_symbols[candidate]
+                        lookup_result = resolver.lookup(candidate)
+                        if lookup_result.found:
+                            edge_confidence = 0.95 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
-                                dst=target_sym.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                confidence=0.95,
+                                confidence=edge_confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_static",
@@ -1103,14 +976,15 @@ def _extract_edges(
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
                         candidate = f"{type_class_name}.{method_name}"
-                        if candidate in global_symbols:
-                            target_sym = global_symbols[candidate]
+                        lookup_result = resolver.lookup(candidate)
+                        if lookup_result.found:
+                            edge_confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
-                                dst=target_sym.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                confidence=0.85,
+                                confidence=edge_confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_type_inferred",
@@ -1123,21 +997,21 @@ def _extract_edges(
                     # class or variable but might still match a symbol via imports.
                     # In practice, this is rarely hit since Case 2 handles most static
                     # calls and Case 3 handles most instance calls.
-                    if not edge_added and receiver_name:  # pragma: no cover
+                    if not edge_added and receiver_name and resolver:  # pragma: no cover
                         candidates = [f"{receiver_name}.{method_name}"]
                         # Try imported class name
                         if receiver_name in imports:
                             full_class = imports[receiver_name].split(".")[-1]
                             candidates.insert(0, f"{full_class}.{method_name}")
                         for candidate in candidates:
-                            if candidate in global_symbols:
-                                target_sym = global_symbols[candidate]
+                            lookup_result = resolver.lookup(candidate)
+                            if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_method.id,
-                                    dst=target_sym.id,
+                                    dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.80,
+                                    confidence=0.80 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -1154,19 +1028,20 @@ def _extract_edges(
             for child in node.children:
                 if child.type == "type_identifier":
                     type_name = _node_text(child, source)
-                    if current_method and type_name in class_symbols:
-                        target_sym = class_symbols[type_name]
-                        edge = Edge.create(
-                            src=current_method.id,
-                            dst=target_sym.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            confidence=0.95,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_new",
-                        )
-                        edges.append(edge)
+                    if current_method:
+                        lookup_result = class_resolver.lookup(type_name)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edge = Edge.create(
+                                src=current_method.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="instantiates",
+                                line=node.start_point[0] + 1,
+                                confidence=0.95 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_new",
+                            )
+                            edges.append(edge)
                     break
 
             # Track variable type for type inference

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo"
-version = "0.9.1"
+version = "1.1.0"
 description = "Local-first repo behavior map generator (MVP)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,8 @@ dependencies = [
   "tree-sitter-agda>=0.2.1",
   "tree-sitter-ocaml>=0.21",
   "tree-sitter-language-pack>=0.13",  # Elixir, COBOL, Dart, LaTeX, R
+  "tree-sitter-commonlisp>=0.4",  # Common Lisp analyzer
+  "tree-sitter-llvm>=1.1",  # LLVM IR analyzer
   "tree-sitter-solidity>=0.0.1",
   "tree-sitter-c-sharp>=0.21",
   "tree-sitter-cpp>=0.22",
@@ -64,25 +66,23 @@ dependencies = [
   "tree-sitter-wgsl>=0.0.1",
   "tree-sitter-xml>=0.6",
   "tree-sitter-yaml>=0.6",
+  # CLI formatting
+  "rich>=13.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8",
   "pytest-cov>=5",
-  "openai>=1.0",  # For testing LLM-assisted plan generation
+  "pytest-xdist>=3",  # Parallel test execution
   "ruff>=0.8",
   "bandit>=1.8",
   "pip-audit>=2.7",
   "jsonschema>=4.18",  # For schema validation tests (4.18+ uses referencing)
+  "yamllint>=1.35",  # YAML syntax linting
+  "check-jsonschema>=0.29",  # Validate YAML against JSON schema
   # Note: sentence-transformers not in dev deps due to 1GB+ torch dependency
   # Embedding tests skip gracefully when unavailable
-]
-llm-assist = [
-  "openai>=1.0",
-]
-llm-local = [
-  "llm>=0.19",
 ]
 embeddings = [
   "sentence-transformers>=2.2",  # For embedding-based config extraction
@@ -99,9 +99,6 @@ filterwarnings = [
     "ignore:.*analysis skipped.*requires tree-sitter:UserWarning",
     # tree-sitter deprecation warnings (older grammar packages)
     "ignore:int argument support is deprecated:DeprecationWarning",
-    # Pack deprecation warnings (ADR-0003)
-    "ignore:Packs are deprecated:DeprecationWarning",
-    "ignore:PackConfig is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]

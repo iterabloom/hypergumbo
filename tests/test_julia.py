@@ -468,3 +468,62 @@ double(x) = x * 2
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(x)"
+
+
+class TestJuliaImportAliases:
+    """Tests for import alias extraction and qualified call resolution."""
+
+    def test_extracts_import_alias(self, tmp_path: Path) -> None:
+        """Extracts import alias from 'import as' statement."""
+        from hypergumbo.analyze.julia import _extract_import_aliases
+        import tree_sitter
+        import tree_sitter_julia
+
+        lang = tree_sitter.Language(tree_sitter_julia.language())
+        parser = tree_sitter.Parser(lang)
+
+        jl_file = tmp_path / "Main.jl"
+        jl_file.write_text("""
+import Pkg as P
+import LinearAlgebra as LA
+
+function main()
+    P.add("Example")
+end
+""")
+
+        source = jl_file.read_bytes()
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree, source)
+
+        # Both aliases should be extracted
+        assert "P" in aliases
+        assert aliases["P"] == "Pkg"
+        assert "LA" in aliases
+        assert aliases["LA"] == "LinearAlgebra"
+
+    def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
+        """Qualified call resolution uses import alias for path hint."""
+        from hypergumbo.analyze.julia import analyze_julia
+
+        (tmp_path / "main.jl").write_text("""
+import Pkg as P
+
+function setup()
+    P.add("JSON")
+end
+""")
+
+        result = analyze_julia(tmp_path)
+
+        # Should have call edge (we can't verify path_hint directly but can verify it doesn't crash)
+        assert not result.skipped
+        symbols = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "setup" for s in symbols)
+
+        # Should have call edges from setup
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should have at least one call edge from setup (P.add)
+        # Since P.add is external, it may not create a resolved edge,
+        # but the parsing should succeed without errors

@@ -152,6 +152,46 @@ end
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 2
+        # Resolved calls should have higher confidence
+        greet_call = next(e for e in call_edges if "greet" in e.dst)
+        assert greet_call.confidence > 0.70
+
+    def test_cross_file_call_resolution(self, temp_repo: Path) -> None:
+        """Resolves calls across files."""
+        # Define helper function in one file
+        (temp_repo / "helpers.fish").write_text('''
+function helper
+    echo "Helping!"
+end
+''')
+        # Call it from another file
+        (temp_repo / "main.fish").write_text('''
+function main
+    helper
+end
+''')
+
+        result = analyze_fish(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_call = next(e for e in call_edges if "helper" in e.dst)
+        # Should resolve to actual symbol, not external
+        assert "external" not in helper_call.dst
+        assert helper_call.confidence > 0.70
+
+    def test_external_call_confidence(self, temp_repo: Path) -> None:
+        """External calls have lower confidence."""
+        (temp_repo / "test.fish").write_text('''
+function caller
+    unknown_external_command
+end
+''')
+
+        result = analyze_fish(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_call = next(e for e in call_edges if "external" in e.dst)
+        assert external_call.confidence == 0.70
 
 
 class TestFishAnalysisUnavailable:

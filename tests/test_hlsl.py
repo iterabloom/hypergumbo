@@ -191,3 +191,107 @@ float4 main() : SV_TARGET {
         assert result.run is not None
         assert result.run.pass_id == "hlsl-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestHLSLCallResolution:
+    """Tests for HLSL call resolution."""
+
+    def test_function_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges when functions call other functions."""
+        (temp_repo / "shaders.hlsl").write_text('''
+float4 helper(float4 color) {
+    return color * 0.5;
+}
+
+float4 main(float4 pos : SV_POSITION) : SV_TARGET {
+    return helper(float4(1, 0, 0, 1));
+}
+''')
+
+        result = analyze_hlsl(temp_repo)
+
+        # Should have call edges from main to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        main_calls = [e for e in call_edges if "main" in e.src]
+        assert len(main_calls) >= 1
+        assert any("helper" in e.dst for e in main_calls)
+
+    def test_external_function_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external function calls with lower confidence."""
+        (temp_repo / "shader.hlsl").write_text('''
+float4 main(float4 pos : SV_POSITION) : SV_TARGET {
+    float4 color = saturate(float4(1, 2, 3, 1));
+    return color;
+}
+''')
+
+        result = analyze_hlsl(temp_repo)
+
+        # Should have call edge to external saturate (built-in)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("saturate" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "shader.hlsl").write_text('''
+float internal_func() {
+    return 1.0;
+}
+
+float4 caller(float4 pos : SV_POSITION) : SV_TARGET {
+    float val = internal_func();
+    return float4(val, val, val, 1);
+}
+''')
+
+        result = analyze_hlsl(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the resolved edge from caller to internal_func
+        resolved_call = next((e for e in call_edges if "internal_func" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence
+        assert resolved_call.confidence > 0.70
+
+    def test_cross_file_call_resolution(self, temp_repo: Path) -> None:
+        """Resolves calls across multiple files."""
+        (temp_repo / "common.hlsli").write_text('''
+float4 shared_helper(float intensity) {
+    return float4(intensity, intensity, intensity, 1);
+}
+''')
+        (temp_repo / "main.hlsl").write_text('''
+float4 main(float4 pos : SV_POSITION) : SV_TARGET {
+    return shared_helper(0.5);
+}
+''')
+
+        result = analyze_hlsl(temp_repo)
+
+        # Should resolve the cross-file call
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        resolved_calls = [e for e in call_edges if "shared_helper" in e.dst and "external" not in e.dst]
+        assert len(resolved_calls) >= 1
+
+    def test_method_style_call(self, temp_repo: Path) -> None:
+        """Handles method-style calls like texture.Sample()."""
+        (temp_repo / "shader.hlsl").write_text('''
+Texture2D myTexture;
+SamplerState mySampler;
+
+float4 main(float2 uv : TEXCOORD) : SV_TARGET {
+    return myTexture.Sample(mySampler, uv);
+}
+''')
+
+        result = analyze_hlsl(temp_repo)
+
+        # Should have at least the main function
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) >= 1

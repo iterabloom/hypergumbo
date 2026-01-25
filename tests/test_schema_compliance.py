@@ -11,7 +11,7 @@ def test_output_has_analysis_runs(tmp_path: Path) -> None:
     py_file.write_text("def main():\n    pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -35,7 +35,7 @@ def test_nodes_have_origin_fields(tmp_path: Path) -> None:
     py_file.write_text("def main():\n    pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -56,7 +56,7 @@ def test_nodes_have_span_with_columns(tmp_path: Path) -> None:
     py_file.write_text("def main():\n    pass\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -81,7 +81,7 @@ def test_edges_have_required_fields(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -111,7 +111,7 @@ def test_edges_have_meta_with_evidence(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 

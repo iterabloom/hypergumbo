@@ -1,14 +1,55 @@
-# Laravel framework patterns (ADR-0003 v1.0.x)
+# Laravel framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Laravel conventions for controllers, models, jobs, events, etc.
 # Symbols matching these patterns get enriched with concept metadata.
 #
 # Laravel uses inheritance patterns and trait imports for behaviors.
+#
+# Definition-based patterns (v1.0.x): Match base_class, symbol_kind for inheritance
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
 id: laravel
 language: php
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for Route facade calls
+
+  # Laravel HTTP method routes - Route::get('/path', ...), Route::post('/path', ...), etc.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|head|options)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # Laravel resource routes - Route::resource('photos', ...), Route::apiResource('posts', ...)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(resource|apiresource)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:RESOURCE"
+
+  # Laravel any/match routes
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(any|match)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Keep symbol_kind pattern for backwards compatibility
+  - concept: route
+    symbol_kind: "^route$"
+
   # Controllers - extend Controller
   - concept: controller
     base_class: "^Controller$"

@@ -1,15 +1,39 @@
-# Phoenix Framework patterns (ADR-0003 v1.0.x)
+# Phoenix Framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Phoenix/Elixir conventions for controllers, channels, LiveView, etc.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Phoenix uses Elixir macros (use, import) for behavior injection.
-# These are captured as "decorators" in the metadata.
+# Definition-based patterns (v1.0.x): Match use/import macros for behavior injection
+# Usage-based patterns (v1.1.x): Match router DSL calls via UsageContext
 
 id: phoenix
 language: elixir
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for router DSL calls
+
+  # Phoenix HTTP method routes - get "/path", Controller, :action
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|head|options)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # Phoenix resources - resources "/path", Controller
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^resources$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:RESOURCES"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Controllers - use Phoenix.Controller or MyAppWeb :controller
   - concept: controller
     decorator: "^use Phoenix\\.Controller$"

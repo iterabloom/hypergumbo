@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Optional
 
 from .base import iter_tree
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -412,8 +413,11 @@ def _extract_edges_from_file(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge."""
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
     edges: list[Edge] = []
     rel_path = str(file_path)
     file_id = _make_file_id(rel_path)
@@ -458,9 +462,12 @@ def _extract_edges_from_file(
                     if ref_name in local_symbols:
                         target = local_symbols[ref_name]
                         confidence = 0.95
-                    elif ref_name in global_symbols:  # pragma: no cover - cross-file
-                        target = global_symbols[ref_name]
-                        confidence = 0.85
+                    else:
+                        # Check global symbols via resolver
+                        lookup_result = resolver.lookup(ref_name)
+                        if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover - suffix fallback
+                            target = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
 
                     if target and target.id != current_symbol.id:
                         edges.append(Edge.create(
@@ -524,11 +531,12 @@ def analyze_hcl(root: Path) -> HCLAnalysisResult:
             global_symbols[name] = sym
 
     # Pass 2: Extract edges using global symbol knowledge
+    resolver = NameResolver(global_symbols)
     all_edges: list[Edge] = []
 
     for hcl_file, analysis in file_analyses.items():
         edges = _extract_edges_from_file(
-            hcl_file, parser, analysis.symbol_by_name, global_symbols, run
+            hcl_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
         )
         all_edges.extend(edges)
 

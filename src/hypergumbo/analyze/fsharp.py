@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -99,6 +100,7 @@ class FileAnalysis:
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
     module_name: str  # F# module name from module declaration
+    module_aliases: dict[str, str] = field(default_factory=dict)  # alias -> module path
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -387,13 +389,61 @@ def _get_enclosing_function_fsharp(
     return None
 
 
+def _extract_module_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract module aliases for disambiguation.
+
+    In F#:
+        module M = List -> M maps to List (produces module_abbrev)
+        module M = System.IO -> M maps to System.IO (produces module_abbrev)
+
+    Returns a dict mapping alias names to module names.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        alias_name = None
+        module_name = None
+
+        if node.type == "module_abbrev":
+            # module_abbrev: module <identifier> = <long_identifier>
+            for child in node.children:
+                if child.type == "identifier" and alias_name is None:
+                    alias_name = _node_text(child, source)
+                elif child.type == "long_identifier":
+                    module_name = _extract_long_identifier(child, source)
+
+        elif node.type == "module_defn":  # pragma: no cover - complex module defs rarely used
+            # module_defn: module <identifier> = <long_identifier_or_op>
+            for child in node.children:
+                if child.type == "identifier" and alias_name is None:
+                    alias_name = _node_text(child, source)
+                elif child.type == "long_identifier_or_op":
+                    # Get the full module path
+                    long_id = _find_child_by_type(child, "long_identifier")
+                    if long_id:
+                        module_name = _extract_long_identifier(long_id, source)
+                    else:
+                        id_node = _find_child_by_type(child, "identifier")
+                        if id_node:
+                            module_name = _node_text(id_node, source)
+
+        if alias_name and module_name:
+            aliases[alias_name] = module_name
+
+    return aliases
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
+    module_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed F# file.
 
@@ -403,6 +453,8 @@ def _extract_edges_from_file(
     """
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
+    if module_aliases is None:  # pragma: no cover - defensive
+        module_aliases = {}
 
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -431,13 +483,38 @@ def _extract_edges_from_file(
             caller = _get_enclosing_function_fsharp(node, source, local_symbols)
             if caller and node.children:
                 first_child = node.children[0]
-                # Look for long_identifier_or_op > identifier
+                # Look for long_identifier_or_op
                 if first_child.type == "long_identifier_or_op":
-                    name_node = _find_child_by_type(first_child, "identifier")
-                    if name_node:
-                        callee_name = _node_text(name_node, source)
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                    callee_name: Optional[str] = None
+                    path_hint: Optional[str] = None
+
+                    # Check for qualified call (long_identifier with dots)
+                    long_id = _find_child_by_type(first_child, "long_identifier")
+                    if long_id:
+                        # Get all identifiers in the long_identifier
+                        identifiers = [
+                            _node_text(c, source)
+                            for c in long_id.children
+                            if c.type == "identifier"
+                        ]
+                        if len(identifiers) >= 2:
+                            # First part might be a module alias
+                            receiver = identifiers[0]
+                            callee_name = identifiers[-1]
+                            path_hint = module_aliases.get(receiver)
+                        elif len(identifiers) == 1:  # pragma: no cover - single ident fallback
+                            callee_name = identifiers[0]
+                    else:
+                        # Simple identifier
+                        name_node = _find_child_by_type(first_child, "identifier")
+                        if name_node:
+                            callee_name = _node_text(name_node, source)
+
+                    if callee_name:
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
+                            callee = lookup_result.symbol
+                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -446,7 +523,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_call",
-                                confidence=0.85,
+                                confidence=confidence,
                             )
                             edges.append(edge)
 
@@ -517,6 +594,9 @@ def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
         file_symbols, module_name = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract module aliases for disambiguation
+        module_aliases = _extract_module_aliases(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -527,11 +607,13 @@ def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
             tree=tree,
             symbols=file_symbols,
             module_name=module_name,
+            module_aliases=module_aliases,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -539,8 +621,9 @@ def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
+            module_aliases=fa.module_aliases,
         )
         all_edges.extend(edges)
 

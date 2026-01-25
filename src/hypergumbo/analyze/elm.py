@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -99,6 +100,7 @@ class FileAnalysis:
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
     module_name: str  # Elm module name from module declaration
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -326,20 +328,62 @@ def _get_enclosing_function(
     return None  # pragma: no cover - no enclosing function found
 
 
+def _extract_import_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract import aliases for disambiguation.
+
+    In Elm:
+        import Dict as D -> D maps to Dict
+
+    Returns a dict mapping alias names to full module names.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_clause":
+            continue
+
+        # Get the module name from upper_case_qid
+        qid = _find_child_by_type(node, "upper_case_qid")
+        if not qid:  # pragma: no cover - defensive
+            continue
+
+        module_name = _node_text(qid, source)
+
+        # Check for as_clause (import Dict as D)
+        as_clause = _find_child_by_type(node, "as_clause")
+        if as_clause:
+            # Get alias name from upper_case_identifier in as_clause
+            alias_node = _find_child_by_type(as_clause, "upper_case_identifier")
+            if alias_node:
+                alias_name = _node_text(alias_node, source)
+                aliases[alias_name] = module_name
+
+    return aliases
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
+    import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elm file.
+
+    Args:
+        import_aliases: Optional dict mapping module aliases to full names.
 
     Detects:
     - Function calls (function_call_expr, value_expr)
     - Import statements (import_clause)
     """
+    if import_aliases is None:  # pragma: no cover - defensive default
+        import_aliases = {}
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
@@ -377,8 +421,18 @@ def _extract_edges_from_file(
                         callee_name_node = _find_child_by_type(value_qid, "lower_case_identifier")
                         if callee_name_node:
                             callee_name = _node_text(callee_name_node, source)
-                            callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                            if callee:
+                            path_hint: Optional[str] = None
+
+                            # Check for qualified call (D.empty -> upper_case_identifier D)
+                            qualifier_node = _find_child_by_type(value_qid, "upper_case_identifier")
+                            if qualifier_node:
+                                qualifier = _node_text(qualifier_node, source)
+                                path_hint = import_aliases.get(qualifier)
+
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.85 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -387,7 +441,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="function_call",
-                                    confidence=0.85,
+                                    confidence=confidence,
                                 )
                                 edges.append(edge)
 
@@ -458,6 +512,9 @@ def analyze_elm(repo_root: Path) -> ElmAnalysisResult:
         file_symbols, module_name = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract import aliases for disambiguation
+        import_aliases = _extract_import_aliases(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -468,11 +525,13 @@ def analyze_elm(repo_root: Path) -> ElmAnalysisResult:
             tree=tree,
             symbols=file_symbols,
             module_name=module_name,
+            import_aliases=import_aliases,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
+    resolver = NameResolver(global_symbol_registry)
 
     for fa in file_analyses:
         edges = _extract_edges_from_file(
@@ -480,8 +539,9 @@ def analyze_elm(repo_root: Path) -> ElmAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
+            import_aliases=fa.import_aliases,
         )
         all_edges.extend(edges)
 

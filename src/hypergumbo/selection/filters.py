@@ -62,8 +62,9 @@ def is_test_path(path: str) -> bool:
     """Check if a path looks like a test file.
 
     Matches common test patterns across many languages:
-    - Python: test_*.py, *_test.py, tests/, test/
+    - Python: test_*.py, *_test.py, tests.py, tests/, test/
     - JavaScript/TypeScript: *.test.js, *.spec.ts, __tests__/, *.test-d.ts
+    - Ruby: *_spec.rb, test_*.rb
     - Swift: Tests/, *Tests.swift (Xcode convention)
     - Go: *_test.go
     - Java/Kotlin: src/test/, *Test.java, *Test.kt, testFixtures/, intTest/
@@ -101,12 +102,20 @@ def is_test_path(path: str) -> bool:
     if filename.startswith("test_"):
         return True
 
+    # Python single-file test module (tests.py)
+    if filename == "tests.py":
+        return True
+
     # Python/JS/TS suffix patterns (.test.ts, .spec.js, _test.py, etc.)
     for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
         if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
             return True
         if filename.endswith(f"_test{ext}"):
             return True
+
+    # Ruby RSpec files: *_spec.rb
+    if filename.endswith("_spec.rb"):
+        return True
 
     # TypeScript type test files (.test-d.ts, .test-d.tsx)
     if filename.endswith(".test-d.ts") or filename.endswith(".test-d.tsx"):

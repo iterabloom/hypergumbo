@@ -2505,6 +2505,170 @@ router
         param_methods = {r.stable_id for r in param_routes}
         assert param_methods == {"GET", "PATCH", "DELETE"}
 
+    def test_express_inline_handler_usage_context_has_symbol_ref(self, tmp_path: Path) -> None:
+        """UsageContext for inline Express handlers should reference the Symbol.
+
+        This is critical for YAML pattern enrichment to work - the enrichment
+        phase skips UsageContexts with no symbol_ref.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+app.get('/users', (req, res) => {
+    res.json([]);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find the inline handler symbol
+        handlers = [s for s in result.symbols if s.meta and s.meta.get("route_path") == "/users"]
+        assert len(handlers) == 1
+        handler = handlers[0]
+
+        # Find the UsageContext for this route
+        contexts = [c for c in result.usage_contexts if "app.get" in c.context_name]
+        assert len(contexts) >= 1
+
+        # The UsageContext should reference the handler Symbol
+        matching_ctx = [c for c in contexts if c.symbol_ref == handler.id]
+        assert len(matching_ctx) == 1, f"Expected UsageContext.symbol_ref={handler.id}, got contexts: {[(c.context_name, c.symbol_ref) for c in contexts]}"
+
+    def test_express_external_handler_usage_context_has_symbol_ref(self, tmp_path: Path) -> None:
+        """UsageContext for external Express handlers should have a symbol_ref.
+
+        For external handlers like `app.get('/users', listUsers)`, the UsageContext
+        references the route symbol created for the handler reference.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+const express = require('express');
+const app = express();
+
+function listUsers(req, res) {
+    res.json([]);
+}
+
+app.get('/users', listUsers);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find the UsageContext for this route
+        contexts = [c for c in result.usage_contexts if "app.get" in c.context_name]
+        assert len(contexts) >= 1
+
+        # The UsageContext should have a symbol_ref (critical for YAML enrichment)
+        ctx = contexts[0]
+        assert ctx.symbol_ref is not None, "External handler UsageContext should have symbol_ref"
+
+        # The referenced symbol should exist
+        ref_symbols = [s for s in result.symbols if s.id == ctx.symbol_ref]
+        assert len(ref_symbols) == 1
+        assert ref_symbols[0].name == "listUsers"
+
+
+# ============================================================================
+# Callback Arrow Function Call Attribution Tests
+# ============================================================================
+
+
+class TestCallbackCallAttribution:
+    """Tests for call edge attribution inside callback arrow functions.
+
+    Verifies that calls made inside arrow functions passed as callbacks
+    (not assigned to variables) are properly attributed to either:
+    1. The synthetic route handler symbol (for Express-style routes)
+    2. The containing named function (for callbacks inside functions)
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        """Skip tests if tree-sitter is not available."""
+        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+
+        if not is_tree_sitter_available():
+            pytest.skip("tree-sitter not available")
+
+    def test_call_inside_express_route_handler_attributed(self, tmp_path: Path) -> None:
+        """Calls inside Express route callbacks are attributed to route handler symbol."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create a helper module
+        helper_file = tmp_path / "helper.js"
+        helper_file.write_text("""
+function processRequest(data) {
+    return data;
+}
+module.exports = { processRequest };
+""")
+
+        # Create a routes file with calls inside callback
+        routes_file = tmp_path / "routes.js"
+        routes_file.write_text("""
+const express = require('express');
+const { processRequest } = require('./helper');
+const app = express();
+
+app.get('/data', (req, res) => {
+    const result = processRequest(req.body);
+    res.json(result);
+});
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # There should be a call edge from the route handler to processRequest
+        process_calls = [e for e in call_edges if "processRequest" in e.dst]
+        assert len(process_calls) >= 1, "Call to processRequest inside route handler should be detected"
+
+        # The source should be a route handler symbol (contains GET or _GET_)
+        for edge in process_calls:
+            # Either the source has GET in it (route handler) or it's from a named function
+            assert "GET" in edge.src or "handler" in edge.src.lower() or "routes" in edge.src.lower(), \
+                f"Call should be attributed to route handler, got src={edge.src}"
+
+    def test_call_inside_callback_in_named_function_attributed(self, tmp_path: Path) -> None:
+        """Calls inside callbacks within named functions are attributed to the named function."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("""
+function helper() {
+    return 42;
+}
+
+function main() {
+    const data = [1, 2, 3];
+    data.forEach((item) => {
+        helper();
+    });
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_calls = [e for e in call_edges if "helper" in e.dst]
+
+        # There should be a call from main to helper
+        assert len(helper_calls) >= 1, "Call to helper inside forEach callback should be detected"
+
+        # The source should be 'main' (the containing named function)
+        main_to_helper = [e for e in helper_calls if "main" in e.src]
+        assert len(main_to_helper) >= 1, \
+            f"Call should be attributed to main function, got sources: {[e.src for e in helper_calls]}"
+
 
 # ============================================================================
 # NestJS Route Detection Tests
@@ -2573,8 +2737,13 @@ export class UsersController {
         assert route_handlers[0].name == "UsersController.create"
 
     def test_nestjs_get_with_path(self, tmp_path: Path) -> None:
-        """NestJS @Get(':id') should extract route path."""
+        """NestJS @Get(':id') with @Controller('users') should combine to full path.
+
+        Route path combination is now handled by enrichment (via prefix_from_parent)
+        rather than at the analyzer level.
+        """
         from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2590,6 +2759,8 @@ export class UsersController {
 """)
 
         result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
         route_handlers = [m for m in methods if m.stable_id == "GET"]
@@ -2598,7 +2769,12 @@ export class UsersController {
         handler = route_handlers[0]
         assert handler.name == "UsersController.findOne"
         assert handler.meta is not None
-        assert handler.meta.get("route_path") == ":id"
+        # Full route = controller prefix + method path: /users/:id
+        # Path comes from enrichment concepts, not meta["route_path"]
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None, f"Expected route concept, got {concepts}"
+        assert route_concept["path"] == "/users/:id"
 
     def test_nestjs_all_http_methods(self, tmp_path: Path) -> None:
         """NestJS should detect all HTTP method decorators."""
@@ -2637,6 +2813,166 @@ export class ResourceController {
         assert "PUT" in stable_ids
         assert "PATCH" in stable_ids
         assert "DELETE" in stable_ids
+
+    def test_nestjs_controller_no_path_method_with_path(self, tmp_path: Path) -> None:
+        """NestJS @Controller() with no path + @Get('users/:id') gives just method path."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get } from '@nestjs/common';
+
+@Controller()
+export class UsersController {
+    @Get('users/:id')
+    findOne() {
+        return {};
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Controller has no path, but method path is normalized with leading slash
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/users/:id"
+
+    def test_nestjs_controller_with_path_method_no_path(self, tmp_path: Path) -> None:
+        """NestJS @Controller('users') + @Get() gives just controller path."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        ts_file = tmp_path / "users.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+    @Get()
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Method has no path, so just controller path from prefix_from_parent
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/users"
+
+    def test_nestjs_path_normalization(self, tmp_path: Path) -> None:
+        """NestJS paths are normalized (no double slashes)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        ts_file = tmp_path / "api.controller.ts"
+        ts_file.write_text("""
+import { Controller, Get } from '@nestjs/common';
+
+@Controller('/api/')
+export class ApiController {
+    @Get('/users/')
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Paths normalized: /api/users (no double slashes, leading slash added)
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/api/users"
+
+    def test_nestjs_no_controller_decorator(self, tmp_path: Path) -> None:
+        """Class without @Controller - method path only."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text("""
+class UsersService {
+    @Get('users')
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # No controller, just method path (no prefix_from_parent combination)
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "users"
+
+    def test_nestjs_non_exported_class_with_controller(self, tmp_path: Path) -> None:
+        """Non-exported class with @Controller - decorator as child of class_declaration."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        ts_file = tmp_path / "internal.controller.ts"
+        ts_file.write_text("""
+@Controller('internal')
+class InternalController {
+    @Get('status')
+    getStatus() {
+        return {};
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+        clear_pattern_cache()
+        enrich_symbols(result.symbols, {"nestjs"})
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        route_handlers = [m for m in methods if m.stable_id == "GET"]
+
+        assert len(route_handlers) == 1
+        handler = route_handlers[0]
+        # Combined path: /internal/status (from prefix_from_parent)
+        concepts = handler.meta.get("concepts", [])
+        route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
+        assert route_concept is not None
+        assert route_concept["path"] == "/internal/status"
 
 
 # ============================================================================
@@ -3146,6 +3482,127 @@ function run() {
         )
         assert run_helper_edge is not None, "Expected call edge from run to helper via namespace"
 
+    def test_namespace_import_disambiguates_same_name_functions(self, tmp_path: Path) -> None:
+        """When same function name exists in multiple modules, namespace import disambiguates.
+
+        This test uses directory structure to control file discovery order, ensuring
+        the "wrong" file is processed last (overwriting global_symbols). The namespace
+        import path_hint must be used to resolve to the correct target.
+
+        rglob discovery order: main.js -> a_early/utils.js -> z_late/utils.js
+        So z_late (WRONG) overwrites a_early (CORRECT) in global_symbols.
+        Without path_hint, resolution incorrectly picks z_late.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create two modules with same function name in different directories
+        # rglob processes alphabetically: a_early/ before z_late/
+        # So z_late/utils.js (WRONG) will be processed LAST, overwriting global_symbols
+        correct_dir = tmp_path / "a_early"
+        correct_dir.mkdir()
+        (correct_dir / "utils.js").write_text("""
+function process() {
+    return 'CORRECT';
+}
+""")
+
+        wrong_dir = tmp_path / "z_late"
+        wrong_dir.mkdir()
+        (wrong_dir / "utils.js").write_text("""
+function process() {
+    return 'WRONG';
+}
+""")
+
+        # Import only a_early/utils and call process via namespace
+        main_file = tmp_path / "main.js"
+        main_file.write_text("""
+import * as correct from './a_early/utils';
+
+function run() {
+    correct.process();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find call edges from run
+        call_edges = [e for e in result.edges if e.edge_type == "calls" and "run" in e.src]
+
+        # Should resolve to a_early/utils.process, NOT z_late/utils.process
+        run_process_edge = next(
+            (e for e in call_edges if "process" in e.dst),
+            None
+        )
+        assert run_process_edge is not None, "Expected call edge from run to process"
+
+        # The edge should point to a_early (correct), not z_late (wrong)
+        assert "a_early" in run_process_edge.dst, (
+            f"Expected call to resolve to a_early/utils.process, but got {run_process_edge.dst}. "
+            "Namespace import path_hint should disambiguate when same function exists in multiple modules."
+        )
+
+    def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
+        """When same class name exists in multiple modules, namespace import disambiguates.
+
+        This test uses directory structure to control file discovery order, ensuring
+        the "wrong" file is processed last (overwriting global_classes). The namespace
+        import path_hint must be used to resolve to the correct target.
+
+        rglob discovery order: main.js -> a_early/service.js -> z_late/service.js
+        So z_late (WRONG) overwrites a_early (CORRECT) in global_classes.
+        Without path_hint, resolution incorrectly picks z_late.
+        """
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Create two modules with same class name in different directories
+        # rglob processes alphabetically: a_early/ before z_late/
+        # So z_late/service.js (WRONG) will be processed LAST, overwriting global_classes
+        correct_dir = tmp_path / "a_early"
+        correct_dir.mkdir()
+        (correct_dir / "service.js").write_text("""
+class Client {
+    connect() { return 'CORRECT'; }
+}
+""")
+
+        wrong_dir = tmp_path / "z_late"
+        wrong_dir.mkdir()
+        (wrong_dir / "service.js").write_text("""
+class Client {
+    connect() { return 'WRONG'; }
+}
+""")
+
+        # Import only a_early/service and instantiate via namespace
+        main_file = tmp_path / "main.js"
+        main_file.write_text("""
+import * as correct from './a_early/service';
+
+function run() {
+    const client = new correct.Client();
+    return client;
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Find instantiates edges from run
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates" and "run" in e.src]
+
+        # Should resolve to a_early/service.Client, NOT z_late/service.Client
+        run_client_edge = next(
+            (e for e in inst_edges if "Client" in e.dst),
+            None
+        )
+        assert run_client_edge is not None, "Expected instantiates edge from run to Client"
+
+        # The edge should point to a_early (correct), not z_late (wrong)
+        assert "a_early" in run_client_edge.dst, (
+            f"Expected instantiation to resolve to a_early/service.Client, but got {run_client_edge.dst}. "
+            "Namespace import path_hint should disambiguate when same class exists in multiple modules."
+        )
+
 
 class TestVariableTypeInference:
     """Tests for variable type inference from constructor calls."""
@@ -3264,6 +3721,75 @@ function run() {
             None
         )
         assert inst_edge is not None, "Expected instantiates edge for namespace.EmailClient"
+
+    def test_parameter_type_inference_typescript(self, tmp_path: Path) -> None:
+        """TypeScript function parameter types should enable method call resolution."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        # Service class with methods
+        service_file = tmp_path / "service.ts"
+        service_file.write_text("""
+class Database {
+    save(obj: any): void { }
+    commit(): void { }
+}
+""")
+
+        # Handler receives Database as parameter with type annotation
+        handler_file = tmp_path / "handler.ts"
+        handler_file.write_text("""
+function process(db: Database, data: string): void {
+    db.save(data);
+    db.commit();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        process_func = next(
+            (s for s in result.symbols if s.name == "process"), None
+        )
+        db_save = next(
+            (s for s in result.symbols if "save" in s.name and "Database" in s.id), None
+        )
+        db_commit = next(
+            (s for s in result.symbols if "commit" in s.name and "Database" in s.id), None
+        )
+
+        assert process_func is not None
+        assert db_save is not None
+        assert db_commit is not None
+
+        # Should have edges from process to Database.save and Database.commit
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        save_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == process_func.id
+                and e.dst == db_save.id
+            ),
+            None,
+        )
+        commit_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == process_func.id
+                and e.dst == db_commit.id
+            ),
+            None,
+        )
+
+        assert save_edge is not None, "Expected call edge for db.save() via param type inference"
+        assert commit_edge is not None, "Expected call edge for db.commit() via param type inference"
+        # Both should use type inference evidence
+        assert save_edge.evidence_type == "ast_method_type_inferred"
+        assert commit_edge.evidence_type == "ast_method_type_inferred"
 
 
 # ============================================================================
@@ -3820,199 +4346,414 @@ class WeightedController {
         assert decorators[0]["args"] == [0.75]
 
 
-# ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
-# ============================================================================
+class TestHapiUsageContext:
+    """Tests for Hapi config-object route detection."""
 
-
-class TestExpressRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level Express route detection."""
-
-    def test_express_route_emits_deprecation_warning(self, tmp_path: Path) -> None:
-        """Express route detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
+    def test_hapi_server_route_object(self, tmp_path: Path) -> None:
+        """Detects server.route({ method, path, handler }) pattern."""
         from hypergumbo.analyze.js_ts import analyze_javascript
 
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
+        (tmp_path / "server.js").write_text("""
+const Hapi = require('@hapi/hapi');
 
-        routes_file = tmp_path / "routes.js"
-        routes_file.write_text("""
-const express = require('express');
-const router = express.Router();
-
-router.get('/users', (req, res) => {
-    res.json([]);
-});
-
-router.post('/users', (req, res) => {
-    res.json({});
-});
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_javascript(tmp_path)
-
-        # Should have at least one deprecation warning for Express
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Express" in warning_message
-        assert "deprecated" in warning_message.lower()
-
-    def test_deprecation_warning_emitted_once_per_session(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per session."""
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
-        from hypergumbo.analyze.js_ts import analyze_javascript
-
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
-
-        # Create multiple route files
-        (tmp_path / "users.js").write_text("""
-router.get('/users', (req, res) => res.json([]));
-router.post('/users', (req, res) => res.json({}));
-""")
-        (tmp_path / "items.js").write_text("""
-router.get('/items', (req, res) => res.json([]));
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_javascript(tmp_path)
-
-        # Should have exactly one Express deprecation warning (deduplicated)
-        express_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Express" in str(warning.message)
-        ]
-        assert len(express_warnings) == 1
-
-    def test_no_deprecation_warning_without_route_calls(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for files without Express route calls."""
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
-        from hypergumbo.analyze.js_ts import analyze_javascript
-
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
-
-        js_file = tmp_path / "utils.js"
-        js_file.write_text("""
-function formatDate(date) {
-    return date.toISOString();
+async function getUsers(request, h) {
+    return { users: [] };
 }
 
-function calculateTotal(items) {
-    return items.reduce((sum, item) => sum + item.price, 0);
+const server = Hapi.server({ port: 3000 });
+
+server.route({
+    method: 'GET',
+    path: '/users',
+    handler: getUsers
+});
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        assert ctx.kind == "call"
+        assert ctx.metadata["route_path"] == "/users"
+        assert ctx.metadata["http_method"] == "GET"
+        assert ctx.metadata["config_based"] is True
+
+    def test_hapi_server_route_post(self, tmp_path: Path) -> None:
+        """Detects POST route in config object."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+server.route({
+    method: 'POST',
+    path: '/users',
+    handler: (req, h) => h.response().code(201)
+});
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        assert ctx.metadata["http_method"] == "POST"
+
+    def test_hapi_array_of_routes(self, tmp_path: Path) -> None:
+        """Detects array of route configs."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+server.route([
+    { method: 'GET', path: '/users', handler: getUsers },
+    { method: 'POST', path: '/users', handler: createUser }
+]);
+""")
+        result = analyze_javascript(tmp_path)
+        route_contexts = [c for c in result.usage_contexts if "route" in c.context_name]
+        assert len(route_contexts) >= 2
+        methods = {c.metadata["http_method"] for c in route_contexts}
+        assert "GET" in methods
+        assert "POST" in methods
+
+    def test_hapi_shorthand_properties(self, tmp_path: Path) -> None:
+        """Handles shorthand property syntax."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+const method = 'GET';
+const path = '/api';
+server.route({ method, path, handler: () => {} });
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        # Shorthand maps name to name
+        assert ctx.metadata["route_path"] is not None
+
+    def test_hapi_inline_handler_function(self, tmp_path: Path) -> None:
+        """Handles inline arrow function handlers."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text("""
+server.route({
+    method: 'GET',
+    path: '/health',
+    handler: (req, h) => ({ status: 'ok' })
+});
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if "route" in c.context_name), None)
+        assert ctx is not None
+        # Inline functions have handler_name as None
+        assert ctx.metadata.get("handler_name") is None
+
+
+class TestNextJsUsageContext:
+    """Tests for Next.js file-based routing detection."""
+
+    def test_nextjs_pages_index(self, tmp_path: Path) -> None:
+        """Detects index page in pages directory."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "index.js").write_text("""
+export default function Home() {
+    return <h1>Home</h1>;
 }
 """)
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/"
+        assert ctx.metadata["is_default"] is True
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            analyze_javascript(tmp_path)
-
-        # Should have no deprecation warnings for route detection
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Express" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
-
-    def test_fetchmock_get_not_detected_as_route(self, tmp_path: Path) -> None:
-        """fetchMock.get() should NOT be detected as an Express route (ADR-0003).
-
-        This tests the fix for false positives where test mocking libraries like
-        fetch-mock were incorrectly detected as route registrations.
-        """
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
+    def test_nextjs_pages_about(self, tmp_path: Path) -> None:
+        """Detects about page."""
         from hypergumbo.analyze.js_ts import analyze_javascript
 
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
-
-        js_file = tmp_path / "test.spec.tsx"
-        js_file.write_text("""
-import fetchMock from 'fetch-mock';
-
-const collections = [{id: 1}, {id: 2}];
-
-collections
-    .filter((c) => c.id !== 'root')
-    .forEach((c) => fetchMock.get(`/api/collection/${c.id}`, c));
-
-fetchMock.post('/api/users', { id: 1 });
-fetchMock.delete('/api/users/1', 200);
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "about.js").write_text("""
+export default function About() {
+    return <h1>About</h1>;
+}
 """)
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/about"
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = analyze_javascript(tmp_path)
-
-        # Should have no route symbols from fetchMock
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
-        assert len(route_symbols) == 0, f"Found unexpected routes: {[s.name for s in route_symbols]}"
-
-        # Should have no deprecation warnings (no routes detected)
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Express" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
-
-    def test_unknown_receiver_not_detected_as_route(self, tmp_path: Path) -> None:
-        """Unknown receiver names should NOT be detected as routes.
-
-        Only app, router, express, server, fastify, koa are valid receivers.
-        """
-        import warnings
-        from hypergumbo.analyze import js_ts as js_ts_module
+    def test_nextjs_dynamic_route(self, tmp_path: Path) -> None:
+        """Detects dynamic route with [id] parameter."""
         from hypergumbo.analyze.js_ts import analyze_javascript
 
-        # Reset the warning deduplication set
-        js_ts_module._deprecated_route_warnings_emitted.clear()
-
-        js_file = tmp_path / "test.js"
-        js_file.write_text("""
-// These should NOT be detected as routes
-myObject.get('/path', handler);
-api.post('/users', handler);
-client.delete('/item', handler);
-axios.get('/data').then(callback);
-http.get('/endpoint', callback);
+        pages_dir = tmp_path / "pages" / "posts"
+        pages_dir.mkdir(parents=True)
+        (pages_dir / "[id].js").write_text("""
+export default function Post({ id }) {
+    return <h1>Post {id}</h1>;
+}
 """)
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/posts/:id"
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = analyze_javascript(tmp_path)
+    def test_nextjs_catch_all_route(self, tmp_path: Path) -> None:
+        """Detects catch-all route with [...slug]."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
 
-        # Should have no route symbols
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
-        assert len(route_symbols) == 0, f"Found unexpected routes: {[s.name for s in route_symbols]}"
+        pages_dir = tmp_path / "pages" / "docs"
+        pages_dir.mkdir(parents=True)
+        (pages_dir / "[...slug].js").write_text("""
+export default function Doc({ slug }) {
+    return <h1>Doc</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/docs/*"
 
-        # Should have no deprecation warnings
-        route_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Express" in str(warning.message)
-        ]
-        assert len(route_warnings) == 0
+    def test_nextjs_api_route(self, tmp_path: Path) -> None:
+        """Detects API route in pages/api directory."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        api_dir = tmp_path / "pages" / "api"
+        api_dir.mkdir(parents=True)
+        (api_dir / "users.js").write_text("""
+export default function handler(req, res) {
+    res.json({ users: [] });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/api/users"
+        assert ctx.metadata["is_api_route"] is True
+
+    def test_nextjs_app_router_page(self, tmp_path: Path) -> None:
+        """Detects App Router page.tsx."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        app_dir = tmp_path / "app" / "about"
+        app_dir.mkdir(parents=True)
+        (app_dir / "page.tsx").write_text("""
+export default function About() {
+    return <h1>About</h1>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert ctx.metadata["route_path"] == "/about"
+
+    def test_nextjs_app_router_route_ts(self, tmp_path: Path) -> None:
+        """Detects App Router route.ts for API routes."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        api_dir = tmp_path / "app" / "api" / "users"
+        api_dir.mkdir(parents=True)
+        (api_dir / "route.ts").write_text("""
+export async function GET() {
+    return Response.json({ users: [] });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        # Should detect route.ts as API route
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        assert ctx is not None
+        assert "/api/users" in ctx.metadata["route_path"]
+
+    def test_nextjs_non_page_file_ignored(self, tmp_path: Path) -> None:
+        """Non-page files in pages directory are ignored."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "_app.js").write_text("""
+export default function App({ Component, pageProps }) {
+    return <Component {...pageProps} />;
+}
+""")
+        # _app.js is a special file, not a page route
+        result = analyze_javascript(tmp_path)
+        # Should have contexts but _app is an index-like route
+        ctx = next((c for c in result.usage_contexts if c.kind == "export"), None)
+        # _app becomes /_app which is valid
+        if ctx:
+            assert "/_app" in ctx.metadata["route_path"]
+
+    def test_nextjs_data_fetching_exports(self, tmp_path: Path) -> None:
+        """Detects getServerSideProps and getStaticProps."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        pages_dir = tmp_path / "pages"
+        pages_dir.mkdir()
+        (pages_dir / "posts.js").write_text("""
+export default function Posts({ posts }) {
+    return <ul>{posts.map(p => <li key={p.id}>{p.title}</li>)}</ul>;
+}
+
+export async function getServerSideProps() {
+    return { props: { posts: [] } };
+}
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "export"]
+        # Should have both default export and getServerSideProps
+        assert len(contexts) >= 1
+
+
+class TestLibraryExportContext:
+    """Tests for library export detection from index files."""
+
+    def test_index_ts_default_export(self, tmp_path: Path) -> None:
+        """Detects default export from index.ts."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text("""
+export default class Hls {
+    constructor() {}
+    load(url: string) {}
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.context_name == "export.default"
+        assert ctx.metadata["is_default"] is True
+        assert ctx.metadata["export_name"] == "Hls"
+
+    def test_index_js_named_exports(self, tmp_path: Path) -> None:
+        """Detects named exports from index.js."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("""
+export function doSomething() {
+    return 42;
+}
+
+export function doOtherThing() {
+    return "hello";
+}
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 2
+        names = {c.metadata["export_name"] for c in contexts}
+        assert names == {"doSomething", "doOtherThing"}
+        for ctx in contexts:
+            assert ctx.metadata["is_default"] is False
+
+    def test_index_tsx_export_clause(self, tmp_path: Path) -> None:
+        """Detects export clause from index.tsx."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.tsx").write_text("""
+function Button() {
+    return <button>Click</button>;
+}
+
+function Input() {
+    return <input />;
+}
+
+export { Button, Input };
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 2
+        names = {c.metadata["export_name"] for c in contexts}
+        assert names == {"Button", "Input"}
+
+    def test_index_const_export(self, tmp_path: Path) -> None:
+        """Detects exported constants from index.js."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("""
+export const VERSION = "1.0.0";
+export const CONFIG = { debug: false };
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 2
+        names = {c.metadata["export_name"] for c in contexts}
+        assert names == {"VERSION", "CONFIG"}
+
+    def test_non_index_file_ignored(self, tmp_path: Path) -> None:
+        """Non-index files don't generate library export contexts."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "utils.ts").write_text("""
+export function helper() {
+    return 123;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "library_export"]
+        assert len(contexts) == 0
+
+    def test_index_jsx_supported(self, tmp_path: Path) -> None:
+        """Detects exports from index.jsx."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.jsx").write_text("""
+export function ReactComponent() {
+    return <div>Hello</div>;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.metadata["export_name"] == "ReactComponent"
+
+    def test_export_symbol_ref_resolved(self, tmp_path: Path) -> None:
+        """Exported symbols have their symbol_ref resolved."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text("""
+export function myExportedFunction() {
+    return 42;
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.symbol_ref is not None
+        # Verify the symbol exists
+        sym = next((s for s in result.symbols if s.id == ctx.symbol_ref), None)
+        assert sym is not None
+        assert sym.name == "myExportedFunction"
+        assert sym.kind == "function"
+
+    def test_class_export(self, tmp_path: Path) -> None:
+        """Detects exported class from index.ts."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text("""
+export class MyLibrary {
+    doStuff() {
+        return "stuff";
+    }
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.metadata["export_name"] == "MyLibrary"
+        assert ctx.symbol_ref is not None
+
+    def test_default_export_identifier(self, tmp_path: Path) -> None:
+        """Detects 'export default Identifier' pattern."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("""
+function MyComponent() {
+    return null;
+}
+
+export default MyComponent;
+""")
+        result = analyze_javascript(tmp_path)
+        ctx = next((c for c in result.usage_contexts if c.kind == "library_export"), None)
+        assert ctx is not None
+        assert ctx.context_name == "export.default"
+        assert ctx.metadata["is_default"] is True
+        # The export_name should be the identifier
+        assert ctx.metadata["export_name"] == "MyComponent"

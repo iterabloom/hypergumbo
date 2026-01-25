@@ -7,11 +7,12 @@ Version Distinction
 -------------------
 **SCHEMA_VERSION vs Tool Version:**
 
-- **SCHEMA_VERSION** (defined here): The output format version, embedded in
-  every JSON output as `schema_version`. It only increments when there are
-  breaking changes to the output schema (new required fields, changed field
-  types, removed fields, etc.). Consumers can use this to check compatibility
-  with their parsers.
+- **SCHEMA_VERSION** (defined here): The schema documentation version, embedded
+  in every JSON output as `schema_version`. It increments for significant changes
+  to `docs/schema.json`, which is a **unified schema** containing both behavior map
+  output definitions AND framework pattern types for YAML validation. Breaking
+  changes to output format bump minor; additions like new type definitions for
+  YAML patterns bump patch. Consumers can use this to check compatibility.
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
@@ -40,13 +41,33 @@ Why This Design
 - Scheme identifiers let consumers know how to interpret computed IDs
 - Factory function ensures all required fields are present
 - Separating schema from IR keeps output format concerns isolated
+
+Related Files
+-------------
+This module works with two other components to provide schema infrastructure:
+
+**This file (schema.py)** - Runtime constants and factory
+- Defines SCHEMA_VERSION and scheme identifiers
+- Provides new_behavior_map() factory for output generation
+- Used at runtime when hypergumbo generates JSON output
+
+**scripts/generate-schema** - Documentation generator
+- Generates docs/schema.json from Python dataclasses
+- Imports SCHEMA_VERSION from here to embed in the JSON Schema
+- Run at dev time; pre-commit hooks verify it stays in sync
+
+**docs/schema.json** - Unified formal schema
+- Formal JSON Schema for external validation and IDE autocompletion
+- Contains BOTH behavior map output definitions AND framework pattern
+  types (Pattern, FrameworkPatternDef) for YAML validation
+- Auto-generated; do not edit directly
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.2.1"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v1"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"
@@ -75,6 +96,7 @@ def new_behavior_map() -> Dict[str, Any]:
         "profile": {},
         "nodes": [],
         "edges": [],
+        "usage_contexts": [],
         "features": [],
         "metrics": {},
         "limits": {},

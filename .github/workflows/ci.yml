@@ -7,7 +7,43 @@ on:
     branches: [ "main", "dev" ]
 
 jobs:
+  # Detect what files changed to skip expensive jobs for docs-only PRs
+  changes:
+    runs-on: codeberg-small-lazy
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect code changes
+        id: filter
+        run: |
+          # For PRs, compare against base branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            # For push, compare against previous commit
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          # Check if any non-doc files changed
+          # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
+          CODE_PATTERNS='\.py$|\.yaml$|\.yml$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+
+          if git diff --name-only "$base" "$head" | grep -qE "$CODE_PATTERNS"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Code changes detected"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only changes, skipping expensive jobs"
+          fi
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -15,6 +51,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
       - name: Install linting tools
         run: |
           pip install --upgrade pip
@@ -48,6 +85,8 @@ jobs:
           echo "✅ All commits have DCO sign-off"
 
   audit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +94,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
       - name: Install pip-audit
         run: |
           pip install --upgrade pip
@@ -63,6 +103,8 @@ jobs:
         run: pip-audit --skip-editable
 
   verify-generated:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +112,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -80,6 +123,8 @@ jobs:
         run: ./scripts/generate-architecture --check
 
   pytest:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -87,36 +132,92 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
       - name: Install core dependencies
         run: |
           pip install --upgrade pip
           pip install -e .[dev]
-      - name: Build source-only grammars (while memory is fresh)
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+      - name: Check for sentence-transformers
         run: |
-          # Build grammars BEFORE trying sentence-transformers since
-          # torch/cuBLAS can fragment memory and cause OOM during builds
-          ./scripts/build-source-grammars
-      - name: Try installing sentence-transformers (optional)
-        run: |
-          echo "Attempting to install sentence-transformers..."
-          # Try install with timeout; track result for contingency
-          if timeout 300 pip install sentence-transformers 2>&1; then
-            echo "sentence-transformers installed successfully"
+          # Don't try to install - just check if it's already available.
+          # See CONTRIBUTING.md for details on embedding test requirements.
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
             echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
           else
-            echo "::warning::sentence-transformers install failed (expected on small runners)"
+            echo "sentence-transformers not installed, embedding tests will be skipped"
             echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
-        continue-on-error: true
-      - name: Contingency reinstall (if sentence-transformers failed)
-        if: always() && env.EMBEDDINGS_AVAILABLE != 'true'
+      - name: Run tests with coverage
         run: |
-          echo "Reinstalling clean [dev] dependencies..."
-          # Clear any partial state from failed install
-          pip cache purge 2>/dev/null || true
-          pip uninstall -y sentence-transformers torch transformers huggingface_hub safetensors 2>/dev/null || true
-          # Fresh reinstall of core deps (grammars already built, so skip rebuild)
-          pip install -e .[dev] --force-reinstall
-      - name: Run tests
+          pytest -n 2 --cov=src --cov-report=term | tee coverage-output.txt
+      - name: Update coverage badge
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
         run: |
-          pytest
+          # Extract coverage percentage from pytest output
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          if [ -z "$COV" ]; then
+            echo "Could not extract coverage percentage"
+            exit 0  # Don't fail the build
+          fi
+
+          # Determine badge color based on coverage
+          if [ "$COV" -ge 90 ]; then
+            COLOR="brightgreen"
+          elif [ "$COV" -ge 70 ]; then
+            COLOR="yellow"
+          else
+            COLOR="red"
+          fi
+
+          # Create shields.io endpoint JSON in temp location
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
+
+          # Configure git
+          git config user.name "CI Bot"
+          git config user.email "ci@iterabloom.com"
+
+          # Fetch badges branch or create orphan
+          git fetch origin badges:badges 2>/dev/null || true
+          git checkout badges 2>/dev/null || git checkout --orphan badges
+
+          # Clean branch and add only coverage.json
+          git rm -rf . 2>/dev/null || true
+          cp /tmp/coverage.json coverage.json
+
+          # Commit and push
+          git add coverage.json
+          git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
+          git push origin badges --force || echo "Push failed - may need write permissions"
+
+  # Final gate job - ensures workflow completes even when jobs are skipped
+  # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
+  ci-complete:
+    needs: [changes, lint, audit, verify-generated, pytest, dco]
+    if: always()
+    runs-on: codeberg-small-lazy
+    steps:
+      - name: Check job results
+        run: |
+          echo "Job results:"
+          echo "  changes: ${{ needs.changes.result }}"
+          echo "  lint: ${{ needs.lint.result }}"
+          echo "  audit: ${{ needs.audit.result }}"
+          echo "  verify-generated: ${{ needs.verify-generated.result }}"
+          echo "  pytest: ${{ needs.pytest.result }}"
+          echo "  dco: ${{ needs.dco.result }}"
+
+          # Fail if any required job failed (skipped is OK)
+          if [[ "${{ needs.changes.result }}" == "failure" ]] || \
+             [[ "${{ needs.lint.result }}" == "failure" ]] || \
+             [[ "${{ needs.audit.result }}" == "failure" ]] || \
+             [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
+             [[ "${{ needs.pytest.result }}" == "failure" ]] || \
+             [[ "${{ needs.dco.result }}" == "failure" ]]; then
+            echo "❌ One or more jobs failed"
+            exit 1
+          fi
+
+          echo "✅ All required jobs passed or were skipped"

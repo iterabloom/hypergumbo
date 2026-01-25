@@ -369,6 +369,118 @@ class TestScalaFileReadErrors:
         assert result == []
 
 
+class TestImportHintsExtraction:
+    """Tests for import hints extraction for disambiguation."""
+
+    def test_extracts_simple_import(self, tmp_path: Path) -> None:
+        """Extracts simple import using last component."""
+        from hypergumbo.analyze.scala import (
+            _extract_import_hints,
+            is_scala_tree_sitter_available,
+        )
+
+        if not is_scala_tree_sitter_available():
+            pytest.skip("tree-sitter-scala not available")
+
+        import tree_sitter_scala
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_scala.language())
+        parser = tree_sitter.Parser(lang)
+
+        scala_file = tmp_path / "Main.scala"
+        scala_file.write_text("""
+import scala.collection.mutable.HashMap
+
+object Main {
+  def run(): Unit = {
+    val map = new HashMap[String, Int]()
+  }
+}
+""")
+
+        source = scala_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_import_hints(tree, source)
+
+        # Last component of import path should be the short name
+        assert "HashMap" in hints
+        assert hints["HashMap"] == "scala.collection.mutable.HashMap"
+
+    def test_extracts_import_selectors(self, tmp_path: Path) -> None:
+        """Extracts multiple imports from selector syntax."""
+        from hypergumbo.analyze.scala import (
+            _extract_import_hints,
+            is_scala_tree_sitter_available,
+        )
+
+        if not is_scala_tree_sitter_available():
+            pytest.skip("tree-sitter-scala not available")
+
+        import tree_sitter_scala
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_scala.language())
+        parser = tree_sitter.Parser(lang)
+
+        scala_file = tmp_path / "Main.scala"
+        scala_file.write_text("""
+import scala.collection.mutable.{HashMap, ListBuffer}
+
+object Main {
+  def run(): Unit = {}
+}
+""")
+
+        source = scala_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_import_hints(tree, source)
+
+        # Both selected imports should be mapped
+        assert "HashMap" in hints
+        assert hints["HashMap"] == "scala.collection.mutable.HashMap"
+        assert "ListBuffer" in hints
+        assert hints["ListBuffer"] == "scala.collection.mutable.ListBuffer"
+
+    def test_extracts_renamed_import(self, tmp_path: Path) -> None:
+        """Extracts renamed import with alias."""
+        from hypergumbo.analyze.scala import (
+            _extract_import_hints,
+            is_scala_tree_sitter_available,
+        )
+
+        if not is_scala_tree_sitter_available():
+            pytest.skip("tree-sitter-scala not available")
+
+        import tree_sitter_scala
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_scala.language())
+        parser = tree_sitter.Parser(lang)
+
+        scala_file = tmp_path / "Main.scala"
+        scala_file.write_text("""
+import scala.collection.mutable.{HashMap => MutableMap}
+
+object Main {
+  def run(): Unit = {
+    val map = new MutableMap[String, Int]()
+  }
+}
+""")
+
+        source = scala_file.read_bytes()
+        tree = parser.parse(source)
+
+        hints = _extract_import_hints(tree, source)
+
+        # Alias should map to the original full path
+        assert "MutableMap" in hints
+        assert hints["MutableMap"] == "scala.collection.mutable.HashMap"
+
+
 class TestScalaHelperFunctions:
     """Tests for helper function edge cases."""
 

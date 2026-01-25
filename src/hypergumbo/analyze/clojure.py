@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import iter_tree
 
 if TYPE_CHECKING:
@@ -101,6 +102,7 @@ class FileAnalysis:
     source: bytes
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
+    require_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -281,9 +283,11 @@ def _find_enclosing_defn(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
-    global_symbol_registry: dict[str, Symbol],
 ) -> Symbol | None:
-    """Find the enclosing defn/defn- function for a given node."""
+    """Find the enclosing defn/defn- function for a given node.
+
+    Uses local_symbols only since the enclosing function must be in the same file.
+    """
     current = node.parent
     while current:
         if current.type == "list_lit":
@@ -294,11 +298,61 @@ def _find_enclosing_defn(
                 if first_sym in ("defn", "defn-") and len(inner) > 1:
                     if inner[1].type == "sym_lit":
                         def_name = _get_sym_name(inner[1], source)
-                        sym = local_symbols.get(def_name) or global_symbol_registry.get(def_name)
+                        sym = local_symbols.get(def_name)
                         if sym:
                             return sym
         current = current.parent
     return None
+
+
+def _extract_require_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract namespace aliases from require forms for disambiguation.
+
+    In Clojure:
+        (:require [clojure.string :as str]) -> str maps to clojure.string
+        (:require [my.util :as u :refer [helper]]) -> u maps to my.util
+
+    Returns a dict mapping alias names to full namespace paths.
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        # Look for kwd_lit with :require
+        if node.type == "kwd_lit":
+            kwd_name_node = _find_child_by_type(node, "kwd_name")
+            if kwd_name_node and _node_text(kwd_name_node, source) == "require":
+                # Found :require - parent should be the list_lit for (:require ...)
+                parent = node.parent
+                if parent and parent.type == "list_lit":
+                    # Iterate siblings (vec_lit nodes are the require specs)
+                    for sibling in parent.children:
+                        if sibling.type == "vec_lit":
+                            # Parse [namespace :as alias]
+                            vec_children = sibling.children
+                            ns_name: Optional[str] = None
+                            alias_name: Optional[str] = None
+                            looking_for_alias = False
+
+                            for child in vec_children:
+                                if child.type == "sym_lit" and ns_name is None:
+                                    ns_name = _node_text(child, source)
+                                elif child.type == "kwd_lit":
+                                    kwd = _node_text(child, source)
+                                    if kwd == ":as":
+                                        looking_for_alias = True
+                                    else:
+                                        looking_for_alias = False
+                                elif child.type == "sym_lit" and looking_for_alias:
+                                    alias_name = _node_text(child, source)
+                                    looking_for_alias = False
+
+                            if ns_name and alias_name:
+                                aliases[alias_name] = ns_name
+
+    return aliases
 
 
 def _extract_edges_from_file(
@@ -306,15 +360,21 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    global_symbol_registry: dict[str, Symbol],
+    resolver: NameResolver,
     run_id: str,
+    require_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Clojure file.
+
+    Args:
+        require_aliases: Optional dict mapping namespace aliases to full paths.
 
     Detects:
     - Function calls (list_lit starting with sym_lit)
     - require statements (:require in ns form)
     """
+    if require_aliases is None:  # pragma: no cover - defensive default
+        require_aliases = {}
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
 
@@ -374,20 +434,31 @@ def _extract_edges_from_file(
 
                 # Handle function calls (not def forms)
                 elif not _is_def_form(first_sym):
-                    caller = _find_enclosing_defn(node, source, local_symbols, global_symbol_registry)
+                    caller = _find_enclosing_defn(node, source, local_symbols)
                     if caller:
                         callee_name = first_sym
-                        callee = local_symbols.get(callee_name) or global_symbol_registry.get(callee_name)
-                        if callee:
+                        path_hint: Optional[str] = None
+
+                        # Check for namespaced call (str/join -> ns=str, fn=join)
+                        sym_node = inner[0]
+                        ns_node = _find_child_by_type(sym_node, "sym_ns")
+                        if ns_node:
+                            ns_alias = _node_text(ns_node, source)
+                            # Look up the full namespace from require aliases
+                            path_hint = require_aliases.get(ns_alias)
+
+                        # Use resolver for all callee lookups
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol:
                             edge = Edge.create(
                                 src=caller.id,
-                                dst=callee.id,
+                                dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="function_call",
-                                confidence=0.85,
+                                confidence=0.85 * lookup_result.confidence,
                             )
                             edges.append(edge)
 
@@ -462,6 +533,9 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
         file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
         all_symbols.extend(file_symbols)
 
+        # Extract require aliases for disambiguation
+        require_aliases = _extract_require_aliases(tree, source)
+
         # Register symbols globally (for cross-file resolution)
         for sym in file_symbols:
             global_symbol_registry[sym.name] = sym
@@ -471,10 +545,12 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
             source=source,
             tree=tree,
             symbols=file_symbols,
+            require_aliases=require_aliases,
         ))
         files_analyzed += 1
 
     # Pass 2: Extract edges with cross-file resolution
+    resolver = NameResolver(global_symbol_registry)
     all_edges: list[Edge] = []
 
     for fa in file_analyses:
@@ -483,8 +559,9 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
             fa.source,
             fa.path,
             fa.symbols,
-            global_symbol_registry,
+            resolver,
             run_id,
+            require_aliases=fa.require_aliases,
         )
         all_edges.extend(edges)
 

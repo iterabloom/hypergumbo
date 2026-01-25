@@ -18,7 +18,7 @@ def test_excludes_node_modules(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -41,7 +41,7 @@ def test_excludes_venv(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -61,7 +61,7 @@ def test_excludes_dot_venv(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -80,7 +80,7 @@ def test_excludes_dist(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -99,7 +99,7 @@ def test_excludes_build(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -118,7 +118,7 @@ def test_excludes_dot_git(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -137,7 +137,7 @@ def test_excludes_pycache(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -157,7 +157,7 @@ def test_excludes_nested_node_modules(tmp_path: Path) -> None:
     excluded_file.write_text("def excluded(): pass")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -178,7 +178,7 @@ def test_excludes_html_in_node_modules(tmp_path: Path) -> None:
     excluded_html.write_text('<html><script src="demo.js"></script></html>')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 

@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 from .base import (
     AnalysisResult,
     FileAnalysis,
@@ -61,8 +62,12 @@ CppAnalysisResult = AnalysisResult
 
 
 def find_cpp_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all C++ files in the repository."""
-    yield from find_files(repo_root, ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hxx", "*.h"])
+    """Yield all C++ files in the repository.
+
+    Headers (.h, .hpp, .hxx) are yielded before source files (.cpp, .cc, .cxx)
+    so that definitions can replace declarations when building the symbol registry.
+    """
+    yield from find_files(repo_root, ["*.h", "*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
 
 
 def is_cpp_tree_sitter_available() -> bool:
@@ -175,6 +180,9 @@ def _extract_symbols_from_file(
         return FileAnalysis()
 
     analysis = FileAnalysis()
+
+    # Extract namespace aliases for ADR-0007
+    analysis.import_aliases = _extract_namespace_aliases(tree.root_node, source)
 
     # Use iterative traversal to avoid RecursionError on deeply nested code
     for node in iter_tree(tree.root_node):
@@ -291,17 +299,52 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_namespace_aliases(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract namespace aliases from C++ source (ADR-0007).
+
+    Namespace alias syntax:
+        namespace fs = std::filesystem;
+
+    Returns dict mapping alias → qualified_namespace (e.g., "fs" → "std::filesystem").
+    """
+    aliases: dict[str, str] = {}
+    for node in iter_tree(root_node):
+        if node.type == "namespace_alias_definition":
+            alias_name = None
+            target_namespace = None
+            for child in node.children:
+                if child.type == "namespace_identifier" and alias_name is None:
+                    alias_name = _node_text(child, source)
+                elif child.type == "nested_namespace_specifier":
+                    target_namespace = _node_text(child, source)
+            if alias_name and target_namespace:
+                aliases[alias_name] = target_namespace
+    return aliases
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    resolver: NameResolver | None = None,
+    namespace_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a file.
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+
+    Args:
+        namespace_aliases: Mapping of alias → qualified_namespace for path_hint (ADR-0007)
     """
+    if resolver is None:  # pragma: no cover - defensive
+        resolver = NameResolver(global_symbols)
+    if namespace_aliases is None:
+        namespace_aliases = {}  # pragma: no cover - always passed by caller
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -394,6 +437,18 @@ def _extract_edges_from_file(
                     # Try to resolve: look for short name first
                     short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
 
+                    # Extract namespace prefix for path_hint (ADR-0007)
+                    path_hint = None
+                    if "::" in callee_name:
+                        ns_prefix = callee_name.split("::")[0]
+                        # Check if namespace prefix is an alias
+                        if ns_prefix in namespace_aliases:
+                            # Resolve alias: fs::func -> std::filesystem as path_hint
+                            path_hint = namespace_aliases[ns_prefix]
+                        else:
+                            # Use explicit namespace as path_hint
+                            path_hint = ns_prefix
+
                     # Check local symbols first
                     if short_name in local_symbols:
                         callee = local_symbols[short_name]
@@ -407,19 +462,20 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    # Check global symbols
-                    elif short_name in global_symbols:
-                        callee = global_symbols[short_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="function_call",
-                            confidence=0.80,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                    # Check global symbols via resolver
+                    else:
+                        lookup_result = resolver.lookup(short_name, path_hint=path_hint)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.80 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
         # new expression
         elif node.type == "new_expression":
@@ -450,18 +506,19 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    elif type_name in global_symbols:
-                        target = global_symbols[type_name]
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=target.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            evidence_type="new_expression",
-                            confidence=0.85,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                    else:
+                        lookup_result = resolver.lookup(type_name)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="instantiates",
+                                line=node.start_point[0] + 1,
+                                evidence_type="new_expression",
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
 
         # Add children to stack with updated context
         for child in reversed(node.children):
@@ -516,15 +573,30 @@ def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
             files_skipped += 1
 
     # Build global symbol registry
+    # Prefer function definitions (.cpp/.cc/.cxx) over declarations (.h/.hpp/.hxx)
+    # This ensures call edges point to implementations (with outgoing calls)
     global_symbols: dict[str, Symbol] = {}
     for analysis in file_analyses.values():
         for symbol in analysis.symbols:
             # Store by short name for cross-file resolution
             short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
+            # Check if this is a source file (definition) vs header (declaration)
+            sym_is_source = any(symbol.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
+            for name in (short_name, symbol.name):
+                existing = global_symbols.get(name)
+                if existing is None:
+                    global_symbols[name] = symbol
+                else:
+                    # Prefer source files over headers
+                    # Note: Currently C++ analyzer only extracts function_definition nodes,
+                    # not forward declarations. This path handles potential future support
+                    # for declaration extraction or edge cases with duplicate definitions.
+                    existing_is_source = any(existing.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
+                    if sym_is_source and not existing_is_source:
+                        global_symbols[name] = symbol  # pragma: no cover
 
     # Pass 2: Extract edges
+    resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
@@ -532,7 +604,8 @@ def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            cpp_file, parser, analysis.symbol_by_name, global_symbols, run
+            cpp_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+            namespace_aliases=analysis.import_aliases,
         )
         all_edges.extend(edges)
 

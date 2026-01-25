@@ -392,3 +392,65 @@ greet({name, Name}) ->
         funcs = [s for s in result.symbols if s.kind == "function" and "greet" in s.name]
         assert len(funcs) == 1
         assert funcs[0].signature == "({name, Name})"
+
+
+class TestErlangImportAliases:
+    """Tests for Erlang import alias tracking (ADR-0007)."""
+
+    def test_extracts_import_aliases(self, tmp_path: Path) -> None:
+        """Extracts function -> module mapping from -import statements."""
+        from hypergumbo.analyze.erlang import _extract_import_aliases
+        from tree_sitter_language_pack import get_parser
+
+        source = b"""
+-module(test).
+-import(lists, [map/2, filter/2]).
+-import(string, [join/2]).
+"""
+        parser = get_parser("erlang")
+        tree = parser.parse(source)
+
+        aliases = _extract_import_aliases(tree.root_node, source)
+
+        assert aliases["map"] == "lists"
+        assert aliases["filter"] == "lists"
+        assert aliases["join"] == "string"
+
+    def test_import_alias_used_for_path_hint(self, tmp_path: Path) -> None:
+        """Imported functions use module as path_hint for resolution."""
+        # Module with a function
+        make_erl_file(
+            tmp_path,
+            "myutils.erl",
+            """
+-module(myutils).
+-export([process/1]).
+
+process(X) ->
+    X * 2.
+""",
+        )
+        # Module that imports and calls it without module prefix
+        make_erl_file(
+            tmp_path,
+            "app.erl",
+            """
+-module(app).
+-import(myutils, [process/1]).
+-export([run/1]).
+
+run(X) ->
+    process(X).
+""",
+        )
+
+        result = analyze_erlang(tmp_path)
+        assert not result.skipped
+
+        # Should have a call edge from run to process
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_sym = next(s for s in result.symbols if s.name == "run/1")
+        process_sym = next(s for s in result.symbols if s.name == "process/1")
+
+        edge_pairs = [(e.src, e.dst) for e in call_edges]
+        assert (run_sym.id, process_sym.id) in edge_pairs

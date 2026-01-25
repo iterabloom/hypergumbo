@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from .base import iter_tree
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -242,23 +243,21 @@ def _find_references_in_columns(node: "tree_sitter.Node", source: bytes) -> list
     return references
 
 
-def _process_sql_tree(
+def _extract_sql_symbols(
     root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
-    edges: list[Edge],
-    symbol_registry: dict[str, tuple[str, str]],
+    symbol_registry: dict[str, Symbol],
 ) -> None:
-    """Process SQL AST tree to extract symbols and edges.
+    """Extract symbols from SQL AST tree (pass 1).
 
     Args:
         root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
-        edges: List to append edges to
-        symbol_registry: Registry mapping lowercase names to (symbol_id, kind)
+        symbol_registry: Registry mapping lowercase names to Symbol objects
     """
     for node in iter_tree(root_node):
         if node.type == "create_table":
@@ -286,27 +285,7 @@ def _process_sql_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name.lower()] = (symbol_id, "table")
-
-                # Look for REFERENCES in column definitions
-                col_defs = _find_child_by_type(node, "column_definitions")
-                if col_defs:
-                    refs = _find_references_in_columns(col_defs, source)
-                    for ref_table in refs:
-                        ref_lower = ref_table.lower()
-                        if ref_lower in symbol_registry:
-                            dst_id, _ = symbol_registry[ref_lower]
-                            edge = Edge(
-                                id=_make_edge_id(symbol_id, dst_id, "references"),
-                                src=symbol_id,
-                                dst=dst_id,
-                                edge_type="references",
-                                line=start_line,
-                                confidence=0.90,
-                                origin=PASS_ID,
-                                evidence_type="sql_foreign_key",
-                            )
-                            edges.append(edge)
+                symbol_registry[name.lower()] = sym
 
         elif node.type == "create_view":
             name = _extract_view_name(node, source)
@@ -333,7 +312,7 @@ def _process_sql_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name.lower()] = (symbol_id, "view")
+                symbol_registry[name.lower()] = sym
 
         elif node.type == "create_function":
             name = _extract_function_name(node, source)
@@ -361,7 +340,7 @@ def _process_sql_tree(
                     signature=_extract_sql_signature(node, source),
                 )
                 symbols.append(sym)
-                symbol_registry[name.lower()] = (symbol_id, "function")
+                symbol_registry[name.lower()] = sym
 
         # Note: CREATE PROCEDURE syntax varies by dialect and may not be
         # supported by the tree-sitter-sql grammar in all cases
@@ -390,7 +369,7 @@ def _process_sql_tree(
                     origin=PASS_ID,  # pragma: no cover
                 )  # pragma: no cover
                 symbols.append(sym)  # pragma: no cover
-                symbol_registry[name.lower()] = (symbol_id, "procedure")  # pragma: no cover
+                symbol_registry[name.lower()] = sym  # pragma: no cover
 
         elif node.type == "create_trigger":
             name = _extract_trigger_name(node, source)
@@ -417,7 +396,7 @@ def _process_sql_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name.lower()] = (symbol_id, "trigger")
+                symbol_registry[name.lower()] = sym
 
         elif node.type == "create_index":
             name = _extract_index_name(node, source)
@@ -444,54 +423,71 @@ def _process_sql_tree(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
-                symbol_registry[name.lower()] = (symbol_id, "index")
+                symbol_registry[name.lower()] = sym
 
 
-def _find_cross_file_refs(  # pragma: no cover
-    root_node: "tree_sitter.Node",  # pragma: no cover
-    source: bytes,  # pragma: no cover
-    rel_path: str,  # pragma: no cover
-    symbols: list[Symbol],  # pragma: no cover
-    edges: list[Edge],  # pragma: no cover
-    symbol_registry: dict[str, tuple[str, str]],  # pragma: no cover
-) -> None:  # pragma: no cover
-    """Find cross-file references in a second pass."""
-    for node in iter_tree(root_node):  # pragma: no cover
-        if node.type == "create_table":  # pragma: no cover
-            name = _extract_table_name(node, source)  # pragma: no cover
-            if name:  # pragma: no cover
-                symbol_id = None  # pragma: no cover
-                line_num = node.start_point[0] + 1  # pragma: no cover
-                for sym in symbols:  # pragma: no cover
-                    if sym.name == name and sym.kind == "table" and sym.path == rel_path:  # pragma: no cover
-                        symbol_id = sym.id  # pragma: no cover
-                        break  # pragma: no cover
-                if symbol_id:  # pragma: no cover
-                    col_defs = _find_child_by_type(node, "column_definitions")  # pragma: no cover
-                    if col_defs:  # pragma: no cover
-                        refs = _find_references_in_columns(col_defs, source)  # pragma: no cover
-                        for ref_table in refs:  # pragma: no cover
-                            ref_lower = ref_table.lower()  # pragma: no cover
-                            if ref_lower in symbol_registry:  # pragma: no cover
-                                dst_id, _ = symbol_registry[ref_lower]  # pragma: no cover
-                                edge_id = _make_edge_id(symbol_id, dst_id, "references")  # pragma: no cover
-                                # Check if edge already exists  # pragma: no cover
-                                if not any(e.id == edge_id for e in edges):  # pragma: no cover
-                                    edge = Edge(  # pragma: no cover
-                                        id=edge_id,  # pragma: no cover
-                                        src=symbol_id,  # pragma: no cover
-                                        dst=dst_id,  # pragma: no cover
-                                        edge_type="references",  # pragma: no cover
-                                        line=line_num,  # pragma: no cover
-                                        confidence=0.90,  # pragma: no cover
-                                        origin=PASS_ID,  # pragma: no cover
-                                        evidence_type="sql_foreign_key",  # pragma: no cover
-                                    )  # pragma: no cover
-                                    edges.append(edge)  # pragma: no cover
+def _extract_sql_edges(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    resolver: NameResolver,
+) -> None:
+    """Extract edges from SQL AST tree (pass 2).
+
+    Uses NameResolver for reference resolution to enable cross-file symbol lookup.
+
+    Args:
+        root_node: Root tree-sitter node to process
+        source: Source file bytes
+        rel_path: Relative path to file
+        symbols: List of symbols (to find table symbol IDs)
+        edges: List to append edges to
+        resolver: NameResolver for reference resolution
+    """
+    for node in iter_tree(root_node):
+        if node.type == "create_table":
+            name = _extract_table_name(node, source)
+            if name:
+                # Find the symbol ID for this table
+                table_sym = None
+                for sym in symbols:
+                    if sym.name == name and sym.kind == "table" and sym.path == rel_path:
+                        table_sym = sym
+                        break
+
+                if table_sym:
+                    start_line = node.start_point[0] + 1
+                    # Look for REFERENCES in column definitions
+                    col_defs = _find_child_by_type(node, "column_definitions")
+                    if col_defs:
+                        refs = _find_references_in_columns(col_defs, source)
+                        for ref_table in refs:
+                            # Use resolver for reference resolution
+                            lookup_result = resolver.lookup(ref_table.lower())
+                            if lookup_result.found and lookup_result.symbol:
+                                dst_id = lookup_result.symbol.id
+                                confidence = 0.90 * lookup_result.confidence
+                                edge = Edge(
+                                    id=_make_edge_id(table_sym.id, dst_id, "references"),
+                                    src=table_sym.id,
+                                    dst=dst_id,
+                                    edge_type="references",
+                                    line=start_line,
+                                    confidence=confidence,
+                                    origin=PASS_ID,
+                                    evidence_type="sql_foreign_key",
+                                )
+                                edges.append(edge)
 
 
 def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
     """Analyze SQL files in the repository.
+
+    Uses two-pass analysis:
+    - Pass 1: Extract all symbols from all files
+    - Pass 2: Extract edges using NameResolver for cross-file resolution
 
     Args:
         repo_root: Path to the repository root
@@ -516,8 +512,8 @@ def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
-    # Symbol registry for cross-file resolution: name -> (symbol_id, kind)
-    symbol_registry: dict[str, tuple[str, str]] = {}
+    # Global symbol registry for cross-file resolution: name -> Symbol
+    global_symbol_registry: dict[str, Symbol] = {}
 
     # Create parser
     try:
@@ -531,6 +527,9 @@ def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
 
     sql_files = list(find_sql_files(repo_root))
 
+    # Store parsed trees for pass 2
+    parsed_files: list[tuple[str, bytes, object]] = []
+
     # Pass 1: Extract all symbols
     for sql_path in sql_files:
         try:
@@ -539,40 +538,35 @@ def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
             tree = parser.parse(source)
             files_analyzed += 1
 
-            # Process nodes for this file - use _process_sql_node helper
-            _process_sql_tree(
+            # Extract symbols
+            _extract_sql_symbols(
                 tree.root_node,
                 source,
                 rel_path,
                 symbols,
-                edges,
-                symbol_registry,
+                global_symbol_registry,
             )
+
+            # Store for pass 2
+            parsed_files.append((rel_path, source, tree))
 
         except Exception as e:  # pragma: no cover
             files_skipped += 1  # pragma: no cover
             warnings_list.append(f"Failed to parse {sql_path}: {e}")  # pragma: no cover
 
-    # Pass 2: Re-process to find cross-file references (now that registry is complete)
-    # This catches references to tables defined in different files that were
-    # processed after the referencing table in pass 1.
-    for sql_path in sql_files:  # pragma: no cover
-        try:  # pragma: no cover
-            rel_path = str(sql_path.relative_to(repo_root))  # pragma: no cover
-            source = sql_path.read_bytes()  # pragma: no cover
-            tree = parser.parse(source)  # pragma: no cover
+    # Create resolver from global registry
+    resolver = NameResolver(global_symbol_registry)
 
-            _find_cross_file_refs(  # pragma: no cover
-                tree.root_node,  # pragma: no cover
-                source,  # pragma: no cover
-                rel_path,  # pragma: no cover
-                symbols,  # pragma: no cover
-                edges,  # pragma: no cover
-                symbol_registry,  # pragma: no cover
-            )  # pragma: no cover
-
-        except Exception:  # pragma: no cover
-            pass  # Already counted in pass 1  # pragma: no cover
+    # Pass 2: Extract edges using resolver
+    for rel_path, source, tree in parsed_files:
+        _extract_sql_edges(
+            tree.root_node,  # type: ignore
+            source,
+            rel_path,
+            symbols,
+            edges,
+            resolver,
+        )
 
     duration_ms = int((time.time() - start_time) * 1000)
 

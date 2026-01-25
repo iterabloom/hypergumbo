@@ -274,8 +274,8 @@ def test_cmd_search_input_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_cmd_search_no_results_file(tmp_path: Path) -> None:
-    """Search fails if no results file exists."""
+def test_cmd_search_auto_runs_analysis(tmp_path: Path, capsys) -> None:
+    """Search auto-runs analysis if no results file exists."""
     args = FakeArgs()
     args.pattern = "foo"
     args.path = str(tmp_path)
@@ -286,7 +286,10 @@ def test_cmd_search_no_results_file(tmp_path: Path) -> None:
 
     result = cmd_search(args)
 
-    assert result == 1
+    # Auto-runs analysis and succeeds (even if no matches found)
+    assert result == 0
+    _, err = capsys.readouterr()
+    assert "No cached results found, running analysis" in err
 
 
 def test_cmd_search_respects_limit(tmp_path: Path, capsys) -> None:
@@ -352,3 +355,40 @@ def test_main_with_search(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "test" in out
+
+
+def test_cmd_search_prints_output_summary(tmp_path: Path, capsys) -> None:
+    """Search prints output summary to stdout."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:test:function",
+                "name": "test",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.pattern = "test"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = None
+
+    result = cmd_search(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # With auto-discovery, uses cached results
+    assert "[hypergumbo search] Using 1 cached" in out
+    assert "Output: stdout" in out

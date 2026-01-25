@@ -284,7 +284,7 @@ class TestLinkHttp:
         client_file = tmp_path / "client.js"
         client_file.write_text('fetch("/api/users")')
 
-        # Create a route symbol (as if from Express analyzer)
+        # Create a route symbol (as if from Express analyzer with concepts)
         route_symbol = Symbol(
             id="server.js::getUsers",
             name="getUsers",
@@ -292,8 +292,10 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="GET",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -309,7 +311,7 @@ class TestLinkHttp:
         client_file = tmp_path / "client.py"
         client_file.write_text('import requests\nrequests.get("/api/users")')
 
-        # Create a route symbol (as if from Flask analyzer)
+        # Create a route symbol (as if from Flask analyzer with concepts)
         route_symbol = Symbol(
             id="server.py::get_users",
             name="get_users",
@@ -317,8 +319,10 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="GET",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -340,8 +344,10 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="GET",
-            meta={"route_path": "/api/users/:id", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users/:id", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -362,8 +368,10 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="GET",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -384,8 +392,10 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="GET",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -406,8 +416,10 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="GET",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -542,8 +554,10 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="GET",
-            meta={"route_path": "API_URL", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "API_URL", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -564,8 +578,10 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="GET",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
         )
 
         result = link_http(tmp_path, [route_symbol])
@@ -707,30 +723,6 @@ class TestConceptMetadataSupport:
         # Should match new-path from concept, not old-path from legacy
         assert len(result.edges) == 1
         assert result.edges[0].meta["url_path"] == "/api/new-path"
-
-    def test_falls_back_to_legacy_meta(self, tmp_path):
-        """Falls back to legacy meta when no route concept exists."""
-        client_file = tmp_path / "client.js"
-        client_file.write_text('fetch("/api/users")')
-
-        # Symbol with only legacy metadata (no concepts)
-        route_symbol = Symbol(
-            id="main.py::get_users::function",
-            name="get_users",
-            kind="route",
-            path=str(tmp_path / "main.py"),
-            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
-            language="python",
-            stable_id="GET",
-            meta={
-                "route_path": "/api/users",
-                "http_method": "GET",
-            },
-        )
-
-        result = link_http(tmp_path, [route_symbol])
-
-        assert len(result.edges) == 1
 
     def test_ignores_non_route_concepts(self, tmp_path):
         """Symbols with non-route concepts don't match as routes."""

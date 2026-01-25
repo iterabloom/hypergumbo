@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 from hypergumbo.catalog import (
     Pass,
-    Pack,
     Catalog,
     get_default_catalog,
     is_available,
@@ -58,57 +57,25 @@ class TestPass:
         assert d["requires"] == "hypergumbo[javascript]"
 
 
-class TestPack:
-    """Tests for Pack dataclass."""
-
-    def test_pack_has_required_fields(self) -> None:
-        """Pack has id, description, passes list."""
-        pack = Pack(
-            id="python-fastapi",
-            description="FastAPI route detection + call graph",
-            passes=["python-ast-v1"],
-        )
-        assert pack.id == "python-fastapi"
-        assert pack.description == "FastAPI route detection + call graph"
-        assert "python-ast-v1" in pack.passes
-
-    def test_pack_to_dict(self) -> None:
-        """Pack serializes to dict."""
-        pack = Pack(
-            id="python-fastapi",
-            description="FastAPI route detection + call graph",
-            passes=["python-ast-v1"],
-        )
-        d = pack.to_dict()
-        assert d["id"] == "python-fastapi"
-        assert d["passes"] == ["python-ast-v1"]
-
-
 class TestCatalog:
     """Tests for Catalog dataclass."""
 
-    def test_catalog_has_passes_and_packs(self) -> None:
-        """Catalog contains passes and packs."""
+    def test_catalog_has_passes(self) -> None:
+        """Catalog contains passes."""
         catalog = Catalog(
             passes=[
                 Pass("python-ast-v1", "Python AST parser", "core"),
             ],
-            packs=[
-                Pack("python-fastapi", "FastAPI detection", ["python-ast-v1"]),
-            ],
         )
         assert len(catalog.passes) == 1
-        assert len(catalog.packs) == 1
 
     def test_catalog_to_dict(self) -> None:
         """Catalog serializes to dict."""
         catalog = Catalog(
             passes=[Pass("python-ast-v1", "Python AST parser", "core")],
-            packs=[],
         )
         d = catalog.to_dict()
         assert "passes" in d
-        assert "packs" in d
 
     def test_get_core_passes(self) -> None:
         """Can filter to core passes only."""
@@ -117,7 +84,6 @@ class TestCatalog:
                 Pass("python-ast-v1", "Python AST", "core"),
                 Pass("javascript-ts-v1", "JS/TS", "extra", "hypergumbo[javascript]"),
             ],
-            packs=[],
         )
         core = catalog.get_core_passes()
         assert len(core) == 1
@@ -130,7 +96,6 @@ class TestCatalog:
                 Pass("python-ast-v1", "Python AST", "core"),
                 Pass("javascript-ts-v1", "JS/TS", "extra", "hypergumbo[javascript]"),
             ],
-            packs=[],
         )
         all_passes = catalog.passes
         assert len(all_passes) == 2
@@ -344,7 +309,6 @@ class TestCatalogMethods:
                 Pass("javascript-ts-v1", "JS/TS", "extra", "tree-sitter-language-pack"),
                 Pass("rust-ts-v1", "Rust", "extra", "tree-sitter-language-pack"),
             ],
-            packs=[],
         )
         extras = catalog.get_extra_passes()
         assert len(extras) == 2

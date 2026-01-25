@@ -373,6 +373,73 @@ func main() {
         assert result.run is not None
 
 
+class TestGoAnonymousFunctionCalls:
+    """Tests for call attribution inside anonymous functions (func literals)."""
+
+    def test_call_inside_goroutine_attributed_to_caller(self, tmp_path: Path) -> None:
+        """Calls inside goroutines are attributed to the containing function."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func helper() {
+}
+
+func main() {
+    go func() {
+        helper()
+    }()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find call edges to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls" and "helper" in e.dst]
+
+        # There should be a call from main to helper (via the goroutine)
+        assert len(call_edges) >= 1, "Call to helper inside goroutine should be detected"
+
+        # The source should be 'main' (the containing named function)
+        main_to_helper = [e for e in call_edges if "main" in e.src]
+        assert len(main_to_helper) >= 1, \
+            f"Call should be attributed to main function, got sources: {[e.src for e in call_edges]}"
+
+    def test_call_inside_callback_attributed_to_caller(self, tmp_path: Path) -> None:
+        """Calls inside callback func literals are attributed to the containing function."""
+        from hypergumbo.analyze.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func doWork() {}
+
+func process(callback func()) {
+    callback()
+}
+
+func main() {
+    process(func() {
+        doWork()
+    })
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find call edges to doWork
+        call_edges = [e for e in result.edges if e.edge_type == "calls" and "doWork" in e.dst]
+
+        # There should be a call from main to doWork (via the callback)
+        assert len(call_edges) >= 1, "Call to doWork inside callback should be detected"
+
+        # The source should be 'main' (the containing named function)
+        main_calls = [e for e in call_edges if "main" in e.src]
+        assert len(main_calls) >= 1, \
+            f"Call should be attributed to main function, got sources: {[e.src for e in call_edges]}"
+
+
 class TestGoTypeAliasExtraction:
     """Tests for extracting Go type aliases."""
 
@@ -896,42 +963,6 @@ class TestImportPathToDirHint:
 
         result = _import_path_to_dir_hint("fmt")
         assert result is None
-
-
-class TestResolveCallee:
-    """Tests for _resolve_callee helper function."""
-
-    def test_fallback_when_no_match(self, tmp_path: Path) -> None:
-        """Returns first candidate when import hint doesn't match any."""
-        from hypergumbo.analyze.go import _resolve_callee
-        from hypergumbo.ir import Symbol, Span
-
-        # Create two candidates in different directories
-        sym1 = Symbol(
-            id="go:/path/a/foo.go:1-1:Func:function",
-            name="Func",
-            kind="function",
-            language="go",
-            path="/path/a/foo.go",
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
-            origin="test",
-            origin_run_id="test",
-        )
-        sym2 = Symbol(
-            id="go:/path/b/foo.go:1-1:Func:function",
-            name="Func",
-            kind="function",
-            language="go",
-            path="/path/b/foo.go",
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
-            origin="test",
-            origin_run_id="test",
-        )
-
-        # Import hint that doesn't match any candidate
-        result = _resolve_callee("Func", [sym1, sym2], "github.com/nonexistent/pkg")
-        # Should return first candidate as fallback
-        assert result == sym1
 
 
 class TestGoImportPathResolution:

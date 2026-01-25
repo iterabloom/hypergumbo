@@ -8,14 +8,17 @@ language: javascript  # Also works for typescript
 
 patterns:
   # HTTP route decorators - @Get(), @Post(), @Get(':id'), etc.
+  # Route methods inherit path prefix from their parent @Controller class
   - concept: route
     decorator: "^(Get|Post|Put|Delete|Patch|Options|Head|All)$"
     extract_path: "args[0]"
     extract_method: "decorator_name_upper"
+    prefix_from_parent: "controller"
 
-  # Controller class - @Controller('users')
+  # Controller class - @Controller('users') or @Controller('/users')
   - concept: controller
     decorator: "^Controller$"
+    extract_path: "args[0]"
 
   # Injectable service - @Injectable()
   - concept: service

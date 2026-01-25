@@ -1,4 +1,4 @@
-"""Catalog of available analysis passes and packs.
+"""Catalog of available analysis passes.
 
 The catalog provides a registry of all analysis components available in
 hypergumbo. Each component is either:
@@ -9,9 +9,7 @@ hypergumbo. Each component is either:
 How It Works
 ------------
 The catalog is a static registry defined in code. Each Pass represents
-a single analyzer (e.g., python-ast-v1), while Packs bundle multiple
-passes for common use cases (e.g., python-fastapi combines Python AST
-analysis with FastAPI-specific route detection).
+a single analyzer (e.g., python-ast-v1).
 
 Availability checking uses importlib to probe for optional dependencies
 without importing them, keeping the base install lightweight.
@@ -24,13 +22,11 @@ Why This Design
 - Static registry avoids filesystem scanning or plugin discovery complexity
 - Core/extra distinction lets users see what's possible without installing
   everything
-- Packs provide curated combinations for common frameworks
 - Language-based suggestions enable "suggested passes" based on project content
 """
 from __future__ import annotations
 
 import importlib.util
-import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -66,52 +62,14 @@ class Pass:
 
 
 @dataclass
-class Pack:
-    """A bundle of passes for a specific use case.
-
-    .. deprecated:: 0.7.0
-        Packs are deprecated. Use the --frameworks flag and linker activation
-        conditions instead for framework-specific analysis.
-
-    Attributes:
-        id: Unique identifier (e.g., 'python-fastapi')
-        description: Human-readable description
-        passes: List of pass IDs included in this pack
-    """
-
-    id: str
-    description: str
-    passes: List[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        """Emit deprecation warning on Pack creation."""
-        warnings.warn(
-            "Packs are deprecated and will be removed in a future version. "
-            "Use the --frameworks flag and linker activation conditions instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize to dict."""
-        return {
-            "id": self.id,
-            "description": self.description,
-            "passes": self.passes,
-        }
-
-
-@dataclass
 class Catalog:
-    """Registry of available passes and packs.
+    """Registry of available passes.
 
     Attributes:
         passes: List of available analysis passes
-        packs: List of available pass bundles
     """
 
     passes: List[Pass] = field(default_factory=list)
-    packs: List[Pack] = field(default_factory=list)
 
     def get_core_passes(self) -> List[Pass]:
         """Return only core passes (always available)."""
@@ -125,7 +83,6 @@ class Catalog:
         """Serialize to dict."""
         return {
             "passes": [p.to_dict() for p in self.passes],
-            "packs": [p.to_dict() for p in self.packs],
         }
 
 
@@ -621,62 +578,6 @@ def get_default_catalog() -> Catalog:
                 availability="extra",
                 requires="tree-sitter-language-pack",
                 languages=["xml"],
-            ),
-        ],
-        packs=[
-            Pack(
-                id="python-fastapi",
-                description="FastAPI route detection + call graph",
-                passes=["python-ast-v1"],
-            ),
-            Pack(
-                id="electron-app",
-                description="Main/renderer split + IPC detection",
-                passes=["javascript-ts-v1", "html-pattern-v1"],
-            ),
-            Pack(
-                id="phoenix-app",
-                description="Phoenix channels + routes + LiveView",
-                passes=["elixir-ts-v1", "html-pattern-v1"],
-            ),
-            Pack(
-                id="full-stack-web",
-                description="Complete web app analysis",
-                passes=[
-                    "python-ast-v1",
-                    "javascript-ts-v1",
-                    "html-pattern-v1",
-                    "css-v1",
-                    "sql-v1",
-                ],
-            ),
-            Pack(
-                id="systems-programming",
-                description="Low-level systems languages",
-                passes=["c-ts-v1", "cpp-ts-v1", "rust-ts-v1", "zig-ts-v1"],
-            ),
-            Pack(
-                id="jvm-ecosystem",
-                description="JVM languages",
-                passes=["java-ts-v1", "kotlin-ts-v1", "scala-ts-v1", "groovy-ts-v1"],
-            ),
-            Pack(
-                id="functional-languages",
-                description="Functional programming languages",
-                passes=[
-                    "haskell-ts-v1",
-                    "ocaml-ts-v1",
-                    "elm-ts-v1",
-                    "erlang-ts-v1",
-                    "elixir-ts-v1",
-                    "clojure-ts-v1",
-                    "fsharp-ts-v1",
-                ],
-            ),
-            Pack(
-                id="proof-assistants",
-                description="Theorem provers and proof assistants",
-                passes=["agda-v1", "lean-v1"],
             ),
         ],
     )

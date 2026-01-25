@@ -1,38 +1,41 @@
-# Go Web Framework patterns (ADR-0003 v1.0.x)
+# Go Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http.
 # Symbols matching these patterns get enriched with concept metadata.
 #
-# Go uses struct embedding and interface implementation for patterns.
-# Routes are typically defined via method calls, not decorators.
+# Definition-based patterns (v1.0.x): Match base_class for GORM, gRPC, etc.
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
 id: go-web
 language: go
 
 patterns:
-  # Gin framework - handler functions
-  - concept: route
-    decorator: "^(c|ctx|context)\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
-    extract_method: "decorator_suffix"
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
 
+  # Gin/Echo framework - r.GET("/path", handler), e.POST("/path", handler)
   - concept: route
-    decorator: "^(router|r|g|group)\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
-    extract_method: "decorator_suffix"
+    usage:
+      kind: "^call$"
+      name: "\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
 
-  # Echo framework - handler functions
+  # Fiber/Chi framework - app.Get("/path", handler), r.Post("/path", handler)
   - concept: route
-    decorator: "^(e|echo)\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
-    extract_method: "decorator_suffix"
+    usage:
+      kind: "^call$"
+      name: "\\.(Get|Post|Put|Delete|Patch|Options|Head)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
 
-  # Fiber framework - handler functions (uses PascalCase methods)
-  - concept: route
-    decorator: "^(app|fiber)\\.(Get|Post|Put|Delete|Patch|Options|Head)$"
-    extract_method: "decorator_suffix"
-
-  # Chi router - handler functions (uses PascalCase methods)
-  - concept: route
-    decorator: "^(r|mux|router)\\.(Get|Post|Put|Delete|Patch|Options|Head)$"
-    extract_method: "decorator_suffix"
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Note: These decorator patterns are kept for backwards compatibility but
+  # the primary route detection now uses UsageContext patterns above.
 
   # net/http - HandleFunc
   - concept: route

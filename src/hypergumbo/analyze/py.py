@@ -28,7 +28,7 @@ Detected Patterns
 - Method calls: self.method(), obj.method()
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
-- Django URL patterns: path(), re_path(), url() calls in urls.py (deprecated)
+- Django URL patterns: path(), re_path(), url() calls in urls.py
 
 ID Schemes
 ----------
@@ -60,10 +60,13 @@ import hashlib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+
+if TYPE_CHECKING:
+    from ..symbol_resolution import SymbolResolver
 
 
 def find_python_files(
@@ -88,33 +91,50 @@ def _make_module_id(module_name: str) -> str:
     return f"python:{module_name}:0-0:module:module"
 
 
+def _lookup_symbol_by_module(
+    global_symbols: dict[tuple[str, str], "Symbol"],
+    module_name: str,
+    symbol_name: str,
+    *,
+    resolver: "SymbolResolver | None" = None,
+) -> "Symbol | None":
+    """Look up a symbol with suffix-based module matching.
+
+    When an import says 'from app.crud import X' but the file is registered
+    as 'backend.app.crud', exact lookup fails. This function handles such
+    cases by trying suffix matching.
+
+    This is a thin wrapper around the shared SymbolResolver. For repeated
+    lookups, pass a pre-built resolver for better performance (cached indexes).
+
+    Args:
+        global_symbols: Map of (module, name) -> Symbol
+        module_name: The module name from the import statement
+        symbol_name: The symbol name being imported
+        resolver: Optional pre-built SymbolResolver for cached lookups.
+
+    Returns:
+        The matching Symbol, or None if not found.
+    """
+    if resolver is not None:
+        result = resolver.lookup(module_name, symbol_name)
+        return result.symbol
+
+    # Fallback: use the shared lookup_symbol function (creates new resolver)
+    from ..symbol_resolution import lookup_symbol
+    return lookup_symbol(global_symbols, module_name, symbol_name)
+
+
 # HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
 
-# Django URL pattern functions (deprecated - use django.yaml patterns)
+# Django URL pattern functions (call-based routing)
+# These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
-# Deprecation tracking for analyzer-level route detection (ADR-0003 v1.0.x)
-# Framework-specific route detection is deprecated in favor of YAML patterns
-_deprecated_route_warnings_emitted: set[str] = set()
-
-
-def _emit_route_deprecation_warning(framework: str) -> None:
-    """Emit deprecation warning for analyzer-level route detection.
-
-    This is deprecated in ADR-0003 v1.0.x. Use YAML patterns instead.
-    Warning emitted once per framework per session.
-    """
-    if framework in _deprecated_route_warnings_emitted:
-        return
-    _deprecated_route_warnings_emitted.add(framework)
-    warnings.warn(
-        f"{framework} analyzer-level route detection is deprecated. "
-        f"Use framework YAML patterns (--frameworks) for semantic detection. "
-        f"See ADR-0003 for migration guidance.",
-        DeprecationWarning,
-        stacklevel=4,
-    )
+# Flask URL pattern functions (call-based routing)
+# Flask's add_url_rule() is the call-based alternative to @app.route()
+FLASK_URL_FUNCTIONS = {"add_url_rule"}
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -124,9 +144,13 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
     For complex expressions (names, calls, etc.), returns string representation.
     """
     if isinstance(node, ast.Constant):
-        # Handle Ellipsis (...) which is not JSON-serializable
+        # Handle non-JSON-serializable constants
         if node.value is ...:
             return "..."
+        if isinstance(node.value, complex):
+            return str(node.value)  # "1+2j" format
+        if isinstance(node.value, bytes):
+            return repr(node.value)  # "b'...'" format
         return node.value
     elif isinstance(node, ast.Name):
         # Variable reference - return name as string
@@ -152,6 +176,16 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
         if isinstance(val, (int, float)):
             return -val
         return f"-{val}"  # pragma: no cover - defensive for non-numeric negation
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+        # Complex number literal like 1+2j or 1-2j
+        left = _ast_value_to_python(node.left)
+        right = _ast_value_to_python(node.right)
+        # Check if this looks like a complex number (real +/- imaginary)
+        if isinstance(left, (int, float)) and isinstance(right, str) and right.endswith("j"):
+            op = "+" if isinstance(node.op, ast.Add) else "-"
+            return f"({left}{op}{right})"
+        # Fall through to string representation for other BinOps
+        return _format_annotation(node) or "<binop>"  # pragma: no cover
     else:
         # Complex expression - return string representation
         return _format_annotation(node) or "<complex>"  # pragma: no cover
@@ -440,6 +474,262 @@ def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, 
     return patterns
 
 
+def _extract_django_usage_contexts(
+    tree: ast.Module,
+    file_path: str,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Django URL patterns.
+
+    Creates UsageContext records that capture how view functions are used
+    in path(), re_path(), url() calls. These are matched against YAML
+    patterns in the enrichment phase.
+
+    Args:
+        tree: The parsed AST module
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+
+    Returns:
+        List of UsageContext records for Django URL patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        # Check if it's a Django URL function call
+        func_name = None
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+
+        if func_name not in DJANGO_URL_FUNCTIONS:
+            continue
+
+        # Extract the URL pattern from the first argument
+        if not node.args:  # pragma: no cover
+            continue
+
+        first_arg = node.args[0]
+        route_path = None
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            route_path = first_arg.value
+        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+            continue  # Skip dynamic patterns (f-strings)
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Extract view reference from second argument
+        view_ref = None
+        view_name = None
+        if len(node.args) >= 2:
+            second_arg = node.args[1]
+            if isinstance(second_arg, ast.Attribute):
+                # views.user_list -> check if we can resolve it
+                view_name = second_arg.attr
+            elif isinstance(second_arg, ast.Name):
+                # user_list -> check if it's defined locally
+                view_name = second_arg.id
+                # Try to resolve to a local symbol
+                if view_name in symbol_by_name:
+                    view_ref = symbol_by_name[view_name].id
+
+        # Build metadata with args info
+        args_values = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args_values.append(arg.value)
+            elif isinstance(arg, ast.Name):
+                args_values.append(arg.id)
+            elif isinstance(arg, ast.Attribute):
+                # views.func -> "views.func"
+                parts = []
+                current: ast.expr = arg
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if isinstance(current, ast.Name):
+                    parts.append(current.id)
+                args_values.append(".".join(reversed(parts)))
+            else:  # pragma: no cover
+                args_values.append("<expr>")
+
+        # Normalize route path - ensure it starts with /
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        span = Span(
+            start_line=node.lineno,
+            end_line=getattr(node, "end_lineno", node.lineno),
+            start_col=getattr(node, "col_offset", 0),
+            end_col=getattr(node, "end_col_offset", 0),
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=func_name,
+            position="args[1]",
+            path=file_path,
+            span=span,
+            symbol_ref=view_ref,
+            metadata={
+                "args": args_values,
+                "route_path": normalized_path,
+                "view_name": view_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
+def _extract_flask_usage_contexts(
+    tree: ast.Module,
+    file_path: str,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Flask add_url_rule() calls.
+
+    Creates UsageContext records that capture how view functions are used
+    in add_url_rule() calls. These are matched against YAML patterns in
+    the enrichment phase.
+
+    Supported patterns:
+    - app.add_url_rule('/users', 'user_list', user_list)
+    - app.add_url_rule('/users', view_func=user_list)
+    - blueprint.add_url_rule('/items', view_func=get_items, methods=['GET'])
+
+    Args:
+        tree: The parsed AST module
+        file_path: Path to the source file
+        symbol_by_name: Lookup table for symbols defined in this file
+
+    Returns:
+        List of UsageContext records for Flask URL patterns.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        # Check if it's a Flask add_url_rule call (app.add_url_rule, bp.add_url_rule)
+        func_name = None
+        receiver_name = None
+        if isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+            if isinstance(node.func.value, ast.Name):
+                receiver_name = node.func.value.id
+
+        if func_name not in FLASK_URL_FUNCTIONS:
+            continue
+
+        # Extract the URL pattern from the first argument
+        if not node.args:  # pragma: no cover
+            continue
+
+        first_arg = node.args[0]
+        route_path = None
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            route_path = first_arg.value
+        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+            continue  # Skip dynamic patterns (f-strings)
+
+        if not route_path:  # pragma: no cover
+            continue
+
+        # Extract view function - can be:
+        # 1. Third positional arg: add_url_rule('/path', 'name', view_func)
+        # 2. view_func keyword arg: add_url_rule('/path', view_func=handler)
+        view_ref = None
+        view_name = None
+
+        # Check for view_func in keyword arguments
+        for kw in node.keywords:
+            if kw.arg == "view_func":
+                if isinstance(kw.value, ast.Name):
+                    view_name = kw.value.id
+                    if view_name in symbol_by_name:
+                        view_ref = symbol_by_name[view_name].id
+                elif isinstance(kw.value, ast.Attribute):
+                    view_name = kw.value.attr
+                break
+
+        # If not found in kwargs, check third positional arg
+        if view_name is None and len(node.args) >= 3:
+            third_arg = node.args[2]
+            if isinstance(third_arg, ast.Name):
+                view_name = third_arg.id
+                if view_name in symbol_by_name:
+                    view_ref = symbol_by_name[view_name].id
+            elif isinstance(third_arg, ast.Attribute):
+                view_name = third_arg.attr
+
+        # Extract methods if specified
+        methods = None
+        for kw in node.keywords:
+            if kw.arg == "methods":
+                if isinstance(kw.value, ast.List):
+                    methods = []
+                    for elt in kw.value.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            methods.append(elt.value.upper())
+
+        # Build metadata
+        args_values = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args_values.append(arg.value)
+            elif isinstance(arg, ast.Name):
+                args_values.append(arg.id)
+            elif isinstance(arg, ast.Attribute):
+                parts = []
+                current: ast.expr = arg
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if isinstance(current, ast.Name):
+                    parts.append(current.id)
+                args_values.append(".".join(reversed(parts)))
+            else:  # pragma: no cover
+                args_values.append("<expr>")
+
+        # Normalize route path
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        span = Span(
+            start_line=node.lineno,
+            end_line=getattr(node, "end_lineno", node.lineno),
+            start_col=getattr(node, "col_offset", 0),
+            end_col=getattr(node, "end_col_offset", 0),
+        )
+
+        # Build full call name (e.g., "app.add_url_rule")
+        call_name = f"{receiver_name}.{func_name}" if receiver_name else func_name
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="view_func",
+            path=file_path,
+            span=span,
+            symbol_ref=view_ref,
+            metadata={
+                "args": args_values,
+                "route_path": normalized_path,
+                "view_name": view_name,
+                "methods": methods or ["GET"],
+                "receiver": receiver_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
@@ -588,6 +878,7 @@ class AnalysisResult:
 
     symbols: list[Symbol]
     edges: list[Edge]
+    usage_contexts: list[UsageContext] = field(default_factory=list)
     run: AnalysisRun | None = None
 
 
@@ -609,6 +900,8 @@ class FileAnalysis:
     module_imports: dict[str, str] = field(default_factory=dict)
     # The parsed AST tree (kept to avoid re-parsing)
     tree: ast.AST | None = None
+    # Usage contexts for call-based patterns (Django URL patterns, etc.)
+    usage_contexts: list[UsageContext] = field(default_factory=list)
 
 
 def _detect_src_layout(repo_root: Path) -> Path | None:
@@ -745,6 +1038,7 @@ def _extract_import_edges(
     file_path: str,
     importing_module: str,
     global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None" = None,
 ) -> list[Edge]:
     """Extract import edges from AST.
 
@@ -757,6 +1051,7 @@ def _extract_import_edges(
         file_path: Path to the importing file
         importing_module: The fully qualified name of the importing module
         global_symbols: Map of (module, name) -> Symbol for cross-file resolution
+        resolver: Optional SymbolResolver for efficient cross-file lookups
 
     Returns list of import edges.
     """
@@ -771,8 +1066,10 @@ def _extract_import_edges(
             )
             if resolved_module:
                 for alias in node.names:
-                    # Try to find the symbol in our global table
-                    symbol = global_symbols.get((resolved_module, alias.name))
+                    # Try to find the symbol in our global table (with suffix matching)
+                    symbol = _lookup_symbol_by_module(
+                        global_symbols, resolved_module, alias.name, resolver=resolver
+                    )
                     if symbol:
                         dst_id = symbol.id
                     else:
@@ -823,7 +1120,11 @@ def _extract_file_analysis(
     """
     try:
         source = py_file.read_text()
-        tree = ast.parse(source, filename=str(py_file))
+        # Suppress SyntaxWarning from invalid escape sequences in analyzed code.
+        # These warnings come from the target codebase, not hypergumbo.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=SyntaxWarning)
+            tree = ast.parse(source, filename=str(py_file))
     except (SyntaxError, UnicodeDecodeError):
         return None
 
@@ -997,10 +1298,10 @@ def _extract_file_analysis(
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
 
-    # Detect Django URL patterns (path, re_path, url calls) - deprecated
+    # Detect Django URL patterns (path, re_path, url calls)
+    # Note: This is NOT deprecated - Django URL patterns use function calls,
+    # not decorators, so they cannot be detected via YAML patterns.
     django_patterns = _extract_django_url_patterns(tree)
-    if django_patterns:
-        _emit_route_deprecation_warning("Django")
     for start_line, end_line, route_path, view_name in django_patterns:
         span = Span(
             start_line=start_line,
@@ -1027,6 +1328,12 @@ def _extract_file_analysis(
         )
         symbols.append(symbol)
 
+    # Extract usage contexts for call-based frameworks (v1.1.x)
+    # This enables YAML-driven pattern matching for Django, Flask, etc.
+    usage_contexts: list[UsageContext] = []
+    usage_contexts.extend(_extract_django_usage_contexts(tree, str(py_file), symbol_by_name))
+    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
+
     # Compute module name for import resolution
     if repo_root is not None:
         importing_module = _module_name_from_path(py_file, repo_root, source_root)
@@ -1039,6 +1346,7 @@ def _extract_file_analysis(
         imports=symbol_imports,
         module_imports=module_imports,
         tree=tree,
+        usage_contexts=usage_contexts,
     )
 
 
@@ -1048,6 +1356,7 @@ def _extract_edges(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], Symbol],
     module_imports: dict[str, str] | None = None,
+    resolver: "SymbolResolver | None" = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -1068,6 +1377,7 @@ def _extract_edges(
         imports: Symbol imports (from X import Y)
         global_symbols: All symbols across the project
         module_imports: Module imports (import X, import X as Y)
+        resolver: Optional SymbolResolver for efficient cross-file lookups
     """
     if module_imports is None:  # pragma: no cover
         module_imports = {}
@@ -1091,7 +1401,8 @@ def _extract_edges(
                 for target in node.targets:
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
-                            node.value, local_symbols, imports, global_symbols, module_imports
+                            node.value, local_symbols, imports, global_symbols,
+                            module_imports, resolver
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
@@ -1100,7 +1411,7 @@ def _extract_edges(
             if isinstance(node, ast.Call):
                 _process_call(
                     node, caller_symbol, local_symbols, imports, global_symbols,
-                    module_imports, var_types, edges
+                    module_imports, var_types, edges, resolver
                 )
 
             # Recurse into child nodes (but not into nested function defs)
@@ -1108,12 +1419,71 @@ def _extract_edges(
                 if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     process_code_block([child], caller_symbol, var_types)
 
+    def _extract_param_types(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> dict[str, Symbol]:
+        """Extract type information from function parameter annotations.
+
+        Handles simple annotations like:
+        - def f(session: Session) -> session maps to Session class
+        - def f(item: Item) -> item maps to Item class
+
+        Does not currently handle:
+        - Generic types: Optional[T], List[T], etc.
+        - String annotations: "Session"
+        """
+        param_types: dict[str, Symbol] = {}
+
+        for arg in func_node.args.args + func_node.args.kwonlyargs:
+            if arg.annotation is None:
+                continue
+
+            param_name = arg.arg
+            annotation = arg.annotation
+
+            # Handle simple name annotations: param: ClassName
+            if isinstance(annotation, ast.Name):
+                type_name = annotation.id
+
+                # Check local symbols first
+                class_symbol = local_symbols.get(type_name)
+                if class_symbol and class_symbol.kind == "class":
+                    param_types[param_name] = class_symbol
+                    continue
+
+                # Check imports (with suffix matching)
+                if type_name in imports:
+                    module_name, original_name = imports[type_name]
+                    class_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, original_name, resolver=resolver
+                    )
+                    if class_symbol and class_symbol.kind == "class":
+                        param_types[param_name] = class_symbol
+
+            # Handle attribute annotations: param: module.ClassName
+            elif isinstance(annotation, ast.Attribute) and isinstance(
+                annotation.value, ast.Name
+            ):
+                receiver_name = annotation.value.id
+                attr_name = annotation.attr
+                if receiver_name in module_imports:
+                    module_name = module_imports[receiver_name]
+                    class_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, attr_name, resolver=resolver
+                    )
+                    if class_symbol and class_symbol.kind == "class":
+                        param_types[param_name] = class_symbol
+
+        return param_types
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
-                process_code_block(node.body, caller_symbol)
+                # Extract types from parameter annotations
+                param_types = _extract_param_types(node)
+                process_code_block(node.body, caller_symbol, param_types)
 
     # Process module-level code for <module> pseudo-nodes
     module_symbol = local_symbols.get("<module>")
@@ -1134,6 +1504,7 @@ def _resolve_call_target(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], Symbol],
     module_imports: dict[str, str],
+    resolver: "SymbolResolver | None" = None,
 ) -> Symbol | None:
     """Resolve the target of a call expression to a Symbol.
 
@@ -1151,10 +1522,12 @@ def _resolve_call_target(
         symbol = local_symbols.get(name)
         if symbol:
             return symbol
-        # Check imports
+        # Check imports (with suffix matching)
         if name in imports:
             module_name, original_name = imports[name]
-            return global_symbols.get((module_name, original_name))
+            return _lookup_symbol_by_module(
+                global_symbols, module_name, original_name, resolver=resolver
+            )
 
     # Attribute: module.ClassName() or obj.method()
     elif isinstance(func, ast.Attribute):
@@ -1162,10 +1535,12 @@ def _resolve_call_target(
             receiver_name = func.value.id
             attr_name = func.attr
 
-            # Check if receiver is an imported module
+            # Check if receiver is an imported module (with suffix matching)
             if receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
-                return global_symbols.get((module_name, attr_name))
+                return _lookup_symbol_by_module(
+                    global_symbols, module_name, attr_name, resolver=resolver
+                )
 
     return None
 
@@ -1179,6 +1554,7 @@ def _process_call(
     module_imports: dict[str, str],
     var_types: dict[str, Symbol],
     edges: list[Edge],
+    resolver: "SymbolResolver | None" = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -1202,7 +1578,9 @@ def _process_call(
             is_instantiation = True
         elif not callee_symbol and callee_name in imports:
             module_name, original_name = imports[callee_name]
-            callee_symbol = global_symbols.get((module_name, original_name))
+            callee_symbol = _lookup_symbol_by_module(
+                global_symbols, module_name, original_name, resolver=resolver
+            )
             if callee_symbol and callee_symbol.kind == "class":
                 is_instantiation = True
 
@@ -1221,7 +1599,9 @@ def _process_call(
             # Case 2b: module.ClassName() or module.func()
             elif receiver_name in module_imports:
                 module_name = module_imports[receiver_name]
-                callee_symbol = global_symbols.get((module_name, attr_name))
+                callee_symbol = _lookup_symbol_by_module(
+                    global_symbols, module_name, attr_name, resolver=resolver
+                )
                 if callee_symbol and callee_symbol.kind == "class":
                     is_instantiation = True
 
@@ -1234,11 +1614,34 @@ def _process_call(
                 # If not found locally, try global symbols
                 if not callee_symbol:
                     # Find methods in the file where the class is defined
-                    class_path = class_symbol.path
                     for (_mod, sym_name), sym in global_symbols.items():
-                        if sym.path == class_path and sym_name == qualified_name:
+                        if sym.path == class_symbol.path and sym_name == qualified_name:
                             callee_symbol = sym
                             break
+
+            # Case 2d: Imported class method calls - Item.model_validate()
+            # When Item is imported via "from app.models import Item"
+            elif receiver_name in imports:
+                module_name, original_name = imports[receiver_name]
+                class_symbol = _lookup_symbol_by_module(
+                    global_symbols, module_name, original_name, resolver=resolver
+                )
+                if class_symbol and class_symbol.kind == "class":
+                    # Look for ClassName.method (class method/static method)
+                    qualified_name = f"{original_name}.{attr_name}"
+                    for (_mod, sym_name), sym in global_symbols.items():
+                        if sym.path == class_symbol.path and sym_name == qualified_name:
+                            callee_symbol = sym
+                            break
+
+                # Case 2e: Imported submodule calls - crud.create_user()
+                # When crud is imported via "from app import crud" (crud is a module)
+                # and we call crud.create_user(), we need to look up (app.crud, create_user)
+                if not callee_symbol:
+                    submodule_name = f"{module_name}.{original_name}"
+                    callee_symbol = _lookup_symbol_by_module(
+                        global_symbols, submodule_name, attr_name, resolver=resolver
+                    )
 
     # Emit edge if we resolved the callee
     if callee_symbol:
@@ -1259,6 +1662,38 @@ def _process_call(
                 line=call_node.lineno,
                 evidence_type=evidence_type,
             ))
+    else:
+        # Emit unresolved edge for attribute calls with known module context
+        # This enables cross-language linking and makes the graph more complete
+        func = call_node.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            receiver_name = func.value.id
+            attr_name = func.attr
+
+            # Case: module.func() where module is imported but func not found
+            if receiver_name in module_imports:
+                module_name = module_imports[receiver_name]
+                dst_id = f"python:{module_name}:0-0:{attr_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="unresolved_method_call",
+                    confidence=0.50,  # Lower confidence for unresolved
+                ))
+            # Case: imported_name.method() where imported_name not resolved
+            elif receiver_name in imports:
+                module_name, original_name = imports[receiver_name]
+                dst_id = f"python:{module_name}:0-0:{original_name}.{attr_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="unresolved_method_call",
+                    confidence=0.50,
+                ))
 
 
 def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None) -> AnalysisResult:
@@ -1273,14 +1708,18 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     """
     file_analysis = _extract_file_analysis(py_file)
     if file_analysis is None:
-        return AnalysisResult(symbols=[], edges=[])
+        return AnalysisResult(symbols=[], edges=[], usage_contexts=[])
 
     # For single-file analysis, only detect local calls
     edges = _extract_edges(
         file_analysis.tree, file_analysis.symbol_by_name, {}, {},
         file_analysis.module_imports
     )
-    return AnalysisResult(symbols=file_analysis.symbols, edges=edges)
+    return AnalysisResult(
+        symbols=file_analysis.symbols,
+        edges=edges,
+        usage_contexts=file_analysis.usage_contexts,
+    )
 
 
 def analyze_python(
@@ -1336,15 +1775,22 @@ def analyze_python(
         package_name = module_name.rsplit(".__init__", 1)[0]
 
         for local_name, (resolved_module, original_name) in analysis.imports.items():
-            # Check if this import points to a known symbol
-            source_symbol = global_symbols.get((resolved_module, original_name))
+            # Check if this import points to a known symbol (with suffix matching)
+            source_symbol = _lookup_symbol_by_module(
+                global_symbols, resolved_module, original_name
+            )
             if source_symbol:
                 # Add alias: (package, local_name) -> source_symbol
                 global_symbols[(package_name, local_name)] = source_symbol
 
+    # Create resolver for efficient lookups in Pass 2 (with cached indexes)
+    from ..symbol_resolution import SymbolResolver
+    resolver = SymbolResolver(global_symbols)
+
     # Second pass: extract edges with cross-file resolution
-    all_symbols = []
-    all_edges = []
+    all_symbols: list[Symbol] = []
+    all_edges: list[Edge] = []
+    all_usage_contexts: list[UsageContext] = []
     for py_file, analysis in file_analyses.items():
         module_name = _module_name_from_path(py_file, repo_root, source_root)
 
@@ -1357,7 +1803,7 @@ def analyze_python(
         # Extract call edges
         call_edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
-            analysis.module_imports
+            analysis.module_imports, resolver
         )
         for edge in call_edges:
             edge.origin = PASS_ID
@@ -1366,16 +1812,24 @@ def analyze_python(
 
         # Extract import edges
         import_edges = _extract_import_edges(
-            analysis.tree, str(py_file), module_name, global_symbols
+            analysis.tree, str(py_file), module_name, global_symbols, resolver
         )
         for edge in import_edges:
             edge.origin = PASS_ID
             edge.origin_run_id = run.execution_id
         all_edges.extend(import_edges)
 
+        # Collect usage contexts (v1.1.x)
+        all_usage_contexts.extend(analysis.usage_contexts)
+
     # Update run metadata
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return AnalysisResult(symbols=all_symbols, edges=all_edges, run=run)
+    return AnalysisResult(
+        symbols=all_symbols,
+        edges=all_edges,
+        usage_contexts=all_usage_contexts,
+        run=run,
+    )

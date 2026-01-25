@@ -13,6 +13,17 @@ Language detection scans file extensions using the discovery module:
 Framework detection examines dependency manifests:
 - Python: pyproject.toml, requirements.txt, setup.py, Pipfile
 - JavaScript: package.json dependencies and devDependencies
+- And more: Rust (Cargo.toml), Go (go.mod), Java (pom.xml, build.gradle), etc.
+
+Recursive Manifest Scanning
+---------------------------
+Framework detection scans up to 3 directory levels deep to find manifests
+in subdirectories. This enables detection in:
+- Monorepos (e.g., backend/pyproject.toml, frontend/package.json)
+- Non-standard layouts where manifests aren't at root
+- Multi-project repositories
+
+Common non-project directories (node_modules, vendor, venv, etc.) are skipped.
 
 Detection is intentionally shallow - we look for package names in
 dependency files rather than analyzing imports. This keeps profiling
@@ -45,74 +56,7 @@ from enum import Enum
 from pathlib import Path
 
 from .discovery import find_files
-
-# Language extensions mapping
-LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
-    "python": ["*.py", "*.pyi"],
-    "javascript": ["*.js", "*.mjs", "*.cjs", "*.jsx"],
-    "typescript": ["*.ts", "*.tsx", "*.d.ts"],
-    "vue": ["*.vue"],
-    "html": ["*.html", "*.htm"],
-    "css": ["*.css", "*.scss", "*.sass", "*.less"],
-    "json": ["*.json"],
-    "yaml": ["*.yaml", "*.yml"],
-    "markdown": ["*.md", "*.markdown"],
-    "rust": ["*.rs"],
-    "go": ["*.go"],
-    "java": ["*.java"],
-    "c": ["*.c", "*.h"],
-    "cpp": ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hxx"],
-    "ruby": ["*.rb"],
-    "php": ["*.php"],
-    "swift": ["*.swift"],
-    "kotlin": ["*.kt", "*.kts"],
-    "shell": ["*.sh", "*.bash", "*.zsh"],
-    "scala": ["*.scala", "*.sc"],
-    "elixir": ["*.ex", "*.exs"],
-    "lua": ["*.lua"],
-    "clojure": ["*.clj", "*.cljs", "*.cljc", "*.edn"],
-    "erlang": ["*.erl", "*.hrl"],
-    "elm": ["*.elm"],
-    "haskell": ["*.hs", "*.lhs"],
-    "agda": ["*.agda", "*.lagda", "*.lagda.md"],
-    "lean": ["*.lean"],
-    "wolfram": ["*.wl", "*.wls", "*.nb"],
-    "ocaml": ["*.ml", "*.mli"],
-    "solidity": ["*.sol"],
-    "csharp": ["*.cs"],
-    # New languages added for extended analyzer support
-    "fortran": ["*.f", "*.f90", "*.f95", "*.f03", "*.f08", "*.F", "*.F90"],
-    "glsl": ["*.glsl", "*.vert", "*.frag", "*.geom", "*.comp", "*.tesc", "*.tese"],
-    "nix": ["*.nix"],
-    "cuda": ["*.cu", "*.cuh"],
-    "cmake": ["CMakeLists.txt", "*.cmake"],
-    "dockerfile": ["Dockerfile", "Dockerfile.*", "*.dockerfile"],
-    "sql": ["*.sql"],
-    "verilog": ["*.v", "*.sv", "*.svh"],
-    "vhdl": ["*.vhd", "*.vhdl"],
-    "graphql": ["*.graphql", "*.gql"],
-    "zig": ["*.zig"],
-    "groovy": ["*.groovy", "*.gradle"],
-    "julia": ["*.jl"],
-    "objc": ["*.m", "*.mm"],
-    "hcl": ["*.tf", "*.hcl"],
-    "dart": ["*.dart"],
-    "cobol": ["*.cob", "*.cbl", "*.cobol", "*.cpy"],
-    "latex": ["*.tex", "*.sty", "*.cls"],
-    "fsharp": ["*.fs", "*.fsi", "*.fsx"],
-    "perl": ["*.pl", "*.pm", "*.t"],
-    "proto": ["*.proto"],
-    "thrift": ["*.thrift"],
-    "capnp": ["*.capnp"],
-    "powershell": ["*.ps1", "*.psm1", "*.psd1"],
-    "gdscript": ["*.gd"],
-    "starlark": ["BUILD", "BUILD.bazel", "BUCK", "*.bzl"],
-    "fish": ["*.fish"],
-    "hlsl": ["*.hlsl", "*.hlsli", "*.fx"],
-    "ada": ["*.ads", "*.adb", "*.ada"],
-    "d": ["*.d", "*.di"],
-    "nim": ["*.nim", "*.nims", "*.nimble"],
-}
+from .taxonomy import LANGUAGE_EXTENSIONS
 
 # Framework detection patterns
 # Maps framework name -> (file to check, pattern to look for)
@@ -172,6 +116,11 @@ PYTHON_FRAMEWORKS = {
     # LLM APIs
     "openai": ["openai"],
     "anthropic": ["anthropic"],
+    # GraphQL
+    "graphql": ["graphql-core"],
+    "graphql-python": ["strawberry-graphql", "ariadne", "graphene"],
+    # CLI
+    "cli": ["click", "typer", "fire", "argparse"],
 }
 
 JS_FRAMEWORKS = {
@@ -204,6 +153,9 @@ JS_FRAMEWORKS = {
     "sails": ["sails"],
     "hono": ["hono"],
     "elysia": ["elysia"],
+    # GraphQL
+    "graphql": ["graphql", "@apollo/server", "graphql-yoga", "mercurius"],
+    "apollo": ["@apollo/client", "@apollo/server", "apollo-server"],
     # Mobile
     "react-native": ["react-native"],
     "expo": ["expo"],
@@ -219,6 +171,8 @@ JS_FRAMEWORKS = {
     "ethers": ["ethers"],
     "wagmi": ["wagmi"],
     "viem": ["viem"],
+    # CLI
+    "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal"],
 }
 
 # Rust crate detection patterns (from Cargo.toml)
@@ -239,6 +193,7 @@ RUST_FRAMEWORKS = {
     "serde": ["serde"],
     # CLI
     "clap": ["clap"],
+    "cli-rust": ["clap", "structopt", "argh"],
     # Desktop
     "tauri": ["tauri"],
     # Blockchain - Ethereum/EVM
@@ -293,6 +248,10 @@ GO_FRAMEWORKS = {
     "revel": ["github.com/revel/revel"],
     "beego": ["github.com/beego/beego"],
     "iris": ["github.com/kataras/iris"],
+    # Prometheus common router (chi-like API) - used by prometheus, alertmanager, etc.
+    "prometheus-common": ["github.com/prometheus/common"],
+    # CLI
+    "cli-go": ["github.com/spf13/cobra", "github.com/urfave/cli", "github.com/alecthomas/kong"],
 }
 
 # PHP composer.json detection patterns
@@ -318,7 +277,18 @@ JAVA_FRAMEWORKS = {
     "spark": ["spark-java", "com.sparkjava"],
     # Kotlin-specific
     "ktor": ["ktor", "io.ktor"],
-    # Android
+    # Android - detect from build.gradle plugins, dependencies, and android {} blocks
+    "android": [
+        # Standard plugin IDs
+        "com.android.application",
+        "com.android.library",
+        # Build tools dependency (in buildscript { dependencies { ... } })
+        "com.android.tools.build:gradle",
+        # Android DSL block (all Android projects have this)
+        "android {",
+        # Legacy import patterns (less common but valid)
+        "android.app.activity",
+    ],
     "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
 }
 
@@ -339,6 +309,44 @@ SCALA_FRAMEWORKS = {
     "finatra": ["finatra", "com.twitter"],
 }
 
+# Ruby gem detection patterns (from Gemfile)
+RUBY_FRAMEWORKS = {
+    # Web frameworks
+    "rails": ["rails"],
+    "sinatra": ["sinatra"],
+    "grape": ["grape"],
+    "hanami": ["hanami"],
+    "roda": ["roda"],
+    "padrino": ["padrino"],
+    # GraphQL
+    "graphql-ruby": ["graphql", "graphql-ruby"],
+    # CLI
+    "cli-ruby": ["thor", "gli", "dry-cli"],
+    # Testing
+    "rspec": ["rspec"],
+    "minitest": ["minitest"],
+}
+
+# Elixir mix.exs detection patterns
+ELIXIR_FRAMEWORKS = {
+    # Web frameworks
+    "phoenix": ["phoenix"],
+    "plug": ["plug"],
+    # Database
+    "ecto": ["ecto"],
+    # GraphQL
+    "absinthe": ["absinthe"],
+    # Testing
+    "ex_unit": ["ex_unit"],
+}
+
+# Solidity framework detection (config file based, not dependency based)
+# Maps framework name -> config file names to check for
+SOLIDITY_FRAMEWORKS = {
+    "foundry": ["foundry.toml"],
+    "hardhat": ["hardhat.config.js", "hardhat.config.ts"],
+}
+
 # Map languages to their framework dictionaries
 LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "python": PYTHON_FRAMEWORKS,
@@ -351,6 +359,9 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "kotlin": JAVA_FRAMEWORKS,  # Kotlin uses same frameworks as Java
     "swift": SWIFT_FRAMEWORKS,
     "scala": SCALA_FRAMEWORKS,
+    "solidity": SOLIDITY_FRAMEWORKS,
+    "ruby": RUBY_FRAMEWORKS,
+    "elixir": ELIXIR_FRAMEWORKS,
 }
 
 
@@ -452,6 +463,10 @@ class LanguageStats:
     def to_dict(self) -> dict:
         return {"files": self.files, "loc": self.loc}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "LanguageStats":
+        return cls(files=d.get("files", 0), loc=d.get("loc", 0))
+
 
 @dataclass
 class RepoProfile:
@@ -473,10 +488,32 @@ class RepoProfile:
             result["requested_frameworks"] = sorted(self.requested_frameworks)
         return result
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "RepoProfile":
+        """Reconstruct a RepoProfile from a dict (e.g., from cached results)."""
+        languages = {
+            k: LanguageStats.from_dict(v)
+            for k, v in d.get("languages", {}).items()
+        }
+        return cls(
+            languages=languages,
+            frameworks=d.get("frameworks", []),
+            framework_mode=d.get("framework_mode", "auto"),
+            requested_frameworks=d.get("requested_frameworks", []),
+        )
 
-def _count_loc(file_path: Path) -> int:
-    """Count non-empty lines in a file."""
+
+def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
+    """Count non-empty lines in a file.
+
+    Args:
+        file_path: Path to the file.
+        max_file_size: If set, skip files larger than this (bytes).
+            Used by catalog command for quick heuristic scanning.
+    """
     try:
+        if max_file_size is not None and file_path.stat().st_size > max_file_size:
+            return 0
         content = file_path.read_text(errors="ignore")
         return sum(1 for line in content.splitlines() if line.strip())
     except (OSError, IOError):
@@ -484,13 +521,17 @@ def _count_loc(file_path: Path) -> int:
 
 
 def _detect_languages(
-    repo_root: Path, extra_excludes: list[str] | None = None
+    repo_root: Path,
+    extra_excludes: list[str] | None = None,
+    max_file_size: int | None = None,
 ) -> dict[str, LanguageStats]:
     """Detect languages by scanning file extensions.
 
     Args:
         repo_root: Path to the repository root.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+        max_file_size: If set, skip files larger than this when counting LOC.
+            Used by catalog command for quick heuristic scanning.
     """
     languages: dict[str, LanguageStats] = {}
 
@@ -506,33 +547,86 @@ def _detect_languages(
         if files:
             stats = LanguageStats(files=len(files))
             for f in files:
-                stats.loc += _count_loc(f)
+                stats.loc += _count_loc(f, max_file_size=max_file_size)
             languages[lang] = stats
 
     return languages
 
 
-def _read_dependency_file(repo_root: Path, filename: str) -> str:
-    """Read a dependency file if it exists."""
-    path = repo_root / filename
-    if path.exists():
+def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> list[Path]:
+    """Find manifest files recursively up to max_depth.
+
+    This enables framework detection in monorepos and projects with non-standard
+    layouts where manifests are in subdirectories (e.g., backend/pyproject.toml).
+
+    Args:
+        repo_root: Path to the repository root.
+        filename: Name of the manifest file to find (e.g., "pyproject.toml").
+        max_depth: Maximum directory depth to search (default 3).
+
+    Returns:
+        List of paths to found manifest files.
+    """
+    found: list[Path] = []
+
+    # Check root first
+    root_file = repo_root / filename
+    if root_file.exists() and root_file.is_file():
+        found.append(root_file)
+
+    # Search subdirectories up to max_depth
+    # Use glob pattern that respects depth
+    for depth in range(1, max_depth + 1):
+        pattern = "/".join(["*"] * depth) + f"/{filename}"
+        for path in repo_root.glob(pattern):
+            if path.is_file():
+                # Skip common non-project directories
+                parts = path.relative_to(repo_root).parts
+                if any(
+                    p.startswith(".")
+                    or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
+                    for p in parts[:-1]
+                ):
+                    continue
+                found.append(path)
+
+    return found
+
+
+def _read_all_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> str:
+    """Read all manifest files with given name, recursively.
+
+    Args:
+        repo_root: Path to the repository root.
+        filename: Name of the manifest file to find.
+        max_depth: Maximum directory depth to search.
+
+    Returns:
+        Concatenated lowercase content of all found files.
+    """
+    content_parts: list[str] = []
+    for path in _find_manifest_files(repo_root, filename, max_depth):
         try:
-            return path.read_text(errors="ignore").lower()
-        except (OSError, IOError):
+            content_parts.append(path.read_text(errors="ignore").lower())
+        except (OSError, IOError):  # pragma: no cover
             pass
-    return ""
+    return "\n".join(content_parts)
 
 
 def _detect_python_frameworks(repo_root: Path) -> list[str]:
-    """Detect Python frameworks from dependency files."""
+    """Detect Python frameworks from dependency files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories
+    (e.g., backend/pyproject.toml in monorepos).
+    """
     detected = []
 
-    # Check pyproject.toml, requirements.txt, setup.py
+    # Check pyproject.toml, requirements.txt, setup.py, Pipfile - recursively
     content = ""
-    content += _read_dependency_file(repo_root, "pyproject.toml")
-    content += _read_dependency_file(repo_root, "requirements.txt")
-    content += _read_dependency_file(repo_root, "setup.py")
-    content += _read_dependency_file(repo_root, "Pipfile")
+    content += _read_all_manifest_files(repo_root, "pyproject.toml")
+    content += _read_all_manifest_files(repo_root, "requirements.txt")
+    content += _read_all_manifest_files(repo_root, "setup.py")
+    content += _read_all_manifest_files(repo_root, "Pipfile")
 
     for framework, patterns in PYTHON_FRAMEWORKS.items():
         for pattern in patterns:
@@ -544,178 +638,194 @@ def _detect_python_frameworks(repo_root: Path) -> list[str]:
 
 
 def _detect_js_frameworks(repo_root: Path) -> list[str]:
-    """Detect JavaScript/TypeScript frameworks from package.json."""
-    detected = []
+    """Detect JavaScript/TypeScript frameworks from package.json.
 
-    package_json = repo_root / "package.json"
-    if package_json.exists():
+    Scans recursively up to 3 levels deep to find manifests in subdirectories
+    (e.g., frontend/package.json in monorepos).
+    """
+    detected = []
+    deps: set[str] = set()
+
+    # Find all package.json files recursively
+    for package_json in _find_manifest_files(repo_root, "package.json"):
         try:
             content = package_json.read_text(errors="ignore")
             data = json.loads(content)
-            deps = set()
             deps.update(data.get("dependencies", {}).keys())
             deps.update(data.get("devDependencies", {}).keys())
-
-            for framework, patterns in JS_FRAMEWORKS.items():
-                for pattern in patterns:
-                    if pattern in deps:
-                        detected.append(framework)
-                        break
         except (OSError, IOError, json.JSONDecodeError):
             pass
+
+    for framework, patterns in JS_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern in deps:
+                detected.append(framework)
+                break
 
     return detected
 
 
 def _detect_rust_frameworks(repo_root: Path) -> list[str]:
-    """Detect Rust frameworks/crates from Cargo.toml."""
+    """Detect Rust frameworks/crates from Cargo.toml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
     detected = []
 
-    cargo_toml = repo_root / "Cargo.toml"
-    if cargo_toml.exists():
-        try:
-            content = cargo_toml.read_text(errors="ignore").lower()
+    # Concatenate all Cargo.toml files
+    content = _read_all_manifest_files(repo_root, "Cargo.toml")
 
-            for framework, patterns in RUST_FRAMEWORKS.items():
-                for pattern in patterns:
-                    # Check for crate in dependencies section
-                    if pattern.lower() in content:
-                        detected.append(framework)
-                        break
-        except (OSError, IOError):
-            pass
+    for framework, patterns in RUST_FRAMEWORKS.items():
+        for pattern in patterns:
+            # Check for crate in dependencies section
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
 
     return detected
 
 
 def _detect_go_frameworks(repo_root: Path) -> list[str]:
-    """Detect Go frameworks from go.mod."""
+    """Detect Go frameworks from go.mod.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
     detected = []
 
-    go_mod = repo_root / "go.mod"
-    if go_mod.exists():
-        try:
-            content = go_mod.read_text(errors="ignore").lower()
+    # Concatenate all go.mod files
+    content = _read_all_manifest_files(repo_root, "go.mod")
 
-            for framework, patterns in GO_FRAMEWORKS.items():
-                for pattern in patterns:
-                    if pattern.lower() in content:
-                        detected.append(framework)
-                        break
-        except (OSError, IOError):  # pragma: no cover
-            pass
+    for framework, patterns in GO_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
 
     return detected
 
 
 def _detect_php_frameworks(repo_root: Path) -> list[str]:
-    """Detect PHP frameworks from composer.json."""
-    detected = []
+    """Detect PHP frameworks from composer.json.
 
-    composer_json = repo_root / "composer.json"
-    if composer_json.exists():
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+    deps: set[str] = set()
+
+    # Find all composer.json files recursively
+    for composer_json in _find_manifest_files(repo_root, "composer.json"):
         try:
             content = composer_json.read_text(errors="ignore")
             data = json.loads(content)
-            deps = set()
             deps.update(data.get("require", {}).keys())
             deps.update(data.get("require-dev", {}).keys())
-
-            for framework, patterns in PHP_FRAMEWORKS.items():
-                for pattern in patterns:
-                    if pattern in deps:
-                        detected.append(framework)
-                        break
-        except (OSError, IOError, json.JSONDecodeError):  # pragma: no cover
+        except (OSError, IOError, json.JSONDecodeError):
             pass
+
+    for framework, patterns in PHP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern in deps:
+                detected.append(framework)
+                break
 
     return detected
 
 
 def _detect_java_frameworks(repo_root: Path) -> list[str]:
-    """Detect Java/Kotlin frameworks from pom.xml or build.gradle."""
-    detected = []
+    """Detect Java/Kotlin frameworks from pom.xml, build.gradle, or AndroidManifest.xml.
 
-    # Check pom.xml (Maven)
-    pom_xml = repo_root / "pom.xml"
-    if pom_xml.exists():
-        try:
-            content = pom_xml.read_text(errors="ignore").lower()
-            for framework, patterns in JAVA_FRAMEWORKS.items():
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected: list[str] = []
+    detected_set: set[str] = set()
+
+    # Check pom.xml (Maven) - recursively
+    content = _read_all_manifest_files(repo_root, "pom.xml")
+    for framework, patterns in JAVA_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                if framework not in detected_set:
+                    detected.append(framework)
+                    detected_set.add(framework)
+                break
+
+    # Check build.gradle (Gradle) - recursively
+    for gradle_file in ["build.gradle", "build.gradle.kts"]:
+        content = _read_all_manifest_files(repo_root, gradle_file)
+        for framework, patterns in JAVA_FRAMEWORKS.items():
+            if framework not in detected_set:
                 for pattern in patterns:
                     if pattern.lower() in content:
                         detected.append(framework)
+                        detected_set.add(framework)
                         break
-        except (OSError, IOError):  # pragma: no cover
-            pass
 
-    # Check build.gradle (Gradle)
-    for gradle_file in ["build.gradle", "build.gradle.kts"]:
-        gradle_path = repo_root / gradle_file
-        if gradle_path.exists():
-            try:
-                content = gradle_path.read_text(errors="ignore").lower()
-                for framework, patterns in JAVA_FRAMEWORKS.items():
-                    if framework not in detected:
-                        for pattern in patterns:
-                            if pattern.lower() in content:
-                                detected.append(framework)
-                                break
-            except (OSError, IOError):  # pragma: no cover
-                pass
+    # Check for AndroidManifest.xml (definitive Android indicator)
+    # If any AndroidManifest.xml exists, this is an Android project
+    if "android" not in detected_set:
+        manifest_files = list(_find_manifest_files(repo_root, "AndroidManifest.xml"))
+        if manifest_files:
+            detected.append("android")
+            detected_set.add("android")
 
     return detected
 
 
 def _detect_swift_frameworks(repo_root: Path) -> list[str]:
-    """Detect Swift frameworks from Package.swift."""
+    """Detect Swift frameworks from Package.swift.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
     detected = []
 
-    package_swift = repo_root / "Package.swift"
-    if package_swift.exists():
-        try:
-            content = package_swift.read_text(errors="ignore").lower()
-            for framework, patterns in SWIFT_FRAMEWORKS.items():
-                for pattern in patterns:
-                    if pattern.lower() in content:
-                        detected.append(framework)
-                        break
-        except (OSError, IOError):  # pragma: no cover
-            pass
+    # Concatenate all Package.swift files
+    content = _read_all_manifest_files(repo_root, "Package.swift")
+
+    for framework, patterns in SWIFT_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
 
     return detected
 
 
 def _detect_scala_frameworks(repo_root: Path) -> list[str]:
-    """Detect Scala frameworks from build.sbt."""
+    """Detect Scala frameworks from build.sbt.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
     detected = []
 
-    build_sbt = repo_root / "build.sbt"
-    if build_sbt.exists():
-        try:
-            content = build_sbt.read_text(errors="ignore").lower()
-            for framework, patterns in SCALA_FRAMEWORKS.items():
-                for pattern in patterns:
-                    if pattern.lower() in content:
-                        detected.append(framework)
-                        break
-        except (OSError, IOError):  # pragma: no cover
-            pass
+    # Concatenate all build.sbt files
+    content = _read_all_manifest_files(repo_root, "build.sbt")
+
+    for framework, patterns in SCALA_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
 
     return detected
 
 
 def _detect_dart_frameworks(repo_root: Path) -> list[str]:
-    """Detect Dart/Flutter frameworks from pubspec.yaml."""
-    detected = []
+    """Detect Dart/Flutter frameworks from pubspec.yaml.
 
-    pubspec = repo_root / "pubspec.yaml"
-    if pubspec.exists():
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+    detected_set: set[str] = set()
+
+    # Find all pubspec.yaml files recursively
+    for pubspec in _find_manifest_files(repo_root, "pubspec.yaml"):
         try:
             content = pubspec.read_text(errors="ignore").lower()
             # Check for Flutter SDK
             if "flutter:" in content and "sdk: flutter" in content:
-                detected.append("flutter")
+                if "flutter" not in detected_set:
+                    detected.append("flutter")
+                    detected_set.add("flutter")
 
             # Check for common Flutter packages
             flutter_packages = {
@@ -730,50 +840,101 @@ def _detect_dart_frameworks(repo_root: Path) -> list[str]:
                 "flame": ["flame:"],
             }
             for framework, patterns in flutter_packages.items():
-                for pattern in patterns:
-                    if pattern in content:
-                        detected.append(framework)
-                        break
+                if framework not in detected_set:
+                    for pattern in patterns:
+                        if pattern in content:
+                            detected.append(framework)
+                            detected_set.add(framework)
+                            break
         except (OSError, IOError):  # pragma: no cover
             pass
 
     return detected
 
 
-def _detect_frameworks(
-    repo_root: Path,
-    allowed_frameworks: set[str] | None = None,
-) -> list[str]:
-    """Detect frameworks in the repository.
+def _detect_ruby_frameworks(repo_root: Path) -> list[str]:
+    """Detect Ruby frameworks from Gemfile.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+
+    # Concatenate all Gemfile files
+    content = _read_all_manifest_files(repo_root, "Gemfile")
+
+    for framework, patterns in RUBY_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
+    """Detect Elixir frameworks from mix.exs.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+
+    # Concatenate all mix.exs files
+    content = _read_all_manifest_files(repo_root, "mix.exs")
+
+    for framework, patterns in ELIXIR_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
+    """Detect Solidity frameworks from config files.
+
+    Unlike other language frameworks which are detected from dependency files,
+    Solidity frameworks (Foundry, Hardhat) are detected by the presence of
+    their configuration files.
+
+    Scans recursively up to 3 levels deep to find config files in subdirectories.
+    """
+    detected = []
+
+    for framework, config_files in SOLIDITY_FRAMEWORKS.items():
+        for config_file in config_files:
+            if _find_manifest_files(repo_root, config_file):
+                detected.append(framework)
+                break  # Found this framework, check next
+
+    return detected
+
+
+def _detect_frameworks(repo_root: Path) -> list[str]:
+    """Detect frameworks in the repository by scanning dependency files.
+
+    This is used for AUTO mode only. EXPLICIT and ALL modes bypass this
+    function and use frameworks directly without dependency scanning.
 
     Args:
         repo_root: Path to the repository root.
-        allowed_frameworks: If provided, only check for these frameworks.
-            If None, check all known frameworks.
 
     Returns:
         List of detected framework names.
     """
-    frameworks = []
-
-    # Collect all detections
-    all_detected = []
-    all_detected.extend(_detect_python_frameworks(repo_root))
-    all_detected.extend(_detect_js_frameworks(repo_root))
-    all_detected.extend(_detect_rust_frameworks(repo_root))
-    all_detected.extend(_detect_go_frameworks(repo_root))
-    all_detected.extend(_detect_php_frameworks(repo_root))
-    all_detected.extend(_detect_java_frameworks(repo_root))
-    all_detected.extend(_detect_swift_frameworks(repo_root))
-    all_detected.extend(_detect_scala_frameworks(repo_root))
-    all_detected.extend(_detect_dart_frameworks(repo_root))
-
-    # Filter by allowed frameworks if specified
-    if allowed_frameworks is not None:
-        frameworks = [f for f in all_detected if f in allowed_frameworks]
-    else:
-        frameworks = all_detected
-
+    frameworks: list[str] = []
+    frameworks.extend(_detect_python_frameworks(repo_root))
+    frameworks.extend(_detect_js_frameworks(repo_root))
+    frameworks.extend(_detect_rust_frameworks(repo_root))
+    frameworks.extend(_detect_go_frameworks(repo_root))
+    frameworks.extend(_detect_php_frameworks(repo_root))
+    frameworks.extend(_detect_java_frameworks(repo_root))
+    frameworks.extend(_detect_swift_frameworks(repo_root))
+    frameworks.extend(_detect_scala_frameworks(repo_root))
+    frameworks.extend(_detect_dart_frameworks(repo_root))
+    frameworks.extend(_detect_solidity_frameworks(repo_root))
+    frameworks.extend(_detect_ruby_frameworks(repo_root))
+    frameworks.extend(_detect_elixir_frameworks(repo_root))
     return frameworks
 
 
@@ -781,6 +942,7 @@ def detect_profile(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
+    max_file_size: int | None = None,
 ) -> RepoProfile:
     """Detect the profile of a repository.
 
@@ -792,10 +954,14 @@ def detect_profile(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
+        max_file_size: If set, skip files larger than this when counting LOC.
+            Used by catalog command for quick heuristic scanning.
 
     Returns a RepoProfile with detected languages and frameworks.
     """
-    languages = _detect_languages(repo_root, extra_excludes=extra_excludes)
+    languages = _detect_languages(
+        repo_root, extra_excludes=extra_excludes, max_file_size=max_file_size
+    )
     detected_languages = set(languages.keys())
 
     # Resolve framework specification
@@ -804,10 +970,17 @@ def detect_profile(
     if framework_spec.mode == FrameworkMode.NONE:
         # Skip framework detection
         detected_frameworks: list[str] = []
+    elif framework_spec.mode == FrameworkMode.ALL:
+        # Use ALL known frameworks for detected languages (don't scan dependency files)
+        # This enables pattern matching even when frameworks aren't in dependency manifests
+        detected_frameworks = list(framework_spec.frameworks)
+    elif framework_spec.mode == FrameworkMode.EXPLICIT:
+        # User explicitly requested these frameworks - trust them, don't scan dependency files
+        # This enables pattern matching even when frameworks aren't in manifest files
+        detected_frameworks = list(framework_spec.requested)
     else:
-        # Detect frameworks (filtered by allowed set if specified)
-        allowed = framework_spec.frameworks if framework_spec.frameworks else None
-        detected_frameworks = _detect_frameworks(repo_root, allowed_frameworks=allowed)
+        # AUTO: Detect frameworks from dependency files
+        detected_frameworks = _detect_frameworks(repo_root)
 
     return RepoProfile(
         languages=languages,

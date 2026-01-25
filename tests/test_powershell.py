@@ -211,3 +211,68 @@ function Main { }
         assert result.run is not None
         assert result.run.pass_id == "powershell-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestPowerShellCallResolution:
+    """Tests for PowerShell call resolution."""
+
+    def test_function_call_edge(self, temp_repo: Path) -> None:
+        """Creates call edges when functions call other functions."""
+        (temp_repo / "script.ps1").write_text('''
+function Get-Helper {
+    return "helper"
+}
+
+function Get-Main {
+    $result = Get-Helper
+    return $result
+}
+''')
+
+        result = analyze_powershell(temp_repo)
+
+        # Should have call edges from Get-Main to Get-Helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        main_calls = [e for e in call_edges if "Get-Main" in e.src]
+        assert len(main_calls) >= 1
+        assert any("Get-Helper" in e.dst for e in main_calls)
+
+    def test_external_cmdlet_call(self, temp_repo: Path) -> None:
+        """Creates call edges for external cmdlet calls with lower confidence."""
+        (temp_repo / "script.ps1").write_text('''
+function Show-Message {
+    Write-Host "Hello World"
+}
+''')
+
+        result = analyze_powershell(temp_repo)
+
+        # Should have call edge to external Write-Host
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        external_calls = [e for e in call_edges if "external" in e.dst]
+        assert len(external_calls) >= 1
+        assert any("Write-Host" in e.dst for e in external_calls)
+        # External calls have lower confidence
+        for e in external_calls:
+            assert e.confidence == 0.70
+
+    def test_resolved_call_confidence(self, temp_repo: Path) -> None:
+        """Resolved calls have higher confidence than external calls."""
+        (temp_repo / "script.ps1").write_text('''
+function Internal-Function {
+}
+
+function Caller {
+    Internal-Function
+}
+''')
+
+        result = analyze_powershell(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the resolved edge from Caller to Internal-Function
+        resolved_call = next((e for e in call_edges if "Internal-Function" in e.dst and "external" not in e.dst), None)
+        assert resolved_call is not None
+        # Resolved calls have confidence 0.85 * lookup confidence
+        assert resolved_call.confidence > 0.70

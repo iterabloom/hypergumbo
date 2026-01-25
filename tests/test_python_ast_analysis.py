@@ -21,7 +21,7 @@ def test_run_detects_python_function(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -47,7 +47,7 @@ def test_run_skips_syntax_error_files(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
@@ -67,7 +67,7 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
@@ -83,7 +83,7 @@ def test_run_detects_python_class(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -111,7 +111,7 @@ def test_run_detects_call_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -144,7 +144,7 @@ def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -183,7 +183,7 @@ def test_run_detects_import_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -214,7 +214,7 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -227,6 +227,59 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     import_edge = import_edges[0]
     assert "main.py" in import_edge["src"]
     assert "os" in import_edge["dst"]
+
+
+def test_run_detects_submodule_import_calls(tmp_path: Path) -> None:
+    """Running analysis should detect calls through submodule imports.
+
+    This tests the pattern:
+        from app import crud
+        crud.create_user()
+
+    Where crud is a submodule (app/crud.py), not a symbol in app/__init__.py.
+    """
+    # Create package structure: app/crud.py
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "__init__.py").write_text("")
+    (app_dir / "crud.py").write_text(
+        "def create_user():\n"
+        "    pass\n"
+    )
+
+    # Create main module that imports submodule and calls function
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "from app import crud\n"
+        "\n"
+        "def run():\n"
+        "    crud.create_user()\n"
+    )
+
+    # Run analysis
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    # Load results
+    data = json.loads(out_path.read_text())
+
+    # Should have call edge from run -> create_user
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+    # Find the edge from run to create_user
+    run_to_create_user = [
+        e for e in call_edges
+        if "run" in e["src"] and "create_user" in e["dst"]
+    ]
+    assert len(run_to_create_user) == 1, (
+        f"Expected 1 edge from run to create_user, got {len(run_to_create_user)}. "
+        f"All call edges: {call_edges}"
+    )
+
+    # The target should be the resolved function in crud.py, not unresolved
+    edge = run_to_create_user[0]
+    assert "crud.py" in edge["dst"], f"Expected resolved target in crud.py, got: {edge['dst']}"
+    assert "unresolved" not in edge["dst"], f"Target should be resolved: {edge['dst']}"
 
 
 def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
@@ -326,7 +379,7 @@ def test_run_detects_relative_import_calls(tmp_path: Path) -> None:
 
     # Run analysis
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     # Load results
     data = json.loads(out_path.read_text())
@@ -362,7 +415,7 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -390,7 +443,7 @@ def test_run_detects_class_instantiation(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -422,7 +475,7 @@ def test_run_detects_cross_file_instantiation(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -448,7 +501,7 @@ def test_method_symbols_include_class_prefix(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -483,7 +536,7 @@ def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -516,7 +569,7 @@ def test_fastapi_post_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -544,7 +597,7 @@ def test_fastapi_router_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -589,7 +642,7 @@ def test_fastapi_all_http_method_decorators(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -625,7 +678,7 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -651,7 +704,7 @@ def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -685,7 +738,7 @@ def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -705,6 +758,156 @@ def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
 
 
 # ============================================================================
+# Flask add_url_rule UsageContext Tests (v1.1.x)
+# ============================================================================
+
+
+def test_flask_add_url_rule_usage_context(tmp_path: Path) -> None:
+    """Flask add_url_rule() should emit UsageContext records."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def user_list():\n"
+        "    return []\n"
+        "\n"
+        "app.add_url_rule('/users', 'user_list', user_list)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # Should have usage contexts for the add_url_rule call
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.kind == "call"
+    assert ctx.context_name == "app.add_url_rule"
+    assert ctx.metadata["route_path"] == "/users"
+    assert ctx.metadata["view_name"] == "user_list"
+    assert ctx.metadata["methods"] == ["GET"]  # Default
+
+
+def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
+    """Flask add_url_rule with view_func keyword argument."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def get_item():\n"
+        "    return {}\n"
+        "\n"
+        "app.add_url_rule('/items/<int:id>', view_func=get_item)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["route_path"] == "/items/<int:id>"
+    assert ctx.metadata["view_name"] == "get_item"
+
+
+def test_flask_add_url_rule_with_methods(tmp_path: Path) -> None:
+    """Flask add_url_rule with explicit methods."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def create_user():\n"
+        "    return {}\n"
+        "\n"
+        "app.add_url_rule('/users', view_func=create_user, methods=['POST', 'PUT'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["methods"] == ["POST", "PUT"]
+
+
+def test_flask_blueprint_add_url_rule(tmp_path: Path) -> None:
+    """Flask Blueprint add_url_rule should also be detected."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "views.py"
+    py_file.write_text(
+        "from flask import Blueprint\n"
+        "\n"
+        "bp = Blueprint('api', __name__)\n"
+        "\n"
+        "def list_items():\n"
+        "    return []\n"
+        "\n"
+        "bp.add_url_rule('/items', view_func=list_items)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.context_name == "bp.add_url_rule"
+    assert ctx.metadata["route_path"] == "/items"
+
+
+def test_flask_add_url_rule_with_attribute_view_func(tmp_path: Path) -> None:
+    """Flask add_url_rule with attribute-based view_func (views.handler)."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "import views\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "app.add_url_rule('/api/users', view_func=views.user_handler)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["view_name"] == "user_handler"
+    assert ctx.symbol_ref is None  # Can't resolve cross-module
+
+
+def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None:
+    """Flask add_url_rule with attribute as third positional argument."""
+    from hypergumbo.analyze.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "import views\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "# Third arg as attribute: views.list_users\n"
+        "app.add_url_rule('/users', 'list_users', views.list_users)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["view_name"] == "list_users"
+    # args should include the attribute as "views.list_users"
+    assert "views.list_users" in ctx.metadata["args"]
+
+
+# ============================================================================
 # Django/DRF Decorator Metadata Tests
 # ============================================================================
 
@@ -721,7 +924,7 @@ def test_drf_api_view_decorator_single_method_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -751,7 +954,7 @@ def test_drf_api_view_decorator_multiple_methods_metadata(tmp_path: Path) -> Non
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -778,7 +981,7 @@ def test_drf_api_view_all_methods_metadata(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -807,7 +1010,7 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -833,7 +1036,7 @@ def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -859,7 +1062,7 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -884,7 +1087,7 @@ def test_django_re_path_urlpattern(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -908,7 +1111,7 @@ def test_django_url_legacy_urlpattern(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -931,7 +1134,7 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -990,7 +1193,7 @@ def test_reexport_call_edges_resolved(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1067,7 +1270,7 @@ def test_reexport_with_alias_resolved(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1138,7 +1341,7 @@ def test_src_layout_reexport_resolution(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1200,7 +1403,7 @@ def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1449,7 +1652,7 @@ def branchy(x, y):
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
@@ -1476,7 +1679,7 @@ def longer():
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     functions = {n["name"]: n for n in data["nodes"] if n["kind"] == "function"}
@@ -1502,7 +1705,7 @@ def test_class_has_complexity_and_loc(tmp_path: Path) -> None:
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -1539,7 +1742,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1555,7 +1758,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1571,7 +1774,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1587,7 +1790,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1603,7 +1806,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1620,7 +1823,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1637,7 +1840,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1653,7 +1856,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1670,7 +1873,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1688,7 +1891,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1708,7 +1911,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1726,7 +1929,7 @@ class TestPythonSignatureExtraction:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -1747,7 +1950,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1770,7 +1973,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1791,7 +1994,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1806,7 +2009,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1823,7 +2026,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1838,7 +2041,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1854,7 +2057,7 @@ class TestModulePseudoNode:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -1883,7 +2086,7 @@ class TestModuleQualifiedCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Find call edges
@@ -1919,7 +2122,7 @@ class TestModuleQualifiedCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Find instantiates edges
@@ -1954,7 +2157,7 @@ class TestModuleQualifiedCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Find call edges
@@ -1993,7 +2196,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have both instantiates and calls edges
@@ -2039,7 +2242,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Verify instantiates edge
@@ -2082,7 +2285,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have a call edge for get_client()
@@ -2118,7 +2321,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have a <module> pseudo-node
@@ -2149,7 +2352,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have instantiates edge
@@ -2178,7 +2381,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have no calls edges (method call can't be resolved)
@@ -2196,7 +2399,7 @@ class TestVariableMethodCalls:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         # Should have no edges (neither instantiates nor calls)
@@ -2204,6 +2407,143 @@ class TestVariableMethodCalls:
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
         assert len(call_edges) == 0, "Should not have calls edges for unresolved constructor"
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
+
+    def test_imported_class_method_call(self, tmp_path: Path) -> None:
+        """Imported class method calls like Item.model_validate() should resolve."""
+        # Create a model class with a classmethod
+        models_file = tmp_path / "models.py"
+        models_file.write_text(
+            "class Item:\n"
+            "    @classmethod\n"
+            "    def model_validate(cls, data):\n"
+            "        return cls()\n"
+            "\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+
+        # Create a route that uses the classmethod
+        routes_file = tmp_path / "routes.py"
+        routes_file.write_text(
+            "from models import Item\n"
+            "\n"
+            "def create_item(data: dict):\n"
+            "    # Item.model_validate() is a classmethod call\n"
+            "    item = Item.model_validate(data)\n"
+            "    return item\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Should have a call edge from create_item to Item.model_validate
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        classmethod_edge = next(
+            (e for e in call_edges if "create_item" in e["src"] and "model_validate" in e["dst"]),
+            None
+        )
+        assert classmethod_edge is not None, "Expected call edge for Item.model_validate() classmethod"
+        assert "models.py" in classmethod_edge["dst"]
+
+    def test_parameter_type_annotation_inference(self, tmp_path: Path) -> None:
+        """Parameter type annotations should enable method call resolution."""
+        # Create a service class with methods
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class Database:\n"
+            "    def add(self, obj):\n"
+            "        pass\n"
+            "\n"
+            "    def commit(self):\n"
+            "        pass\n"
+        )
+
+        # Create a function with typed parameters
+        handler_file = tmp_path / "handler.py"
+        handler_file.write_text(
+            "from service import Database\n"
+            "\n"
+            "def save_item(db: Database, item: dict):\n"
+            "    # db.add() and db.commit() should resolve via param type annotation\n"
+            "    db.add(item)\n"
+            "    db.commit()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Should have call edges for both db.add() and db.commit()
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        add_edge = next(
+            (e for e in call_edges if "save_item" in e["src"] and "add" in e["dst"]),
+            None
+        )
+        assert add_edge is not None, "Expected call edge for db.add() via param type annotation"
+        assert "service.py" in add_edge["dst"]
+
+        commit_edge = next(
+            (e for e in call_edges if "save_item" in e["src"] and "commit" in e["dst"]),
+            None
+        )
+        assert commit_edge is not None, "Expected call edge for db.commit() via param type annotation"
+        assert "service.py" in commit_edge["dst"]
+
+    def test_module_qualified_param_type_annotation(self, tmp_path: Path) -> None:
+        """module.ClassName type annotations should enable method resolution."""
+        # Create a service module
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class Client:\n"
+            "    def send(self, data):\n"
+            "        pass\n"
+        )
+
+        # Create a handler using module.ClassName annotation
+        handler_file = tmp_path / "handler.py"
+        handler_file.write_text(
+            "import service\n"
+            "\n"
+            "def send_message(client: service.Client, msg: str):\n"
+            "    client.send(msg)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        send_edge = next(
+            (e for e in call_edges if "send_message" in e["src"] and "send" in e["dst"]),
+            None
+        )
+        assert send_edge is not None, "Expected call edge for client.send() via module.ClassName annotation"
+
+    def test_local_class_param_type_annotation(self, tmp_path: Path) -> None:
+        """Local class type annotations should enable method resolution."""
+        # Single file with class and function that uses it as param type
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "class LocalService:\n"
+            "    def process(self, data):\n"
+            "        pass\n"
+            "\n"
+            "def handle(svc: LocalService, data: dict):\n"
+            "    svc.process(data)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "handle" in e["src"] and "process" in e["dst"]),
+            None
+        )
+        assert process_edge is not None, "Expected call edge for svc.process() via local class annotation"
 
 
 # ============================================================================
@@ -2226,7 +2566,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2256,7 +2596,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2284,7 +2624,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2310,7 +2650,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2332,7 +2672,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2358,7 +2698,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2378,7 +2718,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2397,7 +2737,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2419,7 +2759,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2438,7 +2778,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2466,7 +2806,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
@@ -2489,7 +2829,7 @@ class TestDecoratorMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2498,6 +2838,50 @@ class TestDecoratorMetadata:
         decorators = func["meta"]["decorators"]
         # Ellipsis should be serialized as "..." string (JSON-safe)
         assert decorators[0]["args"] == ["..."]
+
+    def test_decorator_with_complex_number_arg(self, tmp_path: Path) -> None:
+        """Decorator with complex number should serialize as string."""
+        py_file = tmp_path / "math_ops.py"
+        py_file.write_text(
+            "def default_value(val): pass\n"
+            "\n"
+            "@default_value(1+2j)\n"
+            "def get_complex():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "get_complex")
+
+        decorators = func["meta"]["decorators"]
+        # Complex number should be serialized as "(1+2j)" string (JSON-safe)
+        assert decorators[0]["args"] == ["(1+2j)"]
+
+    def test_decorator_with_bytes_arg(self, tmp_path: Path) -> None:
+        """Decorator with bytes literal should serialize as string."""
+        py_file = tmp_path / "binary_ops.py"
+        py_file.write_text(
+            "def marker(val): pass\n"
+            "\n"
+            "@marker(b'hello')\n"
+            "def process_bytes():\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "process_bytes")
+
+        decorators = func["meta"]["decorators"]
+        # Bytes should be serialized as "b'hello'" string (JSON-safe)
+        assert decorators[0]["args"] == ["b'hello'"]
 
 
 class TestBaseClassMetadata:
@@ -2514,7 +2898,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2539,7 +2923,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2561,7 +2945,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2580,7 +2964,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2597,7 +2981,7 @@ class TestBaseClassMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         classes = [n for n in data["nodes"] if n["kind"] == "class"]
@@ -2621,7 +3005,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2644,7 +3028,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2664,7 +3048,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2683,7 +3067,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2705,7 +3089,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
@@ -2725,7 +3109,7 @@ class TestParameterMetadata:
         )
 
         out_path = tmp_path / "out.json"
-        run_behavior_map(repo_root=tmp_path, out_path=out_path)
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
@@ -2737,115 +3121,191 @@ class TestParameterMetadata:
         assert params == []
 
 
-# ============================================================================
-# Deprecation Warning Tests (ADR-0003 v1.0.x)
-# ============================================================================
+class TestSuffixBasedModuleMatching:
+    """Tests for suffix-based module name matching.
+
+    This handles the case where imports use shorter module names than the
+    actual file paths. For example, 'from app.crud import X' should resolve
+    when the file is registered as 'backend.app.crud'.
+    """
+
+    def test_suffix_matching_resolves_nested_imports(self, tmp_path: Path) -> None:
+        """Import with shorter module name resolves via suffix matching."""
+        # Create a nested directory structure like FastAPI template:
+        # backend/app/crud.py contains create_item()
+        # backend/app/api/routes/items.py imports from app.crud
+        backend = tmp_path / "backend"
+        app = backend / "app"
+        app_api = app / "api"
+        app_routes = app_api / "routes"
+        app_routes.mkdir(parents=True)
+
+        # Create __init__.py files
+        (backend / "__init__.py").write_text("")
+        (app / "__init__.py").write_text("")
+        (app_api / "__init__.py").write_text("")
+        (app_routes / "__init__.py").write_text("")
+
+        # Create crud.py with a function
+        (app / "crud.py").write_text(
+            "def create_item(data):\n"
+            "    return data\n"
+        )
+
+        # Create items.py that imports from app.crud (shorter path)
+        (app_routes / "items.py").write_text(
+            "from app.crud import create_item\n"
+            "\n"
+            "def handler():\n"
+            "    return create_item({'name': 'test'})\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find the import edge
+        import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+
+        # The import edge should point to the actual symbol, not a placeholder
+        # Placeholder format: python:app.crud:0-0:create_item:symbol
+        # Resolved format: python:.../crud.py:1-2:create_item:function
+        import_dsts = [e["dst"] for e in import_edges]
+        # At least one should be resolved (not contain :0-0: placeholder)
+        resolved = [d for d in import_dsts if ":0-0:" not in d and "create_item" in d]
+        assert len(resolved) >= 1, f"Expected resolved import edge, got: {import_dsts}"
 
 
-class TestDjangoRouteDetectionDeprecation:
-    """Tests for deprecation warnings on analyzer-level Django route detection."""
+    def test_nested_module_import_with_method_call(self, tmp_path: Path) -> None:
+        """Module import with method call resolves in nested structure.
 
-    def test_django_url_patterns_emit_deprecation_warning(
-        self, tmp_path: Path
-    ) -> None:
-        """Django URL pattern detection emits deprecation warning."""
-        import warnings
-        from hypergumbo.analyze import py as py_module
-        from hypergumbo.analyze.py import _extract_file_analysis
+        This tests the exact FastAPI pattern:
+            from app import crud  # Module import
+            crud.create_item()    # Method call on imported module
 
-        # Reset the warning deduplication set
-        py_module._deprecated_route_warnings_emitted.clear()
+        Where the directory structure is backend/app/crud.py.
+        This is Case 2e in py.py's _process_call().
+        """
+        # Create a nested directory structure like FastAPI template
+        backend = tmp_path / "backend"
+        app = backend / "app"
+        app.mkdir(parents=True)
 
-        urls_file = tmp_path / "urls.py"
-        urls_file.write_text("""
-from django.urls import path
-from . import views
+        # Create __init__.py files
+        (backend / "__init__.py").write_text("")
+        (app / "__init__.py").write_text("")
 
-urlpatterns = [
-    path('users/', views.user_list),
-    path('users/<int:pk>/', views.user_detail),
-]
-""")
+        # Create crud.py with functions
+        (app / "crud.py").write_text(
+            "def create_item(session, item_in):\n"
+            "    '''Create an item in the database.'''\n"
+            "    return {'name': item_in}\n"
+            "\n"
+            "def delete_item(session, item_id):\n"
+            "    '''Delete an item.'''\n"
+            "    pass\n"
+        )
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _extract_file_analysis(urls_file, tmp_path, tmp_path)
+        # Create routes/items.py that imports the module and calls its functions
+        routes = app / "routes"
+        routes.mkdir()
+        (routes / "__init__.py").write_text("")
+        (routes / "items.py").write_text(
+            "from app import crud\n"
+            "\n"
+            "def create_item_handler(session, item_in):\n"
+            "    '''Route handler that calls crud.create_item().'''\n"
+            "    return crud.create_item(session=session, item_in=item_in)\n"
+        )
 
-        # Should have at least one deprecation warning for Django
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges from the handler
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Find the handler symbol
+        nodes = {n["id"]: n for n in data["nodes"]}
+        handler_edges = [e for e in call_edges if "create_item_handler" in e["src"]]
+
+        # Should have at least one call edge from the handler
+        assert len(handler_edges) >= 1, (
+            f"Expected call edge from handler, got none. "
+            f"All call edges: {call_edges}"
+        )
+
+        # The target should be resolved to crud.py, not unresolved
+        crud_call = [e for e in handler_edges if "crud" in e["dst"].lower() or "create_item" in e["dst"]]
+        assert len(crud_call) >= 1, (
+            f"Expected edge to crud.create_item, got: {handler_edges}"
+        )
+
+        # Should NOT be unresolved
+        for edge in crud_call:
+            assert "unresolved" not in edge["dst"], (
+                f"Expected resolved target, got unresolved: {edge['dst']}"
+            )
+
+
+class TestUnresolvedEdgeEmission:
+    """Tests for unresolved edge emission.
+
+    When Python calls can't be resolved, we emit edges to unresolved
+    placeholders (like Go does) to enable cross-language linking.
+    """
+
+    def test_unresolved_edge_for_external_module_call(self, tmp_path: Path) -> None:
+        """Calls to external modules emit unresolved edges."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "import external_lib\n"
+            "\n"
+            "def handler():\n"
+            "    return external_lib.process()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+
+        # Should have an unresolved edge to external_lib.process
+        unresolved = [
+            e for e in call_edges
+            if ":unresolved" in e["dst"] and "process" in e["dst"]
         ]
-        assert len(deprecation_warnings) >= 1
-        warning_message = str(deprecation_warnings[0].message)
-        assert "Django" in warning_message
-        assert "deprecated" in warning_message.lower()
+        assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
+        edge = unresolved[0]
 
-    def test_deprecation_warning_emitted_once_per_session(
-        self, tmp_path: Path
-    ) -> None:
-        """Deprecation warning is emitted only once per session."""
-        import warnings
-        from hypergumbo.analyze import py as py_module
-        from hypergumbo.analyze.py import _extract_file_analysis
+        # Verify the edge properties
+        assert edge["meta"]["evidence_type"] == "unresolved_method_call"
+        assert edge["confidence"] == 0.50
 
-        # Reset the warning deduplication set
-        py_module._deprecated_route_warnings_emitted.clear()
+    def test_unresolved_edge_for_imported_class_method(self, tmp_path: Path) -> None:
+        """Calls to methods on imported classes emit unresolved edges."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "from external_lib import Client\n"
+            "\n"
+            "def handler():\n"
+            "    return Client.create()\n"
+        )
 
-        # Create multiple URL files
-        (tmp_path / "urls.py").write_text("""
-from django.urls import path
-urlpatterns = [path('api/', views.api)]
-""")
-        (tmp_path / "api_urls.py").write_text("""
-from django.urls import path
-urlpatterns = [path('users/', views.users), path('items/', views.items)]
-""")
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _extract_file_analysis(tmp_path / "urls.py", tmp_path, tmp_path)
-            _extract_file_analysis(tmp_path / "api_urls.py", tmp_path, tmp_path)
+        # Find call edges
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
 
-        # Should have exactly one Django deprecation warning (deduplicated)
-        django_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Django" in str(warning.message)
+        # Should have an unresolved edge to Client.create
+        unresolved = [
+            e for e in call_edges
+            if ":unresolved" in e["dst"] and "Client.create" in e["dst"]
         ]
-        assert len(django_warnings) == 1
+        assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 
-    def test_no_deprecation_warning_without_url_patterns(
-        self, tmp_path: Path
-    ) -> None:
-        """No deprecation warning for files without Django URL patterns."""
-        import warnings
-        from hypergumbo.analyze import py as py_module
-        from hypergumbo.analyze.py import _extract_file_analysis
 
-        # Reset the warning deduplication set
-        py_module._deprecated_route_warnings_emitted.clear()
-
-        py_file = tmp_path / "views.py"
-        py_file.write_text("""
-def user_list(request):
-    return HttpResponse("users")
-
-def user_detail(request, pk):
-    return HttpResponse(f"user {pk}")
-""")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _extract_file_analysis(py_file, tmp_path, tmp_path)
-
-        # Should have no deprecation warnings for Django URL patterns
-        django_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and "Django" in str(warning.message)
-        ]
-        assert len(django_warnings) == 0

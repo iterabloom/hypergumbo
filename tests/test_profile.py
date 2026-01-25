@@ -12,7 +12,7 @@ def test_detects_python_language(tmp_path: Path) -> None:
     (tmp_path / "utils.py").write_text("def helper():\n    return 42\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -28,7 +28,7 @@ def test_detects_javascript_language(tmp_path: Path) -> None:
     (tmp_path / "app.js").write_text("function main() {\n  console.log('hi');\n}\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -42,7 +42,7 @@ def test_detects_typescript_language(tmp_path: Path) -> None:
     (tmp_path / "types.d.ts").write_text("declare const y: string;\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -55,7 +55,7 @@ def test_detects_html_language(tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<html>\n<body>Hello</body>\n</html>\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -70,7 +70,7 @@ def test_detects_multiple_languages(tmp_path: Path) -> None:
     (tmp_path / "page.html").write_text("<html></html>\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -90,7 +90,7 @@ def test_excludes_node_modules_from_profile(tmp_path: Path) -> None:
     (node_modules / "index.js").write_text("module.exports = {};\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -107,7 +107,7 @@ def test_detects_fastapi_framework(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -121,7 +121,7 @@ def test_detects_flask_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("flask==2.0.0\nrequests\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -136,11 +136,55 @@ def test_detects_react_framework(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
     assert "react" in data["profile"]["frameworks"]
+
+
+def test_detects_android_framework_from_build_gradle(tmp_path: Path) -> None:
+    """Should detect Android from build.gradle with android {} block."""
+    (tmp_path / "MainActivity.java").write_text(
+        "package com.example;\nimport android.app.Activity;\n"
+        "public class MainActivity extends Activity {}\n"
+    )
+    (tmp_path / "build.gradle").write_text(
+        'plugins {\n    id "custom.android.application"\n}\n\n'
+        "android {\n    namespace 'com.example'\n}\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    assert "android" in data["profile"]["frameworks"]
+
+
+def test_detects_android_framework_from_manifest(tmp_path: Path) -> None:
+    """Should detect Android from AndroidManifest.xml presence."""
+    (tmp_path / "MainActivity.java").write_text(
+        "package com.example;\nimport android.app.Activity;\n"
+        "public class MainActivity extends Activity {}\n"
+    )
+    # Create subdirectory structure like real Android projects
+    src_dir = tmp_path / "app" / "src" / "main"
+    src_dir.mkdir(parents=True)
+    (src_dir / "AndroidManifest.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    package="com.example">\n'
+        "    <application/>\n"
+        "</manifest>\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    assert "android" in data["profile"]["frameworks"]
 
 
 def test_detects_express_framework(tmp_path: Path) -> None:
@@ -151,7 +195,7 @@ def test_detects_express_framework(tmp_path: Path) -> None:
     )
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -164,7 +208,7 @@ def test_detects_django_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("Django>=4.0\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -177,7 +221,7 @@ def test_profile_empty_when_no_source_files(tmp_path: Path) -> None:
     (tmp_path / "data.bin").write_bytes(b"\x00\x01\x02")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -190,7 +234,7 @@ def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("def main():\n    # comment\n    pass\n\n\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -206,7 +250,7 @@ def test_handles_unreadable_dependency_file(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").mkdir()
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -221,7 +265,7 @@ def test_handles_invalid_package_json(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text("{ invalid json }")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
 
@@ -236,7 +280,7 @@ def test_detects_pytorch_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("torch>=2.0\ntorchvision\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "pytorch" in data["profile"]["frameworks"]
@@ -248,7 +292,7 @@ def test_detects_tensorflow_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("tensorflow>=2.0\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "tensorflow" in data["profile"]["frameworks"]
@@ -260,7 +304,7 @@ def test_detects_transformers_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("transformers>=4.0\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "transformers" in data["profile"]["frameworks"]
@@ -272,7 +316,7 @@ def test_detects_langchain_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("langchain>=0.1\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "langchain" in data["profile"]["frameworks"]
@@ -284,7 +328,7 @@ def test_detects_scikit_learn_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("scikit-learn>=1.0\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "scikit-learn" in data["profile"]["frameworks"]
@@ -296,7 +340,7 @@ def test_detects_openai_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("openai>=1.0\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "openai" in data["profile"]["frameworks"]
@@ -308,7 +352,7 @@ def test_detects_anthropic_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("anthropic>=0.5\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "anthropic" in data["profile"]["frameworks"]
@@ -320,7 +364,7 @@ def test_detects_llamaindex_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("llama-index>=0.9\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "llamaindex" in data["profile"]["frameworks"]
@@ -332,7 +376,7 @@ def test_detects_mlflow_framework(tmp_path: Path) -> None:
     (tmp_path / "requirements.txt").write_text("mlflow>=2.0\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "mlflow" in data["profile"]["frameworks"]
@@ -355,7 +399,7 @@ tokio = { version = "1", features = ["full"] }
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "axum" in data["profile"]["frameworks"]
@@ -376,7 +420,7 @@ anchor-lang = "0.29"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "solana" in data["profile"]["frameworks"]
@@ -396,7 +440,7 @@ sp1-sdk = "1.0"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "sp1" in data["profile"]["frameworks"]
@@ -417,7 +461,7 @@ ark-groth16 = "0.4"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "arkworks" in data["profile"]["frameworks"]
@@ -438,7 +482,7 @@ plonky2_field = "0.2"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "plonky2" in data["profile"]["frameworks"]
@@ -457,7 +501,7 @@ halo2_proofs = "0.3"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "halo2" in data["profile"]["frameworks"]
@@ -478,7 +522,7 @@ sp-runtime = "24.0"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "substrate" in data["profile"]["frameworks"]
@@ -497,7 +541,7 @@ ethers = "2.0"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "ethers" in data["profile"]["frameworks"]
@@ -516,7 +560,7 @@ risc0-zkvm = "0.20"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "risc0" in data["profile"]["frameworks"]
@@ -536,7 +580,7 @@ orchard = "0.6"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "zcash" in data["profile"]["frameworks"]
@@ -555,7 +599,7 @@ libp2p = "0.53"
 ''')
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "libp2p" in data["profile"]["frameworks"]
@@ -568,7 +612,7 @@ def test_handles_unreadable_cargo_toml(tmp_path: Path) -> None:
     (tmp_path / "Cargo.toml").mkdir()
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     # Should still work, just not detect any Rust frameworks
@@ -591,7 +635,7 @@ require (
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "gin" in data["profile"]["frameworks"]
@@ -610,7 +654,7 @@ require (
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "echo" in data["profile"]["frameworks"]
@@ -629,7 +673,7 @@ require (
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "fiber" in data["profile"]["frameworks"]
@@ -648,7 +692,7 @@ def test_detects_php_laravel_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "laravel" in data["profile"]["frameworks"]
@@ -664,7 +708,7 @@ def test_detects_php_symfony_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "symfony" in data["profile"]["frameworks"]
@@ -676,7 +720,7 @@ def test_handles_invalid_composer_json(tmp_path: Path) -> None:
     (tmp_path / "composer.json").write_text("{ invalid json }")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     # Should still detect PHP, just not frameworks
@@ -701,7 +745,7 @@ def test_detects_java_spring_boot_maven(tmp_path: Path) -> None:
 </project>""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "spring-boot" in data["profile"]["frameworks"]
@@ -719,7 +763,7 @@ dependencies {
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "spring-boot" in data["profile"]["frameworks"]
@@ -733,7 +777,7 @@ def test_detects_kotlin_ktor_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "ktor" in data["profile"]["frameworks"]
@@ -753,7 +797,7 @@ dependencies {
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "jetpack-compose" in data["profile"]["frameworks"]
@@ -776,7 +820,7 @@ let package = Package(
 )""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "vapor" in data["profile"]["frameworks"]
@@ -795,7 +839,7 @@ libraryDependencies += "com.typesafe.play" %% "play" % "2.9.0"
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "play" in data["profile"]["frameworks"]
@@ -811,10 +855,94 @@ libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.0"
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "http4s" in data["profile"]["frameworks"]
+
+
+# Ruby framework detection tests
+
+
+def test_detects_ruby_rails_framework(tmp_path: Path) -> None:
+    """Should detect Rails from Gemfile."""
+    (tmp_path / "app.rb").write_text("require 'rails'\n")
+    (tmp_path / "Gemfile").write_text("""source 'https://rubygems.org'
+
+gem 'rails', '~> 7.0'
+gem 'pg'
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "rails" in data["profile"]["frameworks"]
+
+
+def test_detects_ruby_sinatra_framework(tmp_path: Path) -> None:
+    """Should detect Sinatra from Gemfile."""
+    (tmp_path / "app.rb").write_text("require 'sinatra'\n")
+    (tmp_path / "Gemfile").write_text("""source 'https://rubygems.org'
+
+gem 'sinatra'
+gem 'puma'
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "sinatra" in data["profile"]["frameworks"]
+
+
+# Elixir framework detection tests
+
+
+def test_detects_elixir_phoenix_framework(tmp_path: Path) -> None:
+    """Should detect Phoenix from mix.exs."""
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "app.ex").write_text("defmodule App do\nend\n")
+    (tmp_path / "mix.exs").write_text("""defmodule App.MixProject do
+  use Mix.Project
+
+  defp deps do
+    [
+      {:phoenix, "~> 1.7"},
+      {:phoenix_live_view, "~> 0.19"}
+    ]
+  end
+end
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "phoenix" in data["profile"]["frameworks"]
+
+
+def test_detects_elixir_ecto_framework(tmp_path: Path) -> None:
+    """Should detect Ecto from mix.exs."""
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "app.ex").write_text("defmodule App do\nend\n")
+    (tmp_path / "mix.exs").write_text("""defmodule App.MixProject do
+  use Mix.Project
+
+  defp deps do
+    [
+      {:ecto, "~> 3.10"},
+      {:ecto_sql, "~> 3.10"}
+    ]
+  end
+end
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "ecto" in data["profile"]["frameworks"]
 
 
 # Dart/Flutter framework detection tests
@@ -825,7 +953,7 @@ def test_detects_dart_language(tmp_path: Path) -> None:
     (tmp_path / "main.dart").write_text("void main() {}\n")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "dart" in data["profile"]["languages"]
@@ -841,7 +969,7 @@ dependencies:
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "flutter" in data["profile"]["frameworks"]
@@ -858,7 +986,7 @@ dependencies:
 """)
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "flutter" in data["profile"]["frameworks"]
@@ -872,7 +1000,7 @@ def test_handles_unreadable_pubspec(tmp_path: Path) -> None:
     (tmp_path / "pubspec.yaml").mkdir()
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     # Should still detect Dart, just not Flutter frameworks
@@ -893,7 +1021,7 @@ def test_detects_react_native_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "react-native" in data["profile"]["frameworks"]
@@ -911,7 +1039,7 @@ def test_detects_expo_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "expo" in data["profile"]["frameworks"]
@@ -932,7 +1060,7 @@ def test_detects_nextjs_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "next" in data["profile"]["frameworks"]
@@ -949,7 +1077,7 @@ def test_detects_astro_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "astro" in data["profile"]["frameworks"]
@@ -968,7 +1096,7 @@ def test_detects_electron_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "electron" in data["profile"]["frameworks"]
@@ -984,7 +1112,7 @@ def test_detects_tauri_js_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "tauri" in data["profile"]["frameworks"]
@@ -1004,7 +1132,7 @@ def test_detects_hardhat_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "hardhat" in data["profile"]["frameworks"]
@@ -1020,7 +1148,7 @@ def test_detects_ethersjs_framework(tmp_path: Path) -> None:
 }""")
 
     out_path = tmp_path / "out.json"
-    run_behavior_map(repo_root=tmp_path, out_path=out_path)
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
     assert "ethers" in data["profile"]["frameworks"]
@@ -1041,3 +1169,271 @@ def test_extra_excludes_filters_files(tmp_path: Path) -> None:
     # With extra excludes - should exclude generated.py
     profile = detect_profile(tmp_path, extra_excludes=["generated.py"])
     assert profile.languages.get("python", {}).files == 1
+
+
+# Solidity framework detection tests
+
+
+def test_detects_solidity_language(tmp_path: Path) -> None:
+    """Should detect Solidity files."""
+    (tmp_path / "Token.sol").write_text("pragma solidity ^0.8.0;\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "solidity" in data["profile"]["languages"]
+
+
+def test_detects_foundry_framework(tmp_path: Path) -> None:
+    """Should detect Foundry framework from foundry.toml."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "foundry.toml").write_text("""[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "foundry" in data["profile"]["frameworks"]
+
+
+def test_detects_hardhat_framework_from_config_js(tmp_path: Path) -> None:
+    """Should detect Hardhat framework from hardhat.config.js."""
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "hardhat.config.js").write_text("""module.exports = {
+  solidity: "0.8.19",
+};
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_detects_hardhat_framework_from_config_ts(tmp_path: Path) -> None:
+    """Should detect Hardhat framework from hardhat.config.ts."""
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "hardhat.config.ts").write_text("""import { HardhatUserConfig } from "hardhat/config";
+const config: HardhatUserConfig = {
+  solidity: "0.8.19",
+};
+export default config;
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_detects_both_foundry_and_hardhat(tmp_path: Path) -> None:
+    """Should detect both Foundry and Hardhat when both configs exist."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/Token.sol").write_text("pragma solidity ^0.8.0;\n")
+    (tmp_path / "foundry.toml").write_text('[profile.default]\nsrc = "src"\n')
+    (tmp_path / "hardhat.config.js").write_text('module.exports = {};\n')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "foundry" in data["profile"]["frameworks"]
+    assert "hardhat" in data["profile"]["frameworks"]
+
+
+def test_count_loc_with_max_file_size(tmp_path: Path) -> None:
+    """Should skip files larger than max_file_size when specified."""
+    from hypergumbo.profile import _count_loc
+
+    # Create a small file - should be counted regardless
+    small_file = tmp_path / "small.py"
+    small_content = "x = 1\n" * 100  # 600 bytes
+    small_file.write_text(small_content)
+    assert _count_loc(small_file) == 100
+    assert _count_loc(small_file, max_file_size=1000) == 100
+
+    # Create a larger file
+    large_file = tmp_path / "large.py"
+    large_content = "x = 1\n" * 500  # 3000 bytes
+    large_file.write_text(large_content)
+
+    # Without max_file_size, counts all lines
+    assert _count_loc(large_file) == 500
+    # With max_file_size below file size, returns 0
+    assert _count_loc(large_file, max_file_size=1000) == 0
+    # With max_file_size above file size, counts all lines
+    assert _count_loc(large_file, max_file_size=10000) == 500
+
+
+def test_detect_languages_with_max_file_size(tmp_path: Path) -> None:
+    """_detect_languages should respect max_file_size for LOC counting."""
+    from hypergumbo.profile import _detect_languages
+
+    # Create a small Python file
+    (tmp_path / "small.py").write_text("print('hi')\n")
+
+    # Create a larger Python file (over 1 KB for testing)
+    large_content = "x = 1\n" * 500  # ~3000 bytes
+    (tmp_path / "large.py").write_text(large_content)
+
+    # Without max_file_size, counts all LOC
+    langs = _detect_languages(tmp_path)
+    assert langs["python"].files == 2
+    assert langs["python"].loc == 501  # 1 + 500
+
+    # With max_file_size, skips large file's LOC
+    langs_limited = _detect_languages(tmp_path, max_file_size=1000)
+    assert langs_limited["python"].files == 2  # Still counts the file
+    assert langs_limited["python"].loc == 1  # Only small file's LOC
+
+
+# Recursive manifest scanning tests
+
+
+def test_detects_python_framework_in_subdirectory(tmp_path: Path) -> None:
+    """Should detect FastAPI from pyproject.toml in a subdirectory."""
+    # Simulate monorepo structure: backend/pyproject.toml
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    (backend / "app.py").write_text("from fastapi import FastAPI\n")
+    (backend / "pyproject.toml").write_text("""[project]
+dependencies = ["fastapi"]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "fastapi" in data["profile"]["frameworks"]
+
+
+def test_detects_js_framework_in_subdirectory(tmp_path: Path) -> None:
+    """Should detect React from package.json in a subdirectory."""
+    # Simulate monorepo structure: frontend/package.json
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "app.js").write_text("import React from 'react';\n")
+    (frontend / "package.json").write_text(json.dumps({
+        "dependencies": {"react": "^18.0.0"}
+    }))
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "react" in data["profile"]["frameworks"]
+
+
+def test_detects_frameworks_from_multiple_subdirectories(tmp_path: Path) -> None:
+    """Should detect frameworks from both backend and frontend subdirectories."""
+    # Backend with FastAPI
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    (backend / "app.py").write_text("from fastapi import FastAPI\n")
+    (backend / "pyproject.toml").write_text("""[project]
+dependencies = ["fastapi"]
+""")
+
+    # Frontend with React
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "app.js").write_text("import React from 'react';\n")
+    (frontend / "package.json").write_text(json.dumps({
+        "dependencies": {"react": "^18.0.0"}
+    }))
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "fastapi" in data["profile"]["frameworks"]
+    assert "react" in data["profile"]["frameworks"]
+
+
+def test_recursive_scan_skips_node_modules(tmp_path: Path) -> None:
+    """Should not scan package.json inside node_modules."""
+    # Create main app
+    (tmp_path / "app.js").write_text("console.log('app');\n")
+
+    # Create package.json in node_modules (should be skipped)
+    node_modules = tmp_path / "node_modules" / "some-package"
+    node_modules.mkdir(parents=True)
+    (node_modules / "package.json").write_text(json.dumps({
+        "dependencies": {"react": "^18.0.0"}
+    }))
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    # React should NOT be detected since it's only in node_modules
+    assert "react" not in data["profile"]["frameworks"]
+
+
+def test_recursive_scan_skips_venv(tmp_path: Path) -> None:
+    """Should not scan pyproject.toml inside venv directories."""
+    # Create main app
+    (tmp_path / "app.py").write_text("print('app')\n")
+
+    # Create pyproject.toml in venv (should be skipped)
+    venv = tmp_path / "venv" / "lib" / "python3.10"
+    venv.mkdir(parents=True)
+    (venv / "pyproject.toml").write_text("""[project]
+dependencies = ["django"]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    # Django should NOT be detected since it's only in venv
+    assert "django" not in data["profile"]["frameworks"]
+
+
+def test_find_manifest_files_helper(tmp_path: Path) -> None:
+    """Test the _find_manifest_files helper directly."""
+    from hypergumbo.profile import _find_manifest_files
+
+    # Create files at various depths
+    (tmp_path / "pyproject.toml").write_text("root")
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "pyproject.toml").write_text("backend")
+    (tmp_path / "services" / "api").mkdir(parents=True)
+    (tmp_path / "services" / "api" / "pyproject.toml").write_text("services/api")
+
+    found = _find_manifest_files(tmp_path, "pyproject.toml")
+    paths = [str(p.relative_to(tmp_path)) for p in found]
+
+    assert "pyproject.toml" in paths
+    assert "backend/pyproject.toml" in paths
+    assert "services/api/pyproject.toml" in paths
+
+
+def test_detects_flutter_in_subdirectory(tmp_path: Path) -> None:
+    """Should detect Flutter from pubspec.yaml in a subdirectory."""
+    # Simulate monorepo with Flutter app in subdirectory
+    mobile = tmp_path / "mobile"
+    mobile.mkdir()
+    (mobile / "lib").mkdir()
+    (mobile / "lib" / "main.dart").write_text("void main() {}\n")
+    (mobile / "pubspec.yaml").write_text("""name: myapp
+dependencies:
+  flutter:
+    sdk: flutter
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "flutter" in data["profile"]["frameworks"]

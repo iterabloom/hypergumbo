@@ -1,0 +1,70 @@
+# Plug framework patterns (ADR-0003)
+#
+# Plug is Elixir's HTTP middleware library. Routes are defined
+# using the Plug.Router DSL with get/post/put/delete macros.
+
+id: plug
+language: elixir
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Plug.Router route macros
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|options|head|match)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Plug.Router route macros
+  - concept: route
+    decorator: "^(get|post|put|patch|delete|options|head|match)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name"
+
+  # Plug.Router module
+  - concept: controller
+    decorator: "^use Plug\\.Router$"
+
+  # Plug.Builder (custom plugs)
+  - concept: middleware
+    decorator: "^use Plug\\.Builder$"
+
+  # Plug middleware usage
+  - concept: middleware
+    decorator: "^plug$"
+
+  # Plug.Conn manipulation
+  - concept: middleware
+    decorator: "^conn$"
+
+  # Plug.ErrorHandler
+  - concept: error_handler
+    decorator: "^use Plug\\.ErrorHandler$"
+
+  # Plug.SSL
+  - concept: middleware
+    decorator: "^use Plug\\.SSL$"
+
+  # Plug.Session
+  - concept: middleware
+    decorator: "^plug Plug\\.Session$"
+
+  # Plug.CSRFProtection
+  - concept: middleware
+    decorator: "^plug Plug\\.CSRFProtection$"
+
+  # Ecto schemas (commonly used with Plug)
+  - concept: model
+    decorator: "^use Ecto\\.Schema$"
+
+  # Ecto changesets
+  - concept: model
+    decorator: "^use Ecto\\.Changeset$"
+
+linkers:
+  - http
+  - database_query

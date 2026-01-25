@@ -16,6 +16,8 @@ build/
 .hypergumbo/
 hypergumbo_capsule/
 hypergumbo.results.json
+hypergumbo.results.*.json
+slice.json
 
 # Agent configuration
 **/*.local.json
@@ -36,3 +38,6 @@ coverage-report.txt
 node_modules/
 package.json
 package-lock.json
+
+# Hypergumbo cache
+.hypergumbo_cache/
