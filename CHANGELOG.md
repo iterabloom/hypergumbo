@@ -149,6 +149,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   flow blocks (#if, #each, #await). Creates imports_component edges linking
   component usage to import paths. Helps understand component hierarchy and
   composition patterns in Svelte applications.
+- **Markdown documentation analyzer**: Full tree-sitter support for markdown files
+  (.md, .markdown). Extracts document structure with section headings (h1-h6),
+  fenced code blocks with language annotations, and inline links. Identifies
+  internal vs external links and creates links_to edges for documentation
+  cross-references. Useful for understanding README and documentation structure.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

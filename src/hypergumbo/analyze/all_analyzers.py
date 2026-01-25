@@ -111,6 +111,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("cobol", "hypergumbo.analyze.cobol", "analyze_cobol"),
     AnalyzerSpec("latex", "hypergumbo.analyze.latex", "analyze_latex"),
     AnalyzerSpec("rst", "hypergumbo.analyze.rst", "analyze_rst"),
+    AnalyzerSpec("markdown", "hypergumbo.analyze.markdown", "analyze_markdown"),
     AnalyzerSpec("ada", "hypergumbo.analyze.ada", "analyze_ada"),
     AnalyzerSpec("d", "hypergumbo.analyze.d_lang", "analyze_d"),
     AnalyzerSpec("nim", "hypergumbo.analyze.nim", "analyze_nim"),
