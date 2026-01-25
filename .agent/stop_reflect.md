@@ -25,5 +25,5 @@ For the last change made:
 - [ ] If root cause fixed or truly isolated: document in invariant ledger, then stop
 
 ## Current Root Causes (Known)
-- INV-001: JS/TS arrow function attribution (Kotlin/Scala lambdas still vulnerable)
+- INV-001: FIXED - JS/TS arrow functions, Kotlin/Scala lambdas all working correctly
 - INV-002: `symbol_ref` gate partially addressed with name-based fallback

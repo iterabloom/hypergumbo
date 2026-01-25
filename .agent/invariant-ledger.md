@@ -5,11 +5,16 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 
 ## INV-001: Call Attribution Completeness
 - **Statement:** Every emitted `calls` edge has a non-null caller symbol
-- **Status:** PARTIALLY ADDRESSED
+- **Status:** FIXED
 - **Root cause:** JS/TS arrow function special-case early-return in `_get_enclosing_function()`
 - **Fix:** Position-based lookup in `_get_enclosing_function()` for arrow functions
-- **Limitation:** JS/TS only; Kotlin/Scala lambdas still vulnerable
-- **Regression tests:** `test_js_ts.py::TestCallbackCallAttribution`
+- **Verification:** Kotlin and Scala lambdas work correctly - their `_get_enclosing_function()`
+  walks up past `lambda_literal` (Kotlin) and `lambda_expression` (Scala) to find the enclosing
+  `function_declaration` or `function_definition`.
+- **Regression tests:**
+  - `test_js_ts.py::TestCallbackCallAttribution`
+  - `test_kotlin.py::TestKotlinLambdaCallAttribution` (4 tests)
+  - Manual verification for Scala (2026-01-25)
 
 ## INV-002: Usage-to-Concept Flow
 - **Statement:** Usage patterns extracted by analyzers become concepts on nodes
