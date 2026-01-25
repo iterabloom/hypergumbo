@@ -10,6 +10,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **Twig template analyzer**: Full tree-sitter support for Twig PHP templates. Extracts
+  blocks, extends, includes, macros, for loops, and conditionals. Creates extends_template
+  and includes_template edges for template inheritance and composition patterns.
 - **SCSS/Sass stylesheet analyzer**: Full tree-sitter support for SCSS/Sass stylesheets.
   Extracts variables, mixins, functions, rule sets, and @include statements. Categorizes
   variables by domain (color, typography, spacing, border, breakpoint, layer, shadow,
