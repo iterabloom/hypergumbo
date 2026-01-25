@@ -128,11 +128,12 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("wgsl", "hypergumbo.analyze.wgsl", "analyze_wgsl_files"),
     AnalyzerSpec("hlsl", "hypergumbo.analyze.hlsl", "analyze_hlsl"),
 
-    # Interface definitions
+    # Interface definitions and schemas
     AnalyzerSpec("graphql", "hypergumbo.analyze.graphql", "analyze_graphql_files"),
     AnalyzerSpec("proto", "hypergumbo.analyze.proto", "analyze_proto"),
     AnalyzerSpec("thrift", "hypergumbo.analyze.thrift", "analyze_thrift"),
     AnalyzerSpec("capnp", "hypergumbo.analyze.capnp", "analyze_capnp"),
+    AnalyzerSpec("prisma", "hypergumbo.analyze.prisma", "analyze_prisma"),
     AnalyzerSpec("r", "hypergumbo.analyze.r_lang", "analyze_r_files"),
     AnalyzerSpec("fortran", "hypergumbo.analyze.fortran", "analyze_fortran_files"),
     AnalyzerSpec("llvm_ir", "hypergumbo.analyze.llvm_ir", "analyze_llvm_ir"),
