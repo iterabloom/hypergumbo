@@ -59,6 +59,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Tracks public/private visibility and static methods. Detects call edges with
   qualified name resolution for same-class methods. Filters built-in functions.
   Supports .hx file extension.
+- **Meson build system analyzer**: Full tree-sitter support for Meson build
+  files. Extracts projects, build targets (executables, libraries), and custom
+  targets. Detects dependency edges between targets and subdir includes.
+  Supports meson.build, meson_options.txt, and meson.options files.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
