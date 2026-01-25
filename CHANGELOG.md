@@ -128,6 +128,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Detects cross-document references (:ref:, :doc:, :func:, :class:, etc.) and
   toctree/include relationships. Identifies API documentation directives and
   admonition directives.
+- **Python requirements.txt analyzer**: Full tree-sitter support for Python
+  dependency files (requirements.txt and variants). Extracts package requirements
+  with version constraints, URL-based dependencies (git+, hg+, svn+), and editable
+  installs. Detects cross-file includes (-r) and constraints (-c). Creates depends
+  edges to PyPI packages and VCS repositories.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

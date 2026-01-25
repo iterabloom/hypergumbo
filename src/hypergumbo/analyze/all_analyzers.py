@@ -117,6 +117,9 @@ ANALYZERS: list[AnalyzerSpec] = [
     # Build systems
     AnalyzerSpec("bitbake", "hypergumbo.analyze.bitbake", "analyze_bitbake"),
 
+    # Dependencies and config
+    AnalyzerSpec("requirements", "hypergumbo.analyze.requirements", "analyze_requirements"),
+
     # Infrastructure and config
     AnalyzerSpec("hcl", "hypergumbo.analyze.hcl", "analyze_hcl"),
     AnalyzerSpec("ansible", "hypergumbo.analyze.yaml_ansible", "analyze_ansible"),
