@@ -143,6 +143,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   wildcard). Categorizes patterns by domain (build, dependencies, ide, environment,
   logs, os, cache, test, compiled, temp). Helps understand project structure and
   build tooling from exclusion patterns.
+- **Svelte component analyzer**: Full tree-sitter support for Svelte components
+  (.svelte files). Extracts component references with import tracking, slot
+  definitions (named and default), event handlers (on:click, etc.), and control
+  flow blocks (#if, #each, #await). Creates imports_component edges linking
+  component usage to import paths. Helps understand component hierarchy and
+  composition patterns in Svelte applications.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
