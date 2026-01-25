@@ -25,6 +25,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **V language analyzer**: Full tree-sitter support for V programming language.
   Extracts functions, structs, enums, interfaces. Tracks pub/private visibility,
   field counts, function signatures. Detects imports and call edges.
+- **MATLAB language analyzer**: Full tree-sitter support for MATLAB. Extracts
+  functions, classes, methods, and properties. Tracks function signatures with
+  output variables, method class membership, and property/method counts. Detects
+  call edges with cross-file symbol resolution.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
