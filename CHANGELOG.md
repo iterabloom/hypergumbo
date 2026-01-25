@@ -161,6 +161,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   component usage to import paths. Two-pass processing ensures imports are resolved
   before template analysis. Useful for understanding Vue component hierarchy and
   composition patterns.
+- **Astro component analyzer**: Full tree-sitter support for Astro components
+  (.astro files). Extracts frontmatter imports and variables, component references
+  with import tracking, slots (named and default), and client directives
+  (client:load, client:idle, client:visible). Creates imports_component edges.
+  Two-pass processing ensures imports are resolved before template analysis.
+  Useful for understanding Astro project structure and hydration patterns.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
