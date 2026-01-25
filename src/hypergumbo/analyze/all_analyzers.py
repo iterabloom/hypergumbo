@@ -88,6 +88,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("elm", "hypergumbo.analyze.elm", "analyze_elm"),
     AnalyzerSpec("erlang", "hypergumbo.analyze.erlang", "analyze_erlang"),
     AnalyzerSpec("haskell", "hypergumbo.analyze.haskell", "analyze_haskell"),
+    AnalyzerSpec("pony", "hypergumbo.analyze.pony", "analyze_pony"),
 
     # Specialized/niche languages
     AnalyzerSpec("agda", "hypergumbo.analyze.agda", "analyze_agda"),

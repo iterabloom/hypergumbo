@@ -102,6 +102,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   documentation, and tags. Test cases include documentation and tags. Detects
   keyword invocation edges with cross-file resolution. Filters built-in Robot
   Framework keywords (BuiltIn, Collections, String libraries).
+- **Pony language analyzer**: Full tree-sitter support for Pony, an actor-model
+  language with capabilities-based type safety (.pony files). Extracts actors,
+  classes, interfaces, traits, primitives, constructors, methods, and fields.
+  Tracks reference capabilities (ref, val, box, iso, trn, tag) on methods.
+  Detects method calls with cross-file resolution. Filters built-in types.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
