@@ -113,6 +113,9 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("d", "hypergumbo.analyze.d_lang", "analyze_d"),
     AnalyzerSpec("nim", "hypergumbo.analyze.nim", "analyze_nim"),
 
+    # Build systems
+    AnalyzerSpec("bitbake", "hypergumbo.analyze.bitbake", "analyze_bitbake"),
+
     # Infrastructure and config
     AnalyzerSpec("hcl", "hypergumbo.analyze.hcl", "analyze_hcl"),
     AnalyzerSpec("ansible", "hypergumbo.analyze.yaml_ansible", "analyze_ansible"),

@@ -107,6 +107,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   classes, interfaces, traits, primitives, constructors, methods, and fields.
   Tracks reference capabilities (ref, val, box, iso, trn, tag) on methods.
   Detects method calls with cross-file resolution. Filters built-in types.
+- **BitBake analyzer**: Full tree-sitter support for BitBake, the build tool
+  used by Yocto Project and OpenEmbedded for embedded Linux development
+  (.bb, .bbappend, .bbclass, .inc files). Extracts important recipe variables
+  (SUMMARY, LICENSE, SRC_URI, DEPENDS, etc.), inherit directives for class
+  dependencies, shell task functions (do_configure, do_compile, do_install),
+  Python task functions, and addtask directives. Detects dependency edges from
+  DEPENDS/RDEPENDS and inherit edges for class inheritance tracking.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
