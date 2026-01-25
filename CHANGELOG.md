@@ -49,6 +49,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Extracts functions and local variables with parameter counts. Detects call
   edges with recursive call support. Compiles to Lua. Supports .fnl file
   extension.
+- **Pascal language analyzer**: Full tree-sitter support for Pascal/Object Pascal.
+  Extracts programs, units, functions, and procedures with parameter counts.
+  Detects call edges with case-insensitive matching (Pascal is case-insensitive).
+  Supports procedures called without parentheses. Filters built-in procedures.
+  Supports .pas, .pp, .dpr, .lpr file extensions.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
