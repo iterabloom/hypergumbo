@@ -94,6 +94,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("csharp", "hypergumbo.analyze.csharp", "analyze_csharp"),
     AnalyzerSpec("cpp", "hypergumbo.analyze.cpp", "analyze_cpp"),
     AnalyzerSpec("zig", "hypergumbo.analyze.zig", "analyze_zig"),
+    AnalyzerSpec("odin", "hypergumbo.analyze.odin", "analyze_odin"),
     AnalyzerSpec("groovy", "hypergumbo.analyze.groovy", "analyze_groovy"),
     AnalyzerSpec("julia", "hypergumbo.analyze.julia", "analyze_julia"),
     AnalyzerSpec("bash", "hypergumbo.analyze.bash", "analyze_bash"),

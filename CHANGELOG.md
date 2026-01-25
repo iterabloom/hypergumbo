@@ -13,6 +13,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`compact` subcommand**: Convert existing behavior maps to compact form without
   re-running analysis. Useful for post-processing large behavior maps into LLM-friendly
   formats. Options: `--input`, `--out`, `--max-symbols`, `--coverage`, `--no-connectivity`.
+- **Odin language analyzer**: Full tree-sitter support for Odin programming language.
+  Extracts procedures, structs, enums, unions. Detects imports and call edges with
+  cross-file symbol resolution.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
