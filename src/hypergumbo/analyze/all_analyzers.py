@@ -140,6 +140,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("properties", "hypergumbo.analyze.properties", "analyze_properties"),
     AnalyzerSpec("gitignore", "hypergumbo.analyze.gitignore", "analyze_gitignore"),
     AnalyzerSpec("css", "hypergumbo.analyze.css", "analyze_css_files"),
+    AnalyzerSpec("scss", "hypergumbo.analyze.scss", "analyze_scss"),
     AnalyzerSpec("jsonnet", "hypergumbo.analyze.jsonnet", "analyze_jsonnet"),
 
     # Hardware description

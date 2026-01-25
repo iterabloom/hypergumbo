@@ -10,6 +10,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **SCSS/Sass stylesheet analyzer**: Full tree-sitter support for SCSS/Sass stylesheets.
+  Extracts variables, mixins, functions, rule sets, and @include statements. Categorizes
+  variables by domain (color, typography, spacing, border, breakpoint, layer, shadow,
+  animation). Identifies selector types (class, id, element). Creates uses_mixin edges
+  linking @include statements to their mixin definitions.
 - **`compact` subcommand**: Convert existing behavior maps to compact form without
   re-running analysis. Useful for post-processing large behavior maps into LLM-friendly
   formats. Options: `--input`, `--out`, `--max-symbols`, `--coverage`, `--no-connectivity`.
