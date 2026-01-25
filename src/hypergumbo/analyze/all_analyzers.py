@@ -133,6 +133,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("xml", "hypergumbo.analyze.xml_config", "analyze_xml_files"),
     AnalyzerSpec("json", "hypergumbo.analyze.json_config", "analyze_json_files"),
     AnalyzerSpec("properties", "hypergumbo.analyze.properties", "analyze_properties"),
+    AnalyzerSpec("gitignore", "hypergumbo.analyze.gitignore", "analyze_gitignore"),
     AnalyzerSpec("css", "hypergumbo.analyze.css", "analyze_css_files"),
     AnalyzerSpec("jsonnet", "hypergumbo.analyze.jsonnet", "analyze_jsonnet"),
 

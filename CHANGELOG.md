@@ -138,6 +138,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   properties by domain (database, logging, security, server, cache, messaging,
   cloud, persistence). Automatically masks sensitive values (password, secret,
   token, key, credential) in output. Useful for Java/Spring/Android configuration.
+- **Gitignore file analyzer**: Full tree-sitter support for .gitignore files.
+  Extracts ignore patterns with classification (negation, directory, rooted,
+  wildcard). Categorizes patterns by domain (build, dependencies, ide, environment,
+  logs, os, cache, test, compiled, temp). Helps understand project structure and
+  build tooling from exclusion patterns.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
