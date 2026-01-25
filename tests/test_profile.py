@@ -274,6 +274,43 @@ def test_handles_invalid_package_json(tmp_path: Path) -> None:
     assert data["profile"]["frameworks"] == []
 
 
+def test_handles_non_dict_package_json(tmp_path: Path) -> None:
+    """Should gracefully handle package.json with non-dict top-level value.
+
+    Some repos have package.json files that are valid JSON but contain a
+    string or array at the top level instead of an object. This was found
+    in the grpc repo during bakeoff testing.
+    """
+    (tmp_path / "app.js").write_text("console.log('hi');\n")
+    # Valid JSON, but a string instead of an object
+    (tmp_path / "package.json").write_text('"this is a string, not an object"')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    # Should still detect JavaScript, just not frameworks
+    assert "javascript" in data["profile"]["languages"]
+    assert data["profile"]["frameworks"] == []
+
+
+def test_handles_array_package_json(tmp_path: Path) -> None:
+    """Should gracefully handle package.json with array at top level."""
+    (tmp_path / "app.js").write_text("console.log('hi');\n")
+    # Valid JSON, but an array instead of an object
+    (tmp_path / "package.json").write_text('["item1", "item2"]')
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    # Should still detect JavaScript, just not frameworks
+    assert "javascript" in data["profile"]["languages"]
+    assert data["profile"]["frameworks"] == []
+
+
 def test_detects_pytorch_framework(tmp_path: Path) -> None:
     """Should detect PyTorch from dependencies."""
     (tmp_path / "train.py").write_text("import torch\n")
@@ -718,6 +755,21 @@ def test_handles_invalid_composer_json(tmp_path: Path) -> None:
     """Should gracefully handle malformed composer.json."""
     (tmp_path / "index.php").write_text("<?php\n")
     (tmp_path / "composer.json").write_text("{ invalid json }")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    # Should still detect PHP, just not frameworks
+    assert "php" in data["profile"]["languages"]
+    assert "laravel" not in data["profile"]["frameworks"]
+
+
+def test_handles_non_dict_composer_json(tmp_path: Path) -> None:
+    """Should gracefully handle composer.json with non-dict top-level value."""
+    (tmp_path / "index.php").write_text("<?php\n")
+    # Valid JSON, but a string instead of an object
+    (tmp_path / "composer.json").write_text('"this is a string"')
 
     out_path = tmp_path / "out.json"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)

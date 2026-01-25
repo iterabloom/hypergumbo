@@ -20,6 +20,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Django's `'views.user_list'`) doesn't have a direct symbol reference, the enrichment
   phase now tries to resolve by looking up `view_name` from metadata in `symbol_by_name`.
   This enables concept annotations for cross-file handler references.
+- **Non-dict JSON manifest handling**: Fixed crash when `package.json` or `composer.json`
+  contains valid JSON but with a non-object top-level value (e.g., a string or array).
+  Discovered during bakeoff testing of the grpc repository. Affected code paths:
+  `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, and
+  `_extract_package_json` in sketch.
 
 ### Tests
 - Added Scala lambda call attribution tests to verify INV-001 (call attribution
