@@ -1623,6 +1623,43 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 
 > **Historical note:** Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md). Spec B work will be pursued when there's clear demand for capabilities beyond what Spec A provides.
 
+## 11) Autonomous Governance (ADR-0008)
+
+🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
+
+### Components
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| Stop reflection prompt | `.agent/stop_reflect.md` | Checklist agents must complete before stopping |
+| Invariant ledger | `.agent/invariant-ledger.md` | Tracks discovered invariants and their fix status |
+| Loop sentinel | `.agent/LOOP` | Sentinel file; remove to allow agent to stop |
+| Hook adapters | `.agent/hooks/*/` | Per-tool adapter scripts (Claude Code, Gemini CLI, Cursor, Codex CLI) |
+
+### How It Works
+
+1. **Autonomous mode gate:** Hooks only engage when `AUTONOMOUS_MODE.txt` contains "TRUE"
+2. **Loop sentinel:** Agents check for `.agent/LOOP`; if present, reflection is required before stopping
+3. **Reflection protocol:** Agents complete a structured checklist (invariant identification, structural vs. workaround analysis, scope expansion)
+4. **Invariant ledger:** Discovered invariants are documented with status, root cause, and regression tests
+
+### Hook Adapters
+
+Each AI coding tool has a different hook mechanism. Adapter scripts provide a consistent interface:
+
+- **Claude Code:** `.agent/hooks/claude-code/stop.sh` (Stop hook with JSON response)
+- **Gemini CLI:** `.agent/hooks/gemini-cli/after-agent.sh` (AfterAgent hook)
+- **Cursor:** `.agent/hooks/cursor/stop.sh` (stop hook with ASK output)
+- **Codex CLI:** `.agent/hooks/codex-cli/notify.sh` (notification only; limited enforcement)
+
+### Known Unfixed Root Causes
+
+The invariant ledger tracks known unfixed root causes. As of v1.0.0:
+
+- **INV-002:** `symbol_ref` gate at `framework_patterns.py:992-993` — Usage patterns for string-based handlers (Rails, Django string views) bypass the concept enrichment flow
+
+See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full design rationale.
+
 ## Appendix A: Example output
 
 Minimal working example for a tiny FastAPI app:
