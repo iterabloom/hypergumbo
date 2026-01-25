@@ -137,6 +137,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("proto", "hypergumbo.analyze.proto", "analyze_proto"),
     AnalyzerSpec("thrift", "hypergumbo.analyze.thrift", "analyze_thrift"),
     AnalyzerSpec("capnp", "hypergumbo.analyze.capnp", "analyze_capnp"),
+    AnalyzerSpec("smithy", "hypergumbo.analyze.smithy", "analyze_smithy"),
     AnalyzerSpec("prisma", "hypergumbo.analyze.prisma", "analyze_prisma"),
     AnalyzerSpec("r", "hypergumbo.analyze.r_lang", "analyze_r_files"),
     AnalyzerSpec("matlab", "hypergumbo.analyze.matlab", "analyze_matlab"),

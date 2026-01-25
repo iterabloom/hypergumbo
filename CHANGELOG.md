@@ -78,6 +78,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Tracks visibility modifiers, static methods, and namespace context. Detects
   function calls, method calls, and static calls with qualified name resolution.
   Supports .hack, .hh, and .php files with <?hh header.
+- **Smithy API definition language analyzer**: Full tree-sitter support for AWS
+  Smithy (.smithy files). Extracts services, operations, structures, resources,
+  unions, enums, lists, maps, and simple type aliases. Tracks namespaces and
+  qualified shape names (namespace#ShapeName). Detects service-to-operation
+  containment edges, input/output/error type references, and structure member
+  type references. Filters primitive types (String, Integer, etc.) from edges.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
