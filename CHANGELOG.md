@@ -96,6 +96,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   type definitions (with export support), and module variables. Detects function
   calls and method calls with qualified name resolution. Filters built-in Lua/
   Luau functions and Roblox service methods.
+- **Robot Framework analyzer**: Full tree-sitter support for Robot Framework
+  test automation (.robot files). Extracts keywords, test cases, variables,
+  library imports, and resource imports. Keywords include argument lists,
+  documentation, and tags. Test cases include documentation and tags. Detects
+  keyword invocation edges with cross-file resolution. Filters built-in Robot
+  Framework keywords (BuiltIn, Collections, String libraries).
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

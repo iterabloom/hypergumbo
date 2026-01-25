@@ -160,6 +160,9 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("haxe", "hypergumbo.analyze.haxe", "analyze_haxe"),
     AnalyzerSpec("meson", "hypergumbo.analyze.meson", "analyze_meson"),
     AnalyzerSpec("purescript", "hypergumbo.analyze.purescript", "analyze_purescript"),
+
+    # Testing frameworks
+    AnalyzerSpec("robot", "hypergumbo.analyze.robot", "analyze_robot"),
 ]
 
 
