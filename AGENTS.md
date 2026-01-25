@@ -14,7 +14,7 @@
   When AUTONOMOUS_MODE.txt is TRUE:
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
-  - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed root causes related to your work
+  - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
@@ -112,8 +112,8 @@ pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 # 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 
 # 4. If fixing a bakeoff signal: Check invariant ledger (see ADR-0008)
-cat .agent/invariant-ledger.md 2>/dev/null | grep -A5 "Status: ❌" || true
-# If your change relates to an UNFIXED invariant, fix the root cause, not a workaround
+cat .agent/invariant-ledger.md 2>/dev/null | grep -E -A5 'Status: (❌( UNFIXED)?|UNFIXED|PARTIALLY ADDRESSED)' || true
+# If your change relates to an UNFIXED or PARTIALLY ADDRESSED invariant, fix the root cause, not a workaround
 
 # 5. Commit with sign-off
 git commit -s -m "feat: description"
@@ -363,7 +363,7 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
 
 ## Autonomous Development Mode Stipulations
 When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work:
-- **PUSH IT TO THE LIMIT.** Keep adding features, frameworks, cross-language & cross-environment communication detection, and languages.
+- **PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using the bakeoff loop defined in the scripts. Keep refactoring, improving, or adding features, frameworks, and cross-language & cross-environment communication detection.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
@@ -375,18 +375,17 @@ When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE",
 - **Do NOT draw conclusions from mini-trials:** Mini-trials are only for smoke testing (does the setup work?) and ballpark runtime estimation. The sample size is far too small for meaningful conclusions. Save analysis for the full experiment results.
 - **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
 - **Adjust specs based on experiments:** If experiments reveal better approaches, update Spec A/B.
-- **If you run out of Spec A items, dive into Spec B. (Ignore the stuff about timelines, personnel, budgets, etc -- just focus on building good software)**
-- **Don't stop until you've finished Spec B (its software elements, anyway) or you've become profoundly stuck.**
+- **If you run out of Spec A items, dive into Spec B. Focus on building good software.**
+- **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
 Priority queue:
-1. **Unfixed root causes** in `.agent/invariant-ledger.md` (Status: ❌) — these block structural progress
-2. Check `pip index versions tree-sitter-<lang>` for available grammars
-3. Languages with tree-sitter packages
-4. Framework-specific packs: Django routes, FastAPI routes, Phoenix channels, etc.
+1. **Status: UNFIXED or Status: PARTIALLY ADDRESSED root causes** in `.agent/invariant-ledger.md` — these block structural progress
+2. Frameworks: Django, FastAPI, Phoenix, Rails, etc.
+3. Linkers: polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+
 
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-01-05.0 -->
-
+<!-- CANARY: agents-policy-v2026-01-25.0 -->
