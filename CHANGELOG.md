@@ -84,6 +84,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   qualified shape names (namespace#ShapeName). Detects service-to-operation
   containment edges, input/output/error type references, and structure member
   type references. Filters primitive types (String, Integer, etc.) from edges.
+- **Apex language analyzer**: Full tree-sitter support for Salesforce Apex
+  (.cls, .trigger files). Extracts classes, interfaces, enums, triggers, methods,
+  constructors, and fields. Tracks visibility modifiers (public/private/protected/
+  global), static methods, abstract/virtual classes, and override methods. Detects
+  method calls, static calls, and constructor calls with qualified name resolution.
+  Filters built-in Salesforce system classes.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution

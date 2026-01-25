@@ -69,6 +69,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("javascript", "hypergumbo.analyze.js_ts", "analyze_javascript", supports_max_files=True),
     AnalyzerSpec("php", "hypergumbo.analyze.php", "analyze_php"),
     AnalyzerSpec("hack", "hypergumbo.analyze.hack", "analyze_hack"),
+    AnalyzerSpec("apex", "hypergumbo.analyze.apex", "analyze_apex"),
     AnalyzerSpec("c", "hypergumbo.analyze.c", "analyze_c", capture_symbols_as="c"),
     AnalyzerSpec("java", "hypergumbo.analyze.java", "analyze_java", capture_symbols_as="java"),
     AnalyzerSpec("elixir", "hypergumbo.analyze.elixir", "analyze_elixir"),
