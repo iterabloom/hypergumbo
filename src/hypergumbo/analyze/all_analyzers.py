@@ -120,6 +120,7 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("hcl", "hypergumbo.analyze.hcl", "analyze_hcl"),
     AnalyzerSpec("ansible", "hypergumbo.analyze.yaml_ansible", "analyze_ansible"),
     AnalyzerSpec("sql", "hypergumbo.analyze.sql", "analyze_sql_files"),
+    AnalyzerSpec("sparql", "hypergumbo.analyze.sparql", "analyze_sparql"),
     AnalyzerSpec("dockerfile", "hypergumbo.analyze.dockerfile", "analyze_dockerfiles"),
     AnalyzerSpec("cmake", "hypergumbo.analyze.cmake", "analyze_cmake_files"),
     AnalyzerSpec("make", "hypergumbo.analyze.make", "analyze_make_files"),

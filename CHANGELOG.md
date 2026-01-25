@@ -114,6 +114,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   dependencies, shell task functions (do_configure, do_compile, do_install),
   Python task functions, and addtask directives. Detects dependency edges from
   DEPENDS/RDEPENDS and inherit edges for class inheritance tracking.
+- **SPARQL query analyzer**: Full tree-sitter support for SPARQL, the query
+  language for RDF databases and semantic web applications (.sparql, .rq files).
+  Extracts PREFIX declarations with IRI bindings, BASE declarations, and query
+  definitions (SELECT, CONSTRUCT, ASK, DESCRIBE). Tracks variables, triple
+  pattern counts, and vocabulary usage. Detects uses_vocabulary edges linking
+  queries to their prefix declarations. Identifies standard vocabularies (RDF,
+  RDFS, OWL, FOAF, SKOS, Dublin Core, Wikidata, etc.).
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
