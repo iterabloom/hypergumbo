@@ -121,6 +121,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   pattern counts, and vocabulary usage. Detects uses_vocabulary edges linking
   queries to their prefix declarations. Identifies standard vocabularies (RDF,
   RDFS, OWL, FOAF, SKOS, Dublin Core, Wikidata, etc.).
+- **reStructuredText (RST) analyzer**: Full tree-sitter support for RST, the
+  standard documentation format for Python projects (.rst files). Extracts
+  document sections with hierarchical levels, directives (function, class,
+  module, note, warning, toctree, code-block, etc.), and reference targets.
+  Detects cross-document references (:ref:, :doc:, :func:, :class:, etc.) and
+  toctree/include relationships. Identifies API documentation directives and
+  admonition directives.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
