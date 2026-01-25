@@ -133,6 +133,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   with version constraints, URL-based dependencies (git+, hg+, svn+), and editable
   installs. Detects cross-file includes (-r) and constraints (-c). Creates depends
   edges to PyPI packages and VCS repositories.
+- **Java properties file analyzer**: Full tree-sitter support for Java .properties
+  configuration files. Extracts key-value pairs with namespace prefixes. Categorizes
+  properties by domain (database, logging, security, server, cache, messaging,
+  cloud, persistence). Automatically masks sensitive values (password, secret,
+  token, key, credential) in output. Useful for Java/Spring/Android configuration.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
