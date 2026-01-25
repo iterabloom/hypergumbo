@@ -54,6 +54,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Detects call edges with case-insensitive matching (Pascal is case-insensitive).
   Supports procedures called without parentheses. Filters built-in procedures.
   Supports .pas, .pp, .dpr, .lpr file extensions.
+- **Haxe language analyzer**: Full tree-sitter support for Haxe cross-platform
+  language. Extracts classes, interfaces, and functions with parameter counts.
+  Tracks public/private visibility and static methods. Detects call edges with
+  qualified name resolution for same-class methods. Filters built-in functions.
+  Supports .hx file extension.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
