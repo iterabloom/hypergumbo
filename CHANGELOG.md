@@ -9,6 +9,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+- **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
+  for `UsageContext` records with `symbol_ref=None`. When a handler reference (like
+  Django's `'views.user_list'`) doesn't have a direct symbol reference, the enrichment
+  phase now tries to resolve by looking up `view_name` from metadata in `symbol_by_name`.
+  This enables concept annotations for cross-file handler references.
+
 ## [1.1.0] - 2026-01-24
 
 ### Removed

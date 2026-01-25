@@ -6231,6 +6231,71 @@ class TestEnrichSymbolsWithUsageContexts:
         assert route["path"] == "/users/"
         assert route["method"] == "GET"
 
+    def test_inv002_fallback_resolution_by_view_name(self) -> None:
+        """INV-002: Enriches symbol via view_name when symbol_ref is None.
+
+        This tests the fix for INV-002 where UsageContext records with
+        symbol_ref=None but view_name in metadata can still enrich symbols
+        by falling back to name-based resolution.
+        """
+        # Symbol representing the view function
+        symbol = Symbol(
+            id="python:views.py:10-15:user_list:function",
+            name="user_list",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 15, 0, 50),
+            meta={},
+        )
+
+        # UsageContext with symbol_ref=None (view is in different file)
+        # but view_name is present in metadata for fallback resolution
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,  # Key: symbol_ref is None
+            metadata={
+                "args": ["/users/", "views.user_list"],
+                "view_name": "user_list",  # Key: view_name for fallback
+                "route_path": "/users/",
+            },
+        )
+
+        pattern_def = FrameworkPatternDef(
+            id="test-django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(kind="^call$", name="^path$"),
+                    extract={"path": "metadata.route_path", "method": "literal:GET"},
+                ),
+            ],
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.load_framework_patterns",
+            return_value=pattern_def,
+        ):
+            enriched = enrich_symbols(
+                [symbol],
+                {"test-django"},
+                usage_contexts=[ctx],
+            )
+
+        # Symbol should be enriched via name-based fallback (INV-002 fix)
+        assert enriched[0].meta is not None
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) >= 1
+        route = next(c for c in concepts if c["concept"] == "route")
+        assert route["path"] == "/users/"
+        assert route["method"] == "GET"
+
 
 class TestMainFunctionPatterns:
     """Tests for language-level main() function pattern detection (ADR-0003 v1.2.x)."""

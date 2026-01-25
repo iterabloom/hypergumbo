@@ -13,13 +13,21 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 
 ## INV-002: Usage-to-Concept Flow
 - **Statement:** Usage patterns extracted by analyzers become concepts on nodes
-- **Status:** UNFIXED
+- **Status:** PARTIALLY ADDRESSED
 - **Root cause:** `symbol_ref` gate at `framework_patterns.py:992-993`
-- **Workarounds:**
+- **Fix:** Added name-based fallback resolution using `view_name` from metadata
+- **How it works:** When `symbol_ref` is None, the enrichment phase tries to resolve
+  the handler by looking up `view_name` from metadata in `symbol_by_name`
+- **Limitation:** Only works when `view_name` is present in metadata and the target
+  symbol has a matching name. Cross-file resolution depends on analyzer extracting
+  view_name and the target symbol being in the same analysis run.
+- **Workarounds (still in use):**
   - Rails: Direct Symbol creation (bypasses UsageContext flow)
   - Library exports: Set `symbol_ref` when name resolves
 - **Affected frameworks:** Rails, Django string views, any string-based handler reference
-- **Regression tests:** `test_ruby.py::test_rails_routes` (tests workaround, not fix)
+- **Regression tests:**
+  - `test_framework_patterns.py::TestEnrichSymbolsWithUsageContexts::test_inv002_fallback_resolution_by_view_name`
+  - `test_ruby.py::test_rails_routes` (tests workaround, not fix)
 
 ## INV-003: Template for New Invariants
 - **Statement:** [What must always be true]

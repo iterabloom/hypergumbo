@@ -24,5 +24,6 @@ For the last change made:
 - [ ] If root cause unfixed and analogous issues exist: **DO NOT STOP** — fix the root cause
 - [ ] If root cause fixed or truly isolated: document in invariant ledger, then stop
 
-## Current Root Causes (Known Unfixed)
-- `symbol_ref` gate at `framework_patterns.py:992-993`
+## Current Root Causes (Known)
+- INV-001: JS/TS arrow function attribution (Kotlin/Scala lambdas still vulnerable)
+- INV-002: `symbol_ref` gate partially addressed with name-based fallback

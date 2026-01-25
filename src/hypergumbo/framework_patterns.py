@@ -917,8 +917,18 @@ def enrich_symbols(
     if not pattern_defs:  # pragma: no cover - main-functions.yaml is always loaded
         return symbols
 
-    # Build lookups for parent resolution
+    # Build lookups for parent resolution and name-based fallback
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
+    # Build name-based lookup for fallback resolution (INV-002 fix)
+    # Uses simple name as key; for qualified names, use the last component
+    symbol_by_name: dict[str, Symbol] = {}
+    for s in symbols:
+        if s.name:
+            # Use simple name (last component after dots)
+            simple_name = s.name.rsplit(".", 1)[-1]
+            # Prefer callable symbols (functions/methods) over classes/variables
+            if simple_name not in symbol_by_name or s.kind in ("function", "method"):
+                symbol_by_name[simple_name] = s
     class_lookup = _build_class_symbol_lookup(symbols)
 
     # Collect patterns that use prefix_from_parent (for phase 3)
@@ -988,12 +998,22 @@ def enrich_symbols(
     # Phase 3: Usage-based matching (v1.1.x)
     if usage_contexts:
         for ctx in usage_contexts:
-            # Skip if no symbol reference (inline handlers not yet supported)
-            if not ctx.symbol_ref:
-                continue
+            symbol: Symbol | None = None
 
-            # Find the referenced symbol
-            symbol = symbol_by_id.get(ctx.symbol_ref)
+            # Try direct symbol_ref lookup first
+            if ctx.symbol_ref:
+                symbol = symbol_by_id.get(ctx.symbol_ref)
+
+            # Fallback: try name-based resolution from metadata (INV-002 fix)
+            # This handles cases where view_name exists but symbol_ref wasn't set
+            # because the symbol was in a different file during analysis
+            if symbol is None and ctx.metadata:
+                view_name = ctx.metadata.get("view_name")
+                if view_name:
+                    # Try simple name lookup
+                    simple_name = view_name.rsplit(".", 1)[-1]
+                    symbol = symbol_by_name.get(simple_name)
+
             if not symbol:
                 continue
 
