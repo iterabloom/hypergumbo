@@ -45,6 +45,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   functions and variables with parameter counts. Detects call edges with
   recursive call support. Filters special forms and built-ins. Supports
   .janet file extension.
+- **Fennel language analyzer**: Full tree-sitter support for Fennel (Lua Lisp).
+  Extracts functions and local variables with parameter counts. Detects call
+  edges with recursive call support. Compiles to Lua. Supports .fnl file
+  extension.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
