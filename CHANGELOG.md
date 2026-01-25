@@ -29,6 +29,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   functions, classes, methods, and properties. Tracks function signatures with
   output variables, method class membership, and property/method counts. Detects
   call edges with cross-file symbol resolution.
+- **Tcl language analyzer**: Full tree-sitter support for Tcl/Tk. Extracts
+  procedures and namespaces with proc counts. Tracks namespace membership and
+  function signatures. Detects call edges from command substitutions, filters
+  built-in commands.
 
 ### Fixed
 - **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
