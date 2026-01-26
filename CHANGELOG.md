@@ -10,6 +10,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Added
+- **BibTeX bibliography analyzer**: Full tree-sitter support for BibTeX/LaTeX bibliography
+  files. Extracts bibliography entries with type categorization (article, book, inproceedings).
+  Captures citation keys, authors, years, titles, and field counts.
 - **Twig template analyzer**: Full tree-sitter support for Twig PHP templates. Extracts
   blocks, extends, includes, macros, for loops, and conditionals. Creates extends_template
   and includes_template edges for template inheritance and composition patterns.
