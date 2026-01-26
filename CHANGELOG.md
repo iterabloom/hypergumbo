@@ -9,201 +9,77 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Summary (human-reviewed)
+- **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework.
+- **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
+- **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash.
+- **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
+- **Tests:** Scala lambda attribution tests for INV-001.
+
 ### Added
-- **Puppet manifest analyzer**: Full tree-sitter support for Puppet configuration management.
-  Extracts classes, defined types, resources (package, service, file), nodes, and include
-  statements. Creates requires_resource, notifies_resource, and includes_class edges for
-  dependency tracking.
-- **BibTeX bibliography analyzer**: Full tree-sitter support for BibTeX/LaTeX bibliography
-  files. Extracts bibliography entries with type categorization (article, book, inproceedings).
-  Captures citation keys, authors, years, titles, and field counts.
-- **Twig template analyzer**: Full tree-sitter support for Twig PHP templates. Extracts
-  blocks, extends, includes, macros, for loops, and conditionals. Creates extends_template
-  and includes_template edges for template inheritance and composition patterns.
-- **SCSS/Sass stylesheet analyzer**: Full tree-sitter support for SCSS/Sass stylesheets.
-  Extracts variables, mixins, functions, rule sets, and @include statements. Categorizes
-  variables by domain (color, typography, spacing, border, breakpoint, layer, shadow,
-  animation). Identifies selector types (class, id, element). Creates uses_mixin edges
-  linking @include statements to their mixin definitions.
-- **`compact` subcommand**: Convert existing behavior maps to compact form without
-  re-running analysis. Useful for post-processing large behavior maps into LLM-friendly
-  formats. Options: `--input`, `--out`, `--max-symbols`, `--coverage`, `--no-connectivity`.
-- **Odin language analyzer**: Full tree-sitter support for Odin programming language.
-  Extracts procedures, structs, enums, unions. Detects imports and call edges with
-  cross-file symbol resolution.
-- **Prisma schema analyzer**: Analyze Prisma ORM schema files (.prisma). Extracts
-  models, enums, datasources, and generators. Detects @relation edges between models
-  for database schema visualization.
-- **Gleam language analyzer**: Full tree-sitter support for Gleam (BEAM/Erlang VM).
-  Extracts functions, custom types, type aliases. Tracks pub/private visibility,
-  constructor counts, function signatures. Detects imports and call edges.
-- **V language analyzer**: Full tree-sitter support for V programming language.
-  Extracts functions, structs, enums, interfaces. Tracks pub/private visibility,
-  field counts, function signatures. Detects imports and call edges.
-- **MATLAB language analyzer**: Full tree-sitter support for MATLAB. Extracts
-  functions, classes, methods, and properties. Tracks function signatures with
-  output variables, method class membership, and property/method counts. Detects
-  call edges with cross-file symbol resolution.
-- **Tcl language analyzer**: Full tree-sitter support for Tcl/Tk. Extracts
-  procedures and namespaces with proc counts. Tracks namespace membership and
-  function signatures. Detects call edges from command substitutions, filters
-  built-in commands.
-- **Scheme language analyzer**: Full tree-sitter support for Scheme (R5RS/R6RS).
-  Extracts function and variable definitions with parameter counts. Detects
-  call edges with recursive call support. Filters special forms and built-ins.
-  Supports .scm, .ss, .sld, .sls file extensions.
-- **Racket language analyzer**: Full tree-sitter support for Racket. Extracts
-  functions, variables, and structs with field information. Detects call edges
-  with recursive call support. Handles Racket-specific forms like struct and
-  module+. Supports .rkt, .rktl, .rktd file extensions.
-- **Janet language analyzer**: Full tree-sitter support for Janet. Extracts
-  functions and variables with parameter counts. Detects call edges with
-  recursive call support. Filters special forms and built-ins. Supports
-  .janet file extension.
-- **Fennel language analyzer**: Full tree-sitter support for Fennel (Lua Lisp).
-  Extracts functions and local variables with parameter counts. Detects call
-  edges with recursive call support. Compiles to Lua. Supports .fnl file
-  extension.
-- **Pascal language analyzer**: Full tree-sitter support for Pascal/Object Pascal.
-  Extracts programs, units, functions, and procedures with parameter counts.
-  Detects call edges with case-insensitive matching (Pascal is case-insensitive).
-  Supports procedures called without parentheses. Filters built-in procedures.
-  Supports .pas, .pp, .dpr, .lpr file extensions.
-- **Haxe language analyzer**: Full tree-sitter support for Haxe cross-platform
-  language. Extracts classes, interfaces, and functions with parameter counts.
-  Tracks public/private visibility and static methods. Detects call edges with
-  qualified name resolution for same-class methods. Filters built-in functions.
-  Supports .hx file extension.
-- **Meson build system analyzer**: Full tree-sitter support for Meson build
-  files. Extracts projects, build targets (executables, libraries), and custom
-  targets. Detects dependency edges between targets and subdir includes.
-  Supports meson.build, meson_options.txt, and meson.options files.
-- **PureScript language analyzer**: Full tree-sitter support for PureScript.
-  Extracts modules, functions, data types, type aliases, type classes, and
-  instances. Tracks type signatures and constructor counts. Detects call edges
-  with qualified name resolution. Filters built-in functions. Supports .purs
-  file extension.
-- **Jsonnet configuration language analyzer**: Full tree-sitter support for
-  Jsonnet. Extracts local functions, local variables, object methods, and
-  object fields. Tracks parameter counts and hidden field visibility. Detects
-  call edges and import relationships. Filters standard library functions.
-  Supports .jsonnet and .libsonnet file extensions.
-- **Hack language analyzer**: Full tree-sitter support for Hack (Meta/Facebook's
-  PHP dialect). Extracts classes, interfaces, traits, functions, and methods.
-  Tracks visibility modifiers, static methods, and namespace context. Detects
-  function calls, method calls, and static calls with qualified name resolution.
-  Supports .hack, .hh, and .php files with <?hh header.
-- **Smithy API definition language analyzer**: Full tree-sitter support for AWS
-  Smithy (.smithy files). Extracts services, operations, structures, resources,
-  unions, enums, lists, maps, and simple type aliases. Tracks namespaces and
-  qualified shape names (namespace#ShapeName). Detects service-to-operation
-  containment edges, input/output/error type references, and structure member
-  type references. Filters primitive types (String, Integer, etc.) from edges.
-- **Apex language analyzer**: Full tree-sitter support for Salesforce Apex
-  (.cls, .trigger files). Extracts classes, interfaces, enums, triggers, methods,
-  constructors, and fields. Tracks visibility modifiers (public/private/protected/
-  global), static methods, abstract/virtual classes, and override methods. Detects
-  method calls, static calls, and constructor calls with qualified name resolution.
-  Filters built-in Salesforce system classes.
-- **Luau language analyzer**: Full tree-sitter support for Roblox's Luau
-  (.luau, .lua files). Luau is a typed Lua variant used for Roblox game
-  development. Extracts functions (including typed parameters and return types),
-  type definitions (with export support), and module variables. Detects function
-  calls and method calls with qualified name resolution. Filters built-in Lua/
-  Luau functions and Roblox service methods.
-- **Robot Framework analyzer**: Full tree-sitter support for Robot Framework
-  test automation (.robot files). Extracts keywords, test cases, variables,
-  library imports, and resource imports. Keywords include argument lists,
-  documentation, and tags. Test cases include documentation and tags. Detects
-  keyword invocation edges with cross-file resolution. Filters built-in Robot
-  Framework keywords (BuiltIn, Collections, String libraries).
-- **Pony language analyzer**: Full tree-sitter support for Pony, an actor-model
-  language with capabilities-based type safety (.pony files). Extracts actors,
-  classes, interfaces, traits, primitives, constructors, methods, and fields.
-  Tracks reference capabilities (ref, val, box, iso, trn, tag) on methods.
-  Detects method calls with cross-file resolution. Filters built-in types.
-- **BitBake analyzer**: Full tree-sitter support for BitBake, the build tool
-  used by Yocto Project and OpenEmbedded for embedded Linux development
-  (.bb, .bbappend, .bbclass, .inc files). Extracts important recipe variables
-  (SUMMARY, LICENSE, SRC_URI, DEPENDS, etc.), inherit directives for class
-  dependencies, shell task functions (do_configure, do_compile, do_install),
-  Python task functions, and addtask directives. Detects dependency edges from
-  DEPENDS/RDEPENDS and inherit edges for class inheritance tracking.
-- **SPARQL query analyzer**: Full tree-sitter support for SPARQL, the query
-  language for RDF databases and semantic web applications (.sparql, .rq files).
-  Extracts PREFIX declarations with IRI bindings, BASE declarations, and query
-  definitions (SELECT, CONSTRUCT, ASK, DESCRIBE). Tracks variables, triple
-  pattern counts, and vocabulary usage. Detects uses_vocabulary edges linking
-  queries to their prefix declarations. Identifies standard vocabularies (RDF,
-  RDFS, OWL, FOAF, SKOS, Dublin Core, Wikidata, etc.).
-- **reStructuredText (RST) analyzer**: Full tree-sitter support for RST, the
-  standard documentation format for Python projects (.rst files). Extracts
-  document sections with hierarchical levels, directives (function, class,
-  module, note, warning, toctree, code-block, etc.), and reference targets.
-  Detects cross-document references (:ref:, :doc:, :func:, :class:, etc.) and
-  toctree/include relationships. Identifies API documentation directives and
-  admonition directives.
-- **Python requirements.txt analyzer**: Full tree-sitter support for Python
-  dependency files (requirements.txt and variants). Extracts package requirements
-  with version constraints, URL-based dependencies (git+, hg+, svn+), and editable
-  installs. Detects cross-file includes (-r) and constraints (-c). Creates depends
-  edges to PyPI packages and VCS repositories.
-- **Java properties file analyzer**: Full tree-sitter support for Java .properties
-  configuration files. Extracts key-value pairs with namespace prefixes. Categorizes
-  properties by domain (database, logging, security, server, cache, messaging,
-  cloud, persistence). Automatically masks sensitive values (password, secret,
-  token, key, credential) in output. Useful for Java/Spring/Android configuration.
-- **Gitignore file analyzer**: Full tree-sitter support for .gitignore files.
-  Extracts ignore patterns with classification (negation, directory, rooted,
-  wildcard). Categorizes patterns by domain (build, dependencies, ide, environment,
-  logs, os, cache, test, compiled, temp). Helps understand project structure and
-  build tooling from exclusion patterns.
-- **Svelte component analyzer**: Full tree-sitter support for Svelte components
-  (.svelte files). Extracts component references with import tracking, slot
-  definitions (named and default), event handlers (on:click, etc.), and control
-  flow blocks (#if, #each, #await). Creates imports_component edges linking
-  component usage to import paths. Helps understand component hierarchy and
-  composition patterns in Svelte applications.
-- **Markdown documentation analyzer**: Full tree-sitter support for markdown files
-  (.md, .markdown). Extracts document structure with section headings (h1-h6),
-  fenced code blocks with language annotations, and inline links. Identifies
-  internal vs external links and creates links_to edges for documentation
-  cross-references. Useful for understanding README and documentation structure.
-- **Vue.js component analyzer**: Full tree-sitter support for Vue single-file
-  components (.vue files). Extracts component references with import tracking,
-  directives (v-if, v-for, v-model, @click, :prop), slots (named and default),
-  methods, computed properties, and props. Creates imports_component edges linking
-  component usage to import paths. Two-pass processing ensures imports are resolved
-  before template analysis. Useful for understanding Vue component hierarchy and
-  composition patterns.
-- **Astro component analyzer**: Full tree-sitter support for Astro components
-  (.astro files). Extracts frontmatter imports and variables, component references
-  with import tracking, slots (named and default), and client directives
-  (client:load, client:idle, client:visible). Creates imports_component edges.
-  Two-pass processing ensures imports are resolved before template analysis.
-  Useful for understanding Astro project structure and hydration patterns.
-- **INI configuration file analyzer**: Full tree-sitter support for INI/CFG files
-  (.ini, .cfg, .conf, setup.cfg, tox.ini, .editorconfig, .flake8, .pylintrc,
-  pytest.ini). Extracts sections and settings (key-value pairs). Categorizes
-  settings by domain (database, logging, server, security, cache, email, api).
-  Automatically masks sensitive values (password, secret, token, key, credential)
-  in output. Useful for configuration management and security auditing.
+
+#### CLI
+- **`compact`**: Post-process behavior maps into compact form. Options: `--input`, `--out`, `--max-symbols`, `--coverage`, `--no-connectivity`.
+
+#### Frontend, templates, and styles
+- **Twig** (tree-sitter): blocks/extends/includes/macros/control flow; `extends_template` / `includes_template` edges.
+- **SCSS/Sass** (tree-sitter): variables/mixins/functions/rules; `uses_mixin` edges.
+- **Svelte** (tree-sitter): imports, slots, events, control flow; `imports_component` edges.
+- **Vue SFC** (tree-sitter): directives/slots/methods/props; `imports_component` edges; two-pass import resolution.
+- **Astro** (tree-sitter): frontmatter, imports, slots, client directives; `imports_component` edges; two-pass import resolution.
+
+#### Programming languages
+- **Odin**: procedures/structs/enums/unions; imports + cross-file calls.
+- **Gleam**: functions/types/aliases; visibility + signatures; imports + calls.
+- **V**: functions/structs/enums/interfaces; visibility + signatures; imports + calls.
+- **MATLAB**: functions/classes/methods/properties; signatures + cross-file calls.
+- **Tcl/Tk**: procedures/namespaces; signatures; call edges (filters built-ins).
+- **Scheme**: defs + recursive calls; filters special forms; `.scm/.ss/.sld/.sls`.
+- **Racket**: defs/structs + recursive calls; `struct`/`module+`; `.rkt/.rktl/.rktd`.
+- **Janet**: defs + recursive calls; filters special forms; `.janet`.
+- **Fennel**: defs + recursive calls; compiles to Lua; `.fnl`.
+- **Pascal**: programs/units/functions/procs; case-insensitive calls; `.pas/.pp/.dpr/.lpr`.
+- **Haxe**: classes/interfaces/functions; visibility/static; qualified call resolution; `.hx`.
+- **PureScript**: modules/functions/types/classes/instances; signatures; qualified calls; `.purs`.
+- **Hack**: classes/traits/functions/methods; visibility/static; qualified calls; `.hack/.hh/.php (<?hh)`.
+- **Apex**: classes/triggers/methods/fields; visibility/override; qualified calls.
+- **Luau**: typed functions + types; qualified calls; `.luau/.lua`.
+- **Pony**: actors/classes/etc.; reference capabilities; cross-file calls.
+
+#### Data / schema / DSLs
+- **Prisma**: models/enums/datasources/generators; `@relation` edges.
+- **Smithy**: services/operations/shapes; namespace-qualified names; containment + type refs.
+- **SPARQL**: PREFIX/BASE + queries; vocab usage; `uses_vocabulary` edges.
+- **Jsonnet**: locals/methods/fields; imports + calls; `.jsonnet/.libsonnet`.
+
+#### Build systems and automation
+- **Meson**: projects/targets/custom targets; deps + subdir includes.
+- **BitBake**: recipe vars, inherit, tasks, addtask; DEPENDS/RDEPENDS + inherit edges.
+- **Robot Framework**: keywords/tests/vars/imports; cross-file keyword invocation (filters built-ins).
+
+#### Docs and repository/config files
+- **BibTeX**: bibliography entries (article/book/inproceedings), citation keys, authors/years/titles, field counts.
+- **Markdown**: headings/code blocks/links; `links_to` edges.
+- **RST**: sections/directives/refs; toctree/include + cross-doc refs.
+- **requirements.txt**: constraints, VCS/URL/editable; `-r/-c` includes; dependency edges.
+- **.properties**: key/value + domain categorization; masks secrets.
+- **.gitignore**: pattern classification + domain categories.
+- **INI/CFG family**: sections/settings + domain categorization; masks secrets.
+
+### Changed
+- **Agent policy / bakeoff loop** (agents-policy-v2026-01-25.0):
+  - Treat **UNFIXED** and **PARTIALLY ADDRESSED** invariants as blocking/actionable (incl. “stopping point” checks).
+  - Reflection now focuses on remaining signals **for the last change made**, and requires confirming the ledger is up-to-date:
+    - `cat .agent/invariant-ledger.md 2>/dev/null | grep -E -A5 'Status: (❌( UNFIXED)?|UNFIXED|PARTIALLY ADDRESSED)' || true`
+  - If an invariant is unfixed (even partially) and analogous issues might exist: **do not stop**—fix/investigate; otherwise document and consider reactivating `scripts/bakeoff*`.
+  - Canary bumped to `agents-policy-v2026-01-25.0`.
 
 ### Fixed
-- **INV-002: Usage-to-Concept Flow** (ADR-0008): Added name-based fallback resolution
-  for `UsageContext` records with `symbol_ref=None`. When a handler reference (like
-  Django's `'views.user_list'`) doesn't have a direct symbol reference, the enrichment
-  phase now tries to resolve by looking up `view_name` from metadata in `symbol_by_name`.
-  This enables concept annotations for cross-file handler references.
-- **Non-dict JSON manifest handling**: Fixed crash when `package.json` or `composer.json`
-  contains valid JSON but with a non-object top-level value (e.g., a string or array).
-  Discovered during bakeoff testing of the grpc repository. Affected code paths:
-  `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, and
-  `_extract_package_json` in sketch.
+- **INV-002 (ADR-0008)**: Name-based fallback resolution for `UsageContext(symbol_ref=None)` via `symbol_by_name` / `view_name`, enabling concept annotations for cross-file handler references.
+- **JSON manifests**: Avoid crash when `package.json` / `composer.json` top-level JSON is non-object; affected `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, `_extract_package_json` (sketch).
 
 ### Tests
-- Added Scala lambda call attribution tests to verify INV-001 (call attribution
-  completeness) works correctly for Scala's `lambda_expression` nodes.
+- Added Scala lambda call attribution tests for INV-001 (`lambda_expression` nodes).
 
 ## [1.1.0] - 2026-01-24
 
