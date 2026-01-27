@@ -10,7 +10,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Summary (human-reviewed)
-- **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework.
+- **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
 - **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
 - **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash.
 - **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
@@ -47,6 +47,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Pony**: actors/classes/etc.; reference capabilities; cross-file calls.
 
 #### Data / schema / DSLs
+- **KDL**: nodes/sections; arguments/properties; nested configuration hierarchies; `.kdl`.
 - **Prisma**: models/enums/datasources/generators; `@relation` edges.
 - **Smithy**: services/operations/shapes; namespace-qualified names; containment + type refs.
 - **SPARQL**: PREFIX/BASE + queries; vocab usage; `uses_vocabulary` edges.
