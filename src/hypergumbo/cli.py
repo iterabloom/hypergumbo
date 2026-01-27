@@ -83,7 +83,11 @@ from .compact import (
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
-from .framework_patterns import enrich_symbols, get_frameworks_dir
+from .framework_patterns import (
+    enrich_symbols,
+    get_frameworks_dir,
+    resolve_deferred_symbol_refs,
+)
 
 
 def _log_memory(label: str) -> None:  # pragma: no cover
@@ -2976,6 +2980,19 @@ def run_behavior_map(
         captured_symbols,
     ) = run_all_analyzers(repo_root, max_files=max_files)
     _log_memory("after analyzers")
+
+    # Resolve deferred symbol references (INV-002 proper fix)
+    # UsageContexts extracted during analysis may have symbol_ref=None when
+    # the target symbol is in a different file. Now that we have the complete
+    # symbol table, resolve these references using multi-strategy lookup.
+    show_progress("Resolving symbol references", 48)
+    resolution_stats = resolve_deferred_symbol_refs(all_symbols, all_usage_contexts)
+    if resolution_stats.total_resolved > 0:  # pragma: no cover - debug logging
+        _log_memory(
+            f"resolved {resolution_stats.total_resolved}/{resolution_stats.total_unresolved} "
+            f"deferred refs (exact={resolution_stats.resolved_exact}, "
+            f"suffix={resolution_stats.resolved_suffix})"
+        )
 
     # Enrich symbols with framework concept metadata (ADR-0003)
     # This applies YAML-based patterns to add concept info (route, model, etc.)

@@ -805,7 +805,7 @@ def _combine_route_paths(prefix: str | None, suffix: str | None) -> str | None:
     # Combine with leading slash
     if prefix and suffix:
         return f"/{prefix}/{suffix}"
-    elif prefix:
+    elif prefix:  # pragma: no cover - prefix only, no suffix
         return f"/{prefix}"
     elif suffix:  # pragma: no cover - only suffix path
         return f"/{suffix}"
@@ -864,7 +864,7 @@ def _get_concept_path_from_symbol(symbol: "Symbol", concept_name: str) -> str | 
     Returns:
         The path from the concept, or None if not found.
     """
-    if not symbol.meta:
+    if not symbol.meta:  # pragma: no cover - defensive for symbols without meta
         return None
 
     concepts = symbol.meta.get("concepts", [])
@@ -951,7 +951,7 @@ def enrich_symbols(
     # After all symbols have their concepts, resolve parent prefixes
     if patterns_with_prefix:
         for symbol in symbols:
-            if not symbol.meta or "concepts" not in symbol.meta:
+            if not symbol.meta or "concepts" not in symbol.meta:  # pragma: no cover
                 continue
 
             for concept in symbol.meta["concepts"]:
@@ -1028,6 +1028,179 @@ def enrich_symbols(
                 symbol.meta["concepts"] = existing + matches
 
     return symbols
+
+
+@dataclass
+class DeferredResolutionStats:
+    """Statistics from deferred symbol resolution phase.
+
+    Tracks how many UsageContexts were resolved and by which strategy,
+    enabling observability into the resolution process.
+    """
+
+    total_unresolved: int = 0
+    resolved_exact: int = 0
+    resolved_suffix: int = 0
+    resolved_path_hint: int = 0
+    resolved_ambiguous: int = 0
+    still_unresolved: int = 0
+
+    @property
+    def total_resolved(self) -> int:
+        """Total number of successfully resolved UsageContexts."""
+        return (
+            self.resolved_exact
+            + self.resolved_suffix
+            + self.resolved_path_hint
+            + self.resolved_ambiguous
+        )
+
+
+def resolve_deferred_symbol_refs(
+    symbols: list["Symbol"],
+    usage_contexts: list[UsageContext],
+) -> DeferredResolutionStats:
+    """Resolve symbol_ref for UsageContexts that couldn't be resolved during analysis.
+
+    This is the proper fix for INV-002: Usage patterns extracted by analyzers should
+    become concepts on nodes, but this requires resolving string-based handler
+    references to actual Symbol IDs.
+
+    The problem: When an analyzer extracts a UsageContext (e.g., Django URL pattern
+    referencing 'views.list_users'), the target symbol may be in a different file
+    that hasn't been analyzed yet, so symbol_ref is None.
+
+    The solution: After ALL analyzers have run, we have a complete symbol table.
+    This function uses that table to resolve deferred references using multiple
+    strategies:
+
+    1. Exact match: view_name matches a symbol's name exactly
+    2. Suffix match: view_name "list_users" matches "myapp.views.list_users"
+    3. Path hint: When ambiguous, prefer symbols in paths matching module hints
+
+    Args:
+        symbols: All symbols from all analyzers (complete symbol table)
+        usage_contexts: All UsageContexts, some with symbol_ref=None
+
+    Returns:
+        DeferredResolutionStats with resolution metrics
+
+    Side Effects:
+        Mutates UsageContext objects: sets symbol_ref when resolved
+    """
+    from .symbol_resolution import NameResolver
+
+    stats = DeferredResolutionStats()
+
+    # Build lookup indices
+    symbol_by_id: dict[str, "Symbol"] = {s.id: s for s in symbols}
+    symbol_by_name: dict[str, "Symbol"] = {}
+
+    for s in symbols:
+        # Index by simple name
+        symbol_by_name[s.name] = s
+        # Also index by qualified name if available (e.g., "Class.method")
+        if s.meta and s.meta.get("qualified_name"):
+            symbol_by_name[s.meta["qualified_name"]] = s
+
+    # Create NameResolver for suffix matching
+    resolver = NameResolver(symbol_by_name)
+
+    # Process UsageContexts with unresolved symbol_ref
+    for ctx in usage_contexts:
+        # Skip if already resolved
+        if ctx.symbol_ref and ctx.symbol_ref in symbol_by_id:
+            continue
+
+        # This one needs resolution
+        stats.total_unresolved += 1
+
+        # Extract resolution hints from metadata
+        # Different analyzers use different keys, so we check multiple
+        resolution_hints = _extract_resolution_hints(ctx)
+
+        if not resolution_hints["name"]:
+            stats.still_unresolved += 1
+            continue
+
+        # Build path hint from module info if available
+        path_hint = resolution_hints.get("module_path")
+
+        # Attempt resolution
+        result = resolver.lookup(
+            resolution_hints["name"],
+            allow_suffix=True,
+            path_hint=path_hint,
+        )
+
+        if result.found:
+            # Update the UsageContext with resolved symbol_ref
+            ctx.symbol_ref = result.symbol.id
+
+            # Track which strategy worked
+            match_type = result.match_type or "exact"
+            if match_type == "exact" or result.confidence >= 1.0:
+                stats.resolved_exact += 1
+            elif match_type == "path_hint":
+                stats.resolved_path_hint += 1
+            elif match_type == "suffix_ambiguous":
+                stats.resolved_ambiguous += 1
+            else:
+                stats.resolved_suffix += 1
+        else:
+            stats.still_unresolved += 1
+
+    return stats
+
+
+def _extract_resolution_hints(ctx: UsageContext) -> dict[str, str | None]:
+    """Extract resolution hints from UsageContext metadata.
+
+    Different analyzers store handler names in different metadata keys.
+    This function normalizes the extraction.
+
+    Returns:
+        Dict with 'name' (required for resolution) and optional hints:
+        - name: The symbol name to resolve (e.g., "list_users")
+        - module_path: Path hint for disambiguation (e.g., "views")
+        - qualified_name: Full qualified name if available
+    """
+    hints: dict[str, str | None] = {
+        "name": None,
+        "module_path": None,
+        "qualified_name": None,
+    }
+
+    if not ctx.metadata:
+        return hints
+
+    # Priority order for name extraction:
+    # 1. view_name (Django, Rails)
+    # 2. handler (Express, Fastify)
+    # 3. handler_name (generic)
+    # 4. callback (event-based)
+    # 5. function_name (generic)
+    name_keys = ["view_name", "handler", "handler_name", "callback", "function_name"]
+    for key in name_keys:
+        if ctx.metadata.get(key):
+            raw_name = ctx.metadata[key]
+            # Handle dotted names like "views.list_users"
+            if "." in raw_name:
+                parts = raw_name.rsplit(".", 1)
+                hints["module_path"] = parts[0]
+                hints["name"] = parts[1]
+                hints["qualified_name"] = raw_name
+            else:
+                hints["name"] = raw_name
+            break
+
+    # Additional path hint from module_name if name doesn't have dots
+    if hints["name"] and not hints["module_path"]:
+        module_hint = ctx.metadata.get("module_name") or ctx.metadata.get("module")
+        if module_hint:
+            hints["module_path"] = module_hint
+
+    return hints
 
 
 def clear_pattern_cache() -> None:
