@@ -9,7 +9,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
-### Summary (human-reviewed)
+### Summary
 - **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
 - **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
 - **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash.
@@ -83,6 +83,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Added Scala lambda call attribution tests for INV-001 (`lambda_expression` nodes).
 
 ## [1.1.0] - 2026-01-24
+
+> Note: This version was tagged in the codebase but never published to PyPI. It marks a milestone with breaking changes relative to v1.0.0. Hopefully our next release will be hiccup-free and actually publish to PyPI.
 
 ### Removed
 
@@ -192,8 +194,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [1.0.0] - 2026-01-12 (not released to PyPI)
 
-> **Note:** This version was tagged in the codebase but never published to PyPI. It marks a
-> milestone with breaking changes relative to v0.9.1. The next PyPI release will be v1.1.0+.
+> **Note:** This version was tagged in the codebase but never published to PyPI. It marks a milestone with breaking changes relative to v0.9.1.
 
 Major focus on memory optimization, framework detection improvements,
 and completing the migration to YAML-driven semantic analysis.
