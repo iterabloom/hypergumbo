@@ -1193,9 +1193,10 @@ def _extract_file_analysis(
 
         # Detect structural entry point: if __name__ == "__main__"
         # This concept enables entrypoint detection for executable Python scripts
+        # main_guard indicates "if __name__ == '__main__':" pattern
         module_meta: dict[str, object] | None = None
         if _has_main_guard(tree):
-            module_meta = {"concepts": ["main_guard"]}
+            module_meta = {"concepts": [{"concept": "main_guard", "framework": "python"}]}
 
         module_symbol = Symbol(
             id=_make_symbol_id(str(py_file), 1, end_line, f"<module:{module_name}>", "module"),

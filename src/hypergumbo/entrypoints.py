@@ -413,6 +413,19 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
 
+            # Python main guard concept -> MAIN_FUNCTION
+            # Structural entrypoint: `if __name__ == "__main__":` pattern
+            elif concept_type == "main_guard":
+                if EntrypointKind.MAIN_FUNCTION in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MAIN_FUNCTION,
+                    confidence=0.85,  # Structural pattern (higher than naming heuristic)
+                    label="Python script (if __name__ == '__main__')",
+                ))
+                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
             # Library export concept -> LIBRARY_EXPORT
             # (ADR-0003 v1.3.x - Library public API detection)
             # Exports from index files (index.ts, index.js) are treated as library

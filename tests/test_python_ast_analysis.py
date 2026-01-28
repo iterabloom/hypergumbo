@@ -3509,7 +3509,9 @@ class TestIfNameMainDetection:
         module = modules[0]
         meta = module.get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" in concepts, "Module with main guard should have main_guard concept"
+        # Concept is now a dict: {"concept": "main_guard", "framework": "python"}
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" in concept_names, "Module with main guard should have main_guard concept"
 
     def test_module_without_main_guard_has_no_concept(self, tmp_path: Path) -> None:
         """Module without if __name__ == "__main__" should not have main_guard concept."""
@@ -3534,7 +3536,9 @@ class TestIfNameMainDetection:
         module = modules[0]
         meta = module.get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" not in concepts, "Module without main guard should not have main_guard concept"
+        # Concept is now a dict: {"concept": "main_guard", "framework": "python"}
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names, "Module without main guard should not have main_guard concept"
 
     def test_main_guard_with_double_quotes(self, tmp_path: Path) -> None:
         """Main guard with double quotes should also be detected."""
@@ -3553,7 +3557,8 @@ class TestIfNameMainDetection:
 
         meta = modules[0].get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" in concepts
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" in concept_names
 
     def test_main_guard_with_reversed_comparison(self, tmp_path: Path) -> None:
         """Main guard with reversed comparison should also be detected."""
@@ -3572,7 +3577,8 @@ class TestIfNameMainDetection:
 
         meta = modules[0].get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" in concepts
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" in concept_names
 
     def test_if_with_non_compare_test_not_detected(self, tmp_path: Path) -> None:
         """if statement with non-comparison test should not be detected as main guard."""
@@ -3594,7 +3600,8 @@ class TestIfNameMainDetection:
 
         meta = modules[0].get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" not in concepts
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names
 
     def test_if_with_not_equal_comparison_not_detected(self, tmp_path: Path) -> None:
         """if __name__ != "__main__" should not be detected as main guard."""
@@ -3616,7 +3623,8 @@ class TestIfNameMainDetection:
 
         meta = modules[0].get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" not in concepts
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names
 
     def test_if_with_chained_comparison_not_detected(self, tmp_path: Path) -> None:
         """Chained comparison like 'if a == b == c' should not be detected as main guard."""
@@ -3639,6 +3647,7 @@ class TestIfNameMainDetection:
 
         meta = modules[0].get("meta") or {}
         concepts = meta.get("concepts", [])
-        assert "main_guard" not in concepts
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names
 
 

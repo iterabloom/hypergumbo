@@ -1119,6 +1119,51 @@ class TestSemanticEntryDetection:
         assert cli_eps[0].confidence == 0.99  # Declared in manifest
         assert "Python CLI" in cli_eps[0].label
 
+    def test_main_guard_entrypoint_detection(self) -> None:
+        """Python modules with main guard (if __name__ == '__main__') are detected as entrypoints."""
+        sym = Symbol(
+            id="python:script.py:1-50:<module:script.py>:module",
+            name="<module:script.py>",
+            kind="module",
+            path="script.py",
+            language="python",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [{"concept": "main_guard", "framework": "python"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(main_eps) == 1
+        assert main_eps[0].confidence == 0.85  # Structural pattern
+        assert "if __name__" in main_eps[0].label
+
+    def test_main_guard_deduplicated_with_main_function(self) -> None:
+        """main_guard and main_function concepts on same symbol don't create duplicates."""
+        # If a symbol has both main_guard and main_function concepts, only create one entry
+        sym = Symbol(
+            id="python:main.py:1-50:main:function",
+            name="main",
+            kind="function",
+            path="main.py",
+            language="python",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "main_function", "framework": "python"},  # From main-functions.yaml
+                {"concept": "main_guard", "framework": "python"},  # From analyzer
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one MAIN_FUNCTION entry (first concept wins)
+        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(main_eps) == 1
+        # main_function has lower confidence (0.80) than main_guard (0.85), but it's first
+        assert main_eps[0].confidence == 0.80
+
     def test_symbol_with_empty_concepts_skipped(self) -> None:
         """Symbols with meta but empty concepts list are skipped."""
         sym = Symbol(
