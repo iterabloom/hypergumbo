@@ -188,6 +188,40 @@ end
         # Should have edge from caller to helper
         assert len(call_edges) >= 1
 
+    def test_no_self_referential_edge_for_module_call(self, tmp_path: Path) -> None:
+        """No self-referential edge when method calls module-level method with same name.
+
+        E.g., logger method calling Postal.logger should NOT create logger -> logger edge.
+        The analyzer should detect that the receiver is different (Postal vs self).
+        """
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "inspector.rb"
+        rb_file.write_text("""
+module Postal
+  def self.logger
+    @logger ||= Logger.new
+  end
+end
+
+class MessageInspector
+  def logger
+    Postal.logger
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Find edges from logger method
+        logger_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "logger" in e.src.lower()
+        ]
+        # Should have no self-referential edges
+        self_refs = [e for e in logger_edges if e.src == e.dst]
+        assert len(self_refs) == 0, f"Found self-referential edges: {self_refs}"
+
 
 class TestRubyRequires:
     """Tests for detecting Ruby require statements."""

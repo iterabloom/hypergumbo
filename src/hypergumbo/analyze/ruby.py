@@ -699,16 +699,19 @@ def _extract_edges_from_file(
                         # Check local symbols first
                         if callee_name in local_symbols:
                             callee = local_symbols[callee_name]
-                            edges.append(Edge.create(
-                                src=current_method.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="method_call",
-                                confidence=0.85,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                            # Skip self-referential edges (e.g., logger method
+                            # calling Postal.logger where method name matches)
+                            if callee.id != current_method.id:
+                                edges.append(Edge.create(
+                                    src=current_method.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
                         # Check global symbols via resolver
                         else:
                             # Use require hints for disambiguation
