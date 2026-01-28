@@ -64,6 +64,43 @@ This works on most development machines where PyTorch wheels are available (Linu
 
 **Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
 
+### Coverage Configuration
+
+We maintain 100% test coverage. Two coverage configurations exist:
+
+| Config | Used When | Omits |
+|--------|-----------|-------|
+| Default (`pyproject.toml`) | Local dev, CI with embeddings | `sketch_embeddings.py` |
+| `.coveragerc.no-embeddings` | CI without embeddings (Python 3.10 matrix) | `sketch_embeddings.py`, `_embedding_data.py` |
+
+**When to use `# pragma: no cover`:**
+
+1. **Embedding-only code paths** — Code that only executes when sentence-transformers is available:
+   ```python
+   if embeddings_dir:  # pragma: no cover - only when embeddings available
+       print(f"Embeddings cached: {embeddings_dir}")
+   ```
+
+2. **Python 3.11+ features** — CI tests on Python 3.10, so 3.11+ features aren't covered:
+   ```python
+   try:
+       import tomllib  # pragma: no cover - Python 3.11+
+       data = tomllib.loads(content)  # pragma: no cover
+   except ImportError:
+       # fallback for Python 3.10
+   ```
+
+3. **Optional dependencies** — Code paths using non-required packages:
+   ```python
+   try:
+       import tomli  # pragma: no cover - optional dependency
+       data = tomli.loads(content)  # pragma: no cover
+   except ImportError:
+       data = None  # fallback
+   ```
+
+**Release workflow note:** The release CI (`release.yml`) runs a test matrix on Python 3.10-3.13. The 3.10 jobs use `.coveragerc.no-embeddings` since sentence-transformers may not be available. If you add new embedding-related code, ensure it's either omitted or marked with pragma.
+
 ---
 
 ## auto-pr Documentation
