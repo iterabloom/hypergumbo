@@ -85,6 +85,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **INV-002 (ADR-0008)**: Proper deferred resolution for `UsageContext(symbol_ref=None)`. Added `resolve_deferred_symbol_refs()` phase that runs after all analyzers complete, using `NameResolver` with multi-strategy lookup (exact → suffix → path hint) to resolve string-based handler references. This enables concept annotations for Django URL patterns, Express routes, and any framework using cross-file handler references. 17 regression tests.
 - **JSON manifests**: Avoid crash when `package.json` / `composer.json` top-level JSON is non-object; affected `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, `_extract_package_json` (sketch).
 - **Python nested functions**: Extract decorated nested functions (closures) for FastAPI router factory pattern. Previously, only top-level functions were extracted, missing route handlers like `@router.get("/entities") def list_entities()` inside factory functions.
+- **HTTP linker route metadata fallback**: HTTP linker now falls back to direct `meta.route_path`/`meta.http_method` fields when concept metadata is not available. This enables cross-language HTTP linking for analyzer-created route symbols (Rails, Phoenix, Laravel, Express) that store route info in direct metadata rather than enriched concepts.
 
 ### Tests
 - Added Scala lambda call attribution tests for INV-001 (`lambda_expression` nodes).
