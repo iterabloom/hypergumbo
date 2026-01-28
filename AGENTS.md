@@ -113,7 +113,8 @@ pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 # 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 
 # 4. If fixing a bakeoff signal: Check invariant ledger (see ADR-0008)
-cat .agent/invariant-ledger.md 2>/dev/null | grep -E -A5 'Status: (❌( UNFIXED)?|UNFIXED|PARTIALLY ADDRESSED)' || true
+cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
+# If any items show, read the full ledger for context
 # If your change relates to an UNFIXED or PARTIALLY ADDRESSED invariant, fix the root cause, not a workaround
 
 # 5. Commit with sign-off

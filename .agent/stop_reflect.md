@@ -9,7 +9,15 @@ Before stopping, complete this checklist:
 ## 2. Invariant Check
 For each remaining signal (for the last change made), state the violated invariant:
 > "In this system, X must always be true because Y depends on it."
-Also check the file (`cat .agent/invariant-ledger.md 2>/dev/null | grep -E -A5 'Status: (❌( UNFIXED)?|UNFIXED|PARTIALLY ADDRESSED)' || true`) and make sure it is up-to-date.
+Also check the file:
+```bash
+cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
+```
+This catches:
+- Regular invariants: UNFIXED, PARTIALLY ADDRESSED, TBD
+- Meta-invariants: Any percentage below 100%
+
+If items show, read the full ledger for context and Notes fields.
 
 ## 3. Structural vs Workaround
 For the last change made:

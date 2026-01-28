@@ -121,10 +121,21 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 
 ## Meta-Invariants (Consolidated Principles)
 
-The specific invariants above can be grouped into higher-level principles:
+Meta-invariants are broad principles that unify specific invariants. Because they are
+high-level, their status is expressed as a percentage indicating confidence they are upheld.
+
+**Status values for meta-invariants:**
+- `100%` — Fully upheld across all known cases
+- `<100%` (e.g., `80%`) — Partially upheld; known gaps exist
+- `TBD` — Not yet assessed; needs research
 
 ### META-001: Metadata Must Become Graph Structure
 > "Semantic relationships expressed in metadata must become traversable graph structure."
+
+- **Status:** 90%
+- **Notes:** Core cases (INV-002, INV-004, INV-006) are fixed. Some metadata fields
+  (e.g., `base_classes` in Python/JS/TS) don't yet create edges. Type hierarchy linker
+  added for extends/implements, but not all languages create these edges.
 
 **Unified by:**
 - INV-002 (usage patterns → concepts on nodes)
@@ -138,6 +149,11 @@ converts that metadata into edges or concepts. Metadata alone is not traversable
 ### META-002: Extraction Completeness
 > "Symbols that exist in source code must be extracted for analysis."
 
+- **Status:** 95%
+- **Notes:** Known cases (INV-001, INV-003) are fixed. Edge cases may remain for exotic
+  constructs (e.g., heavily metaprogrammed code, eval-generated functions). Need to
+  audit more languages for extraction gaps.
+
 **Unified by:**
 - INV-001 (call edges must have caller symbols - implies callers are extracted)
 - INV-003 (nested decorated functions must be extracted)
@@ -147,6 +163,10 @@ skip symbol extraction. If code can be called, it must be extractable.
 
 ### META-003: Data Integrity
 > "Graph elements must have valid, unique identifiers for reliable lookup."
+
+- **Status:** 100%
+- **Notes:** INV-005 fixed edge ID uniqueness. No known remaining issues. Symbol IDs
+  appear stable across runs.
 
 **Unified by:**
 - INV-005 (edge IDs must be unique)
@@ -158,8 +178,20 @@ type, AND location).
 
 ## INV-007: Template for New Invariants
 - **Statement:** [What must always be true]
-- **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
+- **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED | TBD]
 - **Root cause:** [File:line or description]
 - **Fix:** [What was done]
 - **Limitation:** [What's still broken]
+- **Regression tests:** [Test names]
+
+## META-00X: Template for New Meta-Invariants
+> "[Broad principle statement]"
+
+- **Status:** [100% | <100% (e.g., 80%) | TBD]
+- **Notes:** [Assessment details, known gaps, research needed]
+
+**Unified by:**
+- [List of specific INV-xxx that this meta-invariant unifies]
+
+**Implication:** [What this means for development practices]
 - **Regression tests:** [Test names]
