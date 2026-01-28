@@ -51,7 +51,20 @@ For the last change made:
 - [ ] Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage
 - [ ] If analysis reveals concerns, investigate the root cause before stopping
 
-## 7. Commit Check
+## 7. Design Quality Meta-Reflection
+Consider the last few changes made:
+
+- [ ] **Hardcoded vs YAML:** Is there anything hardcoded in Python that would be more appropriate as a YAML config?
+  - Framework patterns should live in `src/hypergumbo/frameworks/*.yaml`, not hardcoded in analyzers
+  - Language conventions (main functions, entrypoints) should be declarative where possible
+  - If you added a new pattern check, could it be expressed as YAML instead?
+
+- [ ] **Invariant Consolidation:** Are there any invariants in the ledger that should be combined into a single, more principled/general invariant?
+  - Look for invariants that share a common root cause
+  - Look for invariants that could be expressed as a single more abstract principle
+  - Example: Multiple "missing edge" invariants might generalize to "every metadata reference must become a traversable edge"
+
+## 8. Commit Check
 - [ ] Run `git status` — are there uncommitted changes?
 - [ ] If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
 - [ ] If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue
