@@ -12,7 +12,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Summary
 - **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
 - **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
-- **Quality:** INV-002 fallback resolution; INV-005 edge ID uniqueness (line included in hash); non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern); Python `if __name__ == "__main__"` structural entrypoint detection (adds `main_guard` concept to module symbols); Django empty path URL patterns (`path('')`) now correctly detected as routes; route-handler linker creates `routes_to` edges from route symbols to their handler functions (Rails, Phoenix); **Rails RESTful route expansion** - `resources`/`resource` macros now emit individual route symbols for all actions (7/6 respectively); **Phoenix route symbols** - Elixir analyzer creates route symbols with controller/action metadata, enabling route-handler linking for Phoenix apps.
+- **Quality:** INV-002 fallback resolution; INV-005 edge ID uniqueness (line included in hash); non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern); Python `if __name__ == "__main__"` structural entrypoint detection (adds `main_guard` concept to module symbols); Django empty path URL patterns (`path('')`) now correctly detected as routes; route-handler linker creates `routes_to` edges from route symbols to their handler functions (Rails, Phoenix, Laravel); **Rails RESTful route expansion** - `resources`/`resource` macros now emit individual route symbols for all actions (7/6 respectively); **Phoenix route symbols** - Elixir analyzer creates route symbols with controller/action metadata, enabling route-handler linking for Phoenix apps; **Laravel route symbols** - PHP analyzer creates route symbols with `controller_action` metadata (`Controller@action` format), enabling route-handler linking for Laravel apps including `Route::resource()` expansion.
 - **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
 - **Tests:** Scala lambda attribution tests for INV-001; Python nested function extraction tests; Python main guard detection tests (7 tests).
 
@@ -68,7 +68,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **INI/CFG family**: sections/settings + domain categorization; masks secrets.
 
 #### Linkers
-- **Route-handler linker**: Creates `routes_to` edges from route symbols to their handler functions. Supports Rails (`controller_action = "users#index"`) and Phoenix (`controller` + `action` fields) metadata formats. Resolves handlers via symbol name lookup with fallback strategies.
+- **Route-handler linker**: Creates `routes_to` edges from route symbols to their handler functions. Supports Rails (`controller_action = "users#index"`), Phoenix (`controller` + `action` fields), and Laravel (`controller_action = "UserController@index"`) metadata formats. Resolves handlers via symbol name lookup with fallback strategies.
 
 ### Changed
 - **Agent policy / bakeoff loop** (agents-policy-v2026-01-25.0):

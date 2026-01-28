@@ -874,7 +874,8 @@ Route::resource('photos', PhotoController::class);
         )
         assert resource_ctx is not None
         assert resource_ctx.metadata.get("http_method") == "RESOURCE"
-        assert resource_ctx.metadata.get("route_path") == "photos"
+        # Path is normalized with leading /
+        assert resource_ctx.metadata.get("route_path") == "/photos"
 
     def test_extracts_apiresource_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::apiResource() calls."""
@@ -959,3 +960,100 @@ Route::get($dynamicPath, function() {});
 
         # Should NOT create UsageContext without a route path
         assert len(result.usage_contexts) == 0
+
+
+class TestLaravelControllerExtraction:
+    """Tests for extracting controller info from Laravel routes."""
+
+    def test_extracts_array_style_controller(self, tmp_path: Path) -> None:
+        """Extracts controller from [Controller::class, 'action'] syntax."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::get('/users', [UserController::class, 'index']);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        get_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "get"), None
+        )
+        assert get_ctx is not None
+        assert get_ctx.metadata.get("controller_action") == "UserController@index"
+
+    def test_extracts_string_style_controller(self, tmp_path: Path) -> None:
+        """Extracts controller from 'Controller@action' string syntax."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::post('/login', 'AuthController@login');
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        post_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "post"), None
+        )
+        assert post_ctx is not None
+        assert post_ctx.metadata.get("controller_action") == "AuthController@login"
+
+
+class TestLaravelRouteSymbols:
+    """Tests for Laravel route Symbol extraction (enables route-handler linking)."""
+
+    def test_route_symbols_created_for_http_methods(self, tmp_path: Path) -> None:
+        """Laravel HTTP routes create Symbol objects with kind='route'."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::get('/users', [UserController::class, 'index']);
+Route::post('/login', 'AuthController@login');
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+
+        get_route = next((s for s in route_symbols if "GET" in s.name), None)
+        assert get_route is not None
+        assert get_route.name == "GET /users"
+        assert get_route.meta["http_method"] == "GET"
+        assert get_route.meta["route_path"] == "/users"
+        assert get_route.meta["controller_action"] == "UserController@index"
+        assert get_route.language == "php"
+
+        post_route = next((s for s in route_symbols if "POST" in s.name), None)
+        assert post_route is not None
+        assert post_route.meta["controller_action"] == "AuthController@login"
+
+    def test_route_symbols_for_resource_macro(self, tmp_path: Path) -> None:
+        """Laravel resource routes create expanded RESTful route symbols."""
+        from hypergumbo.analyze.php import analyze_php
+
+        routes_file = tmp_path / "web.php"
+        routes_file.write_text("""<?php
+Route::resource('photos', PhotoController::class);
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        # Laravel resource creates 7 RESTful routes
+        assert len(route_symbols) == 7
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # Collection routes
+        assert "PhotoController@index" in routes_by_action
+        assert routes_by_action["PhotoController@index"].meta["http_method"] == "GET"
+
+        assert "PhotoController@create" in routes_by_action
+        assert "PhotoController@store" in routes_by_action
+        assert "PhotoController@show" in routes_by_action
+        assert "PhotoController@edit" in routes_by_action
+        assert "PhotoController@update" in routes_by_action
+        assert "PhotoController@destroy" in routes_by_action

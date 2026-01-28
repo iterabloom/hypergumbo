@@ -111,6 +111,48 @@ def _resolve_rails_handler(
     return None
 
 
+def _resolve_laravel_handler(
+    controller_action: str, symbol_by_name: dict[str, Symbol]
+) -> Symbol | None:
+    """Resolve Laravel Controller@action to a handler symbol.
+
+    Args:
+        controller_action: String like "UserController@index"
+        symbol_by_name: Lookup table of symbols by name
+
+    Returns:
+        Matching Symbol or None
+    """
+    if "@" not in controller_action:  # pragma: no cover - validated by caller
+        return None
+
+    controller, action = controller_action.split("@", 1)
+
+    # Try exact match: UserController@index
+    full_name = f"{controller}@{action}"
+    if full_name in symbol_by_name:  # pragma: no cover - defensive: rare exact match
+        return symbol_by_name[full_name]
+
+    # Try with :: separator: UserController::index
+    colon_name = f"{controller}::{action}"
+    if colon_name in symbol_by_name:  # pragma: no cover - defensive: PHP namespace style
+        return symbol_by_name[colon_name]
+
+    # Try dot separator: UserController.index
+    dot_name = f"{controller}.{action}"
+    if dot_name in symbol_by_name:
+        return symbol_by_name[dot_name]
+
+    # Try just action name with class metadata match
+    if action in symbol_by_name:  # pragma: no cover - defensive: fallback lookup
+        sym = symbol_by_name[action]
+        sym_class = (sym.meta or {}).get("class", "")
+        if controller in sym_class or sym_class.endswith(controller):
+            return sym
+
+    return None  # pragma: no cover - defensive: no match found
+
+
 def _resolve_phoenix_handler(
     controller: str, action: str, symbol_by_name: dict[str, Symbol]
 ) -> Symbol | None:
@@ -146,9 +188,15 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     """
     meta = route.meta or {}
 
-    # Rails: controller_action = "users#index"
+    # controller_action can be Rails (users#index) or Laravel (UserController@index)
     if "controller_action" in meta:
-        return {"type": "rails", "controller_action": meta["controller_action"]}
+        controller_action = meta["controller_action"]
+        if "@" in controller_action:
+            # Laravel format: UserController@index
+            return {"type": "laravel", "controller_action": controller_action}
+        else:
+            # Rails format: users#index
+            return {"type": "rails", "controller_action": controller_action}
 
     # Phoenix: controller + action fields
     if "controller" in meta and "action" in meta:
@@ -158,7 +206,6 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
             "action": meta["action"],
         }
 
-    # Laravel: controller_action = "UserController@index" (future)
     # Django: view_name (handled separately via deferred resolution)
 
     return None
@@ -200,6 +247,10 @@ def link_routes_to_handlers(
 
         if handler_ref["type"] == "rails":
             handler = _resolve_rails_handler(
+                handler_ref["controller_action"], symbol_by_name
+            )
+        elif handler_ref["type"] == "laravel":
+            handler = _resolve_laravel_handler(
                 handler_ref["controller_action"], symbol_by_name
             )
         elif handler_ref["type"] == "phoenix":

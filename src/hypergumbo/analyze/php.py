@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 PASS_ID = "php-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-# Laravel HTTP route methods - used by _extract_laravel_usage_contexts
+# Laravel HTTP route methods - used by _extract_laravel_routes
 LARAVEL_HTTP_METHODS = {
     "get": "GET",
     "post": "POST",
@@ -250,22 +250,93 @@ def _extract_php_signature(
     return signature
 
 
-def _extract_laravel_usage_contexts(
+def _extract_controller_action(
+    args_node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Extract controller@action from Laravel route second argument.
+
+    Supports two syntaxes:
+    - Array: [Controller::class, 'action']
+    - String: 'Controller@action'
+
+    Returns:
+        String like 'UserController@index' or None if not extractable.
+    """
+    arg_index = 0
+    for child in args_node.children:
+        if child.type != "argument":
+            continue
+
+        if arg_index == 0:
+            # First arg is route path, skip
+            arg_index += 1
+            continue
+
+        if arg_index == 1:
+            # Second arg is controller reference
+            for arg_child in child.children:
+                # Array syntax: [Controller::class, 'action']
+                if arg_child.type == "array_creation_expression":
+                    controller = None
+                    action = None
+                    for arr_child in arg_child.children:
+                        if arr_child.type == "array_element_initializer":
+                            for elem in arr_child.children:
+                                if elem.type == "class_constant_access_expression":
+                                    # Controller::class - first name child is the class
+                                    for cc in elem.children:
+                                        if cc.type == "name":
+                                            controller = _node_text(cc, source)
+                                            break
+                                elif elem.type == "encapsed_string":
+                                    # "action" with double-quoted encapsed_string
+                                    for str_child in elem.children:  # pragma: no cover
+                                        if str_child.type == "string_content":
+                                            action = _node_text(str_child, source)
+                                            break
+                                elif elem.type == "string":
+                                    # 'action' with single-quoted string
+                                    for str_child in elem.children:
+                                        if str_child.type == "string_content":
+                                            action = _node_text(str_child, source)
+                                            break
+                    if controller and action:
+                        return f"{controller}@{action}"
+
+                # String syntax: 'Controller@action'
+                elif arg_child.type in ("string", "encapsed_string"):
+                    for str_child in arg_child.children:
+                        if str_child.type == "string_content":
+                            text = _node_text(str_child, source)
+                            if "@" in text:
+                                return text
+            break
+
+        arg_index += 1  # pragma: no cover - loop breaks at arg_index == 1
+
+    return None
+
+
+def _extract_laravel_routes(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
-) -> list[UsageContext]:
-    """Extract UsageContext records for Laravel Route facade calls.
+    run: AnalysisRun,
+) -> tuple[list[UsageContext], list[Symbol]]:
+    """Extract UsageContext records AND Symbol objects for Laravel Route facade calls.
 
     Detects patterns like:
-    - Route::get('/users', ...)
-    - Route::post('/login', ...)
-    - Route::resource('photos', ...)
-    - Route::apiResource('posts', ...)
+    - Route::get('/users', [Controller::class, 'action'])
+    - Route::post('/login', 'Controller@action')
+    - Route::resource('photos', Controller::class)
+    - Route::apiResource('posts', Controller::class)
 
-    Returns a list of UsageContext records for YAML pattern matching.
+    Returns:
+        Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
+        Symbols have kind="route" which enables route-handler linking.
     """
     contexts: list[UsageContext] = []
+    route_symbols: list[Symbol] = []
 
     for node in iter_tree(tree.root_node):
         if node.type != "scoped_call_expression":
@@ -298,6 +369,7 @@ def _extract_laravel_usage_contexts(
 
         # Extract route path from first argument
         route_path = None
+        controller_action = None
         args_node = node.child_by_field_name("arguments")
         if args_node:
             for child in args_node.children:
@@ -314,14 +386,22 @@ def _extract_laravel_usage_contexts(
                             break
                     break
 
+            # Extract controller@action from second argument
+            controller_action = _extract_controller_action(args_node, source)
+
         if not route_path:
             continue
 
+        # Normalize route path
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
         # Build metadata
         metadata: dict[str, str] = {
-            "route_path": route_path,
+            "route_path": normalized_path,
             "http_method": http_method,
         }
+        if controller_action:
+            metadata["controller_action"] = controller_action
 
         # Create UsageContext
         span = Span(
@@ -342,7 +422,91 @@ def _extract_laravel_usage_contexts(
         )
         contexts.append(ctx)
 
-    return contexts
+        # Create route Symbol(s) - enables route-handler linking
+        if http_method == "RESOURCE":
+            # Laravel resource creates 7 RESTful routes
+            # Extract controller from second arg for resource routes
+            controller = None
+            if args_node:
+                arg_index = 0
+                for child in args_node.children:
+                    if child.type != "argument":
+                        continue
+                    if arg_index == 1:
+                        for arg_child in child.children:
+                            if arg_child.type == "class_constant_access_expression":
+                                # Controller::class - first name child is the controller
+                                for cc in arg_child.children:
+                                    if cc.type == "name":
+                                        controller = _node_text(cc, source)
+                                        break
+                        break
+                    arg_index += 1
+
+            if controller:
+                restful_routes = [
+                    ("GET", normalized_path, "index"),
+                    ("GET", f"{normalized_path}/create", "create"),
+                    ("POST", normalized_path, "store"),
+                    ("GET", f"{normalized_path}/{{id}}", "show"),
+                    ("GET", f"{normalized_path}/{{id}}/edit", "edit"),
+                    ("PUT", f"{normalized_path}/{{id}}", "update"),
+                    ("DELETE", f"{normalized_path}/{{id}}", "destroy"),
+                ]
+                for http_meth, route_pth, action in restful_routes:
+                    route_name = f"{http_meth} {route_pth}"
+                    route_id = _make_symbol_id(
+                        path=str(file_path),
+                        start_line=span.start_line,
+                        end_line=span.end_line,
+                        name=route_name,
+                        kind="route",
+                    )
+                    route_symbol = Symbol(
+                        id=route_id,
+                        name=route_name,
+                        kind="route",
+                        language="php",
+                        path=str(file_path),
+                        span=span,
+                        meta={
+                            "http_method": http_meth,
+                            "route_path": route_pth,
+                            "controller_action": f"{controller}@{action}",
+                        },
+                        origin=run.pass_id,
+                        origin_run_id=run.execution_id,
+                    )
+                    route_symbols.append(route_symbol)
+        else:
+            # Single HTTP method route
+            route_name = f"{http_method} {normalized_path}"
+            route_id = _make_symbol_id(
+                path=str(file_path),
+                start_line=span.start_line,
+                end_line=span.end_line,
+                name=route_name,
+                kind="route",
+            )
+            route_symbol = Symbol(
+                id=route_id,
+                name=route_name,
+                kind="route",
+                language="php",
+                path=str(file_path),
+                span=span,
+                meta={
+                    "http_method": http_method,
+                    "route_path": normalized_path,
+                },
+                origin=run.pass_id,
+                origin_run_id=run.execution_id,
+            )
+            if controller_action:
+                route_symbol.meta["controller_action"] = controller_action
+            route_symbols.append(route_symbol)
+
+    return contexts, route_symbols
 
 
 def _get_php_parser() -> Optional["tree_sitter.Parser"]:
@@ -749,11 +913,12 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
         )
         all_edges.extend(edges)
 
-    # Pass 3: Extract UsageContexts for framework pattern matching
+    # Pass 3: Extract UsageContexts and route symbols for framework pattern matching
     all_usage_contexts: list[UsageContext] = []
     for pf in parsed_files:
-        contexts = _extract_laravel_usage_contexts(pf.tree, pf.source, pf.path)
+        contexts, route_symbols = _extract_laravel_routes(pf.tree, pf.source, pf.path, run)
         all_usage_contexts.extend(contexts)
+        all_symbols.extend(route_symbols)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

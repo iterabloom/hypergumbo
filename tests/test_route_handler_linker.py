@@ -413,6 +413,75 @@ class TestRouteHandlerLinker:
         result = link_routes_to_handlers([route, handler], [])
         assert len(result.edges) == 1
 
+    def test_laravel_controller_action_linking(self) -> None:
+        """Laravel routes with Controller@action format get linked."""
+        route = Symbol(
+            id="php:/routes/web.php:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="php",
+            path="/routes/web.php",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "controller_action": "UserController@index",
+            },
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="php:/app/Http/Controllers/UserController.php:20-30:UserController.index:method",
+            name="UserController.index",
+            kind="method",
+            language="php",
+            path="/app/Http/Controllers/UserController.php",
+            span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+        assert edge.meta["controller_action"] == "UserController@index"
+
+    def test_laravel_no_at_symbol_not_matched_as_laravel(self) -> None:
+        """controller_action without @ is matched as Rails, not Laravel."""
+        route = Symbol(
+            id="ruby:/app/config/routes.rb:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="ruby",
+            path="/app/config/routes.rb",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"controller_action": "users#index"},  # Rails format, not Laravel
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Even if we have a handler with @, it won't match because Rails format is used
+        handler = Symbol(
+            id="php:/app/Http/Controllers/UsersController.php:20-30:UsersController@index:method",
+            name="UsersController@index",
+            kind="method",
+            language="php",
+            path="/app/Http/Controllers/UsersController.php",
+            span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        # No match because Rails format looks for UsersController#index, not @
+        assert len(result.edges) == 0
+
     def test_run_is_created(self) -> None:
         """Linker creates an AnalysisRun record."""
         route = Symbol(
