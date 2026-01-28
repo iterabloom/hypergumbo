@@ -101,8 +101,12 @@ When `decision: "block"` is returned, the `reason` field is sent to Claude as gu
   "hooks": {
     "Stop": [
       {
-        "type": "command",
-        "command": ".agent/hooks/claude-code/stop.sh"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agent/hooks/claude-code/stop.sh"
+          }
+        ]
       }
     ]
   }
