@@ -5,20 +5,20 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: fd72350c5707
-  hypergumbo: 1.0.0
+  commit: 9f2897e11fa0
+  hypergumbo: 1.2.0
   python: 3.12.3
 -->
 
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **115** Python modules (70 analyzers, 16 linkers)
-- **1893** symbols (functions, classes, methods)
-- **8218** edges by type:
-  - calls: 4712
-  - imports: 2085
-  - instantiates: 1268
+- **151** Python modules (107 analyzers, 18 linkers)
+- **2593** symbols (functions, classes, methods)
+- **10695** edges by type:
+  - calls: 6222
+  - imports: 2590
+  - instantiates: 1730
   - uses: 82
   - message_queue: 39
   - event_publishes: 26
@@ -32,68 +32,84 @@ hypergumbo analyzed its own source code and found:
 hypergumbo hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels.
 
 ## Overview
-Python (90%), Markdown (6%), Yaml (2%)
-344 files    (208 non-test + 136 test)
-~138,746 LOC (~70,571 non-test + ~68,175 test)
+Python (91%), Markdown (6%), Yaml (2%)
+436 files    (266 non-test + 170 test)
+~172,600 LOC (~89,108 non-test + ~83,492 test)
 
 ## Structure
 
 hypergumbo/
-├── .github
-│   └── workflows
-│       ├── release-mirror.yml
-│       └── [and 2 other items]
+├── .pytest_cache
+│   ├── .gitignore
+│   └── [and 3 other items]
+├── .venv
+│   ├── lib
+│   │   └── python3.12
+│   │       └── site-packages
+│   │           ├── coverage
+│   │           │   ├── htmlfiles
+│   │           │   │   ├── style.scss
+│   │           │   │   └── [and 6 other items]
+│   │           │   └── [and 47 other items]
+│   │           └── [and 335 other items]
+│   └── [and 5 other items]
 ├── docs
-│   ├── hypergumbo-spec.md
-│   └── [and 20 other items]
+│   ├── future
+│   │   └── registry-factory-vision.md
+│   └── [and 21 other items]
+├── node_modules
+│   ├── bats
+│   │   ├── README.md
+│   │   └── [and 8 other items]
+│   └── [and 2 other items]
 ├── scripts
 │   ├── compute_probe_embeddings.py
-│   └── [and 16 other items]
+│   ├── hypergumbo_diag.py
+│   └── [and 20 other items]
 ├── src
 │   └── hypergumbo
-│       ├── cli.py
 │       ├── ir.py
-│       └── [and 30 other items]
+│       └── [and 28 other items]
 ├── tests
 │   ├── test_sketch.py
-│   └── [and 135 other items]
+│   └── [and 169 other items]
+├── README.md
 ├── package.json
 ├── pyproject.toml
-└── [and 20 other items]
+└── [and 21 other items]
 
 ## Frameworks
 
-- openai
 - pytest
 - pytorch
 - transformers
 
 ## Tests
 
-137 test files · pytest, unittest
+171 test files · pytest, unittest
 
-*~93% estimated coverage (1401/1509 functions called by tests)*
+*~91% estimated coverage (1937/2130 functions called by tests)*
 
 ## Configuration
 
-pyproject.toml: name: hypergumbo; version: 1.0.0; license: { text =
+pyproject.toml: name: hypergumbo; version: 1.2.0; license: { text =
 LICENSE: AGPL
 
 --- Additional context (semantic) ---
 [docs/schema.json]
-  > "type": "string", "description": "Schema version (semver)", "const": "0.2.0"
-  > "required": [ "schema_version", "view",
-  > "event", "modifier", "library",
-  > "websocket_endpoint", "grpc_service", "grpc_servicer",
-  > "language": { "type": "string", "description": "Programming language"
-  > ], "description": "Fully qualified name" },
-  > "first_party", "internal_dep", "external_dep",
-  > }, "dst": { "type": "string",
+  > }, "required": [ "schema_version",
+  > "entity", "architecture", "package",
+  > "grpc_stub", "grpc_client", "grpc_server",
+  > "type": "string", "description": "Programming language" },
+  > }, "required": [ "tier",
+  > "kind", "language", "path",
   > "implements", "references", "depends_on",
-  > ], "description": "Quality assessment" },
+  > "graphql_calls", "message_queue", "query_references",
   > }, "version": { "type": "string",
-  > }, "version": { "type": "string"
-  > "pass", "version" ]
+  > "type": "string", "description": "Primary language for this framework" },
+  > }, "description": "List of patterns to match" },
+  > }, "description": "Linkers that should be activated when this framework is detected" }
+  > ], "additionalProperties": false }
 
 
 [package.json]
@@ -109,8 +125,13 @@ LICENSE: AGPL
 
 ## Entry Points
 
+- `main` (Python main()) — `scripts/hypergumbo_diag.py`
 - `main` (Python main()) — `scripts/compute_probe_embeddings.py`
+- `hypergumbo` (Python CLI: hypergumbo) — `pyproject.toml`
+- `<module:hypergumbo_diag.py>` (Python script (if __name__ == '__main__')) — `scripts/hypergumbo_diag.py`
+- `<module:compute_probe_embeddings.py>` (Python script (if __name__ == '__main__')) — `scripts/compute_probe_embeddings.py`
 - `main` (Python main()) — `src/hypergumbo/cli.py`
+- `<module:__main__.py>` (Python script (if __name__ == '__main__')) — `src/hypergumbo/__main__.py`
 
 ## Data Models
 
@@ -127,28 +148,27 @@ LICENSE: AGPL
 - `Entrypoint` (Python @dataclass) — `src/hypergumbo/entrypoints.py`
 - `FileClassification` (Python @dataclass) — `src/hypergumbo/supply_chain.py`
 - `EventPattern` (Python @dataclass) — `src/hypergumbo/linkers/event_sourcing.py`
-- `LLMConfig` (Python @dataclass) — `src/hypergumbo/llm_assist.py`
 - `GrpcPattern` (Python @dataclass) — `src/hypergumbo/linkers/grpc.py`
 - `UsageContext` (Python @dataclass) — `src/hypergumbo/ir.py`
 - `WebSocketPattern` (Python @dataclass) — `src/hypergumbo/linkers/websocket.py`
-- `Pack` (Python @dataclass) — `src/hypergumbo/catalog.py`
+- `LinkerActivation` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
 - `AnalysisResult` (Python @dataclass) — `src/hypergumbo/analyze/base.py`
 - `DataModel` (Python @dataclass) — `src/hypergumbo/datamodels.py`
 - `Limits` (Python @dataclass) — `src/hypergumbo/limits.py`
-- `LinkerActivation` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
-- `RepoProfile` (Python @dataclass) — `src/hypergumbo/profile.py`
 - `FileAnalysis` (Python @dataclass) — `src/hypergumbo/analyze/base.py`
-- `CapsulePlan` (Python @dataclass) — `src/hypergumbo/plan.py`
 - `IncludedSummary` (Python @dataclass) — `src/hypergumbo/compact.py`
-- `LLMResult` (Python @dataclass) — `src/hypergumbo/llm_assist.py`
 - `OmittedSummary` (Python @dataclass) — `src/hypergumbo/compact.py`
 - `SupplyChainConfig` (Python @dataclass) — `src/hypergumbo/supply_chain.py`
-- `PassConfig` (Python @dataclass) — `src/hypergumbo/plan.py`
+- `CompactConfig` (Python @dataclass) — `src/hypergumbo/compact.py`
 - `PhpAnalysisResult` (Python @dataclass) — `src/hypergumbo/analyze/php.py`
 - `SketchStats` (Python @dataclass) — `src/hypergumbo/sketch.py`
+- `SliceQuery` (Python @dataclass) — `src/hypergumbo/slice.py`
+- `GrammarSpec` (Python @dataclass) — `src/hypergumbo/build_grammars.py`
+- `RegisteredLinker` (Python @dataclass) — `src/hypergumbo/linkers/registry.py`
 - `Catalog` (Python @dataclass) — `src/hypergumbo/catalog.py`
-- `CompactConfig` (Python @dataclass) — `src/hypergumbo/compact.py`
-- ... and 151 more data models
+- `Pattern` (Python @dataclass) — `src/hypergumbo/framework_patterns.py`
+- `UsagePatternSpec` (Python @dataclass) — `src/hypergumbo/framework_patterns.py`
+- ... and 161 more data models
 
 ## Source Files
 
@@ -158,7 +178,6 @@ LICENSE: AGPL
 - `src/hypergumbo/limits.py`
 - `src/hypergumbo/catalog.py`
 - `src/hypergumbo/ranking.py`
-- `src/hypergumbo/export.py`
 - `src/hypergumbo/sketch.py`
 - `src/hypergumbo/discovery.py`
 - `src/hypergumbo/_embedding_data.py`
@@ -172,46 +191,22 @@ LICENSE: AGPL
 - `src/hypergumbo/build_grammars.py`
 - `src/hypergumbo/__main__.py`
 - `src/hypergumbo/sketch_embeddings.py`
-- `src/hypergumbo/llm_assist.py`
 - `src/hypergumbo/paths.py`
 - `src/hypergumbo/profile.py`
-- `src/hypergumbo/plan.py`
 - `src/hypergumbo/taxonomy.py`
 - `src/hypergumbo/__init__.py`
 - `src/hypergumbo/ir.py`
 - `src/hypergumbo/supply_chain.py`
 - `src/hypergumbo/analyze/haskell.py`
+- `src/hypergumbo/analyze/svelte.py`
 - `src/hypergumbo/analyze/latex.py`
 - `src/hypergumbo/analyze/fortran.py`
 - `src/hypergumbo/analyze/csharp.py`
 - `src/hypergumbo/analyze/sql.py`
 - `src/hypergumbo/analyze/capnp.py`
+- `src/hypergumbo/analyze/v_lang.py`
 - `src/hypergumbo/analyze/groovy.py`
-- `src/hypergumbo/analyze/registry.py`
-- `src/hypergumbo/analyze/xml_config.py`
-- `src/hypergumbo/analyze/css.py`
-- `src/hypergumbo/analyze/proto.py`
-- `src/hypergumbo/analyze/powershell.py`
-- `src/hypergumbo/analyze/dart.py`
-- `src/hypergumbo/analyze/bash.py`
-- `src/hypergumbo/analyze/cmake.py`
-- `src/hypergumbo/analyze/nix.py`
-- `src/hypergumbo/analyze/ada.py`
-- `src/hypergumbo/analyze/cuda.py`
-- `src/hypergumbo/analyze/solidity.py`
-- `src/hypergumbo/analyze/java.py`
-- `src/hypergumbo/analyze/scala.py`
-- `src/hypergumbo/analyze/llvm_ir.py`
-- `src/hypergumbo/analyze/glsl.py`
-- `src/hypergumbo/analyze/rust.py`
-- `src/hypergumbo/analyze/toml_config.py`
-- `src/hypergumbo/analyze/wgsl.py`
-- `src/hypergumbo/analyze/r_lang.py`
-- `src/hypergumbo/analyze/fish.py`
-- `src/hypergumbo/analyze/go.py`
-- `src/hypergumbo/analyze/elm.py`
-- `src/hypergumbo/analyze/json_config.py`
-- ... and 199 more files
+- ... and 299 more files
 
 ## Key Symbols
 
@@ -221,62 +216,37 @@ LICENSE: AGPL
 - `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
 - `Span` (class) ★ — Source code location with line and column info.
 - `AnalysisRun` (class) — Provenance tracking for an analysis pass execution.
-- `Edge` (class) — A relationship between two symbols (e.g., function calls).
 - `Edge.create(cls, src: str, dst: str, edge_type: str, line: int, origin…` (method)
-  (... +1 more, top score: 0.38)
+- `Edge` (class) — A relationship between two symbols (e.g., function calls).
 
 ### `src/hypergumbo/analyze/base.py`
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
 - `node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text content for a tree-sitter node.
-- `find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find a child node by field name.
-- `find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find the first child node of a given type.
 
 ### `src/hypergumbo/symbol_resolution.py`
 - `NameResolver` (class) — Symbol resolver for string-keyed registries (dict[str, Symbol]).
 - `NameResolver.lookup(self, name: str, allow_suffix: bool=…, path_hint: str | No…` (method)
-- `LookupResult` (class) — Result of a symbol lookup operation.
+
+### `src/hypergumbo/analyze/js_ts.py`
+- `analyze_javascript(repo_root: Path, max_files: int | None=…) -> JsAnalysisRes…` (function) — Analyze all JavaScript/TypeScript/Svelte/Vue files in a repository.
 
 ### `src/hypergumbo/discovery.py`
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) — Find files matching patterns while respecting exclude rules.
 
-### `src/hypergumbo/analyze/js_ts.py`
-- `analyze_javascript(repo_root: Path, max_files: int | None=…) -> JsAnalysisRes…` (function) — Analyze all JavaScript/TypeScript/Svelte/Vue files in a repository.
-- `_find_name_in_children(node: 'tree_sitter.Node', source: bytes) -> Optional[str]` (function) — Find identifier name in node's children.
-
 ### `src/hypergumbo/linkers/registry.py`
 - `LinkerContext` (class) — Context passed to all linkers.
-- `LinkerResult` (class) — Result from running a linker.
-- `LinkerRequirement` (class) — A requirement for a linker to produce useful edges.
-
-### `src/hypergumbo/taxonomy.py`
-- `LanguageSpec` (class) — Specification for a language/file type.
-- `is_additional_file_candidate(path: Path) -> bool` (function) — Check if a file is a candidate for Additional Files section.
 
 ### `src/hypergumbo/analyze/java.py`
 - `analyze_java(repo_root: Path) -> JavaAnalysisResult` (function) — Analyze all Java files in a repository.
 
+### `src/hypergumbo/taxonomy.py`
+- `LanguageSpec` (class) — Specification for a language/file type.
+
 ### `src/hypergumbo/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
 
-### `src/hypergumbo/sketch.py`
-- `ConfigExtractionMode` (class) — Mode for extracting config file content.
-- `_extract_config_info(repo_root: Path, max_chars: int=…, mode: ConfigExtractionM…` (function) — Extract key metadata from config files via extractive summarization.
-- `_section_header(title: str, exclude_tests: bool=…) -> str` (function) — Generate a section header with optional [IGNORING TESTS] marker.
-
-### `src/hypergumbo/analyze/rust.py`
-- `analyze_rust(repo_root: Path) -> RustAnalysisResult` (function) — Analyze all Rust files in a repository.
-- `_node_text(node: 'tree_sitter.Node', source: bytes) -> str` (function) — Extract text for a tree-sitter node.
-- `_find_child_by_field(node: 'tree_sitter.Node', field_name: str) -> Optional['tr…` (function) — Find child by field name.
-
-### `src/hypergumbo/analyze/dart.py`
-- `analyze_dart(repo_root: Path) -> DartAnalysisResult` (function) — Analyze Dart files in a repository.
-- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
-
 ### `src/hypergumbo/analyze/julia.py`
-- `analyze_julia(repo_root: Path) -> JuliaAnalysisResult` (function) — Analyze all Julia files in a repository.
-
-### `src/hypergumbo/analyze/elixir.py`
-- `analyze_elixir(repo_root: Path) -> ElixirAnalysisResult` (function) — Analyze all Elixir files in a repository.
+- `_find_child_by_type(node: 'tree_sitter.Node', type_name: str) -> Optional['tre…` (function) — Find first child of given type.
 
 ### `src/hypergumbo/analyze/ruby.py`
 - `analyze_ruby(repo_root: Path) -> RubyAnalysisResult` (function) — Analyze all Ruby files in a repository.
@@ -284,113 +254,149 @@ LICENSE: AGPL
 ### `src/hypergumbo/analyze/php.py`
 - `analyze_php(repo_root: Path) -> PhpAnalysisResult` (function) — Analyze all PHP files in a repository.
 
-### `src/hypergumbo/analyze/kotlin.py`
-- `analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult` (function) — Analyze all Kotlin files in a repository.
+### `pyproject.toml`
+- `build-system` (table)
 
-### `src/hypergumbo/analyze/groovy.py`
-- `analyze_groovy(repo_root: Path) -> GroovyAnalysisResult` (function) — Analyze all Groovy files in a repository.
-
-### `src/hypergumbo/cli.py`
-- `main(argv=…) -> int` (function)
-- `run_behavior_map(repo_root: Path, out_path: Path | None=…, max_tier: int | …` (function) — Run the behavior_map analysis for a repo and write JSON to out_path.
-- `_print_output_summary(command: str, artifacts: list[Path] | None=…, stdout_outpu…` (function) — Print consistent output summary at end of command execution.
-
-(... and 1770 more symbols across 110 other files)
-
-The following symbols, for brevity shown only once above, would have appeared multiple times:
-- `_node_text` - we omitted 7 appearances of `_node_text`
-- `_find_child_by_type` - we omitted 4 appearances
+(... and 2526 more symbols across 155 other files)
 
 ## Additional Files
 
 - `README.md`
 - `docs/adr/0001-portable-agent-instructions.md`
-- `docs/LANGUAGES.md`
-- `docs/adr/0003-architectural-analysis-and-revision-plan.md`
-- `docs/example-output.md`
-- `AGENTS.md`
-- `docs/LINKERS.md`
-- `CONTRIBUTING.md`
-- `docs/example-output-with-source.md`
-- `src/hypergumbo/frameworks/micronaut.yaml`
-- `docs/adr/0003-call-patterns-extension.md`
-- `docs/future/registry-factory-vision.md`
-- `docs/history/planning-v1.md`
-- `docs/GOVERNANCE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/history/capsule-system-v1.md`
 - `docs/schema.json`
-- `docs/MAINTAINER_AGENT_SPEC.md`
-- `docs/adr/0005-sketch-budget-allocation.md`
-- `docs/CACHE.md`
-- `docs/adr/0003-usage-context-patterns.md`
-- `docs/adr/0006-variable-type-inference.md`
-- `docs/USE-CASES.md`
-- `docs/history/validation-gates-v1.md`
+- `docs/adr/0007-import-tracking-for-call-resolution.md`
+- `src/hypergumbo/frameworks/play.yaml`
+- `docs/governance-case-critiques.md`
+- `src/hypergumbo/frameworks/akka-http.yaml`
 - `CHANGELOG.md`
-- `docs/adr/0004-file-taxonomy.md`
-- `ALLOWED_WEBSITES.md`
-- `src/hypergumbo/frameworks/cli-rust.yaml`
-- `docs/hypergumbo-spec.md`
-- `src/hypergumbo/frameworks/fastify.yaml`
+- `src/hypergumbo/frameworks/library-exports.yaml`
+- `src/hypergumbo/frameworks/micronaut.yaml`
 - `src/hypergumbo/frameworks/tornado.yaml`
-- `docs/adr/0002-test-dependency-handling.md`
+- `docs/future/registry-factory-vision.md`
 - `src/hypergumbo/frameworks/hapi.yaml`
-- `src/hypergumbo/frameworks/vapor.yaml`
-- `src/hypergumbo/frameworks/cli.yaml`
-- `src/hypergumbo/frameworks/ktor.yaml`
-- `src/hypergumbo/frameworks/main-functions.yaml`
-- `src/hypergumbo/frameworks/cli-js.yaml`
-- `src/hypergumbo/frameworks/electron.yaml`
-- `pyproject.toml`
-- `src/hypergumbo/frameworks/nestjs.yaml`
-- `src/hypergumbo/frameworks/android.yaml`
-- `docs/RELEASE_SOP.md`
-- `docs/CITATIONS.md`
-- `src/hypergumbo/frameworks/sinatra.yaml`
-- `src/hypergumbo/frameworks/graphql.yaml`
-- `src/hypergumbo/frameworks/flask.yaml`
-- `src/hypergumbo/frameworks/rust-web.yaml`
-- `src/hypergumbo/frameworks/express.yaml`
-- `src/hypergumbo/frameworks/go-web.yaml`
-- `src/hypergumbo/frameworks/nextjs.yaml`
-- `src/hypergumbo/frameworks/jax-rs.yaml`
-- `src/hypergumbo/frameworks/rails.yaml`
-- `src/hypergumbo/frameworks/slim.yaml`
-- `src/hypergumbo/frameworks/laravel.yaml`
-- `src/hypergumbo/frameworks/cli-go.yaml`
-- `src/hypergumbo/frameworks/phoenix.yaml`
-- `src/hypergumbo/frameworks/plug.yaml`
-- `src/hypergumbo/frameworks/django.yaml`
-- `src/hypergumbo/frameworks/celery.yaml`
-- `docs/EXPERIMENTAL_GRAMMARS.md`
-- `src/hypergumbo/frameworks/fastapi.yaml`
-- `src/hypergumbo/frameworks/language-conventions.yaml`
-- `docs/agents/tool-compatibility.md`
-- `docs/CODE_OF_CONDUCT.md`
-- `src/hypergumbo/frameworks/grape.yaml`
-- `CLAUDE.md`
-- `src/hypergumbo/frameworks/cli-ruby.yaml`
-- `package.json`
-- `src/hypergumbo/frameworks/koa.yaml`
-- `GEMINI.md`
-- `src/hypergumbo/frameworks/aiohttp.yaml`
-- `SECURITY.md`
-- `src/hypergumbo/frameworks/spring-boot.yaml`
-- `docs/INTEL_MAC.md`
-- `src/hypergumbo/frameworks/config-conventions.yaml`
-- `src/hypergumbo/frameworks/graphql-ruby.yaml`
-- `src/hypergumbo/frameworks/test-frameworks.yaml`
-- `src/hypergumbo/frameworks/graphql-python.yaml`
-- ... and 1 more files
+- ... and 74 more files
+
+## Source Files Content
+
+------------------- START of src/hypergumbo/schema.py ------
+```
+"""Schema versioning and behavior map factory.
+
+This module defines the output schema version and provides a factory
+for creating empty behavior map structures with all required fields.
+
+Version Distinction
+-------------------
+**SCHEMA_VERSION vs Tool Version:**
+
+- **SCHEMA_VERSION** (defined here): The schema documentation version, embedded
+  in every JSON output as `schema_version`. It increments for significant changes
+  to `docs/schema.json`, which is a **unified schema** containing both behavior map
+  output definitions AND framework pattern types for YAML validation. Breaking
+  changes to output format bump minor; additions like new type definitions for
+  YAML patterns bump patch. Consumers can use this to check compatibility.
+
+- **__version__** (in __init__.py): The tool/package version. This increments
+  with every release (new analyzers, bug fixes, performance improvements,
+  CLI changes, etc.). It does NOT indicate output format changes.
+
+These versions evolve independently. The tool can have many releases while
+the schema stays stable if the output format doesn't change.
+
+How It Works
+------------
+The behavior map is the primary output format for hypergumbo analysis.
+This module defines several versioned schemes:
+
+- **schema_version**: Overall format version (breaking changes increment minor)
+- **confidence_model**: How confidence scores are computed
+- **stable_id_scheme**: How stable_id hashes are generated
+- **shape_id_scheme**: How shape_id (structure) hashes are generated
+- **repo_fingerprint_scheme**: How repo state is fingerprinted for caching
+
+new_behavior_map() returns an empty structure with all top-level fields
+initialized, ensuring consistent output even for empty analyses.
+
+Why This Design
+---------------
+- Explicit versioning enables consumers to detect format changes
+- Scheme identifiers let consumers know how to interpret computed IDs
+- Factory function ensures all required fields are present
+- Separating schema from IR keeps output format concerns isolated
+
+Related Files
+-------------
+This module works with two other components to provide schema infrastructure:
+
+**This file (schema.py)** - Runtime constants and factory
+- Defines SCHEMA_VERSION and scheme identifiers
+- Provides new_behavior_map() factory for output generation
+- Used at runtime when hypergumbo generates JSON output
+
+**scripts/generate-schema** - Documentation generator
+- Generates docs/schema.json from Python dataclasses
+- Imports SCHEMA_VERSION from here to embed in the JSON Schema
+- Run at dev time; pre-commit hooks verify it stays in sync
+
+**docs/schema.json** - Unified formal schema
+- Formal JSON Schema for external validation and IDE autocompletion
+- Contains BOTH behavior map output definitions AND framework pattern
+  types (Pattern, FrameworkPatternDef) for YAML validation
+- Auto-generated; do not edit directly
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Dict
+
+SCHEMA_VERSION = "0.2.1"
+CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v1"
+SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"
+REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
+
+
+def _now_iso_utc() -> str:
+    """Return an ISO-8601 timestamp in UTC."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def new_behavior_map() -> Dict[str, Any]:
+    """
+    Construct an empty behavior_map view with all required top-level fields.
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "confidence_model": CONFIDENCE_MODEL,
+        "stable_id_scheme": STABLE_ID_SCHEME,
+        "shape_id_scheme": SHAPE_ID_SCHEME,
+        "repo_fingerprint_scheme": REPO_FINGERPRINT_SCHEME,
+        "view": "behavior_map",
+        "generated_at": _now_iso_utc(),
+        "analysis_incomplete": False,
+        "analysis_runs": [],
+        "profile": {},
+        "nodes": [],
+        "edges": [],
+        "usage_contexts": [],
+        "features": [],
+        "metrics": {},
+        "limits": {},
+        "entrypoints": [],
+    }
+```
+------------------- END of src/hypergumbo/schema.py --------
+
+
+## Additional Files Content
 
 
 [hypergumbo sketch] Generated 5
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.16k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.4k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.64k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/hypergumbo.results.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/a2dd49d34c2decec/sketch.4000.md
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/44016d7b06f1ebae/hypergumbo.results.16k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/44016d7b06f1ebae/hypergumbo.results.4k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/44016d7b06f1ebae/hypergumbo.results.64k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/44016d7b06f1ebae/hypergumbo.results.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/44016d7b06f1ebae/sketch.4000.withsource.md
   Output: stdout
   Embeddings cached: /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/embeddings
 ```
@@ -411,7 +417,7 @@ Source Files
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ANALYZERS                               │
 │  Pure language processors - NO framework knowledge              │
-│  Output: 1893 Symbols + 8218 Edges + UsageContexts              │
+│  Output: 2593 Symbols + 10695 Edges + UsageContexts             │
 │  Rich metadata: decorators, base_classes, parameters            │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -437,7 +443,7 @@ Source Files
 │                          LINKERS                                │
 │  Cross-language edge creation                                   │
 │  Match via meta.concepts (route paths, gRPC services, etc.)     │
-│  15 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+│  17 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
 └─────────────────────────────────────────────────────────────────┘
                           │
                           ▼
@@ -455,23 +461,22 @@ These symbols have the highest in-degree (most referenced by other symbols):
 
 | Symbol | Kind | In-Degree | Location |
 |--------|------|-----------|----------|
-| `Symbol` | class | 343 | ir.py |
-| `Span` | class | 339 | ir.py |
-| `iter_tree` | function | 188 | base.py |
+| `Symbol` | class | 521 | ir.py |
+| `Span` | class | 509 | ir.py |
+| `iter_tree` | function | 213 | base.py |
+| `Edge.create` | method | 206 | ir.py |
+| `AnalysisRun` | class | 190 | ir.py |
+| `Edge` | class | 181 | ir.py |
 | `find_files` | function | 161 | discovery.py |
-| `Edge.create` | method | 157 | ir.py |
-| `node_text` | function | 142 | base.py |
-| `Edge` | class | 142 | ir.py |
-| `NameResolver` | class | 121 | symbol_resolution.py |
-| `AnalysisRun` | class | 96 | ir.py |
-| `NameResolver.lookup` | method | 78 | symbol_resolution.py |
+| `node_text` | function | 147 | base.py |
+| `NameResolver` | class | 123 | symbol_resolution.py |
 
 ## Module Reference
 
 ### Core
 
 - **`build_grammars`**: Build tree-sitter grammars from source for languages not available ...
-- **`catalog`**: Catalog of available analysis passes and packs.
+- **`catalog`**: Catalog of available analysis passes.
 - **`compact`**: Compact output mode with coverage-based truncation and residual sum...
 - **`datamodels`**: Data model detection for code analysis.
 - **`discovery`**: File discovery with exclude patterns.
@@ -479,7 +484,6 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003 v0.8.x).
 - **`ir`**: Internal Representation (IR) for code analysis.
 - **`limits`**: Limits tracking for behavior map output.
-- **`llm_assist`**: LLM-assisted capsule plan generation.
 - **`metrics`**: Metrics computation for behavior map output.
 - **`paths`**: Centralized path handling utilities for hypergumbo.
 - **`profile`**: Repo profile detection - language and framework heuristics.
@@ -499,8 +503,12 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.ada`**: Ada analysis pass using tree-sitter.
 - **`analyze.agda`**: Agda analysis pass using tree-sitter-agda.
 - **`analyze.all_analyzers`**: Consolidated analyzer registry for cli.py.
+- **`analyze.apex`**: Apex language analyzer.
+- **`analyze.astro`**: Astro component analyzer using tree-sitter.
 - **`analyze.base`**: Base classes and utilities for language analyzers.
 - **`analyze.bash`**: Bash/shell script analyzer using tree-sitter.
+- **`analyze.bibtex`**: BibTeX bibliography analyzer using tree-sitter.
+- **`analyze.bitbake`**: BitBake analyzer using tree-sitter.
 - **`analyze.c`**: C analysis pass using tree-sitter-c.
 - **`analyze.capnp`**: Cap'n Proto analysis pass using tree-sitter.
 - **`analyze.clojure`**: Clojure analysis pass using tree-sitter.
@@ -517,50 +525,83 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`analyze.elixir`**: Elixir analysis pass using tree-sitter-elixir.
 - **`analyze.elm`**: Elm analysis pass using tree-sitter.
 - **`analyze.erlang`**: Erlang analysis pass using tree-sitter.
+- **`analyze.fennel`**: Fennel language analyzer using tree-sitter.
 - **`analyze.fish`**: Fish shell analysis pass using tree-sitter.
 - **`analyze.fortran`**: Fortran analysis pass using tree-sitter-fortran.
 - **`analyze.fsharp`**: F# analysis pass using tree-sitter.
 - **`analyze.gdscript`**: GDScript (Godot) analysis pass using tree-sitter.
+- **`analyze.gitignore`**: Gitignore file analyzer using tree-sitter.
+- **`analyze.gleam`**: Gleam language analyzer using tree-sitter.
 - **`analyze.glsl`**: GLSL shader analysis pass using tree-sitter-glsl.
 - **`analyze.go`**: Go analysis pass using tree-sitter-go.
 - **`analyze.graphql`**: GraphQL schema analysis pass using tree-sitter-graphql.
 - **`analyze.groovy`**: Groovy analysis pass using tree-sitter-groovy.
+- **`analyze.hack`**: Hack language analyzer.
 - **`analyze.haskell`**: Haskell analysis pass using tree-sitter-haskell.
+- **`analyze.haxe`**: Haxe language analyzer using tree-sitter.
 - **`analyze.hcl`**: HCL/Terraform analyzer using tree-sitter.
 - **`analyze.hlsl`**: HLSL (DirectX shader) analysis pass using tree-sitter.
 - **`analyze.html`**: HTML script tag analysis pass.
+- **`analyze.ini`**: INI configuration file analyzer using tree-sitter.
+- **`analyze.janet`**: Janet language analyzer using tree-sitter.
 - **`analyze.java`**: Java analysis pass using tree-sitter-java.
 - **`analyze.js_ts`**: JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
 - **`analyze.json_config`**: JSON configuration analysis pass using tree-sitter-json.
+- **`analyze.jsonnet`**: Jsonnet configuration language analyzer.
 - **`analyze.julia`**: Julia analysis pass using tree-sitter-julia.
+- **`analyze.kdl`**: KDL (KDL Document Language) configuration analyzer using tree-sitter.
 - **`analyze.kotlin`**: Kotlin analysis pass using tree-sitter-kotlin.
 - **`analyze.latex`**: LaTeX analyzer using tree-sitter.
 - **`analyze.lean`**: Lean 4 analysis pass using tree-sitter-lean.
 - **`analyze.llvm_ir`**: LLVM IR analysis pass using tree-sitter.
 - **`analyze.lua`**: Lua analysis pass using tree-sitter-lua.
+- **`analyze.luau`**: Luau language analyzer.
 - **`analyze.make`**: Makefile analysis pass using tree-sitter-make.
+- **`analyze.markdown`**: Markdown documentation analyzer using tree-sitter.
+- **`analyze.matlab`**: MATLAB language analyzer using tree-sitter.
+- **`analyze.meson`**: Meson build system analyzer using tree-sitter.
 - **`analyze.nim`**: Nim language analysis pass using tree-sitter.
 - **`analyze.nix`**: Nix expression analysis pass using tree-sitter-nix.
 - **`analyze.objc`**: Objective-C analyzer using tree-sitter.
 - **`analyze.ocaml`**: OCaml analysis pass using tree-sitter-ocaml.
+- **`analyze.odin`**: Odin language analyzer using tree-sitter.
+- **`analyze.pascal`**: Pascal language analyzer using tree-sitter.
 - **`analyze.perl`**: Perl analysis pass using tree-sitter.
 - **`analyze.php`**: PHP analysis pass using tree-sitter-php.
+- **`analyze.pony`**: Pony language analyzer using tree-sitter.
 - **`analyze.powershell`**: PowerShell analysis pass using tree-sitter.
+- **`analyze.prisma`**: Prisma schema analyzer using tree-sitter.
+- **`analyze.properties`**: Java properties file analyzer using tree-sitter.
 - **`analyze.proto`**: Protocol Buffers (Proto) analysis pass using tree-sitter.
+- **`analyze.puppet`**: Puppet manifest analyzer using tree-sitter.
+- **`analyze.purescript`**: PureScript language analyzer using tree-sitter.
 - **`analyze.py`**: Python AST analysis pass.
 - **`analyze.r_lang`**: R language analysis pass using tree-sitter.
+- **`analyze.racket`**: Racket language analyzer using tree-sitter.
 - **`analyze.registry`**: Analyzer registry for dynamic dispatch.
+- **`analyze.requirements`**: Python requirements.txt analyzer using tree-sitter.
+- **`analyze.robot`**: Robot Framework analyzer using tree-sitter.
+- **`analyze.rst`**: reStructuredText analyzer using tree-sitter.
 - **`analyze.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`analyze.rust`**: Rust analysis pass using tree-sitter-rust.
 - **`analyze.scala`**: Scala analysis pass using tree-sitter-scala.
+- **`analyze.scheme`**: Scheme language analyzer using tree-sitter.
+- **`analyze.scss`**: SCSS/Sass stylesheet analyzer using tree-sitter.
+- **`analyze.smithy`**: Smithy API definition language analyzer.
 - **`analyze.solidity`**: Solidity analysis pass using tree-sitter-solidity.
+- **`analyze.sparql`**: SPARQL query analyzer using tree-sitter.
 - **`analyze.sql`**: SQL schema analysis pass using tree-sitter-sql.
 - **`analyze.starlark`**: Starlark (Bazel/Buck) analysis pass using tree-sitter.
+- **`analyze.svelte`**: Svelte component analyzer using tree-sitter.
 - **`analyze.swift`**: Swift analysis pass using tree-sitter-swift.
+- **`analyze.tcl`**: Tcl language analyzer using tree-sitter.
 - **`analyze.thrift`**: Apache Thrift analysis pass using tree-sitter.
 - **`analyze.toml_config`**: TOML configuration file analyzer using tree-sitter-toml.
+- **`analyze.twig`**: Twig template analyzer using tree-sitter.
+- **`analyze.v_lang`**: V language analyzer using tree-sitter.
 - **`analyze.verilog`**: Verilog/SystemVerilog analysis pass using tree-sitter-verilog.
 - **`analyze.vhdl`**: VHDL analysis pass using tree-sitter-vhdl.
+- **`analyze.vue`**: Vue.js component analyzer using tree-sitter.
 - **`analyze.wgsl`**: WGSL (WebGPU Shading Language) analysis pass using tree-sitter-wgsl.
 - **`analyze.wolfram`**: Wolfram Language analysis pass using tree-sitter-wolfram.
 - **`analyze.xml_config`**: XML configuration analysis pass using tree-sitter-xml.
@@ -582,16 +623,16 @@ These symbols have the highest in-degree (most referenced by other symbols):
 - **`linkers.openapi`**: OpenAPI/Swagger linker for detecting API schema to handler connecti...
 - **`linkers.phoenix_ipc`**: Phoenix Channels IPC linker for detecting Elixir IPC patterns.
 - **`linkers.registry`**: Linker registry for dynamic dispatch.
+- **`linkers.route_handler`**: Route-handler linker for connecting routes to their handler functions.
 - **`linkers.subprocess_cli`**: Subprocess-to-CLI linker for detecting cross-process CLI invocations.
 - **`linkers.swift_objc`**: Swift/Objective-C bridging linker.
+- **`linkers.type_hierarchy`**: Type hierarchy linker for polymorphic dispatch resolution.
 - **`linkers.websocket`**: WebSocket linker for detecting WebSocket communication patterns.
 
 ### CLI & I/O
 
 - **`__main__`**: (no docstring)
 - **`cli`**: Command-line interface for hypergumbo.
-- **`export`**: Export capsule functionality for sharing analyzer configurations.
-- **`plan`**: Capsule plan generation and validation.
 - **`schema`**: Schema versioning and behavior map factory.
 - **`sketch`**: Token-budgeted Markdown sketch generation.
 
