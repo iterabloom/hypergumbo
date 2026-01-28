@@ -41,7 +41,33 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
     exact match, suffix match, path hint, ambiguous, multiple metadata keys)
   - `test_framework_patterns.py::TestEnrichSymbolsWithUsageContexts::test_inv002_fallback_resolution_by_view_name`
 
-## INV-003: Template for New Invariants
+## INV-003: Python Nested Decorated Function Extraction
+- **Statement:** Decorated nested functions must be extracted for framework pattern matching
+- **Status:** FIXED
+- **Root cause:** `analyze/py.py:1259` had `if node.col_offset == 0:` which filtered out all
+  nested functions. This was intended to skip methods (already processed via class body
+  iteration), but also skipped legitimate nested functions like FastAPI route handlers
+  inside factory functions:
+  ```python
+  def get_router():
+      router = APIRouter()
+      @router.get("/items")  # This was NOT extracted
+      def list_items(): ...
+  ```
+- **Fix:** Added `processed_functions` set to track already-extracted methods, then modified
+  the condition to extract:
+  1. Top-level functions (col_offset == 0) - always extract
+  2. Nested functions with decorators - extract for framework patterns
+  Also extended to handle `AsyncFunctionDef` for both methods and nested functions.
+- **Verification:** Checked analogous patterns in other analyzers:
+  - JS/TS: Already handles arrow functions in callbacks via position-based lookup
+  - Ruby: Handles blocks properly for Sinatra/Rails patterns
+  - Go: Handles `func_literal` (anonymous functions) properly
+  - Issue was Python-specific due to the `col_offset` heuristic
+- **Regression tests:**
+  - `test_python_ast_analysis.py::TestNestedFunctionExtraction` (4 tests)
+
+## INV-004: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
 - **Root cause:** [File:line or description]
