@@ -126,7 +126,7 @@ high-level, their status is expressed as a percentage indicating confidence they
 
 **Status values for meta-invariants:**
 - `100%` — Based upon EXTENSIVE checking, fully upheld across ALL reasonably conceivable cases
-- `<100%` (e.g., `80%`) — Partially upheld; known gaps exist
+- `<100%` (e.g., `80%`) — Partially upheld; known gaps exist. OR: as an extensive audit has yet to be attempted, unseen gaps might conceivably exist.
 - `TBD` — Not yet assessed; needs research
 
 ### META-001: Metadata Must Become Graph Structure
