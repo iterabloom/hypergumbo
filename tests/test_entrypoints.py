@@ -1164,6 +1164,100 @@ class TestSemanticEntryDetection:
         # main_function has lower confidence (0.80) than main_guard (0.85), but it's first
         assert main_eps[0].confidence == 0.80
 
+    def test_controller_by_name_entrypoint_detection(self) -> None:
+        """Classes named *Controller are detected as entrypoints (naming heuristic)."""
+        sym = Symbol(
+            id="python:controllers.py:1-50:UserController:class",
+            name="UserController",
+            kind="class",
+            path="controllers.py",
+            language="python",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [{"concept": "controller_by_name", "framework": "naming-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].confidence == 0.70  # Naming heuristic - lowest tier
+        assert "by name" in ctrl_eps[0].label
+
+    def test_handler_by_name_entrypoint_detection(self) -> None:
+        """Classes named *Handler are detected as entrypoints (naming heuristic)."""
+        sym = Symbol(
+            id="python:handlers.py:1-30:RequestHandler:class",
+            name="RequestHandler",
+            kind="class",
+            path="handlers.py",
+            language="python",
+            span=Span(1, 30, 0, 0),
+            meta={"concepts": [{"concept": "handler_by_name", "framework": "naming-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        handler_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(handler_eps) == 1
+        assert handler_eps[0].confidence == 0.70  # Naming heuristic
+        assert "by name" in handler_eps[0].label
+
+    def test_naming_convention_skipped_if_framework_detected(self) -> None:
+        """Naming-based detection skipped if framework detection already matched."""
+        # A class that has both @Controller annotation AND is named FooController
+        sym = Symbol(
+            id="java:FooController.java:1-50:FooController:class",
+            name="FooController",
+            kind="class",
+            path="FooController.java",
+            language="java",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "controller", "framework": "spring-boot"},  # From annotation
+                {"concept": "controller_by_name", "framework": "naming-conventions"},  # From name
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one CONTROLLER entry (framework detection wins)
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].confidence == 0.95  # Framework detection, not naming
+
+    def test_handler_by_name_skipped_if_controller_detected(self) -> None:
+        """Handler naming convention skipped if controller already detected.
+
+        This tests the deduplication when a class has both controller_by_name
+        (0.70) processed first and handler_by_name (0.70) second. Since both
+        map to CONTROLLER, the handler_by_name should be skipped.
+        """
+        # A class named FooControllerHandler - matches both patterns
+        sym = Symbol(
+            id="java:FooController.java:1-50:FooControllerHandler:class",
+            name="FooControllerHandler",
+            kind="class",
+            path="FooControllerHandler.java",
+            language="java",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "controller_by_name", "framework": "naming-conventions"},
+                {"concept": "handler_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one CONTROLLER entry (controller_by_name processed first)
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].confidence == 0.70  # Naming heuristic
+        assert "Controller (by name)" in ctrl_eps[0].label
+
     def test_symbol_with_empty_concepts_skipped(self) -> None:
         """Symbols with meta but empty concepts list are skipped."""
         sym = Symbol(
@@ -1202,6 +1296,38 @@ class TestSemanticEntryDetection:
         # Should only create one CLI_COMMAND entry despite duplicate concepts
         cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
         assert len(cli_eps) == 1
+
+    def test_command_and_manifest_concept_deduplicated(self) -> None:
+        """Symbol with both command and npm_bin concepts gets one CLI_COMMAND entry.
+
+        This tests the deduplication path when a command concept (0.95 confidence)
+        is processed before a manifest concept (0.99 confidence). The manifest concept
+        should be skipped since CLI_COMMAND is already added by command.
+        """
+        sym = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            path="package.json",
+            language="json",
+            span=Span(5, 5, 0, 30),
+            meta={"concepts": [
+                # command processed first (0.95) - e.g., Click/Typer command
+                {"concept": "command", "framework": "click"},
+                # npm_bin processed second, should be skipped (0.99)
+                {"concept": "npm_bin", "framework": "config-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only create one CLI_COMMAND entry (from command, not npm_bin)
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        # The one that was created should be the command one (0.95)
+        assert cli_eps[0].confidence == 0.95
+        assert "Click command" in cli_eps[0].label
 
 
 class TestConnectivityBasedRanking:

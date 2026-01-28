@@ -909,7 +909,14 @@ def enrich_symbols(
     # - test-frameworks.yaml: test function detection across frameworks
     # - language-conventions.yaml: CUDA, WGSL, COBOL, LaTeX, Starlark patterns
     # - config-conventions.yaml: NPM, Maven, Cargo dependency patterns
-    for convention_id in ("main-functions", "test-frameworks", "language-conventions", "config-conventions"):
+    # - naming-conventions.yaml: Controller, Handler, Service naming heuristics (0.70)
+    for convention_id in (
+        "main-functions",
+        "test-frameworks",
+        "language-conventions",
+        "config-conventions",
+        "naming-conventions",
+    ):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
             pattern_defs.append(convention_patterns)

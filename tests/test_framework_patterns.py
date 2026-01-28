@@ -8023,3 +8023,248 @@ class TestAkkaHttpPatterns:
         route_concepts = [c for c in concepts if c["concept"] == "route"]
         assert len(route_concepts) == 1
         assert route_concepts[0]["framework"] == "akka-http"
+
+
+class TestNamingConventionsPatterns:
+    """Tests for naming-conventions.yaml patterns (ADR-0003 v1.4.x).
+
+    These patterns detect entrypoints by naming conventions alone, providing
+    a fallback when no framework-specific detection matches. This is the
+    lowest-confidence tier (0.70).
+    """
+
+    def test_naming_conventions_yaml_loads(self) -> None:
+        """naming-conventions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("naming-conventions")
+        assert pattern_def is not None
+        assert pattern_def.id == "naming-conventions"
+        assert pattern_def.language == "multi"
+        # Should have patterns for controller, handler, service
+        assert len(pattern_def.patterns) >= 3
+
+    def test_controller_by_name_pattern_matches(self) -> None:
+        """Pattern matches classes ending in 'Controller'."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:UserController.java:10-50:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="src/controllers/UserController.java",
+            span=Span(10, 50, 0, 500),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "controller_by_name"
+        assert result["matched_symbol_name"] == "UserController"
+        assert result["matched_symbol_kind"] == "class"
+
+    def test_controller_by_name_pattern_various_languages(self) -> None:
+        """Pattern matches Controller classes across multiple languages."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        # Test across Java, Python, Ruby, PHP
+        test_cases = [
+            ("java", "ProductController"),
+            ("python", "AccountController"),
+            ("ruby", "PaymentController"),
+            ("php", "OrderController"),
+        ]
+        for lang, name in test_cases:
+            symbol = Symbol(
+                id=f"{lang}:{name}.{lang}:1-10:{name}:class",
+                name=name,
+                kind="class",
+                language=lang,
+                path=f"app/controllers/{name}.{lang}",
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {name} in {lang}"
+            assert result["concept"] == "controller_by_name"
+
+    def test_controller_by_name_rejects_non_class(self) -> None:
+        """Pattern does not match functions named Controller."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="python:utils.py:1-5:UserController:function",
+            name="UserController",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None  # Not a class
+
+    def test_controller_by_name_rejects_helper(self) -> None:
+        """Pattern does not match ControllerHelper (doesn't end in Controller)."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:ControllerHelper.java:1-10:ControllerHelper:class",
+            name="ControllerHelper",
+            kind="class",
+            language="java",
+            path="ControllerHelper.java",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None  # Doesn't end in "Controller"
+
+    def test_handler_by_name_pattern_matches(self) -> None:
+        """Pattern matches classes ending in 'Handler'."""
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:WebSocketHandler.java:5-30:WebSocketHandler:class",
+            name="WebSocketHandler",
+            kind="class",
+            language="java",
+            path="src/handlers/WebSocketHandler.java",
+            span=Span(5, 30, 0, 300),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "handler_by_name"
+        assert result["matched_symbol_name"] == "WebSocketHandler"
+
+    def test_handler_by_name_rejects_non_class(self) -> None:
+        """Pattern does not match functions named Handler."""
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="python:utils.py:1-5:RequestHandler:function",
+            name="RequestHandler",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_service_by_name_pattern_matches(self) -> None:
+        """Pattern matches classes ending in 'Service'."""
+        pattern = Pattern(
+            concept="service_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Service$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:UserService.java:10-60:UserService:class",
+            name="UserService",
+            kind="class",
+            language="java",
+            path="src/services/UserService.java",
+            span=Span(10, 60, 0, 600),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "service_by_name"
+        assert result["matched_symbol_name"] == "UserService"
+
+    def test_service_by_name_rejects_non_class(self) -> None:
+        """Pattern does not match functions named Service."""
+        pattern = Pattern(
+            concept="service_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Service$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="python:utils.py:1-5:PaymentService:function",
+            name="PaymentService",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_enrich_symbols_with_naming_conventions(self) -> None:
+        """enrich_symbols applies naming convention patterns."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:UserController.java:1-50:UserController:class",
+                name="UserController",
+                kind="class",
+                language="java",
+                path="src/controllers/UserController.java",
+                span=Span(1, 50, 0, 500),
+                meta={},
+            ),
+            Symbol(
+                id="java:RequestHandler.java:1-30:RequestHandler:class",
+                name="RequestHandler",
+                kind="class",
+                language="java",
+                path="src/handlers/RequestHandler.java",
+                span=Span(1, 30, 0, 300),
+                meta={},
+            ),
+            Symbol(
+                id="java:EmailService.java:1-40:EmailService:class",
+                name="EmailService",
+                kind="class",
+                language="java",
+                path="src/services/EmailService.java",
+                span=Span(1, 40, 0, 400),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())  # No specific framework
+
+        # Check controller
+        controller = next(s for s in enriched if s.name == "UserController")
+        assert "concepts" in controller.meta
+        concepts = controller.meta["concepts"]
+        ctrl_concepts = [c for c in concepts if c["concept"] == "controller_by_name"]
+        assert len(ctrl_concepts) == 1
+        assert ctrl_concepts[0]["framework"] == "naming-conventions"
+
+        # Check handler
+        handler = next(s for s in enriched if s.name == "RequestHandler")
+        assert "concepts" in handler.meta
+        handler_concepts = [
+            c for c in handler.meta["concepts"] if c["concept"] == "handler_by_name"
+        ]
+        assert len(handler_concepts) == 1
+
+        # Check service
+        service = next(s for s in enriched if s.name == "EmailService")
+        assert "concepts" in service.meta
+        service_concepts = [
+            c for c in service.meta["concepts"] if c["concept"] == "service_by_name"
+        ]
+        assert len(service_concepts) == 1

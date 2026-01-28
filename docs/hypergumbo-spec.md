@@ -1433,9 +1433,9 @@ Confidence scores reflect detection reliability, enabling meaningful ordering in
 | 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
 | 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
 | 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
-| ⬜ **Naming** | 0.70 | Heuristic patterns | Function named `main`, class named `*Controller` without annotations |
+| 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
 
-Current implementation uses decorator/annotation patterns (0.95). Manifest-based and naming-based detection are planned additions.
+All four confidence tiers are now implemented. Naming-based detection serves as a fallback when no framework-specific patterns match.
 
 ### Scoring for Auto-Slice Entry Selection
 

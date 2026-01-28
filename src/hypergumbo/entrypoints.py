@@ -449,6 +449,36 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
 
+            # Naming-based heuristics (lowest confidence tier)
+            # These are fallbacks when no explicit annotation/base class is found
+            # ADR-0003 v1.4.x - naming-conventions.yaml
+            elif concept_type == "controller_by_name":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue  # Already detected via framework pattern
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.70,  # Naming heuristic - lowest tier
+                    label=f"Controller (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
+            elif concept_type == "handler_by_name":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue  # Handlers are treated as controllers
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.70,  # Naming heuristic - lowest tier
+                    label=f"Handler (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
+            elif concept_type == "service_by_name":
+                # Services are not entrypoints by default, but we track
+                # them for potential future use. Skip for now.
+                pass
+
     return entrypoints
 
 
