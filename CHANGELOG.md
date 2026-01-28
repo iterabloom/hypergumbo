@@ -10,89 +10,102 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Summary
-- **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
-- **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
-- **Quality:** INV-002 fallback resolution; INV-005 edge ID uniqueness (line included in hash); non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern); Python `if __name__ == "__main__"` structural entrypoint detection (adds `main_guard` concept to module symbols); Django empty path URL patterns (`path('')`) now correctly detected as routes; route-handler linker creates `routes_to` edges from route symbols to their handler functions (Rails, Phoenix, Laravel, Express); **Rails RESTful route expansion** - `resources`/`resource` macros now emit individual route symbols for all actions (7/6 respectively); **Phoenix route symbols** - Elixir analyzer creates route symbols with controller/action metadata, enabling route-handler linking for Phoenix apps; **Laravel route symbols** - PHP analyzer creates route symbols with `controller_action` metadata (`Controller@action` format), enabling route-handler linking for Laravel apps including `Route::resource()` expansion; **Manifest-based entrypoint detection** - `package.json "bin"` entries, `pyproject.toml [project.scripts]`, and `Cargo.toml [[bin]]` now detected as CLI entry points with 0.99 confidence (declared in manifest); **Fixed cargo_binary concept mismatch** - YAML pattern now matches actual analyzer output (`kind="binary"` not `kind="bin"`); **Naming-based entrypoint detection** - classes named `*Controller`, `*Handler`, or `*Service` now detected as entrypoints with 0.70 confidence (naming heuristic fallback tier).
-- **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
-- **Tests:** Scala lambda attribution tests for INV-001; Python nested function extraction tests; Python main guard detection tests (7 tests).
+
+Major expansion: **37 new analyzers** across languages, templates, config formats, and build systems. New **route-handler** and **type hierarchy** linkers improve web framework and OO codebase navigation. CLI gains `compact` subcommand. Multiple bug fixes for edge uniqueness, entrypoint detection, and crash resilience.
 
 ### Added
 
 #### CLI
 - **`compact`**: Post-process behavior maps into compact form. Options: `--input`, `--out`, `--max-symbols`, `--coverage`, `--no-connectivity`.
 
-#### Frontend, templates, and styles
-- **Twig** (tree-sitter): blocks/extends/includes/macros/control flow; `extends_template` / `includes_template` edges.
-- **SCSS/Sass** (tree-sitter): variables/mixins/functions/rules; `uses_mixin` edges.
-- **Svelte** (tree-sitter): imports, slots, events, control flow; `imports_component` edges.
-- **Vue SFC** (tree-sitter): directives/slots/methods/props; `imports_component` edges; two-pass import resolution.
-- **Astro** (tree-sitter): frontmatter, imports, slots, client directives; `imports_component` edges; two-pass import resolution.
+#### Analyzers: Frontend & templates
+- **Twig**: blocks/extends/includes/macros; `extends_template` / `includes_template` edges.
+- **SCSS/Sass**: variables/mixins/functions/rules; `uses_mixin` edges.
+- **Svelte**: imports, slots, events, control flow; `imports_component` edges.
+- **Vue SFC**: directives/slots/methods/props; two-pass import resolution.
+- **Astro**: frontmatter, imports, slots, client directives; two-pass import resolution.
 
-#### Programming languages
+#### Analyzers: Programming languages (16)
 - **Odin**: procedures/structs/enums/unions; imports + cross-file calls.
 - **Gleam**: functions/types/aliases; visibility + signatures; imports + calls.
 - **V**: functions/structs/enums/interfaces; visibility + signatures; imports + calls.
 - **MATLAB**: functions/classes/methods/properties; signatures + cross-file calls.
-- **Tcl/Tk**: procedures/namespaces; signatures; call edges (filters built-ins).
-- **Scheme**: defs + recursive calls; filters special forms; `.scm/.ss/.sld/.sls`.
-- **Racket**: defs/structs + recursive calls; `struct`/`module+`; `.rkt/.rktl/.rktd`.
-- **Janet**: defs + recursive calls; filters special forms; `.janet`.
-- **Fennel**: defs + recursive calls; compiles to Lua; `.fnl`.
-- **Pascal**: programs/units/functions/procs; case-insensitive calls; `.pas/.pp/.dpr/.lpr`.
-- **Haxe**: classes/interfaces/functions; visibility/static; qualified call resolution; `.hx`.
-- **PureScript**: modules/functions/types/classes/instances; signatures; qualified calls; `.purs`.
-- **Hack**: classes/traits/functions/methods; visibility/static; qualified calls; `.hack/.hh/.php (<?hh)`.
+- **Tcl/Tk**: procedures/namespaces; call edges (filters built-ins).
+- **Scheme**: defs + recursive calls; filters special forms (`.scm/.ss/.sld/.sls`).
+- **Racket**: defs/structs + recursive calls; `struct`/`module+` (`.rkt/.rktl/.rktd`).
+- **Janet**: defs + recursive calls; filters special forms.
+- **Fennel**: defs + recursive calls; compiles to Lua.
+- **Pascal**: programs/units/functions/procs; case-insensitive calls (`.pas/.pp/.dpr/.lpr`).
+- **Haxe**: classes/interfaces/functions; visibility/static; qualified calls.
+- **PureScript**: modules/functions/types/classes/instances; qualified calls.
+- **Hack**: classes/traits/functions/methods; visibility/static (`.hack/.hh`).
 - **Apex**: classes/triggers/methods/fields; visibility/override; qualified calls.
-- **Luau**: typed functions + types; qualified calls; `.luau/.lua`.
-- **Pony**: actors/classes/etc.; reference capabilities; cross-file calls.
+- **Luau**: typed functions + types; qualified calls (`.luau/.lua`).
+- **Pony**: actors/classes; reference capabilities; cross-file calls.
 
-#### Data / schema / DSLs
-- **KDL**: nodes/sections; arguments/properties; nested configuration hierarchies; `.kdl`.
+#### Analyzers: Data, schema & DSLs (5)
+- **KDL**: nodes/sections; arguments/properties; nested hierarchies.
 - **Prisma**: models/enums/datasources/generators; `@relation` edges.
-- **Smithy**: services/operations/shapes; namespace-qualified names; containment + type refs.
-- **SPARQL**: PREFIX/BASE + queries; vocab usage; `uses_vocabulary` edges.
-- **Jsonnet**: locals/methods/fields; imports + calls; `.jsonnet/.libsonnet`.
+- **Smithy**: services/operations/shapes; namespace-qualified names; type refs.
+- **SPARQL**: PREFIX/BASE + queries; `uses_vocabulary` edges.
+- **Jsonnet**: locals/methods/fields; imports + calls.
 
-#### Build systems and automation
+#### Analyzers: Build systems & DevOps (4)
 - **Meson**: projects/targets/custom targets; deps + subdir includes.
-- **BitBake**: recipe vars, inherit, tasks, addtask; DEPENDS/RDEPENDS + inherit edges.
-- **Robot Framework**: keywords/tests/vars/imports; cross-file keyword invocation (filters built-ins).
+- **BitBake**: recipe vars, inherit, tasks; DEPENDS/RDEPENDS edges.
+- **Robot Framework**: keywords/tests/vars; cross-file keyword invocation.
+- **Puppet**: classes/defined types/resources; parameter extraction.
 
-#### Docs and repository/config files
-- **BibTeX**: bibliography entries (article/book/inproceedings), citation keys, authors/years/titles, field counts.
+#### Analyzers: Docs & config files (7)
+- **BibTeX**: bibliography entries, citation keys, authors/years/titles.
 - **Markdown**: headings/code blocks/links; `links_to` edges.
 - **RST**: sections/directives/refs; toctree/include + cross-doc refs.
-- **requirements.txt**: constraints, VCS/URL/editable; `-r/-c` includes; dependency edges.
+- **requirements.txt**: constraints, VCS/URL/editable; `-r/-c` includes.
 - **.properties**: key/value + domain categorization; masks secrets.
 - **.gitignore**: pattern classification + domain categories.
-- **INI/CFG family**: sections/settings + domain categorization; masks secrets.
+- **INI/CFG**: sections/settings + domain categorization; masks secrets.
 
-#### Linkers
-- **Route-handler linker**: Creates `routes_to` edges from route symbols to their handler functions. Supports Rails (`controller_action = "users#index"`), Phoenix (`controller` + `action` fields), Laravel (`controller_action = "UserController@index"`), and Express/JS (`handler_ref = "module.function"`) metadata formats. Resolves handlers via symbol name lookup with fallback strategies.
-- **Type hierarchy linker**: Creates `dispatches_to` edges for polymorphic method dispatch resolution. When a parent class/interface has child classes that override a method, the linker creates edges from the parent method to all overriding implementations. This enables navigation from interface methods to concrete implementations, particularly valuable for DI-heavy codebases (Spring, ASP.NET, Angular). Currently works with Java (which creates `extends`/`implements` edges); other languages need edge creation for full benefit.
+#### Linkers (2)
+- **Route-handler linker**: Creates `routes_to` edges from route symbols to handler functions. Supports Rails, Phoenix, Laravel, and Express metadata formats.
+- **Type hierarchy linker**: Creates `dispatches_to` edges for polymorphic dispatch. Connects interface/parent methods to concrete implementations (valuable for DI-heavy codebases).
 
-### Changed
-- **Agent policy / bakeoff loop** (agents-policy-v2026-01-25.0):
-  - Treat **UNFIXED** and **PARTIALLY ADDRESSED** invariants as blocking/actionable (incl. “stopping point” checks).
-  - Reflection now focuses on remaining signals **for the last change made**, and requires confirming the ledger is up-to-date:
-    - `cat .agent/invariant-ledger.md 2>/dev/null | grep -E -A5 'Status: (❌( UNFIXED)?|UNFIXED|PARTIALLY ADDRESSED)' || true`
-  - If an invariant is unfixed (even partially) and analogous issues might exist: **do not stop**—fix/investigate; otherwise document and consider reactivating `scripts/bakeoff*`.
-  - Canary bumped to `agents-policy-v2026-01-25.0`.
+#### Entrypoint detection
+- **Manifest-based**: `package.json "bin"`, `pyproject.toml [project.scripts]`, `Cargo.toml [[bin]]` detected with 0.99 confidence.
+- **Naming-based**: Classes named `*Controller`, `*Handler`, `*Service` detected with 0.70 confidence (heuristic fallback).
+- **Structural**: Python `if __name__ == "__main__"` detected with 0.85 confidence.
+
+#### Framework route extraction
+- **Rails**: `resources`/`resource` macros emit individual route symbols for all RESTful actions.
+- **Phoenix**: Elixir analyzer creates route symbols with controller/action metadata.
+- **Laravel**: PHP analyzer creates route symbols including `Route::resource()` expansion.
+
+#### Quality & governance
+- **Meta-invariants**: Introduced three high-level quality principles that unify specific bug fixes:
+  - META-001: Metadata Must Become Graph Structure (90%) — semantic relationships in metadata must become traversable edges
+  - META-002: Extraction Completeness (95%) — symbols in source code must be extracted for analysis
+  - META-003: Data Integrity (100%) — graph elements must have valid, unique identifiers
+- **Invariant ledger**: Tracks discovered invariants, root causes, fixes, and regression tests (`.agent/invariant-ledger.md`).
 
 ### Fixed
-- **INV-006**: Rails resource route handler resolution. `resources :users` and `resource :profile` macros now infer `controller_action` metadata (e.g., `users#index`), enabling the route-handler linker to connect resource routes to their controllers.
-- **INV-005**: Edge ID uniqueness. Edge IDs now include the line number in the hash, ensuring unique IDs for multiple calls from the same function to the same target at different lines. Previously, edges with the same src/dst/type but different lines got identical IDs, causing 61% duplicate IDs in some repos.
-- **INV-004**: Route-to-handler edge completeness. Routes now get `routes_to` edges connecting them to their handler functions when handler metadata is available. The route-handler linker converts `controller_action` (Rails) and `controller`/`action` (Phoenix) metadata into actual graph edges. Previously, this information was stored as metadata but not converted to traversable edges.
-- **INV-002 (ADR-0008)**: Proper deferred resolution for `UsageContext(symbol_ref=None)`. Added `resolve_deferred_symbol_refs()` phase that runs after all analyzers complete, using `NameResolver` with multi-strategy lookup (exact → suffix → path hint) to resolve string-based handler references. This enables concept annotations for Django URL patterns, Express routes, and any framework using cross-file handler references. 17 regression tests.
-- **JSON manifests**: Avoid crash when `package.json` / `composer.json` top-level JSON is non-object; affected `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, `_extract_package_json` (sketch).
-- **Python nested functions**: Extract decorated nested functions (closures) for FastAPI router factory pattern. Previously, only top-level functions were extracted, missing route handlers like `@router.get("/entities") def list_entities()` inside factory functions.
-- **HTTP linker route metadata fallback**: HTTP linker now falls back to direct `meta.route_path`/`meta.http_method` fields when concept metadata is not available. This enables cross-language HTTP linking for analyzer-created route symbols (Rails, Phoenix, Laravel, Express) that store route info in direct metadata rather than enriched concepts.
-- **Manifest-based CLI entrypoint detection**: Declared CLI entry points from `package.json "bin"` entries, `pyproject.toml [project.scripts]`, and `Cargo.toml [[bin]]` now detected with 0.99 confidence (highest tier). JSON analyzer extracts `bin` object/string entries; TOML analyzer extracts `[project.scripts]` entries. YAML patterns (`config-conventions.yaml`) map these to `npm_bin`, `pyproject_script`, and `cargo_binary` concepts.
-- **Fixed cargo_binary concept mismatch**: YAML pattern now matches `symbol_kind: "^binary$"` (what the analyzer creates) instead of `symbol_kind: "^bin$"` (what the pattern incorrectly expected). Cargo [[bin]] entries now correctly receive the `cargo_binary` concept and are detected as CLI entry points.
-- **Fixed main_guard concept format**: Python `if __name__ == "__main__"` detection now uses dict format `{"concept": "main_guard", ...}` for consistency with all other concepts. Previously used string format which entrypoints.py couldn't process. Python modules with main guard are now detected as structural entrypoints with 0.85 confidence.
 
-### Tests
-- Added Scala lambda call attribution tests for INV-001 (`lambda_expression` nodes).
+#### Crashes & robustness
+- **JSON manifests**: No longer crash when `package.json`/`composer.json` top-level is non-object.
+- **Ruby analyzer**: Prevent self-referential call edges.
+
+#### Graph quality (INV-002 through INV-006)
+- **INV-006**: Rails `resources`/`resource` macros now infer `controller_action` metadata for route-handler linking.
+- **INV-005**: Edge IDs include line number, ensuring uniqueness for multiple calls to same target.
+- **INV-004**: Routes get `routes_to` edges to handler functions (metadata now converted to traversable edges).
+- **INV-002**: Deferred resolution for cross-file handler references (Django URL patterns, Express routes, etc.).
+
+#### Python analyzer
+- **Nested functions**: Extract decorated nested functions (FastAPI router factory pattern).
+- **Main guard**: `if __name__ == "__main__"` uses correct concept format for entrypoint detection.
+- **Django**: Empty path URL patterns (`path('')`) now correctly detected as routes.
+
+#### Entrypoint detection
+- **cargo_binary**: YAML pattern now matches `kind="binary"` (actual analyzer output).
+- **HTTP linker**: Falls back to direct `meta.route_path`/`meta.http_method` when concept metadata unavailable.
 
 ## [1.1.0] - 2026-01-24
 

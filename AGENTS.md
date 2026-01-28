@@ -382,7 +382,9 @@ When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE",
 - **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
 Priority queue:
-1. **Status: UNFIXED or Status: PARTIALLY ADDRESSED root causes** in `.agent/invariant-ledger.md` — these block structural progress
+1. **Actionable invariants** in `.agent/invariant-ledger.md`:
+   - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
+   - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
 2. Frameworks: Django, FastAPI, Phoenix, Rails, etc.
 3. Linkers: polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 
@@ -391,4 +393,4 @@ Priority queue:
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-01-25.0 -->
+<!-- CANARY: agents-policy-v2026-01-28.0 -->
