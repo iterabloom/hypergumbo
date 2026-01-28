@@ -482,6 +482,115 @@ class TestRouteHandlerLinker:
         # No match because Rails format looks for UsersController#index, not @
         assert len(result.edges) == 0
 
+    def test_express_handler_ref_linking(self) -> None:
+        """Express routes with handler_ref metadata get linked to handler functions."""
+        route = Symbol(
+            id="javascript:/app/src/app.js:10-10:userController.list:route",
+            name="userController.list",
+            kind="route",
+            language="javascript",
+            path="/app/src/app.js",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_ref": "userController.list",
+            },
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        # Handler function
+        handler = Symbol(
+            id="javascript:/app/src/userController.js:5-10:list:function",
+            name="list",
+            kind="function",
+            language="javascript",
+            path="/app/src/userController.js",
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=1),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+        assert edge.meta["handler_ref"] == "userController.list"
+
+    def test_express_exact_match_handler(self) -> None:
+        """Express handler is found by exact name match when available."""
+        route = Symbol(
+            id="javascript:/app/src/app.js:10-10:handleRequest:route",
+            name="handleRequest",
+            kind="route",
+            language="javascript",
+            path="/app/src/app.js",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/request",
+                "handler_ref": "handleRequest",  # Simple name, not qualified
+            },
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="javascript:/app/src/app.js:15-20:handleRequest:function",
+            name="handleRequest",
+            kind="function",
+            language="javascript",
+            path="/app/src/app.js",
+            span=Span(start_line=15, end_line=20, start_col=0, end_col=1),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_express_suffix_match_handler(self) -> None:
+        """Express handler found via suffix match when direct lookup fails."""
+        # Route references "api.getUser" but handler is "routes/api.getUser"
+        route = Symbol(
+            id="javascript:/app/src/app.js:10-10:api.getUser:route",
+            name="api.getUser",
+            kind="route",
+            language="javascript",
+            path="/app/src/app.js",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users/:id",
+                "handler_ref": "api.getUser",
+            },
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        # Handler has a qualified name that ends with the function name
+        handler = Symbol(
+            id="javascript:/app/src/routes/api.js:5-10:routes/api.getUser:function",
+            name="routes/api.getUser",  # Qualified name that ends with .getUser
+            kind="function",
+            language="javascript",
+            path="/app/src/routes/api.js",
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=1),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
     def test_run_is_created(self) -> None:
         """Linker creates an AnalysisRun record."""
         route = Symbol(

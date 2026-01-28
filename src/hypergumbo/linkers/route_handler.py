@@ -10,6 +10,7 @@ How It Works
    - Rails: controller_action = "users#index" → UsersController#index
    - Phoenix: controller = "UserController", action = "index" → UserController.index
    - Laravel: controller_action = "UserController@index"
+   - Express/JS: handler_ref = "userController.list" → list function
 3. Resolve handler reference to actual method/function symbols
 4. Create routes_to edges linking routes to handlers
 
@@ -24,7 +25,8 @@ Supported Frameworks
 --------------------
 - Ruby/Rails: controller_action = "controller#action"
 - Elixir/Phoenix: controller + action fields
-- PHP/Laravel: controller_action = "Controller@action" (future)
+- PHP/Laravel: controller_action = "Controller@action"
+- JS/TS Express: handler_ref = "module.function"
 """
 
 from __future__ import annotations
@@ -181,6 +183,48 @@ def _resolve_phoenix_handler(
     return None  # pragma: no cover - defensive: iteration found no match
 
 
+def _resolve_express_handler(
+    handler_ref: str, symbol_by_name: dict[str, Symbol]
+) -> Symbol | None:
+    """Resolve Express/JS handler_ref to a handler symbol.
+
+    Args:
+        handler_ref: Handler reference like "userController.list" or "list"
+        symbol_by_name: Lookup table of symbols by name
+
+    Returns:
+        Matching Symbol or None (excludes route symbols to avoid self-reference)
+    """
+
+    def is_handler(sym: Symbol) -> bool:
+        """Check if symbol is a potential handler (not a route itself)."""
+        return sym.kind in ("function", "method", "arrow_function")
+
+    # Try exact match first (must be a function/method, not a route)
+    if handler_ref in symbol_by_name:
+        sym = symbol_by_name[handler_ref]
+        if is_handler(sym):
+            return sym
+
+    # Extract function name from qualified reference (module.function)
+    if "." in handler_ref:
+        parts = handler_ref.split(".")
+        func_name = parts[-1]  # Last part is the function name
+
+        # Try just the function name
+        if func_name in symbol_by_name:
+            sym = symbol_by_name[func_name]
+            if is_handler(sym):
+                return sym
+
+        # Try looking for symbols that end with the function name
+        for name, sym in symbol_by_name.items():
+            if (name.endswith(f".{func_name}") or name == func_name) and is_handler(sym):
+                return sym
+
+    return None  # pragma: no cover - defensive: no match found
+
+
 def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     """Extract handler reference info from route metadata.
 
@@ -205,6 +249,10 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
             "controller": meta["controller"],
             "action": meta["action"],
         }
+
+    # Express/JS: handler_ref field (e.g., "userController.list")
+    if meta.get("handler_ref"):
+        return {"type": "express", "handler_ref": meta["handler_ref"]}
 
     # Django: view_name (handled separately via deferred resolution)
 
@@ -256,6 +304,10 @@ def link_routes_to_handlers(
         elif handler_ref["type"] == "phoenix":
             handler = _resolve_phoenix_handler(
                 handler_ref["controller"], handler_ref["action"], symbol_by_name
+            )
+        elif handler_ref["type"] == "express":
+            handler = _resolve_express_handler(
+                handler_ref["handler_ref"], symbol_by_name
             )
 
         if handler:
