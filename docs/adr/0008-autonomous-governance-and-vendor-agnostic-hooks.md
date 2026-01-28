@@ -10,7 +10,7 @@ Status: Accepted
 
 Hypergumbo's bakeoff infrastructure successfully surfaces real bugs (CRITICAL/HIGH signals). However, analysis of recent "fixes" reveals a pattern: **we repeatedly ship workarounds that bypass problematic code paths rather than fixing the root causes**.
 
-Three case studies illustrate this (documented in full in `/tmp/analysis1.md`):
+Three case studies illustrate this (documented in full in `docs/governance-case-critiques.md`):
 
 | Case | Symptom | Root Cause | What We Did | Result |
 |------|---------|------------|-------------|--------|
@@ -458,14 +458,14 @@ cat .agent/invariant-ledger.md | grep -A5 "Status: ❌"
 - [x] Update `AGENTS.md` with governance checklist
 - [x] Add `.agent/` to repository
 - [ ] Document hook setup in `docs/contributing.md`
-- [ ] Test full loop: bakeoff signal → fix → reflection → verify
+- [x] Test full loop: bakeoff signal → fix → reflection → verify (INV-001 through INV-006)
 
 ### Phase 4: Fix the Root Cause
 
-- [ ] **Address `symbol_ref` gate:** Either remove the gate or ensure all analyzers populate `symbol_ref`
-- [ ] **Generalize position-based lookup:** Extract from JS/TS into shared helper
-- [ ] **Remove workarounds:** Once gate is fixed, undo Rails direct-symbol-creation hack
-- [ ] **Verify:** Run bakeoff on frameworks with string-based handlers (Rails, Django, Phoenix)
+- [x] **Address `symbol_ref` gate:** Fixed via deferred resolution (`resolve_deferred_symbol_refs()`) — see INV-002 in invariant ledger
+- [x] **Position-based lookup:** Each language has its own `_get_enclosing_function()` appropriate for its AST; no shared helper needed (by design)
+- [x] **Workaround status:** Rails `symbol_ref=None` is NOT a workaround — routes don't reference symbols directly; the `route_handler` linker handles the connection (see INV-004, INV-006)
+- [x] **Verify:** Bakeoff runs on Rails, Django, FastAPI, Phoenix, Spring confirmed fixes work (2026-01-28)
 
 ## References
 
