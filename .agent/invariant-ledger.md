@@ -125,7 +125,7 @@ Meta-invariants are broad principles that unify specific invariants. Because the
 high-level, their status is expressed as a percentage indicating confidence they are upheld.
 
 **Status values for meta-invariants:**
-- `100%` — Fully upheld across all known cases
+- `100%` — Based upon EXTENSIVE checking, fully upheld across ALL reasonably conceivable cases
 - `<100%` (e.g., `80%`) — Partially upheld; known gaps exist
 - `TBD` — Not yet assessed; needs research
 
