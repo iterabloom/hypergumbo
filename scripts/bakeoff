@@ -471,7 +471,8 @@ def cmd_run(args):
 
         for cmd_name, cmd in commands:
             print(f"  {cmd_name}...", end=" ", flush=True)
-            rc, stdout, stderr = run_cmd(cmd, timeout=300)
+            # Large repos may take significant time - avoid premature timeouts
+            rc, stdout, stderr = run_cmd(cmd, timeout=900)
 
             # Save outputs
             if stdout:
@@ -578,8 +579,10 @@ def cmd_diagnose(args):
             if t == "calls":
                 calls_total += 1
 
+        # Concepts can be strings ("route") or dicts ({"concept": "route", ...})
         routes = sum(1 for n in nodes if any(
-            c.get("concept") == "route" for c in ((n.get("meta") or {}).get("concepts") or [])
+            (c == "route" if isinstance(c, str) else c.get("concept") == "route")
+            for c in ((n.get("meta") or {}).get("concepts") or [])
         ))
 
         metrics = {
