@@ -1,0 +1,573 @@
+#!/usr/bin/env python3
+"""
+Analyze hypergumbo bakeoff artifacts to extract insights.
+
+This script queries existing JSON artifacts without running new analyses,
+enabling rapid iteration on understanding what hypergumbo captures.
+
+Usage:
+    ./scripts/analyze-artifacts catalog          # List all artifacts with summary stats
+    ./scripts/analyze-artifacts summary FILE     # Detailed summary of one artifact
+    ./scripts/analyze-artifacts concepts         # Concept frequency across all artifacts
+    ./scripts/analyze-artifacts routes           # Route detection summary
+    ./scripts/analyze-artifacts languages        # Language breakdown
+    ./scripts/analyze-artifacts gaps             # Find gaps (frameworks detected but few symbols)
+    ./scripts/analyze-artifacts edges FILE       # Edge type analysis for one artifact
+    ./scripts/analyze-artifacts compare A B      # Compare two artifacts
+"""
+
+import argparse
+import json
+import os
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+
+def find_artifacts(base_paths: list[str] | None = None) -> list[Path]:
+    """Find all hypergumbo JSON artifacts."""
+    if base_paths is None:
+        base_paths = ["/tmp"]
+
+    artifacts = []
+    for base in base_paths:
+        base_path = Path(base)
+        if not base_path.exists():
+            continue
+
+        # Find hg.json files in bakeoff directories
+        for hg_json in base_path.rglob("hg.json"):
+            artifacts.append(hg_json)
+
+        # Find standalone artifacts (not budget variants)
+        for json_file in base_path.glob("*.json"):
+            # Skip budget variants and non-hypergumbo files
+            name = json_file.name
+            if any(x in name for x in [".4k.", ".16k.", ".64k."]):
+                continue
+            # Quick check if it's a hypergumbo artifact
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+                if "nodes" in data and "edges" in data and "schema_version" in data:
+                    artifacts.append(json_file)
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    return sorted(set(artifacts))
+
+
+def load_artifact(path: Path) -> dict[str, Any]:
+    """Load a JSON artifact."""
+    with open(path) as f:
+        return json.load(f)
+
+
+def get_concepts(node: dict) -> list[str]:
+    """Extract concept names from a node."""
+    concepts = (node.get("meta") or {}).get("concepts") or []
+    result = []
+    for c in concepts:
+        if isinstance(c, str):
+            result.append(c)
+        elif isinstance(c, dict):
+            result.append(c.get("concept", "unknown"))
+    return result
+
+
+def cmd_catalog(args: argparse.Namespace) -> None:
+    """List all artifacts with summary statistics."""
+    artifacts = find_artifacts()
+
+    print(f"Found {len(artifacts)} artifacts\n")
+    print(f"{'Path':<70} {'Nodes':>8} {'Edges':>8} {'Size':>10}")
+    print("-" * 100)
+
+    total_nodes = 0
+    total_edges = 0
+
+    for artifact in artifacts:
+        try:
+            data = load_artifact(artifact)
+            nodes = len(data.get("nodes", []))
+            edges = len(data.get("edges", []))
+            size = artifact.stat().st_size
+
+            total_nodes += nodes
+            total_edges += edges
+
+            # Shorten path for display
+            display_path = str(artifact)
+            if len(display_path) > 68:
+                display_path = "..." + display_path[-65:]
+
+            size_str = f"{size / 1024 / 1024:.1f}MB" if size > 1024*1024 else f"{size / 1024:.1f}KB"
+            print(f"{display_path:<70} {nodes:>8} {edges:>8} {size_str:>10}")
+        except Exception as e:
+            print(f"{str(artifact):<70} ERROR: {e}")
+
+    print("-" * 100)
+    print(f"{'TOTAL':<70} {total_nodes:>8} {total_edges:>8}")
+
+
+def cmd_summary(args: argparse.Namespace) -> None:
+    """Detailed summary of one artifact."""
+    data = load_artifact(Path(args.file))
+
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+
+    print(f"Artifact: {args.file}")
+    print(f"Schema version: {data.get('schema_version')}")
+    print(f"Generated at: {data.get('generated_at')}")
+    print(f"Nodes: {len(nodes)}")
+    print(f"Edges: {len(edges)}")
+    print()
+
+    # Language breakdown
+    lang_counts = Counter(n.get("language", "unknown") for n in nodes)
+    print("Languages:")
+    for lang, count in lang_counts.most_common():
+        print(f"  {lang}: {count}")
+    print()
+
+    # Kind breakdown
+    kind_counts = Counter(n.get("kind", "unknown") for n in nodes)
+    print("Symbol kinds:")
+    for kind, count in kind_counts.most_common(15):
+        print(f"  {kind}: {count}")
+    print()
+
+    # Concept breakdown
+    concept_counts: Counter[str] = Counter()
+    for n in nodes:
+        for c in get_concepts(n):
+            concept_counts[c] += 1
+
+    if concept_counts:
+        print("Concepts:")
+        for concept, count in concept_counts.most_common(15):
+            print(f"  {concept}: {count}")
+        print()
+
+    # Edge types
+    edge_types = Counter(e.get("type") or e.get("kind") or "unknown" for e in edges)
+    print("Edge types:")
+    for etype, count in edge_types.most_common():
+        print(f"  {etype}: {count}")
+    print()
+
+    # Features
+    features = data.get("features", {})
+    if features:
+        print("Features detected:")
+        for feature, value in sorted(features.items()):
+            if value:
+                print(f"  {feature}: {value}")
+    print()
+
+    # Entrypoints
+    entrypoints = data.get("entrypoints", [])
+    if entrypoints:
+        print(f"Entrypoints ({len(entrypoints)}):")
+        for ep in entrypoints[:10]:
+            symbol_id = ep.get("symbol_id") or ep.get("node_id") or ""
+            kind = ep.get("kind") or ep.get("label") or "unknown"
+            # Extract name from symbol_id (format: lang:path:span:name:kind)
+            parts = symbol_id.split(":")
+            name = parts[-2] if len(parts) >= 2 else symbol_id[:50]
+            print(f"  - {kind}: {name}")
+        if len(entrypoints) > 10:
+            print(f"  ... and {len(entrypoints) - 10} more")
+
+
+def cmd_concepts(args: argparse.Namespace) -> None:
+    """Concept frequency across all artifacts."""
+    artifacts = find_artifacts()
+
+    concept_counts: Counter[str] = Counter()
+    concept_by_repo: dict[str, Counter[str]] = defaultdict(Counter)
+
+    for artifact in artifacts:
+        try:
+            data = load_artifact(artifact)
+            repo_name = artifact.parent.name if artifact.name == "hg.json" else artifact.stem
+
+            for node in data.get("nodes", []):
+                for concept in get_concepts(node):
+                    concept_counts[concept] += 1
+                    concept_by_repo[repo_name][concept] += 1
+        except Exception:
+            continue
+
+    print("Concept frequency across all artifacts:\n")
+    print(f"{'Concept':<30} {'Total':>8} {'Repos with concept':>20}")
+    print("-" * 60)
+
+    for concept, count in concept_counts.most_common(30):
+        repos_with = sum(1 for r in concept_by_repo if concept in concept_by_repo[r])
+        print(f"{concept:<30} {count:>8} {repos_with:>20}")
+
+
+def cmd_routes(args: argparse.Namespace) -> None:
+    """Route detection summary across artifacts."""
+    artifacts = find_artifacts()
+
+    results = []
+
+    for artifact in artifacts:
+        try:
+            data = load_artifact(artifact)
+            repo_name = artifact.parent.name if artifact.name == "hg.json" else artifact.stem
+
+            nodes = data.get("nodes", [])
+            route_nodes = [n for n in nodes if "route" in get_concepts(n)]
+
+            # Get frameworks from features (features may be list or dict)
+            features = data.get("features", {})
+            if isinstance(features, dict):
+                frameworks = features.get("frameworks", [])
+            else:
+                frameworks = []
+
+            if route_nodes or frameworks:
+                results.append({
+                    "repo": repo_name,
+                    "routes": len(route_nodes),
+                    "frameworks": frameworks,
+                    "total_nodes": len(nodes),
+                    "path": str(artifact)
+                })
+        except Exception:
+            continue
+
+    # Sort by route count descending
+    results.sort(key=lambda x: x["routes"], reverse=True)
+
+    print("Route detection summary:\n")
+    print(f"{'Repo':<30} {'Routes':>8} {'Nodes':>8} {'Frameworks':<40}")
+    print("-" * 90)
+
+    for r in results:
+        fw_str = ", ".join(r["frameworks"][:3]) if r["frameworks"] else "-"
+        if len(r["frameworks"]) > 3:
+            fw_str += f" +{len(r['frameworks'])-3}"
+        print(f"{r['repo']:<30} {r['routes']:>8} {r['total_nodes']:>8} {fw_str:<40}")
+
+    print()
+    print(f"Total repos with routes or frameworks: {len(results)}")
+    total_routes = sum(r["routes"] for r in results)
+    print(f"Total routes detected: {total_routes}")
+
+
+def cmd_languages(args: argparse.Namespace) -> None:
+    """Language breakdown across all artifacts."""
+    artifacts = find_artifacts()
+
+    lang_counts: Counter[str] = Counter()
+    lang_by_repo: dict[str, set[str]] = defaultdict(set)
+
+    for artifact in artifacts:
+        try:
+            data = load_artifact(artifact)
+            repo_name = artifact.parent.name if artifact.name == "hg.json" else artifact.stem
+
+            for node in data.get("nodes", []):
+                lang = node.get("language", "unknown")
+                lang_counts[lang] += 1
+                lang_by_repo[repo_name].add(lang)
+        except Exception:
+            continue
+
+    print("Language distribution across all artifacts:\n")
+    print(f"{'Language':<20} {'Symbols':>12} {'Repos':>10}")
+    print("-" * 45)
+
+    for lang, count in lang_counts.most_common():
+        repos_with = sum(1 for r in lang_by_repo if lang in lang_by_repo[r])
+        print(f"{lang:<20} {count:>12} {repos_with:>10}")
+
+    print()
+
+    # Polyglot repos
+    polyglot = [(repo, langs) for repo, langs in lang_by_repo.items() if len(langs) > 1]
+    polyglot.sort(key=lambda x: len(x[1]), reverse=True)
+
+    if polyglot:
+        print(f"Polyglot repos ({len(polyglot)}):")
+        for repo, langs in polyglot[:15]:
+            print(f"  {repo}: {', '.join(sorted(langs))}")
+        if len(polyglot) > 15:
+            print(f"  ... and {len(polyglot) - 15} more")
+
+
+def cmd_route_connectivity(args: argparse.Namespace) -> None:
+    """Analyze route-to-handler connectivity across artifacts."""
+    artifacts = find_artifacts()
+
+    results = []
+
+    for artifact in artifacts:
+        try:
+            data = load_artifact(artifact)
+            repo_name = artifact.parent.name if artifact.name == "hg.json" else artifact.stem
+
+            nodes = data.get("nodes", [])
+            edges = data.get("edges", [])
+
+            # Find route node IDs
+            route_ids = set()
+            for n in nodes:
+                if "route" in get_concepts(n):
+                    route_ids.add(n.get("id"))
+
+            if not route_ids:
+                continue
+
+            # Find routes with outgoing edges (connected to handlers)
+            routes_with_handlers = set()
+            for e in edges:
+                src = e.get("src") or e.get("source")
+                if src in route_ids:
+                    routes_with_handlers.add(src)
+
+            connected_pct = (100 * len(routes_with_handlers) / len(route_ids)) if route_ids else 0
+
+            results.append({
+                "repo": repo_name,
+                "total_routes": len(route_ids),
+                "connected_routes": len(routes_with_handlers),
+                "orphan_routes": len(route_ids) - len(routes_with_handlers),
+                "connected_pct": connected_pct,
+            })
+        except Exception:
+            continue
+
+    # Sort by total routes descending
+    results.sort(key=lambda x: x["total_routes"], reverse=True)
+
+    # Deduplicate by repo name (take first occurrence)
+    seen = set()
+    unique_results = []
+    for r in results:
+        if r["repo"] not in seen:
+            seen.add(r["repo"])
+            unique_results.append(r)
+
+    print("Route-to-Handler Connectivity Analysis:\n")
+    print(f"{'Repo':<30} {'Total':>8} {'Connected':>10} {'Orphan':>8} {'%':>8}")
+    print("-" * 70)
+
+    for r in unique_results:
+        status = "✅" if r["connected_pct"] > 50 else "⚠️" if r["connected_pct"] > 0 else "❌"
+        print(f"{r['repo']:<30} {r['total_routes']:>8} {r['connected_routes']:>10} {r['orphan_routes']:>8} {r['connected_pct']:>7.1f}% {status}")
+
+    print()
+    total_routes = sum(r["total_routes"] for r in unique_results)
+    total_connected = sum(r["connected_routes"] for r in unique_results)
+    overall_pct = (100 * total_connected / total_routes) if total_routes else 0
+    print(f"Overall: {total_connected}/{total_routes} routes connected ({overall_pct:.1f}%)")
+
+
+def cmd_gaps(args: argparse.Namespace) -> None:
+    """Find gaps - frameworks detected but few symbols/routes."""
+    artifacts = find_artifacts()
+
+    gaps = []
+
+    for artifact in artifacts:
+        try:
+            data = load_artifact(artifact)
+            repo_name = artifact.parent.name if artifact.name == "hg.json" else artifact.stem
+
+            features = data.get("features", {})
+            frameworks = features.get("frameworks", [])
+
+            if not frameworks:
+                continue
+
+            nodes = data.get("nodes", [])
+            route_nodes = [n for n in nodes if "route" in get_concepts(n)]
+
+            # Gap: framework detected but no routes
+            if not route_nodes and any(fw in ["django", "fastapi", "flask", "rails", "express", "gin", "echo"] for fw in frameworks):
+                gaps.append({
+                    "repo": repo_name,
+                    "issue": "web framework but no routes",
+                    "frameworks": frameworks,
+                    "nodes": len(nodes),
+                    "routes": 0,
+                    "path": str(artifact)
+                })
+
+            # Gap: very few routes relative to codebase size
+            elif len(route_nodes) < 5 and len(nodes) > 100:
+                gaps.append({
+                    "repo": repo_name,
+                    "issue": f"only {len(route_nodes)} routes in {len(nodes)} symbols",
+                    "frameworks": frameworks,
+                    "nodes": len(nodes),
+                    "routes": len(route_nodes),
+                    "path": str(artifact)
+                })
+        except Exception:
+            continue
+
+    if not gaps:
+        print("No obvious gaps found!")
+        return
+
+    print(f"Found {len(gaps)} potential gaps:\n")
+
+    for gap in gaps:
+        print(f"Repo: {gap['repo']}")
+        print(f"  Issue: {gap['issue']}")
+        print(f"  Frameworks: {', '.join(gap['frameworks'])}")
+        print(f"  Path: {gap['path']}")
+        print()
+
+
+def cmd_edges(args: argparse.Namespace) -> None:
+    """Edge type analysis for one artifact."""
+    data = load_artifact(Path(args.file))
+
+    edges = data.get("edges", [])
+    nodes = data.get("nodes", [])
+
+    # Build node lookup
+    node_by_id = {n["id"]: n for n in nodes}
+
+    print(f"Artifact: {args.file}")
+    print(f"Total edges: {len(edges)}")
+    print()
+
+    # Edge type breakdown (edges may use 'type' or 'kind')
+    edge_types = Counter(e.get("type") or e.get("kind") or "unknown" for e in edges)
+    print("Edge types:")
+    for etype, count in edge_types.most_common():
+        print(f"  {etype}: {count}")
+    print()
+
+    # Helper to get edge endpoints (edges may use src/dst or source/target)
+    def get_edge_src(e: dict) -> str | None:
+        return e.get("src") or e.get("source")
+
+    def get_edge_dst(e: dict) -> str | None:
+        return e.get("dst") or e.get("target")
+
+    # Cross-language edges
+    cross_lang_edges = []
+    for e in edges:
+        src = node_by_id.get(get_edge_src(e))
+        tgt = node_by_id.get(get_edge_dst(e))
+        if src and tgt:
+            src_lang = src.get("language", "unknown")
+            tgt_lang = tgt.get("language", "unknown")
+            if src_lang != tgt_lang:
+                cross_lang_edges.append((src_lang, tgt_lang, e.get("type") or e.get("kind")))
+
+    if cross_lang_edges:
+        print(f"Cross-language edges ({len(cross_lang_edges)}):")
+        cross_counts: Counter[tuple[str, str]] = Counter()
+        for src_lang, tgt_lang, _ in cross_lang_edges:
+            cross_counts[(src_lang, tgt_lang)] += 1
+        for (src, tgt), count in cross_counts.most_common(10):
+            print(f"  {src} -> {tgt}: {count}")
+    else:
+        print("No cross-language edges found")
+    print()
+
+    # Orphan nodes (no edges)
+    nodes_with_edges = set()
+    for e in edges:
+        nodes_with_edges.add(get_edge_src(e))
+        nodes_with_edges.add(get_edge_dst(e))
+
+    orphan_nodes = [n for n in nodes if n["id"] not in nodes_with_edges]
+    print(f"Orphan nodes (no edges): {len(orphan_nodes)} / {len(nodes)} ({100*len(orphan_nodes)/len(nodes):.1f}%)")
+
+    if orphan_nodes and args.verbose:
+        orphan_kinds = Counter(n.get("kind") for n in orphan_nodes)
+        print("Orphan node kinds:")
+        for kind, count in orphan_kinds.most_common(10):
+            print(f"  {kind}: {count}")
+
+
+def cmd_compare(args: argparse.Namespace) -> None:
+    """Compare two artifacts."""
+    data_a = load_artifact(Path(args.file_a))
+    data_b = load_artifact(Path(args.file_b))
+
+    print(f"Comparing:")
+    print(f"  A: {args.file_a}")
+    print(f"  B: {args.file_b}")
+    print()
+
+    # Basic counts
+    nodes_a = len(data_a.get("nodes", []))
+    nodes_b = len(data_b.get("nodes", []))
+    edges_a = len(data_a.get("edges", []))
+    edges_b = len(data_b.get("edges", []))
+
+    print(f"{'Metric':<20} {'A':>12} {'B':>12} {'Diff':>12}")
+    print("-" * 58)
+    print(f"{'Nodes':<20} {nodes_a:>12} {nodes_b:>12} {nodes_b - nodes_a:>+12}")
+    print(f"{'Edges':<20} {edges_a:>12} {edges_b:>12} {edges_b - edges_a:>+12}")
+    print()
+
+    # Language comparison
+    langs_a = Counter(n.get("language") for n in data_a.get("nodes", []))
+    langs_b = Counter(n.get("language") for n in data_b.get("nodes", []))
+    all_langs = set(langs_a.keys()) | set(langs_b.keys())
+
+    print("By language:")
+    for lang in sorted(all_langs):
+        a = langs_a.get(lang, 0)
+        b = langs_b.get(lang, 0)
+        if a != b:
+            print(f"  {lang}: {a} -> {b} ({b-a:+d})")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Analyze hypergumbo bakeoff artifacts")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    subparsers.add_parser("catalog", help="List all artifacts with summary stats")
+
+    summary_parser = subparsers.add_parser("summary", help="Detailed summary of one artifact")
+    summary_parser.add_argument("file", help="Path to artifact JSON")
+
+    subparsers.add_parser("concepts", help="Concept frequency across all artifacts")
+    subparsers.add_parser("routes", help="Route detection summary")
+    subparsers.add_parser("route-connectivity", help="Analyze route-to-handler connectivity")
+    subparsers.add_parser("languages", help="Language breakdown")
+    subparsers.add_parser("gaps", help="Find gaps in detection")
+
+    edges_parser = subparsers.add_parser("edges", help="Edge type analysis")
+    edges_parser.add_argument("file", help="Path to artifact JSON")
+    edges_parser.add_argument("-v", "--verbose", action="store_true")
+
+    compare_parser = subparsers.add_parser("compare", help="Compare two artifacts")
+    compare_parser.add_argument("file_a", help="First artifact")
+    compare_parser.add_argument("file_b", help="Second artifact")
+
+    args = parser.parse_args()
+
+    commands = {
+        "catalog": cmd_catalog,
+        "summary": cmd_summary,
+        "concepts": cmd_concepts,
+        "routes": cmd_routes,
+        "route-connectivity": cmd_route_connectivity,
+        "languages": cmd_languages,
+        "gaps": cmd_gaps,
+        "edges": cmd_edges,
+        "compare": cmd_compare,
+    }
+
+    commands[args.command](args)
+
+
+if __name__ == "__main__":
+    main()
