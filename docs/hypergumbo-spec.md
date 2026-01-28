@@ -2099,15 +2099,15 @@ Spec A implements basic type inference for method call resolution (see ADR-0006)
 
 Future improvements to AST-based type inference (without requiring language servers):
 
-| Feature | Value | Effort | Priority |
-|---------|-------|--------|----------|
-| **Type hierarchy** | High | Medium | 1st |
-| **Return type tracking** | Medium-High | Medium | 2nd |
-| **Field type tracking** | High | Medium | 3rd |
-| **Method-scoped tracking** | Low-Medium | Medium | 4th |
-| **Generic handling** | High | High | 5th |
+| Feature | Value | Effort | Priority | Status |
+|---------|-------|--------|----------|--------|
+| **Type hierarchy** | High | Medium | 1st | ✅ Done |
+| **Return type tracking** | Medium-High | Medium | 2nd | |
+| **Field type tracking** | High | Medium | 3rd | |
+| **Method-scoped tracking** | Low-Medium | Medium | 4th | |
+| **Generic handling** | High | High | 5th | |
 
-**Type hierarchy:** Use existing inheritance edges to resolve `interface.method()` → `ConcreteClass.method()`. Data already exists; just needs to be queried during method resolution. Benefits DI-heavy codebases (Spring, ASP.NET, Angular). Applicable to 10+ languages.
+**Type hierarchy:** ✅ Implemented via type hierarchy linker. Creates `dispatches_to` edges from parent/interface methods to overriding implementations in child classes. Currently works with Java (which creates `extends`/`implements` edges); other languages need inheritance edge creation for full benefit.
 
 **Return type tracking:** Track `func() -> ReturnType` annotations; infer type when `var = func()`. Natural extension of two-pass analysis. Applicable to all typed languages.
 

@@ -69,6 +69,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Linkers
 - **Route-handler linker**: Creates `routes_to` edges from route symbols to their handler functions. Supports Rails (`controller_action = "users#index"`), Phoenix (`controller` + `action` fields), Laravel (`controller_action = "UserController@index"`), and Express/JS (`handler_ref = "module.function"`) metadata formats. Resolves handlers via symbol name lookup with fallback strategies.
+- **Type hierarchy linker**: Creates `dispatches_to` edges for polymorphic method dispatch resolution. When a parent class/interface has child classes that override a method, the linker creates edges from the parent method to all overriding implementations. This enables navigation from interface methods to concrete implementations, particularly valuable for DI-heavy codebases (Spring, ASP.NET, Angular). Currently works with Java (which creates `extends`/`implements` edges); other languages need edge creation for full benefit.
 
 ### Changed
 - **Agent policy / bakeoff loop** (agents-policy-v2026-01-25.0):
