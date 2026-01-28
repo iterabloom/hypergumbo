@@ -19,7 +19,8 @@
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
-  - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations". 
+  - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
+  - Use `./scripts/loop-toggle` to enable/disable autonomous mode (manages both `AUTONOMOUS_MODE.txt` and `.agent/LOOP` sentinel).
 
 ## Required Checks
 - **100% Coverage:** No code may be committed without full test coverage. Verify with:

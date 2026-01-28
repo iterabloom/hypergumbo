@@ -317,6 +317,13 @@ notify = [".agent/hooks/codex-cli/notify.sh"]
 
 ### Disabling Hooks
 
-To disable governance hooks temporarily:
-- Delete `.agent/LOOP`, or
-- Set `AUTONOMOUS_MODE.txt` to "FALSE"
+To disable governance hooks temporarily, use the toggle script:
+
+```bash
+./scripts/loop-toggle off    # Disable autonomous mode
+./scripts/loop-toggle on     # Re-enable autonomous mode
+./scripts/loop-toggle status # Check current state
+./scripts/loop-toggle        # Toggle current state
+```
+
+This manages both `AUTONOMOUS_MODE.txt` and the `.agent/LOOP` sentinel together.

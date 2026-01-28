@@ -1633,7 +1633,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 |-----------|------|---------|
 | Stop reflection prompt | `.agent/stop_reflect.md` | Checklist agents must complete before stopping |
 | Invariant ledger | `.agent/invariant-ledger.md` | Tracks discovered invariants and their fix status |
-| Loop sentinel | `.agent/LOOP` | Sentinel file; remove to allow agent to stop |
+| Loop sentinel | `.agent/LOOP` | Sentinel file; use `./scripts/loop-toggle` to control |
 | Hook adapters | `.agent/hooks/*/` | Per-tool adapter scripts (Claude Code, Gemini CLI, Cursor, Codex CLI) |
 
 ### How It Works
@@ -1652,13 +1652,14 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 - **Cursor:** `.agent/hooks/cursor/stop.sh` (stop hook with ASK output)
 - **Codex CLI:** `.agent/hooks/codex-cli/notify.sh` (notification only; limited enforcement)
 
-### Known Unfixed Root Causes
+### Invariant Status
 
-The invariant ledger tracks known unfixed root causes. As of v1.0.0:
+The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants. As of v1.1.0, all invariants (INV-001 through INV-006) are **FIXED**:
 
-- **INV-002:** `symbol_ref` gate at `framework_patterns.py:992-993` — Usage patterns for string-based handlers (Rails, Django string views) bypass the concept enrichment flow
+- **INV-002** (`symbol_ref` gate) was fixed via deferred resolution in `resolve_deferred_symbol_refs()`
+- **INV-004** (route-handler edges) was fixed via the `route_handler` linker
 
-See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full design rationale.
+See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
 ## Appendix A: Example output
 
