@@ -27,8 +27,19 @@ For the last change made:
 
 ## 6. Artifact Analysis
 - [ ] Have existing bakeoff artifacts been analyzed (not just generated)?
-- [ ] If artifacts exist, use `scripts/hypergumbo_diag.py` or `scripts/analyze-artifacts` to mine them
-- [ ] Prefer mining existing data over running more bakeoffs — large repos take significant time to analyze
+- [ ] Analysis tools available:
+  - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
+  - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
+  - `~/hypergumbo_lab_notebook/analysis_lib/` — reusable analysis scripts:
+    - `01_quality_overview.py` — edge density, call coverage, concepts
+    - `02_edge_resolution.py` — cross-file vs same-file vs stdlib
+    - `03_language_comparison.py` — compare analyzers across languages
+    - `04_entrypoint_analysis.py` — entrypoint quality
+    - `05_potential_issues.py` — detect common problems
+    - `06_signature_quality.py` — function signature completeness
+    - `07_complexity_metrics.py` — cyclomatic complexity distribution
+- [ ] Add new analysis scripts to `analysis_lib/` as needed (follow naming: `NN_short_name.py`)
+- [ ] Prefer mining existing data over running more bakeoffs — large repos take significant time
 - [ ] Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage
 
 ## 7. Commit Check
