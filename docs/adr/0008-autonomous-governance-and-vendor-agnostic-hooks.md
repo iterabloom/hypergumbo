@@ -457,7 +457,7 @@ cat .agent/invariant-ledger.md | grep -A5 "Status: ❌"
 
 - [x] Update `AGENTS.md` with governance checklist
 - [x] Add `.agent/` to repository
-- [ ] Document hook setup in `docs/contributing.md`
+- [x] Document hook setup in `CONTRIBUTING.md` (2026-01-28)
 - [x] Test full loop: bakeoff signal → fix → reflection → verify (INV-001 through INV-006)
 
 ### Phase 4: Fix the Root Cause

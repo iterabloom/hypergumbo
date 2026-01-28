@@ -223,3 +223,100 @@ git push origin HEAD:refs/for/dev/<branch-name> -o title="..." -o description=".
 ```
 
 This is different from GitHub's flow where you push a branch and then create a PR separately. With AGit, the push *is* the PR creation.
+
+---
+
+## AI Agent Governance Hooks
+
+Hypergumbo includes a vendor-agnostic hook system for AI coding agents operating in autonomous mode. These hooks enforce reflection before stopping, helping prevent workarounds and ensuring structural fixes.
+
+See [ADR-0008](docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for full design rationale.
+
+### Hook Structure
+
+```
+.agent/
+├── hooks/
+│   ├── claude-code/stop.sh      # Claude Code Stop hook
+│   ├── gemini-cli/after-agent.sh # Gemini CLI AfterAgent hook
+│   ├── cursor/stop.sh           # Cursor stop hook
+│   └── codex-cli/notify.sh      # Codex CLI notification (limited)
+├── stop_reflect.md              # Reflection prompt (shared)
+├── LOOP                         # Sentinel file (exists = continue)
+└── invariant-ledger.md          # Tracks discovered invariants
+```
+
+### Setup by Tool
+
+#### Claude Code
+
+Add to `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agent/hooks/claude-code/stop.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Gemini CLI
+
+Add to `.gemini/config.yaml`:
+
+```yaml
+hooks:
+  AfterAgent:
+    - type: command
+      command: .agent/hooks/gemini-cli/after-agent.sh
+```
+
+#### Cursor
+
+Add to `.cursor/hooks.json`:
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": ".agent/hooks/cursor/stop.sh",
+        "loop_limit": 10
+      }
+    ]
+  }
+}
+```
+
+#### Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+notify = [".agent/hooks/codex-cli/notify.sh"]
+```
+
+**Note:** Codex CLI has limited hook support—it can only notify, not block or inject prompts.
+
+### How It Works
+
+1. **Activation:** Hooks only engage when `AUTONOMOUS_MODE.txt` contains "TRUE" and `.agent/LOOP` exists
+2. **Reflection:** When the agent tries to stop, the hook injects `stop_reflect.md` as guidance
+3. **Invariant tracking:** Discovered invariants are documented in `.agent/invariant-ledger.md`
+4. **Structural fixes:** The reflection protocol encourages fixing root causes, not workarounds
+
+### Disabling Hooks
+
+To disable governance hooks temporarily:
+- Delete `.agent/LOOP`, or
+- Set `AUTONOMOUS_MODE.txt` to "FALSE"
