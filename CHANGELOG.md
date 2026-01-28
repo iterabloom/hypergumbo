@@ -12,7 +12,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Summary
 - **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
 - **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
-- **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern); Python `if __name__ == "__main__"` structural entrypoint detection (adds `main_guard` concept to module symbols); Django empty path URL patterns (`path('')`) now correctly detected as routes; route-handler linker creates `routes_to` edges from route symbols to their handler functions (Rails, Phoenix).
+- **Quality:** INV-002 fallback resolution; INV-005 edge ID uniqueness (line included in hash); non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern); Python `if __name__ == "__main__"` structural entrypoint detection (adds `main_guard` concept to module symbols); Django empty path URL patterns (`path('')`) now correctly detected as routes; route-handler linker creates `routes_to` edges from route symbols to their handler functions (Rails, Phoenix).
 - **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
 - **Tests:** Scala lambda attribution tests for INV-001; Python nested function extraction tests; Python main guard detection tests (7 tests).
 
@@ -79,6 +79,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - Canary bumped to `agents-policy-v2026-01-25.0`.
 
 ### Fixed
+- **INV-005**: Edge ID uniqueness. Edge IDs now include the line number in the hash, ensuring unique IDs for multiple calls from the same function to the same target at different lines. Previously, edges with the same src/dst/type but different lines got identical IDs, causing 61% duplicate IDs in some repos.
 - **INV-004**: Route-to-handler edge completeness. Routes now get `routes_to` edges connecting them to their handler functions when handler metadata is available. The route-handler linker converts `controller_action` (Rails) and `controller`/`action` (Phoenix) metadata into actual graph edges. Previously, this information was stored as metadata but not converted to traversable edges.
 - **INV-002 (ADR-0008)**: Proper deferred resolution for `UsageContext(symbol_ref=None)`. Added `resolve_deferred_symbol_refs()` phase that runs after all analyzers complete, using `NameResolver` with multi-strategy lookup (exact → suffix → path hint) to resolve string-based handler references. This enables concept annotations for Django URL patterns, Express routes, and any framework using cross-file handler references. 17 regression tests.
 - **JSON manifests**: Avoid crash when `package.json` / `composer.json` top-level JSON is non-object; affected `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, `_extract_package_json` (sketch).

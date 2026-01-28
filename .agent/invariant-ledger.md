@@ -88,7 +88,18 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `tests/test_route_handler_linker.py::TestRouteHandlerLinker` (13 tests)
   - `tests/test_route_handler_linker.py::TestLinkerEntryPoint` (2 tests)
 
-## INV-005: Template for New Invariants
+## INV-005: Edge ID Uniqueness
+- **Statement:** Edge IDs must be unique because they serve as primary keys for edge lookup
+- **Status:** FIXED
+- **Root cause:** `ir.py:345` Edge.create() generated ID from `src:dst:edge_type` only, not including
+  line number. Multiple calls from the same function to the same target at different lines got
+  identical IDs. Analysis of postal artifact showed 3584 duplicate IDs out of 5844 edges (61%).
+- **Fix:** Changed edge ID hash to include line number: `f"{src}:{dst}:{edge_type}:{line}"`.
+  The `edge_key` field remains unchanged (excludes line) for deduplication across passes.
+- **Regression tests:**
+  - `tests/test_ir.py::test_edge_id_unique_per_line`
+
+## INV-006: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
 - **Root cause:** [File:line or description]

@@ -211,6 +211,33 @@ def test_edge_has_edge_key() -> None:
     assert edge.edge_key.startswith("edgekey:sha256:")
 
 
+def test_edge_id_unique_per_line() -> None:
+    """Edge IDs must be unique - different lines should produce different IDs.
+
+    This is INV-005: Edge IDs must be unique because they serve as primary keys.
+    Multiple calls from the same function to the same target at different lines
+    should each get a unique edge ID.
+    """
+    edge1 = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=10,
+    )
+    edge2 = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=20,
+    )
+
+    # Different lines MUST produce different IDs
+    assert edge1.id != edge2.id, "Edge IDs must be unique per call site"
+
+    # But edge_key should be the same (for deduplication purposes)
+    assert edge1.edge_key == edge2.edge_key
+
+
 def test_edge_has_quality() -> None:
     """Edge should have quality field with score and reason."""
     edge = Edge.create(

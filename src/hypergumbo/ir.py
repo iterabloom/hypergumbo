@@ -341,8 +341,10 @@ class Edge:
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
     ) -> "Edge":
         """Create an Edge with auto-generated ID and edge_key."""
-        # Generate deterministic edge ID from src, dst, type
-        edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}".encode()).hexdigest()[:16]
+        # Generate deterministic edge ID from src, dst, type, AND line
+        # Line is included to ensure uniqueness for multiple call sites
+        edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
+        # edge_key excludes line for deduplication across passes
         edge_key = _compute_edge_key(src, dst, edge_type)
         return cls(
             id=f"edge:sha256:{edge_hash}",
