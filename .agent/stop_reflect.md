@@ -24,3 +24,8 @@ For the last change made:
 ## 5. Decision
 - [ ] If root cause unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
 - [ ] If root cause fixed or truly isolated: document in invariant ledger (`.agent/invariant-ledger.md`), then take a step back and think about the best thing to do from a big-picture software quality perspective. Strongly consider activating or reactivating the bakeoff loop using `scripts/bakeoff`, `scripts/bakeoff-reflect`, and `scripts/hypergumbo_diag.py` (as detailed in Parts 2 & 3 of `docs/governance-case-critiques.md`).
+
+## 6. Commit Check
+- [ ] Run `git status` — are there uncommitted changes?
+- [ ] If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
+- [ ] If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue

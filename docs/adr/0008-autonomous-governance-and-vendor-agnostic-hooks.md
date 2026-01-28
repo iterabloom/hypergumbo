@@ -57,16 +57,22 @@ Each AI coding tool has different hook mechanisms. We will create adapter script
 .agent/
 ├── hooks/
 │   ├── claude-code/
-│   │   └── stop.sh           # Claude Code Stop hook
+│   │   └── stop.sh           # Claude Code Stop hook script
 │   ├── gemini-cli/
-│   │   └── after-agent.sh    # Gemini CLI AfterAgent hook
+│   │   └── after-agent.sh    # Gemini CLI AfterAgent hook script
 │   ├── cursor/
-│   │   └── hooks.json        # Cursor hooks config
+│   │   └── stop.sh           # Cursor stop hook script
 │   └── codex-cli/
 │       └── notify.sh         # Codex CLI notification (limited)
 ├── stop_reflect.md           # The reflection prompt (shared)
 ├── LOOP                      # Sentinel file (exists = continue)
 └── invariant-ledger.md       # Structured invariant tracking
+
+# Vendor config files (reference the scripts above):
+.claude/settings.json         # Claude Code hooks config
+.cursor/hooks.json            # Cursor hooks config
+.gemini/config.yaml           # Gemini CLI hooks config
+~/.codex/config.toml          # Codex CLI config (user-level)
 ```
 
 ### 2. Implement Hook Adapters
@@ -96,7 +102,7 @@ When `decision: "block"` is returned, the `reason` field is sent to Claude as gu
 ```
 
 ```json
-// .claude/hooks.json
+// .claude/settings.json
 {
   "hooks": {
     "Stop": [
