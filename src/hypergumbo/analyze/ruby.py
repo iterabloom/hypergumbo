@@ -373,6 +373,11 @@ def _extract_rails_routes(
         }
         if controller_action:
             metadata["controller_action"] = controller_action
+        elif method_name in ("resources", "resource"):
+            # For resources :users, infer controller_action from resource name
+            # Rails convention: resources :users → UsersController#index (primary entry)
+            # This enables route-handler linking for resource routes
+            metadata["controller_action"] = f"{route_path}#index"
 
         # Create span
         span = Span(
@@ -419,8 +424,9 @@ def _extract_rails_routes(
             origin=run.pass_id,
             origin_run_id=run.execution_id,
         )
-        if controller_action:
-            route_symbol.meta["controller_action"] = controller_action
+        # Add controller_action to route symbol meta (from explicit to: or inferred for resources)
+        if "controller_action" in metadata:
+            route_symbol.meta["controller_action"] = metadata["controller_action"]
         route_symbols.append(route_symbol)
 
     return contexts, route_symbols

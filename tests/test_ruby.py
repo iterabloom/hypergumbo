@@ -710,6 +710,8 @@ end
         assert ctx is not None
         assert ctx.metadata["route_path"] == "users"
         assert ctx.metadata["http_method"] == "RESOURCES"
+        # INV-006: Infer controller_action for resource routes
+        assert ctx.metadata["controller_action"] == "users#index"
 
     def test_rails_resource_singular(self, tmp_path: Path) -> None:
         """Detects Rails resource :profile (singular) macro."""
@@ -725,6 +727,8 @@ end
         assert ctx is not None
         assert ctx.metadata["route_path"] == "profile"
         assert ctx.metadata["http_method"] == "RESOURCES"
+        # INV-006: Infer controller_action for resource routes
+        assert ctx.metadata["controller_action"] == "profile#index"
 
     def test_rails_post_route_with_controller_action(self, tmp_path: Path) -> None:
         """Detects Rails post route with controller#action."""
@@ -787,6 +791,8 @@ end
         assert len(route_symbols) == 1
         assert route_symbols[0].name == "RESOURCES /articles"
         assert route_symbols[0].meta["http_method"] == "RESOURCES"
+        # INV-006: Infer controller_action for resources routes
+        assert route_symbols[0].meta["controller_action"] == "articles#index"
 
     def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
         """Route symbols include controller_action in metadata when specified."""

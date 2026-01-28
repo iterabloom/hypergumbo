@@ -79,6 +79,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - Canary bumped to `agents-policy-v2026-01-25.0`.
 
 ### Fixed
+- **INV-006**: Rails resource route handler resolution. `resources :users` and `resource :profile` macros now infer `controller_action` metadata (e.g., `users#index`), enabling the route-handler linker to connect resource routes to their controllers.
 - **INV-005**: Edge ID uniqueness. Edge IDs now include the line number in the hash, ensuring unique IDs for multiple calls from the same function to the same target at different lines. Previously, edges with the same src/dst/type but different lines got identical IDs, causing 61% duplicate IDs in some repos.
 - **INV-004**: Route-to-handler edge completeness. Routes now get `routes_to` edges connecting them to their handler functions when handler metadata is available. The route-handler linker converts `controller_action` (Rails) and `controller`/`action` (Phoenix) metadata into actual graph edges. Previously, this information was stored as metadata but not converted to traversable edges.
 - **INV-002 (ADR-0008)**: Proper deferred resolution for `UsageContext(symbol_ref=None)`. Added `resolve_deferred_symbol_refs()` phase that runs after all analyzers complete, using `NameResolver` with multi-strategy lookup (exact → suffix → path hint) to resolve string-based handler references. This enables concept annotations for Django URL patterns, Express routes, and any framework using cross-file handler references. 17 regression tests.

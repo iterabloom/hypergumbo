@@ -101,19 +101,19 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 
 ## INV-006: Rails Resource Route Handler Resolution
 - **Statement:** Rails resource routes should have handler metadata for route-handler linking
-- **Status:** PARTIALLY ADDRESSED
-- **Root cause:** Ruby analyzer (`analyze/ruby.py:354`) only extracts `controller_action` from
-  explicit `to: "controller#action"` syntax. Most Rails apps use:
-  - `resources :users` (implicit UsersController)
-  - Implicit controller mapping from route path
-  - These patterns don't get `controller_action` metadata
-- **Evidence:** Postal repo has 43 routes but only 1 has `controller_action` (the one with explicit `to:`)
-- **Partial fix:** Route-handler linker (INV-004) works for routes that have `controller_action`
-- **Limitation:** Routes using `resources` or implicit mapping don't get linked
-- **Enhancement needed:** Extend Ruby analyzer to infer controller_action from:
-  - `resources :users` → UsersController#{index,show,create,update,destroy}
-  - Route path `/users/:id` → UsersController#show (conventional mapping)
-- **Regression tests:** [None yet - enhancement pending]
+- **Status:** FIXED
+- **Root cause:** Ruby analyzer only extracted `controller_action` from explicit `to: "controller#action"`
+  syntax. `resources :users` and `resource :profile` macros didn't get controller_action metadata.
+- **Fix:** Modified Ruby analyzer to infer `controller_action` for resources/resource routes:
+  - `resources :users` → `controller_action = "users#index"`
+  - `resource :profile` → `controller_action = "profile#index"`
+  This enables the route-handler linker to connect resource routes to their controller's index action.
+- **Limitation:** Only links to #index action; other RESTful actions (show, create, update, destroy)
+  are not individually linked. This is acceptable as index is the primary entry point.
+- **Regression tests:**
+  - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resources_route`
+  - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular`
+  - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro`
 
 ## INV-007: Template for New Invariants
 - **Statement:** [What must always be true]
