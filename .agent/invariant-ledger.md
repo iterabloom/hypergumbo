@@ -99,7 +99,23 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 - **Regression tests:**
   - `tests/test_ir.py::test_edge_id_unique_per_line`
 
-## INV-006: Template for New Invariants
+## INV-006: Rails Resource Route Handler Resolution
+- **Statement:** Rails resource routes should have handler metadata for route-handler linking
+- **Status:** PARTIALLY ADDRESSED
+- **Root cause:** Ruby analyzer (`analyze/ruby.py:354`) only extracts `controller_action` from
+  explicit `to: "controller#action"` syntax. Most Rails apps use:
+  - `resources :users` (implicit UsersController)
+  - Implicit controller mapping from route path
+  - These patterns don't get `controller_action` metadata
+- **Evidence:** Postal repo has 43 routes but only 1 has `controller_action` (the one with explicit `to:`)
+- **Partial fix:** Route-handler linker (INV-004) works for routes that have `controller_action`
+- **Limitation:** Routes using `resources` or implicit mapping don't get linked
+- **Enhancement needed:** Extend Ruby analyzer to infer controller_action from:
+  - `resources :users` → UsersController#{index,show,create,update,destroy}
+  - Route path `/users/:id` → UsersController#show (conventional mapping)
+- **Regression tests:** [None yet - enhancement pending]
+
+## INV-007: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
 - **Root cause:** [File:line or description]
