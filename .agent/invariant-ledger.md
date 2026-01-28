@@ -5,26 +5,193 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 
 ## INV-001: Call Attribution Completeness
 - **Statement:** Every emitted `calls` edge has a non-null caller symbol
-- **Status:** PARTIALLY ADDRESSED
+- **Status:** FIXED
 - **Root cause:** JS/TS arrow function special-case early-return in `_get_enclosing_function()`
 - **Fix:** Position-based lookup in `_get_enclosing_function()` for arrow functions
-- **Limitation:** JS/TS only; Kotlin/Scala lambdas still vulnerable
-- **Regression tests:** `test_js_ts.py::TestCallbackCallAttribution`
+- **Verification:** Kotlin and Scala lambdas work correctly - their `_get_enclosing_function()`
+  walks up past `lambda_literal` (Kotlin) and `lambda_expression` (Scala) to find the enclosing
+  `function_declaration` or `function_definition`.
+- **Regression tests:**
+  - `test_js_ts.py::TestCallbackCallAttribution`
+  - `test_kotlin.py::TestKotlinLambdaCallAttribution` (4 tests)
+  - Manual verification for Scala (2026-01-25)
 
 ## INV-002: Usage-to-Concept Flow
 - **Statement:** Usage patterns extracted by analyzers become concepts on nodes
-- **Status:** UNFIXED
-- **Root cause:** `symbol_ref` gate at `framework_patterns.py:992-993`
-- **Workarounds:**
-  - Rails: Direct Symbol creation (bypasses UsageContext flow)
-  - Library exports: Set `symbol_ref` when name resolves
-- **Affected frameworks:** Rails, Django string views, any string-based handler reference
-- **Regression tests:** `test_ruby.py::test_rails_routes` (tests workaround, not fix)
+- **Status:** FIXED
+- **Root cause:** `symbol_ref` gate prevented UsageContexts with `symbol_ref=None` from
+  enriching symbols. This happens when analyzers extract string-based handler references
+  (e.g., Django URL patterns like `path('users/', 'views.user_list')`) where the target
+  symbol is in a different file not yet analyzed.
+- **Fix:** Added deferred resolution phase `resolve_deferred_symbol_refs()` that runs
+  BEFORE enrichment. After all analyzers complete, we have the complete symbol table.
+  The function:
+  1. Builds a `NameResolver` from all symbols (by name and qualified_name)
+  2. For each UsageContext with `symbol_ref=None`, extracts resolution hints from metadata
+  3. Uses multi-strategy lookup: exact match → suffix match → path hint disambiguation
+  4. Updates `symbol_ref` directly on the UsageContext when resolved
+- **Architecture decision:** Chose deferred resolution (Option 2) over two-pass analysis
+  or refactoring analyzers because it:
+  - Has access to complete symbol table (enables cross-file resolution)
+  - Leverages existing `NameResolver` infrastructure
+  - Single point of resolution logic (DRY)
+  - Minimal disruption to existing code
+- **Regression tests:**
+  - `test_framework_patterns.py::TestResolveDeferredSymbolRefs` (17 tests covering
+    exact match, suffix match, path hint, ambiguous, multiple metadata keys)
+  - `test_framework_patterns.py::TestEnrichSymbolsWithUsageContexts::test_inv002_fallback_resolution_by_view_name`
 
-## INV-003: Template for New Invariants
+## INV-003: Python Nested Decorated Function Extraction
+- **Statement:** Decorated nested functions must be extracted for framework pattern matching
+- **Status:** FIXED
+- **Root cause:** `analyze/py.py:1259` had `if node.col_offset == 0:` which filtered out all
+  nested functions. This was intended to skip methods (already processed via class body
+  iteration), but also skipped legitimate nested functions like FastAPI route handlers
+  inside factory functions:
+  ```python
+  def get_router():
+      router = APIRouter()
+      @router.get("/items")  # This was NOT extracted
+      def list_items(): ...
+  ```
+- **Fix:** Added `processed_functions` set to track already-extracted methods, then modified
+  the condition to extract:
+  1. Top-level functions (col_offset == 0) - always extract
+  2. Nested functions with decorators - extract for framework patterns
+  Also extended to handle `AsyncFunctionDef` for both methods and nested functions.
+- **Verification:** Checked analogous patterns in other analyzers:
+  - JS/TS: Already handles arrow functions in callbacks via position-based lookup
+  - Ruby: Handles blocks properly for Sinatra/Rails patterns
+  - Go: Handles `func_literal` (anonymous functions) properly
+  - Issue was Python-specific due to the `col_offset` heuristic
+- **Regression tests:**
+  - `test_python_ast_analysis.py::TestNestedFunctionExtraction` (4 tests)
+
+## INV-004: Route-to-Handler Edge Completeness
+- **Statement:** Routes should have edges to their handler functions when handler info is available
+- **Status:** FIXED
+- **Root cause:** Analyzers store handler information in metadata (e.g., `controller_action`,
+  `view_name`) but no edges are created from routes to handlers. Analysis showed only 15.8%
+  of routes across bakeoff artifacts had outgoing edges:
+  - Ruby: `analyze/ruby.py:392` sets `symbol_ref=None` with comment "Route DSL doesn't
+    reference a handler symbol directly" - but `controller_action` IS stored in metadata
+  - Elixir: `analyze/elixir.py:403` sets `symbol_ref=None` with comment "Router DSL
+    doesn't directly reference symbols"
+- **Fix:** Created `linkers/route_handler.py` that:
+  1. Finds route symbols with handler metadata (`controller_action`, `controller`+`action`)
+  2. Resolves handler references to actual method/function symbols using name matching
+  3. Creates `routes_to` edges (0.9 confidence) connecting routes to handlers
+  Supported frameworks:
+  - Rails: `controller_action = "users#index"` → `UsersController#index`
+  - Phoenix: `controller` + `action` fields → `Controller.action`
+- **Regression tests:**
+  - `tests/test_route_handler_linker.py::TestRouteHandlerLinker` (13 tests)
+  - `tests/test_route_handler_linker.py::TestLinkerEntryPoint` (2 tests)
+
+## INV-005: Edge ID Uniqueness
+- **Statement:** Edge IDs must be unique because they serve as primary keys for edge lookup
+- **Status:** FIXED
+- **Root cause:** `ir.py:345` Edge.create() generated ID from `src:dst:edge_type` only, not including
+  line number. Multiple calls from the same function to the same target at different lines got
+  identical IDs. Analysis of postal artifact showed 3584 duplicate IDs out of 5844 edges (61%).
+- **Fix:** Changed edge ID hash to include line number: `f"{src}:{dst}:{edge_type}:{line}"`.
+  The `edge_key` field remains unchanged (excludes line) for deduplication across passes.
+- **Regression tests:**
+  - `tests/test_ir.py::test_edge_id_unique_per_line`
+
+## INV-006: Rails Resource Route Handler Resolution
+- **Statement:** Rails resource routes should have handler metadata for route-handler linking
+- **Status:** FIXED (with full RESTful expansion)
+- **Root cause:** Ruby analyzer only extracted `controller_action` from explicit `to: "controller#action"`
+  syntax. `resources :users` and `resource :profile` macros didn't get controller_action metadata.
+- **Original fix:** Inferred `controller_action` for resources/resource routes to enable linking.
+- **Enhanced fix (v2):** Full RESTful route expansion:
+  - `resources :users` → 7 route symbols (index, show, new, create, edit, update, destroy)
+  - `resource :profile` → 6 route symbols (show, new, create, edit, update, destroy - no index)
+  Each route symbol has correct HTTP method, path, and controller_action, enabling the
+  route-handler linker to connect to ALL controller actions, not just index.
+- **Limitation:** None - all standard RESTful actions are now linked.
+- **Regression tests:**
+  - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resources_route`
+  - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular`
+  - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro`
+  - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular`
+
+---
+
+## Meta-Invariants (Consolidated Principles)
+
+Meta-invariants are broad principles that unify specific invariants. Because they are
+high-level, their status is expressed as a percentage indicating confidence they are upheld.
+
+**Status values for meta-invariants:**
+- `100%` — Based upon EXTENSIVE checking, fully upheld across ALL reasonably conceivable cases
+- `<100%` (e.g., `80%`) — Partially upheld; known gaps exist. OR: as an extensive audit has yet to be attempted, unseen gaps might conceivably exist.
+- `TBD` — Not yet assessed; needs research
+
+### META-001: Metadata Must Become Graph Structure
+> "Semantic relationships expressed in metadata must become traversable graph structure."
+
+- **Status:** 90%
+- **Notes:** Core cases (INV-002, INV-004, INV-006) are fixed. Some metadata fields
+  (e.g., `base_classes` in Python/JS/TS) don't yet create edges. Type hierarchy linker
+  added for extends/implements, but not all languages create these edges.
+
+**Unified by:**
+- INV-002 (usage patterns → concepts on nodes)
+- INV-004 (route metadata → handler edges)
+- INV-006 (resources macro → route symbols with controller_action)
+
+**Implication:** When an analyzer stores relationship information in metadata (view_name,
+controller_action, etc.), there should be a corresponding linker or enrichment phase that
+converts that metadata into edges or concepts. Metadata alone is not traversable.
+
+### META-002: Extraction Completeness
+> "Symbols that exist in source code must be extracted for analysis."
+
+- **Status:** 95%
+- **Notes:** Known cases (INV-001, INV-003) are fixed. Edge cases may remain for exotic
+  constructs (e.g., heavily metaprogrammed code, eval-generated functions). Need to
+  audit more languages for extraction gaps.
+
+**Unified by:**
+- INV-001 (call edges must have caller symbols - implies callers are extracted)
+- INV-003 (nested decorated functions must be extracted)
+
+**Implication:** Special cases (nested functions, lambdas, callbacks) should not silently
+skip symbol extraction. If code can be called, it must be extractable.
+
+### META-003: Data Integrity
+> "Graph elements must have valid, unique identifiers for reliable lookup."
+
+- **Status:** 100%
+- **Notes:** INV-005 fixed edge ID uniqueness. No known remaining issues. Symbol IDs
+  appear stable across runs.
+
+**Unified by:**
+- INV-005 (edge IDs must be unique)
+
+**Implication:** ID generation must include all disambiguating information (source, target,
+type, AND location).
+
+---
+
+## INV-007: Template for New Invariants
 - **Statement:** [What must always be true]
-- **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
+- **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED | TBD]
 - **Root cause:** [File:line or description]
 - **Fix:** [What was done]
 - **Limitation:** [What's still broken]
+- **Regression tests:** [Test names]
+
+## META-00X: Template for New Meta-Invariants
+> "[Broad principle statement]"
+
+- **Status:** [100% | <100% (e.g., 80%) | TBD]
+- **Notes:** [Assessment details, known gaps, research needed]
+
+**Unified by:**
+- [List of specific INV-xxx that this meta-invariant unifies]
+
+**Implication:** [What this means for development practices]
 - **Regression tests:** [Test names]

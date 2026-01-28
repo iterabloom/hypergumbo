@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo"
-version = "1.1.0"
+version = "1.2.0"
 description = "Local-first repo behavior map generator (MVP)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,6 +42,7 @@ dependencies = [
   "tree-sitter-c-sharp>=0.21",
   "tree-sitter-cpp>=0.22",
   "tree-sitter-zig>=0.0.1",
+  "tree-sitter-odin>=1.0",
   "tree-sitter-groovy>=0.1",
   "tree-sitter-julia>=0.23",
   "tree-sitter-bash>=0.21",
@@ -66,6 +67,7 @@ dependencies = [
   "tree-sitter-wgsl>=0.0.1",
   "tree-sitter-xml>=0.6",
   "tree-sitter-yaml>=0.6",
+  "tree-sitter-robot>=1.1",  # Robot Framework test automation
   # CLI formatting
   "rich>=13.0",
 ]

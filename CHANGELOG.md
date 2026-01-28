@@ -2,14 +2,116 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v1.1.0
+- Released **tool** is at: v1.2.0
 - Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-01-28
+
+### Summary
+
+Major expansion: **37 new analyzers** across languages, templates, config formats, and build systems. New **route-handler** and **type hierarchy** linkers improve web framework and OO codebase navigation. CLI gains `compact` subcommand. Multiple bug fixes for edge uniqueness, entrypoint detection, and crash resilience.
+
+### Added
+
+#### CLI
+- **`compact`**: Post-process behavior maps into compact form. Options: `--input`, `--out`, `--max-symbols`, `--coverage`, `--no-connectivity`.
+
+#### Analyzers: Frontend & templates
+- **Twig**: blocks/extends/includes/macros; `extends_template` / `includes_template` edges.
+- **SCSS/Sass**: variables/mixins/functions/rules; `uses_mixin` edges.
+- **Svelte**: imports, slots, events, control flow; `imports_component` edges.
+- **Vue SFC**: directives/slots/methods/props; two-pass import resolution.
+- **Astro**: frontmatter, imports, slots, client directives; two-pass import resolution.
+
+#### Analyzers: Programming languages (16)
+- **Odin**: procedures/structs/enums/unions; imports + cross-file calls.
+- **Gleam**: functions/types/aliases; visibility + signatures; imports + calls.
+- **V**: functions/structs/enums/interfaces; visibility + signatures; imports + calls.
+- **MATLAB**: functions/classes/methods/properties; signatures + cross-file calls.
+- **Tcl/Tk**: procedures/namespaces; call edges (filters built-ins).
+- **Scheme**: defs + recursive calls; filters special forms (`.scm/.ss/.sld/.sls`).
+- **Racket**: defs/structs + recursive calls; `struct`/`module+` (`.rkt/.rktl/.rktd`).
+- **Janet**: defs + recursive calls; filters special forms.
+- **Fennel**: defs + recursive calls; compiles to Lua.
+- **Pascal**: programs/units/functions/procs; case-insensitive calls (`.pas/.pp/.dpr/.lpr`).
+- **Haxe**: classes/interfaces/functions; visibility/static; qualified calls.
+- **PureScript**: modules/functions/types/classes/instances; qualified calls.
+- **Hack**: classes/traits/functions/methods; visibility/static (`.hack/.hh`).
+- **Apex**: classes/triggers/methods/fields; visibility/override; qualified calls.
+- **Luau**: typed functions + types; qualified calls (`.luau/.lua`).
+- **Pony**: actors/classes; reference capabilities; cross-file calls.
+
+#### Analyzers: Data, schema & DSLs (5)
+- **KDL**: nodes/sections; arguments/properties; nested hierarchies.
+- **Prisma**: models/enums/datasources/generators; `@relation` edges.
+- **Smithy**: services/operations/shapes; namespace-qualified names; type refs.
+- **SPARQL**: PREFIX/BASE + queries; `uses_vocabulary` edges.
+- **Jsonnet**: locals/methods/fields; imports + calls.
+
+#### Analyzers: Build systems & DevOps (4)
+- **Meson**: projects/targets/custom targets; deps + subdir includes.
+- **BitBake**: recipe vars, inherit, tasks; DEPENDS/RDEPENDS edges.
+- **Robot Framework**: keywords/tests/vars; cross-file keyword invocation.
+- **Puppet**: classes/defined types/resources; parameter extraction.
+
+#### Analyzers: Docs & config files (7)
+- **BibTeX**: bibliography entries, citation keys, authors/years/titles.
+- **Markdown**: headings/code blocks/links; `links_to` edges.
+- **RST**: sections/directives/refs; toctree/include + cross-doc refs.
+- **requirements.txt**: constraints, VCS/URL/editable; `-r/-c` includes.
+- **.properties**: key/value + domain categorization; masks secrets.
+- **.gitignore**: pattern classification + domain categories.
+- **INI/CFG**: sections/settings + domain categorization; masks secrets.
+
+#### Linkers (2)
+- **Route-handler linker**: Creates `routes_to` edges from route symbols to handler functions. Supports Rails, Phoenix, Laravel, and Express metadata formats.
+- **Type hierarchy linker**: Creates `dispatches_to` edges for polymorphic dispatch. Connects interface/parent methods to concrete implementations (valuable for DI-heavy codebases).
+
+#### Entrypoint detection
+- **Manifest-based**: `package.json "bin"`, `pyproject.toml [project.scripts]`, `Cargo.toml [[bin]]` detected with 0.99 confidence.
+- **Naming-based**: Classes named `*Controller`, `*Handler`, `*Service` detected with 0.70 confidence (heuristic fallback).
+- **Structural**: Python `if __name__ == "__main__"` detected with 0.85 confidence.
+
+#### Framework route extraction
+- **Rails**: `resources`/`resource` macros emit individual route symbols for all RESTful actions.
+- **Phoenix**: Elixir analyzer creates route symbols with controller/action metadata.
+- **Laravel**: PHP analyzer creates route symbols including `Route::resource()` expansion.
+
+#### Quality & governance
+- **Meta-invariants**: Introduced three high-level quality principles that unify specific bug fixes:
+  - META-001: Metadata Must Become Graph Structure (90%) — semantic relationships in metadata must become traversable edges
+  - META-002: Extraction Completeness (95%) — symbols in source code must be extracted for analysis
+  - META-003: Data Integrity (100%) — graph elements must have valid, unique identifiers
+- **Invariant ledger**: Tracks discovered invariants, root causes, fixes, and regression tests (`.agent/invariant-ledger.md`).
+
+### Fixed
+
+#### Crashes & robustness
+- **JSON manifests**: No longer crash when `package.json`/`composer.json` top-level is non-object.
+- **Ruby analyzer**: Prevent self-referential call edges.
+
+#### Graph quality (INV-002 through INV-006)
+- **INV-006**: Rails `resources`/`resource` macros now infer `controller_action` metadata for route-handler linking.
+- **INV-005**: Edge IDs include line number, ensuring uniqueness for multiple calls to same target.
+- **INV-004**: Routes get `routes_to` edges to handler functions (metadata now converted to traversable edges).
+- **INV-002**: Deferred resolution for cross-file handler references (Django URL patterns, Express routes, etc.).
+
+#### Python analyzer
+- **Nested functions**: Extract decorated nested functions (FastAPI router factory pattern).
+- **Main guard**: `if __name__ == "__main__"` uses correct concept format for entrypoint detection.
+- **Django**: Empty path URL patterns (`path('')`) now correctly detected as routes.
+
+#### Entrypoint detection
+- **cargo_binary**: YAML pattern now matches `kind="binary"` (actual analyzer output).
+- **HTTP linker**: Falls back to direct `meta.route_path`/`meta.http_method` when concept metadata unavailable.
+
 ## [1.1.0] - 2026-01-24
+
+> Note: This version was tagged in the codebase but never published to PyPI. It marks a milestone with breaking changes relative to v1.0.0. Hopefully our next release will be hiccup-free and actually publish to PyPI.
 
 ### Removed
 
@@ -32,6 +134,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Play Framework patterns for Scala (`play.yaml`): controllers, Action blocks, WebSocket handlers
 - Akka HTTP patterns for Scala (`akka-http.yaml`): route directives, method handlers, WebSocket, auth
 - Library export detection (`library-exports.yaml`): Detects exports from index files (index.ts/js/jsx/tsx) as library entry points for JS/TS libraries
+- Naming conventions (`naming-conventions.yaml`): Heuristic patterns for `*Controller`, `*Handler`, `*Service` classes (0.70 confidence fallback tier)
 
 **New Commands & Flags**
 - `hypergumbo test-coverage`: Static coverage estimation via call graph analysis
@@ -119,8 +222,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [1.0.0] - 2026-01-12 (not released to PyPI)
 
-> **Note:** This version was tagged in the codebase but never published to PyPI. It marks a
-> milestone with breaking changes relative to v0.9.1. The next PyPI release will be v1.1.0+.
+> **Note:** This version was tagged in the codebase but never published to PyPI. It marks a milestone with breaking changes relative to v0.9.1.
 
 Major focus on memory optimization, framework detection improvements,
 and completing the migration to YAML-driven semantic analysis.

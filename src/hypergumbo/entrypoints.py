@@ -297,6 +297,27 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.CLI_COMMAND)
 
+            # Manifest-declared CLI entry points (highest confidence)
+            # npm_bin: package.json "bin" entries
+            # cargo_binary: Cargo.toml [[bin]] entries
+            # pyproject_script: pyproject.toml [project.scripts] entries
+            elif concept_type in ("npm_bin", "cargo_binary", "pyproject_script"):
+                if EntrypointKind.CLI_COMMAND in added_kinds:
+                    continue
+                if concept_type == "npm_bin":
+                    label = f"npm CLI: {sym.name}"
+                elif concept_type == "cargo_binary":
+                    label = f"Cargo binary: {sym.name}"
+                else:
+                    label = f"Python CLI: {sym.name}"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CLI_COMMAND,
+                    confidence=0.99,  # Declared in manifest - highest confidence
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CLI_COMMAND)
+
             # LiveView concept -> CONTROLLER (real-time UI is an entry point)
             elif concept_type == "liveview":
                 if EntrypointKind.CONTROLLER in added_kinds:
@@ -392,6 +413,19 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
 
+            # Python main guard concept -> MAIN_FUNCTION
+            # Structural entrypoint: `if __name__ == "__main__":` pattern
+            elif concept_type == "main_guard":
+                if EntrypointKind.MAIN_FUNCTION in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MAIN_FUNCTION,
+                    confidence=0.85,  # Structural pattern (higher than naming heuristic)
+                    label="Python script (if __name__ == '__main__')",
+                ))
+                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
             # Library export concept -> LIBRARY_EXPORT
             # (ADR-0003 v1.3.x - Library public API detection)
             # Exports from index files (index.ts, index.js) are treated as library
@@ -414,6 +448,36 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
+
+            # Naming-based heuristics (lowest confidence tier)
+            # These are fallbacks when no explicit annotation/base class is found
+            # ADR-0003 v1.4.x - naming-conventions.yaml
+            elif concept_type == "controller_by_name":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue  # Already detected via framework pattern
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.70,  # Naming heuristic - lowest tier
+                    label=f"Controller (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
+            elif concept_type == "handler_by_name":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue  # Handlers are treated as controllers
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.70,  # Naming heuristic - lowest tier
+                    label=f"Handler (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
+            elif concept_type == "service_by_name":
+                # Services are not entrypoints by default, but we track
+                # them for potential future use. Skip for now.
+                pass
 
     return entrypoints
 

@@ -326,6 +326,9 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
     if pkg_json.exists():
         try:
             data = json.loads(pkg_json.read_text())
+            # Skip non-dict package.json files (e.g., string or array at top level)
+            if not isinstance(data, dict):
+                data = {}
             workspaces = data.get("workspaces", [])
 
             # Handle object format: {"packages": [...]}

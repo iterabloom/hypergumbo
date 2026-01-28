@@ -1055,6 +1055,280 @@ class TestSemanticEntryDetection:
         lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(lib_eps) == 1
 
+    def test_npm_bin_entrypoint_detection(self) -> None:
+        """npm bin entries (package.json "bin") are detected as CLI entrypoints."""
+        # npm_bin concept comes from config-conventions.yaml matching kind="bin"
+        sym = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            path="package.json",
+            language="json",
+            span=Span(5, 5, 0, 30),
+            meta={"concepts": [{"concept": "npm_bin", "framework": "config-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        assert cli_eps[0].confidence == 0.99  # Declared in manifest - highest confidence
+        assert "npm CLI" in cli_eps[0].label
+        assert "my-cli" in cli_eps[0].label
+
+    def test_cargo_binary_entrypoint_detection(self) -> None:
+        """Cargo binary targets ([[bin]]) are detected as CLI entrypoints."""
+        # cargo_binary concept comes from config-conventions.yaml matching kind="binary"
+        sym = Symbol(
+            id="toml:Cargo.toml:20-25:my-tool:binary",
+            name="my-tool",
+            kind="binary",
+            path="Cargo.toml",
+            language="toml",
+            span=Span(20, 25, 0, 100),
+            meta={"concepts": [{"concept": "cargo_binary", "framework": "config-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        assert cli_eps[0].confidence == 0.99  # Declared in manifest
+        assert "Cargo binary" in cli_eps[0].label
+
+    def test_pyproject_script_entrypoint_detection(self) -> None:
+        """pyproject.toml [project.scripts] entries are detected as CLI entrypoints."""
+        # pyproject_script concept will come from config-conventions.yaml
+        sym = Symbol(
+            id="toml:pyproject.toml:10-10:my-app:script",
+            name="my-app",
+            kind="script",
+            path="pyproject.toml",
+            language="toml",
+            span=Span(10, 10, 0, 40),
+            meta={"concepts": [{"concept": "pyproject_script", "framework": "config-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        assert cli_eps[0].confidence == 0.99  # Declared in manifest
+        assert "Python CLI" in cli_eps[0].label
+
+    def test_main_guard_entrypoint_detection(self) -> None:
+        """Python modules with main guard (if __name__ == '__main__') are detected as entrypoints."""
+        sym = Symbol(
+            id="python:script.py:1-50:<module:script.py>:module",
+            name="<module:script.py>",
+            kind="module",
+            path="script.py",
+            language="python",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [{"concept": "main_guard", "framework": "python"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(main_eps) == 1
+        assert main_eps[0].confidence == 0.85  # Structural pattern
+        assert "if __name__" in main_eps[0].label
+
+    def test_main_guard_deduplicated_with_main_function(self) -> None:
+        """main_guard and main_function concepts on same symbol don't create duplicates."""
+        # If a symbol has both main_guard and main_function concepts, only create one entry
+        sym = Symbol(
+            id="python:main.py:1-50:main:function",
+            name="main",
+            kind="function",
+            path="main.py",
+            language="python",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "main_function", "framework": "python"},  # From main-functions.yaml
+                {"concept": "main_guard", "framework": "python"},  # From analyzer
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one MAIN_FUNCTION entry (first concept wins)
+        main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(main_eps) == 1
+        # main_function has lower confidence (0.80) than main_guard (0.85), but it's first
+        assert main_eps[0].confidence == 0.80
+
+    def test_controller_by_name_entrypoint_detection(self) -> None:
+        """Classes named *Controller are detected as entrypoints (naming heuristic)."""
+        sym = Symbol(
+            id="python:controllers.py:1-50:UserController:class",
+            name="UserController",
+            kind="class",
+            path="controllers.py",
+            language="python",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [{"concept": "controller_by_name", "framework": "naming-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].confidence == 0.70  # Naming heuristic - lowest tier
+        assert "by name" in ctrl_eps[0].label
+
+    def test_handler_by_name_entrypoint_detection(self) -> None:
+        """Classes named *Handler are detected as entrypoints (naming heuristic)."""
+        sym = Symbol(
+            id="python:handlers.py:1-30:RequestHandler:class",
+            name="RequestHandler",
+            kind="class",
+            path="handlers.py",
+            language="python",
+            span=Span(1, 30, 0, 0),
+            meta={"concepts": [{"concept": "handler_by_name", "framework": "naming-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        handler_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(handler_eps) == 1
+        assert handler_eps[0].confidence == 0.70  # Naming heuristic
+        assert "by name" in handler_eps[0].label
+
+    def test_naming_convention_skipped_if_framework_detected(self) -> None:
+        """Naming-based detection skipped if framework detection already matched."""
+        # A class that has both @Controller annotation AND is named FooController
+        sym = Symbol(
+            id="java:FooController.java:1-50:FooController:class",
+            name="FooController",
+            kind="class",
+            path="FooController.java",
+            language="java",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "controller", "framework": "spring-boot"},  # From annotation
+                {"concept": "controller_by_name", "framework": "naming-conventions"},  # From name
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one CONTROLLER entry (framework detection wins)
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].confidence == 0.95  # Framework detection, not naming
+
+    def test_handler_by_name_skipped_if_controller_detected(self) -> None:
+        """Handler naming convention skipped if controller already detected.
+
+        This tests the deduplication when a class has both controller_by_name
+        (0.70) processed first and handler_by_name (0.70) second. Since both
+        map to CONTROLLER, the handler_by_name should be skipped.
+        """
+        # A class named FooControllerHandler - matches both patterns
+        sym = Symbol(
+            id="java:FooController.java:1-50:FooControllerHandler:class",
+            name="FooControllerHandler",
+            kind="class",
+            path="FooControllerHandler.java",
+            language="java",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "controller_by_name", "framework": "naming-conventions"},
+                {"concept": "handler_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only have one CONTROLLER entry (controller_by_name processed first)
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1
+        assert ctrl_eps[0].confidence == 0.70  # Naming heuristic
+        assert "Controller (by name)" in ctrl_eps[0].label
+
+    def test_symbol_with_empty_concepts_skipped(self) -> None:
+        """Symbols with meta but empty concepts list are skipped."""
+        sym = Symbol(
+            id="test:empty:1-5:test:function",
+            name="test",
+            kind="function",
+            path="test.py",
+            language="python",
+            span=Span(1, 5, 0, 30),
+            meta={"concepts": []},  # Empty concepts list
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+        assert len(entrypoints) == 0
+
+    def test_duplicate_manifest_concepts_deduplicated(self) -> None:
+        """Multiple manifest concepts on same symbol don't create duplicate entries."""
+        # Unlikely in practice but tests defensive deduplication
+        sym = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            path="package.json",
+            language="json",
+            span=Span(5, 5, 0, 30),
+            meta={"concepts": [
+                {"concept": "npm_bin", "framework": "config-conventions"},
+                {"concept": "npm_bin", "framework": "config-conventions"},  # Duplicate
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only create one CLI_COMMAND entry despite duplicate concepts
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+
+    def test_command_and_manifest_concept_deduplicated(self) -> None:
+        """Symbol with both command and npm_bin concepts gets one CLI_COMMAND entry.
+
+        This tests the deduplication path when a command concept (0.95 confidence)
+        is processed before a manifest concept (0.99 confidence). The manifest concept
+        should be skipped since CLI_COMMAND is already added by command.
+        """
+        sym = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            path="package.json",
+            language="json",
+            span=Span(5, 5, 0, 30),
+            meta={"concepts": [
+                # command processed first (0.95) - e.g., Click/Typer command
+                {"concept": "command", "framework": "click"},
+                # npm_bin processed second, should be skipped (0.99)
+                {"concept": "npm_bin", "framework": "config-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only create one CLI_COMMAND entry (from command, not npm_bin)
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        # The one that was created should be the command one (0.95)
+        assert cli_eps[0].confidence == 0.95
+        assert "Click command" in cli_eps[0].label
+
 
 class TestConnectivityBasedRanking:
     """Tests for connectivity-based entrypoint ranking."""

@@ -188,6 +188,40 @@ end
         # Should have edge from caller to helper
         assert len(call_edges) >= 1
 
+    def test_no_self_referential_edge_for_module_call(self, tmp_path: Path) -> None:
+        """No self-referential edge when method calls module-level method with same name.
+
+        E.g., logger method calling Postal.logger should NOT create logger -> logger edge.
+        The analyzer should detect that the receiver is different (Postal vs self).
+        """
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "inspector.rb"
+        rb_file.write_text("""
+module Postal
+  def self.logger
+    @logger ||= Logger.new
+  end
+end
+
+class MessageInspector
+  def logger
+    Postal.logger
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Find edges from logger method
+        logger_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "logger" in e.src.lower()
+        ]
+        # Should have no self-referential edges
+        self_refs = [e for e in logger_edges if e.src == e.dst]
+        assert len(self_refs) == 0, f"Found self-referential edges: {self_refs}"
+
 
 class TestRubyRequires:
     """Tests for detecting Ruby require statements."""
@@ -710,6 +744,8 @@ end
         assert ctx is not None
         assert ctx.metadata["route_path"] == "users"
         assert ctx.metadata["http_method"] == "RESOURCES"
+        # INV-006: Infer controller_action for resource routes
+        assert ctx.metadata["controller_action"] == "users#index"
 
     def test_rails_resource_singular(self, tmp_path: Path) -> None:
         """Detects Rails resource :profile (singular) macro."""
@@ -725,6 +761,8 @@ end
         assert ctx is not None
         assert ctx.metadata["route_path"] == "profile"
         assert ctx.metadata["http_method"] == "RESOURCES"
+        # INV-006: Infer controller_action for resource routes
+        assert ctx.metadata["controller_action"] == "profile#index"
 
     def test_rails_post_route_with_controller_action(self, tmp_path: Path) -> None:
         """Detects Rails post route with controller#action."""
@@ -773,7 +811,11 @@ end
         assert post_route.meta["http_method"] == "POST"
 
     def test_route_symbols_for_resources_macro(self, tmp_path: Path) -> None:
-        """Resources macro creates route Symbol with RESOURCES http_method."""
+        """Resources macro creates expanded RESTful route symbols.
+
+        INV-006 improvement: Instead of single RESOURCES symbol, emit all
+        7 RESTful routes to enable route-handler linking for all actions.
+        """
         from hypergumbo.analyze.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
@@ -784,9 +826,70 @@ end
         result = analyze_ruby(tmp_path)
 
         route_symbols = [s for s in result.symbols if s.kind == "route"]
-        assert len(route_symbols) == 1
-        assert route_symbols[0].name == "RESOURCES /articles"
-        assert route_symbols[0].meta["http_method"] == "RESOURCES"
+        # Should have 7 RESTful routes: index, show, new, create, edit, update, destroy
+        assert len(route_symbols) == 7
+
+        # Check each route has correct http_method and controller_action
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # Collection routes
+        assert "articles#index" in routes_by_action
+        assert routes_by_action["articles#index"].meta["http_method"] == "GET"
+        assert routes_by_action["articles#index"].meta["route_path"] == "/articles"
+
+        assert "articles#create" in routes_by_action
+        assert routes_by_action["articles#create"].meta["http_method"] == "POST"
+
+        assert "articles#new" in routes_by_action
+        assert routes_by_action["articles#new"].meta["http_method"] == "GET"
+        assert routes_by_action["articles#new"].meta["route_path"] == "/articles/new"
+
+        # Member routes (with :id parameter)
+        assert "articles#show" in routes_by_action
+        assert routes_by_action["articles#show"].meta["http_method"] == "GET"
+        assert routes_by_action["articles#show"].meta["route_path"] == "/articles/:id"
+
+        assert "articles#edit" in routes_by_action
+        assert routes_by_action["articles#edit"].meta["http_method"] == "GET"
+
+        assert "articles#update" in routes_by_action
+        assert routes_by_action["articles#update"].meta["http_method"] in ("PATCH", "PUT")
+
+        assert "articles#destroy" in routes_by_action
+        assert routes_by_action["articles#destroy"].meta["http_method"] == "DELETE"
+
+    def test_route_symbols_for_resource_singular(self, tmp_path: Path) -> None:
+        """Singular resource macro creates 6 RESTful route symbols (no index).
+
+        resource :profile creates routes without :id param and no index.
+        """
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resource :profile
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        # Singular resource: show, new, create, edit, update, destroy (no index)
+        assert len(route_symbols) == 6
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # No index for singular resource
+        assert "profiles#index" not in routes_by_action
+
+        # Singular routes don't have :id in path
+        assert "profiles#show" in routes_by_action
+        assert routes_by_action["profiles#show"].meta["route_path"] == "/profile"
+
+        assert "profiles#create" in routes_by_action
+        assert "profiles#new" in routes_by_action
+        assert "profiles#edit" in routes_by_action
+        assert "profiles#update" in routes_by_action
+        assert "profiles#destroy" in routes_by_action
 
     def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
         """Route symbols include controller_action in metadata when specified."""

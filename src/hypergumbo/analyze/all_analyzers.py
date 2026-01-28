@@ -68,9 +68,12 @@ ANALYZERS: list[AnalyzerSpec] = [
     # Popular languages with tree-sitter support
     AnalyzerSpec("javascript", "hypergumbo.analyze.js_ts", "analyze_javascript", supports_max_files=True),
     AnalyzerSpec("php", "hypergumbo.analyze.php", "analyze_php"),
+    AnalyzerSpec("hack", "hypergumbo.analyze.hack", "analyze_hack"),
+    AnalyzerSpec("apex", "hypergumbo.analyze.apex", "analyze_apex"),
     AnalyzerSpec("c", "hypergumbo.analyze.c", "analyze_c", capture_symbols_as="c"),
     AnalyzerSpec("java", "hypergumbo.analyze.java", "analyze_java", capture_symbols_as="java"),
     AnalyzerSpec("elixir", "hypergumbo.analyze.elixir", "analyze_elixir"),
+    AnalyzerSpec("gleam", "hypergumbo.analyze.gleam", "analyze_gleam"),
     AnalyzerSpec("rust", "hypergumbo.analyze.rust", "analyze_rust"),
     AnalyzerSpec("go", "hypergumbo.analyze.go", "analyze_go"),
     AnalyzerSpec("ruby", "hypergumbo.analyze.ruby", "analyze_ruby"),
@@ -78,12 +81,19 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("swift", "hypergumbo.analyze.swift", "analyze_swift"),
     AnalyzerSpec("scala", "hypergumbo.analyze.scala", "analyze_scala"),
     AnalyzerSpec("lua", "hypergumbo.analyze.lua", "analyze_lua"),
+    AnalyzerSpec("luau", "hypergumbo.analyze.luau", "analyze_luau"),
     AnalyzerSpec("dart", "hypergumbo.analyze.dart", "analyze_dart"),
+    AnalyzerSpec("svelte", "hypergumbo.analyze.svelte", "analyze_svelte"),
+    AnalyzerSpec("vue", "hypergumbo.analyze.vue", "analyze_vue"),
+    AnalyzerSpec("astro", "hypergumbo.analyze.astro", "analyze_astro"),
+    AnalyzerSpec("twig", "hypergumbo.analyze.twig", "analyze_twig"),
+    AnalyzerSpec("puppet", "hypergumbo.analyze.puppet", "analyze_puppet"),
     AnalyzerSpec("clojure", "hypergumbo.analyze.clojure", "analyze_clojure"),
     AnalyzerSpec("commonlisp", "hypergumbo.analyze.commonlisp", "analyze_commonlisp"),
     AnalyzerSpec("elm", "hypergumbo.analyze.elm", "analyze_elm"),
     AnalyzerSpec("erlang", "hypergumbo.analyze.erlang", "analyze_erlang"),
     AnalyzerSpec("haskell", "hypergumbo.analyze.haskell", "analyze_haskell"),
+    AnalyzerSpec("pony", "hypergumbo.analyze.pony", "analyze_pony"),
 
     # Specialized/niche languages
     AnalyzerSpec("agda", "hypergumbo.analyze.agda", "analyze_agda"),
@@ -94,6 +104,8 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("csharp", "hypergumbo.analyze.csharp", "analyze_csharp"),
     AnalyzerSpec("cpp", "hypergumbo.analyze.cpp", "analyze_cpp"),
     AnalyzerSpec("zig", "hypergumbo.analyze.zig", "analyze_zig"),
+    AnalyzerSpec("odin", "hypergumbo.analyze.odin", "analyze_odin"),
+    AnalyzerSpec("v", "hypergumbo.analyze.v_lang", "analyze_v"),
     AnalyzerSpec("groovy", "hypergumbo.analyze.groovy", "analyze_groovy"),
     AnalyzerSpec("julia", "hypergumbo.analyze.julia", "analyze_julia"),
     AnalyzerSpec("bash", "hypergumbo.analyze.bash", "analyze_bash"),
@@ -102,14 +114,24 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("perl", "hypergumbo.analyze.perl", "analyze_perl"),
     AnalyzerSpec("cobol", "hypergumbo.analyze.cobol", "analyze_cobol"),
     AnalyzerSpec("latex", "hypergumbo.analyze.latex", "analyze_latex"),
+    AnalyzerSpec("bibtex", "hypergumbo.analyze.bibtex", "analyze_bibtex"),
+    AnalyzerSpec("rst", "hypergumbo.analyze.rst", "analyze_rst"),
+    AnalyzerSpec("markdown", "hypergumbo.analyze.markdown", "analyze_markdown"),
     AnalyzerSpec("ada", "hypergumbo.analyze.ada", "analyze_ada"),
     AnalyzerSpec("d", "hypergumbo.analyze.d_lang", "analyze_d"),
     AnalyzerSpec("nim", "hypergumbo.analyze.nim", "analyze_nim"),
+
+    # Build systems
+    AnalyzerSpec("bitbake", "hypergumbo.analyze.bitbake", "analyze_bitbake"),
+
+    # Dependencies and config
+    AnalyzerSpec("requirements", "hypergumbo.analyze.requirements", "analyze_requirements"),
 
     # Infrastructure and config
     AnalyzerSpec("hcl", "hypergumbo.analyze.hcl", "analyze_hcl"),
     AnalyzerSpec("ansible", "hypergumbo.analyze.yaml_ansible", "analyze_ansible"),
     AnalyzerSpec("sql", "hypergumbo.analyze.sql", "analyze_sql_files"),
+    AnalyzerSpec("sparql", "hypergumbo.analyze.sparql", "analyze_sparql"),
     AnalyzerSpec("dockerfile", "hypergumbo.analyze.dockerfile", "analyze_dockerfiles"),
     AnalyzerSpec("cmake", "hypergumbo.analyze.cmake", "analyze_cmake_files"),
     AnalyzerSpec("make", "hypergumbo.analyze.make", "analyze_make_files"),
@@ -117,7 +139,13 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("toml", "hypergumbo.analyze.toml_config", "analyze_toml_files"),
     AnalyzerSpec("xml", "hypergumbo.analyze.xml_config", "analyze_xml_files"),
     AnalyzerSpec("json", "hypergumbo.analyze.json_config", "analyze_json_files"),
+    AnalyzerSpec("ini", "hypergumbo.analyze.ini", "analyze_ini"),
+    AnalyzerSpec("properties", "hypergumbo.analyze.properties", "analyze_properties"),
+    AnalyzerSpec("gitignore", "hypergumbo.analyze.gitignore", "analyze_gitignore"),
     AnalyzerSpec("css", "hypergumbo.analyze.css", "analyze_css_files"),
+    AnalyzerSpec("scss", "hypergumbo.analyze.scss", "analyze_scss"),
+    AnalyzerSpec("jsonnet", "hypergumbo.analyze.jsonnet", "analyze_jsonnet"),
+    AnalyzerSpec("kdl", "hypergumbo.analyze.kdl", "analyze_kdl"),
 
     # Hardware description
     AnalyzerSpec("cuda", "hypergumbo.analyze.cuda", "analyze_cuda_files"),
@@ -127,12 +155,15 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("wgsl", "hypergumbo.analyze.wgsl", "analyze_wgsl_files"),
     AnalyzerSpec("hlsl", "hypergumbo.analyze.hlsl", "analyze_hlsl"),
 
-    # Interface definitions
+    # Interface definitions and schemas
     AnalyzerSpec("graphql", "hypergumbo.analyze.graphql", "analyze_graphql_files"),
     AnalyzerSpec("proto", "hypergumbo.analyze.proto", "analyze_proto"),
     AnalyzerSpec("thrift", "hypergumbo.analyze.thrift", "analyze_thrift"),
     AnalyzerSpec("capnp", "hypergumbo.analyze.capnp", "analyze_capnp"),
+    AnalyzerSpec("smithy", "hypergumbo.analyze.smithy", "analyze_smithy"),
+    AnalyzerSpec("prisma", "hypergumbo.analyze.prisma", "analyze_prisma"),
     AnalyzerSpec("r", "hypergumbo.analyze.r_lang", "analyze_r_files"),
+    AnalyzerSpec("matlab", "hypergumbo.analyze.matlab", "analyze_matlab"),
     AnalyzerSpec("fortran", "hypergumbo.analyze.fortran", "analyze_fortran_files"),
     AnalyzerSpec("llvm_ir", "hypergumbo.analyze.llvm_ir", "analyze_llvm_ir"),
 
@@ -141,6 +172,18 @@ ANALYZERS: list[AnalyzerSpec] = [
     AnalyzerSpec("gdscript", "hypergumbo.analyze.gdscript", "analyze_gdscript"),
     AnalyzerSpec("starlark", "hypergumbo.analyze.starlark", "analyze_starlark"),
     AnalyzerSpec("fish", "hypergumbo.analyze.fish", "analyze_fish"),
+    AnalyzerSpec("tcl", "hypergumbo.analyze.tcl", "analyze_tcl"),
+    AnalyzerSpec("scheme", "hypergumbo.analyze.scheme", "analyze_scheme"),
+    AnalyzerSpec("racket", "hypergumbo.analyze.racket", "analyze_racket"),
+    AnalyzerSpec("janet", "hypergumbo.analyze.janet", "analyze_janet"),
+    AnalyzerSpec("fennel", "hypergumbo.analyze.fennel", "analyze_fennel"),
+    AnalyzerSpec("pascal", "hypergumbo.analyze.pascal", "analyze_pascal"),
+    AnalyzerSpec("haxe", "hypergumbo.analyze.haxe", "analyze_haxe"),
+    AnalyzerSpec("meson", "hypergumbo.analyze.meson", "analyze_meson"),
+    AnalyzerSpec("purescript", "hypergumbo.analyze.purescript", "analyze_purescript"),
+
+    # Testing frameworks
+    AnalyzerSpec("robot", "hypergumbo.analyze.robot", "analyze_robot"),
 ]
 
 

@@ -59,9 +59,11 @@ import hypergumbo.linkers.jni as _jni_linker  # noqa: F401
 import hypergumbo.linkers.message_queue as _message_queue_linker  # noqa: F401
 import hypergumbo.linkers.openapi as _openapi_linker  # noqa: F401
 import hypergumbo.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
+import hypergumbo.linkers.route_handler as _route_handler_linker  # noqa: F401
 import hypergumbo.linkers.subprocess_cli as _subprocess_linker  # noqa: F401
 import hypergumbo.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
+import hypergumbo.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, Span
 from .metrics import compute_metrics
@@ -75,15 +77,19 @@ from .ranking import (
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
 )
 from .compact import (
+    CompactConfig,
     format_compact_behavior_map,
     format_tiered_behavior_map,
     generate_tier_filename,
     parse_tier_spec,
-    CompactConfig,
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
-from .framework_patterns import enrich_symbols, get_frameworks_dir
+from .framework_patterns import (
+    enrich_symbols,
+    get_frameworks_dir,
+    resolve_deferred_symbol_refs,
+)
 
 
 def _log_memory(label: str) -> None:  # pragma: no cover
@@ -1761,6 +1767,63 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compact(args: argparse.Namespace) -> int:
+    """Convert a behavior map to compact form with coverage-based truncation.
+
+    Reads an existing behavior map JSON and outputs a compact version with:
+    - Top symbols by centrality coverage
+    - Summary of omitted symbols (bag-of-words, path patterns, kinds)
+    - Induced subgraph edges (only edges between included symbols)
+
+    This is useful for post-processing large behavior maps into LLM-friendly
+    formats without re-running the full analysis.
+    """
+    input_path = Path(args.input).resolve()
+
+    if not input_path.exists():
+        print(f"Error: Input file not found: {input_path}", file=sys.stderr)
+        return 1
+
+    # Load behavior map
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+    edges_data = behavior_map.get("edges", [])
+
+    # Convert to Symbol and Edge objects for compact module
+    symbols = [Symbol.from_dict(n) for n in nodes]
+    edges = [Edge.from_dict(e) for e in edges_data]
+
+    # Configure compact mode
+    config = CompactConfig(
+        target_coverage=args.coverage,
+        max_symbols=args.max_symbols,
+        min_symbols=args.min_symbols,
+    )
+
+    # Use connectivity-aware selection if not disabled
+    connectivity_aware = not args.no_connectivity
+
+    # Generate compact behavior map
+    compact_map = format_compact_behavior_map(
+        behavior_map, symbols, edges, config,
+        force_include_entrypoints=True,
+        connectivity_aware=connectivity_aware,
+    )
+
+    # Output
+    out_path = Path(args.out).resolve() if args.out else None
+
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            json.dump(compact_map, f, indent=2)
+        print(f"Compact behavior map written to: {out_path}")
+    else:
+        print(json.dumps(compact_map, indent=2))
+
+    return 0
+
+
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -2696,6 +2759,67 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_symbols.set_defaults(func=cmd_symbols)
 
+    # hypergumbo compact
+    compact_epilog = """\
+Examples:
+  hypergumbo compact --input hg.json --out hg.compact.json
+  hypergumbo compact --input hg.json --max-symbols 50 --coverage 0.9
+  hypergumbo compact --input hg.json --no-connectivity
+
+Converts an existing behavior map to compact form with:
+- Top symbols by centrality coverage (connectivity-aware selection by default)
+- Summary of omitted symbols (bag-of-words, path patterns, kinds)
+- Induced subgraph edges (only edges between included symbols)
+
+Useful for post-processing large behavior maps into LLM-friendly formats
+without re-running the full analysis."""
+
+    p_compact = sub.add_parser(
+        "compact",
+        help="Convert behavior map to compact form with coverage-based truncation",
+        epilog=compact_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_compact.add_argument(
+        "--input",
+        required=True,
+        metavar="FILE",
+        help="Input behavior map JSON file (required)",
+    )
+    p_compact.add_argument(
+        "--out",
+        default=None,
+        metavar="FILE",
+        help="Output file (default: print to stdout)",
+    )
+    p_compact.add_argument(
+        "--max-symbols",
+        type=int,
+        default=100,
+        dest="max_symbols",
+        help="Maximum symbols to include (default: 100)",
+    )
+    p_compact.add_argument(
+        "--min-symbols",
+        type=int,
+        default=10,
+        dest="min_symbols",
+        help="Minimum symbols to include (default: 10)",
+    )
+    p_compact.add_argument(
+        "--coverage",
+        type=float,
+        default=0.8,
+        help="Target centrality coverage 0.0-1.0 (default: 0.8)",
+    )
+    p_compact.add_argument(
+        "--no-connectivity",
+        action="store_true",
+        dest="no_connectivity",
+        help="Disable connectivity-aware selection (may produce disconnected subgraphs)",
+    )
+    p_compact.set_defaults(func=cmd_compact)
+
     return p
 
 
@@ -2858,6 +2982,19 @@ def run_behavior_map(
         captured_symbols,
     ) = run_all_analyzers(repo_root, max_files=max_files)
     _log_memory("after analyzers")
+
+    # Resolve deferred symbol references (INV-002 proper fix)
+    # UsageContexts extracted during analysis may have symbol_ref=None when
+    # the target symbol is in a different file. Now that we have the complete
+    # symbol table, resolve these references using multi-strategy lookup.
+    show_progress("Resolving symbol references", 48)
+    resolution_stats = resolve_deferred_symbol_refs(all_symbols, all_usage_contexts)
+    if resolution_stats.total_resolved > 0:
+        _log_memory(  # pragma: no cover - debug logging
+            f"resolved {resolution_stats.total_resolved}/{resolution_stats.total_unresolved} "
+            f"deferred refs (exact={resolution_stats.resolved_exact}, "
+            f"suffix={resolution_stats.resolved_suffix})"
+        )
 
     # Enrich symbols with framework concept metadata (ADR-0003)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
@@ -3164,7 +3301,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "test-coverage", "symbols"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "test-coverage", "symbols", "compact"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

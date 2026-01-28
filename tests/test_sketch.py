@@ -4866,6 +4866,18 @@ class TestConfigExtraction:
         assert "pg" in result
         assert "typescript" in result
 
+    def test_extract_non_dict_package_json(self, tmp_path: Path) -> None:
+        """Handles non-dict package.json gracefully (returns empty)."""
+        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Valid JSON but not a dict - should be skipped
+        (tmp_path / "package.json").write_text('"just a string"')
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+
+        # Should not crash and should not include package.json info
+        assert "package.json" not in result
+
     def test_extract_go_mod_fields(self, tmp_path: Path) -> None:
         """Extracts module and dependencies from go.mod."""
         from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode

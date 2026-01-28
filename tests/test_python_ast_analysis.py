@@ -1074,6 +1074,33 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
     assert "/users/<int:pk>/" in route_paths or "users/<int:pk>/" in route_paths
 
 
+def test_django_path_empty_string_root_route(tmp_path: Path) -> None:
+    """Django path('') for root URL should be detected as route."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('', views.index, name='index'),\n"
+        "    path('about/', views.about),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2, "Both empty string root and /about/ should be detected"
+
+    route_paths = {r.get("meta", {}).get("route_path") for r in routes}
+    # Empty path gets normalized to "/"
+    assert "/" in route_paths, f"Root route should be detected, got: {route_paths}"
+    assert "/about/" in route_paths or "about/" in route_paths
+
+
 def test_django_re_path_urlpattern(tmp_path: Path) -> None:
     """Django re_path() URL patterns should be detected as routes."""
     urls_file = tmp_path / "urls.py"
@@ -3307,5 +3334,320 @@ class TestUnresolvedEdgeEmission:
             if ":unresolved" in e["dst"] and "Client.create" in e["dst"]
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
+
+
+class TestNestedFunctionExtraction:
+    """Tests for extracting nested functions (closures) with decorators.
+
+    This addresses the FastAPI router factory pattern where route handlers
+    are defined as nested functions inside a factory function:
+
+        def get_entity_router():
+            router = APIRouter()
+
+            @router.get("/entities")
+            def list_entities():  # <-- This should be extracted
+                ...
+
+            return router
+    """
+
+    def test_nested_function_with_route_decorator_is_extracted(self, tmp_path: Path) -> None:
+        """Nested functions with route decorators should be detected.
+
+        The FastAPI APIRouter factory pattern uses nested functions as route handlers.
+        These should be extracted so framework patterns can detect routes.
+        """
+        py_file = tmp_path / "routes.py"
+        py_file.write_text(
+            "from fastapi import APIRouter\n"
+            "\n"
+            "def get_entity_router():\n"
+            "    router = APIRouter()\n"
+            "\n"
+            "    @router.get('/entities')\n"
+            "    def list_entities():\n"
+            "        return []\n"
+            "\n"
+            "    @router.get('/entities/{id}')\n"
+            "    def get_entity(id: int):\n"
+            "        return {'id': id}\n"
+            "\n"
+            "    @router.post('/entities')\n"
+            "    def create_entity():\n"
+            "        return {'created': True}\n"
+            "\n"
+            "    return router\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        # Should include the factory function AND the nested route handlers
+        assert "get_entity_router" in func_names, "Factory function should be extracted"
+        assert "list_entities" in func_names, "Nested route handler should be extracted"
+        assert "get_entity" in func_names, "Nested route handler should be extracted"
+        assert "create_entity" in func_names, "Nested route handler should be extracted"
+
+        # Verify the nested functions have their decorator metadata
+        nested_funcs = {f["name"]: f for f in functions if f["name"] in ["list_entities", "get_entity", "create_entity"]}
+
+        for name, func in nested_funcs.items():
+            decorators = func.get("meta", {}).get("decorators", [])
+            assert len(decorators) >= 1, f"{name} should have decorator metadata"
+            assert decorators[0]["name"].startswith("router."), f"{name} decorator should be router.*"
+
+    def test_nested_function_without_decorator_not_extracted(self, tmp_path: Path) -> None:
+        """Nested helper functions without decorators should NOT be extracted.
+
+        We don't want to clutter the symbol list with private helper closures.
+        Only nested functions with decorators (indicating they serve as handlers) should be extracted.
+        """
+        py_file = tmp_path / "utils.py"
+        py_file.write_text(
+            "def outer():\n"
+            "    def inner_helper():\n"
+            "        return 42\n"
+            "\n"
+            "    return inner_helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        # Should only have the outer function, not the inner helper
+        assert "outer" in func_names
+        assert "inner_helper" not in func_names, "Undecorated nested function should not be extracted"
+
+    def test_nested_async_function_with_decorator_is_extracted(self, tmp_path: Path) -> None:
+        """Async nested functions with decorators should also be extracted."""
+        py_file = tmp_path / "async_routes.py"
+        py_file.write_text(
+            "from fastapi import APIRouter\n"
+            "\n"
+            "def get_async_router():\n"
+            "    router = APIRouter()\n"
+            "\n"
+            "    @router.get('/async')\n"
+            "    async def async_handler():\n"
+            "        return {'async': True}\n"
+            "\n"
+            "    return router\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        assert "get_async_router" in func_names
+        assert "async_handler" in func_names, "Async nested handler should be extracted"
+
+    def test_deeply_nested_decorated_function_is_extracted(self, tmp_path: Path) -> None:
+        """Decorated functions nested more than one level deep should be extracted."""
+        py_file = tmp_path / "deep.py"
+        py_file.write_text(
+            "def level1():\n"
+            "    def level2():\n"
+            "        @some_decorator\n"
+            "        def level3_decorated():\n"
+            "            pass\n"
+            "        return level3_decorated\n"
+            "    return level2()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        assert "level1" in func_names
+        assert "level3_decorated" in func_names, "Deeply nested decorated function should be extracted"
+        # level2 has no decorator, so should not be extracted
+        assert "level2" not in func_names
+
+
+class TestIfNameMainDetection:
+    """Tests for detecting Python's if __name__ == "__main__" pattern.
+
+    This structural pattern indicates a file is designed to be run as a script.
+    Detection enables entrypoint identification for Python modules that serve
+    as executable scripts.
+    """
+
+    def test_module_with_main_guard_has_concept(self, tmp_path: Path) -> None:
+        """Module with if __name__ == "__main__" should have main_guard concept."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "def main():\n"
+            "    print('Hello')\n"
+            "\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find the module symbol
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1, "Should have exactly one module symbol"
+
+        module = modules[0]
+        meta = module.get("meta") or {}
+        concepts = meta.get("concepts", [])
+        # Concept is now a dict: {"concept": "main_guard", "framework": "python"}
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" in concept_names, "Module with main guard should have main_guard concept"
+
+    def test_module_without_main_guard_has_no_concept(self, tmp_path: Path) -> None:
+        """Module without if __name__ == "__main__" should not have main_guard concept."""
+        # A file with module-level code but no main guard
+        py_file = tmp_path / "library.py"
+        py_file.write_text(
+            "def helper():\n"
+            "    return 42\n"
+            "\n"
+            "# Module-level code to ensure module symbol is created\n"
+            "x = helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find the module symbol
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        module = modules[0]
+        meta = module.get("meta") or {}
+        concepts = meta.get("concepts", [])
+        # Concept is now a dict: {"concept": "main_guard", "framework": "python"}
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names, "Module without main guard should not have main_guard concept"
+
+    def test_main_guard_with_double_quotes(self, tmp_path: Path) -> None:
+        """Main guard with double quotes should also be detected."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            'if __name__ == "__main__":\n'
+            '    print("Hello")\n'
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" in concept_names
+
+    def test_main_guard_with_reversed_comparison(self, tmp_path: Path) -> None:
+        """Main guard with reversed comparison should also be detected."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "if '__main__' == __name__:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" in concept_names
+
+    def test_if_with_non_compare_test_not_detected(self, tmp_path: Path) -> None:
+        """if statement with non-comparison test should not be detected as main guard."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "# Module with if using non-Compare test\n"
+            "if True:\n"
+            "    x = 1\n"
+            "\n"
+            "y = x + 1  # Module-level code to ensure module symbol exists\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names
+
+    def test_if_with_not_equal_comparison_not_detected(self, tmp_path: Path) -> None:
+        """if __name__ != "__main__" should not be detected as main guard."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "# Module with != comparison instead of ==\n"
+            "if __name__ != '__main__':\n"
+            "    x = 1\n"
+            "\n"
+            "y = 2  # Module-level code to ensure module symbol exists\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names
+
+    def test_if_with_chained_comparison_not_detected(self, tmp_path: Path) -> None:
+        """Chained comparison like 'if a == b == c' should not be detected as main guard."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "# Module with chained comparison\n"
+            "x = 1\n"
+            "if 0 < x < 10:\n"
+            "    y = x\n"
+            "\n"
+            "z = y + 1  # Module-level code to ensure module symbol exists\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        concept_names = [c.get("concept") if isinstance(c, dict) else c for c in concepts]
+        assert "main_guard" not in concept_names
 
 

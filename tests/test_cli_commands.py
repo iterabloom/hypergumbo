@@ -8,6 +8,7 @@ from hypergumbo.cli import (
     cmd_slice,
     cmd_catalog,
     cmd_sketch,
+    cmd_compact,
     main,
     _find_git_root,
     _print_output_summary,
@@ -2499,3 +2500,115 @@ def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) ->
         assert "slice.my_func.json" in out
     finally:
         os.chdir(original_cwd)
+
+
+def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
+    """Test that cmd_compact converts a behavior map to compact form."""
+    # Create a test behavior map with some symbols
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": "2026-01-25T00:00:00Z",
+        "nodes": [
+            {
+                "id": f"python:main.py:1-10:func{i}:function",
+                "name": f"func{i}",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 0},
+            }
+            for i in range(20)
+        ],
+        "edges": [
+            {
+                "id": f"edge:python:main.py:1-10:func{i}:function->python:main.py:1-10:func{i+1}:function",
+                "src": f"python:main.py:1-10:func{i}:function",
+                "dst": f"python:main.py:1-10:func{i+1}:function",
+                "edge_type": "calls",
+                "line": 5,
+                "confidence": 0.9,
+            }
+            for i in range(19)
+        ],
+        "entrypoints": [],
+        "analysis_runs": [],
+    }
+
+    input_path = tmp_path / "hg.json"
+    input_path.write_text(json.dumps(behavior_map))
+
+    output_path = tmp_path / "hg.compact.json"
+
+    args = FakeArgs()
+    args.input = str(input_path)
+    args.out = str(output_path)
+    args.max_symbols = 10
+    args.min_symbols = 5
+    args.coverage = 0.8
+    args.no_connectivity = False
+
+    result = cmd_compact(args)
+
+    assert result == 0
+    assert output_path.exists()
+
+    compact_map = json.loads(output_path.read_text())
+    assert compact_map["view"] == "compact"
+    # Should have limited number of nodes
+    assert len(compact_map["nodes"]) <= 10
+    # Should have nodes_summary with omitted info
+    assert "nodes_summary" in compact_map
+
+
+def test_cmd_compact_to_stdout(tmp_path: Path, capsys) -> None:
+    """Test that cmd_compact prints to stdout when no --out specified."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": "2026-01-25T00:00:00Z",
+        "nodes": [
+            {
+                "id": "python:main.py:1-10:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 0},
+            }
+        ],
+        "edges": [],
+        "entrypoints": [],
+        "analysis_runs": [],
+    }
+
+    input_path = tmp_path / "hg.json"
+    input_path.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.input = str(input_path)
+    args.out = None
+    args.max_symbols = 100
+    args.min_symbols = 10
+    args.coverage = 0.8
+    args.no_connectivity = False
+
+    result = cmd_compact(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    compact_map = json.loads(out)
+    assert compact_map["view"] == "compact"
+
+
+def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
+    """Test that cmd_compact returns error for non-existent file."""
+    args = FakeArgs()
+    args.input = str(tmp_path / "nonexistent.json")
+    args.out = None
+    args.max_symbols = 100
+    args.min_symbols = 10
+    args.coverage = 0.8
+    args.no_connectivity = False
+
+    result = cmd_compact(args)
+
+    assert result == 1

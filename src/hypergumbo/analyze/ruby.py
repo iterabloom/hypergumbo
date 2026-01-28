@@ -373,6 +373,11 @@ def _extract_rails_routes(
         }
         if controller_action:
             metadata["controller_action"] = controller_action
+        elif method_name in ("resources", "resource"):
+            # For resources :users, infer controller_action from resource name
+            # Rails convention: resources :users → UsersController#index (primary entry)
+            # This enables route-handler linking for resource routes
+            metadata["controller_action"] = f"{route_path}#index"
 
         # Create span
         span = Span(
@@ -394,34 +399,116 @@ def _extract_rails_routes(
         )
         contexts.append(ctx)
 
-        # Create route Symbol (kind="route" matches rails.yaml pattern)
+        # Create route Symbol(s) (kind="route" matches rails.yaml pattern)
         # This enables route detection and entrypoint detection for Rails apps
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
-        route_name = f"{http_method} {normalized_path}"
-        route_id = _make_symbol_id(
-            path=str(file_path),
-            start_line=span.start_line,
-            end_line=span.end_line,
-            name=route_name,
-            kind="route",
-        )
-        route_symbol = Symbol(
-            id=route_id,
-            name=route_name,
-            kind="route",
-            language="ruby",
-            path=str(file_path),
-            span=span,
-            meta={
-                "http_method": http_method,
-                "route_path": normalized_path,
-            },
-            origin=run.pass_id,
-            origin_run_id=run.execution_id,
-        )
-        if controller_action:
-            route_symbol.meta["controller_action"] = controller_action
-        route_symbols.append(route_symbol)
+
+        # For resources/resource, expand into all RESTful routes
+        # This enables route-handler linking for all controller actions
+        if method_name == "resources":
+            # resources :users creates 7 RESTful routes
+            restful_routes = [
+                ("GET", normalized_path, "index"),  # GET /users
+                ("GET", f"{normalized_path}/new", "new"),  # GET /users/new
+                ("POST", normalized_path, "create"),  # POST /users
+                ("GET", f"{normalized_path}/:id", "show"),  # GET /users/:id
+                ("GET", f"{normalized_path}/:id/edit", "edit"),  # GET /users/:id/edit
+                ("PATCH", f"{normalized_path}/:id", "update"),  # PATCH /users/:id
+                ("DELETE", f"{normalized_path}/:id", "destroy"),  # DELETE /users/:id
+            ]
+            # Controller name from resource (users → users)
+            controller_name = route_path
+            for http_meth, route_pth, action in restful_routes:
+                route_name = f"{http_meth} {route_pth}"
+                route_id = _make_symbol_id(
+                    path=str(file_path),
+                    start_line=span.start_line,
+                    end_line=span.end_line,
+                    name=route_name,
+                    kind="route",
+                )
+                route_symbol = Symbol(
+                    id=route_id,
+                    name=route_name,
+                    kind="route",
+                    language="ruby",
+                    path=str(file_path),
+                    span=span,
+                    meta={
+                        "http_method": http_meth,
+                        "route_path": route_pth,
+                        "controller_action": f"{controller_name}#{action}",
+                    },
+                    origin=run.pass_id,
+                    origin_run_id=run.execution_id,
+                )
+                route_symbols.append(route_symbol)
+        elif method_name == "resource":
+            # resource :profile creates 6 RESTful routes (no index)
+            # Singular resource uses singular path but plural controller
+            restful_routes = [
+                ("GET", normalized_path, "show"),  # GET /profile
+                ("GET", f"{normalized_path}/new", "new"),  # GET /profile/new
+                ("POST", normalized_path, "create"),  # POST /profile
+                ("GET", f"{normalized_path}/edit", "edit"),  # GET /profile/edit
+                ("PATCH", normalized_path, "update"),  # PATCH /profile
+                ("DELETE", normalized_path, "destroy"),  # DELETE /profile
+            ]
+            # Rails convention: resource :profile → ProfilesController (pluralized)
+            controller_name = f"{route_path}s"  # Simple pluralization
+            for http_meth, route_pth, action in restful_routes:
+                route_name = f"{http_meth} {route_pth}"
+                route_id = _make_symbol_id(
+                    path=str(file_path),
+                    start_line=span.start_line,
+                    end_line=span.end_line,
+                    name=route_name,
+                    kind="route",
+                )
+                route_symbol = Symbol(
+                    id=route_id,
+                    name=route_name,
+                    kind="route",
+                    language="ruby",
+                    path=str(file_path),
+                    span=span,
+                    meta={
+                        "http_method": http_meth,
+                        "route_path": route_pth,
+                        "controller_action": f"{controller_name}#{action}",
+                    },
+                    origin=run.pass_id,
+                    origin_run_id=run.execution_id,
+                )
+                route_symbols.append(route_symbol)
+        else:
+            # Regular HTTP method route (get, post, etc.)
+            route_name = f"{http_method} {normalized_path}"
+            route_id = _make_symbol_id(
+                path=str(file_path),
+                start_line=span.start_line,
+                end_line=span.end_line,
+                name=route_name,
+                kind="route",
+            )
+            route_symbol = Symbol(
+                id=route_id,
+                name=route_name,
+                kind="route",
+                language="ruby",
+                path=str(file_path),
+                span=span,
+                meta={
+                    "http_method": http_method,
+                    "route_path": normalized_path,
+                },
+                origin=run.pass_id,
+                origin_run_id=run.execution_id,
+            )
+            # Add controller_action to route symbol meta (from explicit to:)
+            if controller_action:
+                route_symbol.meta["controller_action"] = controller_action
+            route_symbols.append(route_symbol)
 
     return contexts, route_symbols
 
@@ -612,16 +699,19 @@ def _extract_edges_from_file(
                         # Check local symbols first
                         if callee_name in local_symbols:
                             callee = local_symbols[callee_name]
-                            edges.append(Edge.create(
-                                src=current_method.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="method_call",
-                                confidence=0.85,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+                            # Skip self-referential edges (e.g., logger method
+                            # calling Postal.logger where method name matches)
+                            if callee.id != current_method.id:
+                                edges.append(Edge.create(
+                                    src=current_method.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="method_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
                         # Check global symbols via resolver
                         else:
                             # Use require hints for disambiguation

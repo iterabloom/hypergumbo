@@ -1430,12 +1430,12 @@ Confidence scores reflect detection reliability, enabling meaningful ordering in
 
 | Tier | Confidence | Detection Method | Examples |
 |------|------------|------------------|----------|
-| ⬜ **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
+| 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
 | 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
-| ⬜ **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
-| ⬜ **Naming** | 0.70 | Heuristic patterns | Function named `main`, class named `*Controller` without annotations |
+| 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
+| 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
 
-Current implementation uses decorator/annotation patterns (0.95). Manifest-based and naming-based detection are planned additions.
+All four confidence tiers are now implemented. Naming-based detection serves as a fallback when no framework-specific patterns match.
 
 ### Scoring for Auto-Slice Entry Selection
 
@@ -1633,7 +1633,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 |-----------|------|---------|
 | Stop reflection prompt | `.agent/stop_reflect.md` | Checklist agents must complete before stopping |
 | Invariant ledger | `.agent/invariant-ledger.md` | Tracks discovered invariants and their fix status |
-| Loop sentinel | `.agent/LOOP` | Sentinel file; remove to allow agent to stop |
+| Loop sentinel | `.agent/LOOP` | Sentinel file; use `./scripts/loop-toggle` to control |
 | Hook adapters | `.agent/hooks/*/` | Per-tool adapter scripts (Claude Code, Gemini CLI, Cursor, Codex CLI) |
 
 ### How It Works
@@ -1652,13 +1652,14 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 - **Cursor:** `.agent/hooks/cursor/stop.sh` (stop hook with ASK output)
 - **Codex CLI:** `.agent/hooks/codex-cli/notify.sh` (notification only; limited enforcement)
 
-### Known Unfixed Root Causes
+### Invariant Status
 
-The invariant ledger tracks known unfixed root causes. As of v1.0.0:
+The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants. As of v1.1.0, all invariants (INV-001 through INV-006) are **FIXED**:
 
-- **INV-002:** `symbol_ref` gate at `framework_patterns.py:992-993` — Usage patterns for string-based handlers (Rails, Django string views) bypass the concept enrichment flow
+- **INV-002** (`symbol_ref` gate) was fixed via deferred resolution in `resolve_deferred_symbol_refs()`
+- **INV-004** (route-handler edges) was fixed via the `route_handler` linker
 
-See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full design rationale.
+See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
 ## Appendix A: Example output
 
@@ -2099,15 +2100,15 @@ Spec A implements basic type inference for method call resolution (see ADR-0006)
 
 Future improvements to AST-based type inference (without requiring language servers):
 
-| Feature | Value | Effort | Priority |
-|---------|-------|--------|----------|
-| **Type hierarchy** | High | Medium | 1st |
-| **Return type tracking** | Medium-High | Medium | 2nd |
-| **Field type tracking** | High | Medium | 3rd |
-| **Method-scoped tracking** | Low-Medium | Medium | 4th |
-| **Generic handling** | High | High | 5th |
+| Feature | Value | Effort | Priority | Status |
+|---------|-------|--------|----------|--------|
+| **Type hierarchy** | High | Medium | 1st | ✅ Done |
+| **Return type tracking** | Medium-High | Medium | 2nd | |
+| **Field type tracking** | High | Medium | 3rd | |
+| **Method-scoped tracking** | Low-Medium | Medium | 4th | |
+| **Generic handling** | High | High | 5th | |
 
-**Type hierarchy:** Use existing inheritance edges to resolve `interface.method()` → `ConcreteClass.method()`. Data already exists; just needs to be queried during method resolution. Benefits DI-heavy codebases (Spring, ASP.NET, Angular). Applicable to 10+ languages.
+**Type hierarchy:** ✅ Implemented via type hierarchy linker. Creates `dispatches_to` edges from parent/interface methods to overriding implementations in child classes. Currently works with Java (which creates `extends`/`implements` edges); other languages need inheritance edge creation for full benefit.
 
 **Return type tracking:** Track `func() -> ReturnType` annotations; infer type when `var = func()`. Natural extension of two-pass analysis. Applicable to all typed languages.
 

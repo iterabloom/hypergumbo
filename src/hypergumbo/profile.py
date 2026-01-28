@@ -651,6 +651,9 @@ def _detect_js_frameworks(repo_root: Path) -> list[str]:
         try:
             content = package_json.read_text(errors="ignore")
             data = json.loads(content)
+            # Skip non-dict package.json files (e.g., string or array at top level)
+            if not isinstance(data, dict):
+                continue
             deps.update(data.get("dependencies", {}).keys())
             deps.update(data.get("devDependencies", {}).keys())
         except (OSError, IOError, json.JSONDecodeError):
@@ -717,6 +720,9 @@ def _detect_php_frameworks(repo_root: Path) -> list[str]:
         try:
             content = composer_json.read_text(errors="ignore")
             data = json.loads(content)
+            # Skip non-dict composer.json files
+            if not isinstance(data, dict):
+                continue
             deps.update(data.get("require", {}).keys())
             deps.update(data.get("require-dev", {}).keys())
         except (OSError, IOError, json.JSONDecodeError):

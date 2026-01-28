@@ -24,9 +24,9 @@ The project is transitioning from a manually-driven development workflow to an *
 |--------|--------|-------|
 | **Hypergumbo Core** | ✅ Implemented | 67 language analyzers, YAML patterns, all CLI commands |
 | **Bakeoff Infrastructure** | ✅ Implemented | `scripts/bakeoff` with all subcommands, `bakeoff-reflect`, `hypergumbo_diag.py` |
-| **Autonomous Governance** | ⚠️ Partial | `AUTONOMOUS_MODE.txt` works; methodology in AGENTS.md; hook enforcement NOT built |
+| **Autonomous Governance** | ✅ Implemented | Hook adapters for Claude Code, Gemini CLI, Cursor, Codex CLI; invariant ledger; `./scripts/loop-toggle` |
 
-> **Reader Note (Jan 24, 2026):** This document was reviewed against the actual codebase. Sections marked with ⚠️ describe aspirational architecture that would need to be built. Sections marked with ✅ describe implemented functionality.
+> **Reader Note (Jan 28, 2026):** This document was updated to reflect full implementation of the autonomous governance system. All systems are now implemented. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the governance design.
 
 ---
 
@@ -483,15 +483,16 @@ Until one of these happens, we're playing whack-a-mole.
 
 ## Part 4: The Autonomous Agent Governance System
 
-> **⚠️ IMPLEMENTATION STATUS: MIXED**
+> **✅ IMPLEMENTATION STATUS: COMPLETE (Jan 28, 2026)**
 >
-> This section describes a system that is **partially implemented**:
+> This system is **fully implemented**:
 > - ✅ `AUTONOMOUS_MODE.txt` gate exists and works
 > - ✅ `AGENTS.md` documents the methodology
 > - ✅ `bakeoff loop` provides automated cycling
-> - ❌ Hook-based reflection enforcement does not exist
-> - ❌ Invariant ledger does not exist as a structured artifact
-> - ❌ Vendor-agnostic hook adapters do not exist
+> - ✅ Hook-based reflection enforcement via `.agent/hooks/`
+> - ✅ Invariant ledger at `.agent/invariant-ledger.md`
+> - ✅ Vendor-agnostic hook adapters for Claude Code, Gemini CLI, Cursor, Codex CLI
+> - ✅ `./scripts/loop-toggle` for easy on/off control
 
 ### 4.1 Vision
 
@@ -530,9 +531,9 @@ The core insight: **A bug is evidence of a violated invariant.** The agent's job
 
 ### 4.3 Governor Protocol (Stop-Hook Reflection Prompt)
 
-> **⚠️ IMPLEMENTATION STATUS: PARTIALLY EXISTS**
+> **✅ IMPLEMENTATION STATUS: COMPLETE (Jan 27, 2026)**
 >
-> The *methodology* described below exists in `AGENTS.md` under "Autonomous Development Mode Stipulations" and "Premature Stopping Prevention". However, there is no *automated enforcement*—agents are expected to follow these guidelines voluntarily. The structured stop-hook injection described here would need to be built.
+> The methodology is documented in `AGENTS.md` and automated enforcement is implemented via hook adapters in `.agent/hooks/`. The reflection prompt at `.agent/stop_reflect.md` is injected when agents try to stop in autonomous mode.
 
 When an AI agent stops, the following reflection protocol is enforced:
 
@@ -579,64 +580,59 @@ AFTER ACTION (close the loop)
 
 ### 4.4 Vendor-Agnostic Control Surface
 
-> **⚠️ IMPLEMENTATION STATUS: ASPIRATIONAL**
+> **✅ IMPLEMENTATION STATUS: COMPLETE (Jan 27, 2026)**
 >
-> This section describes a *target architecture* that does not yet exist. Only `AUTONOMOUS_MODE.txt` is implemented. The hook integrations, `.agent/` directory, and control files described below would need to be built.
+> This system is fully implemented. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the design rationale.
 
-The governance system is designed to work across multiple AI coding tools. Each tool has different hook mechanisms that would need custom integration:
+The governance system works across multiple AI coding tools via adapter scripts in `.agent/hooks/`:
 
-| Tool | Hook Mechanism | Actual API (verified Jan 2026) | Integration Status |
-|------|----------------|-------------------------------|-------------------|
-| Claude Code | `Stop` hook | Returns JSON with `decision` (approve/block), `reason`, `continue` fields. Supports `type: "prompt"` for LLM-based evaluation. | **NOT BUILT** |
-| Gemini CLI | `AfterAgent` hook | Executes after agent loop completes. Uses `type: "command"` with shell scripts. Hooks are experimental. | **NOT BUILT** |
-| Cursor | `stop` hook | Configured in `.cursor/hooks.json`. Can output `ASK` to pause for approval. Known bugs in v2.4.7. | **NOT BUILT** |
-| Codex CLI | Notification hook | Limited to `notify = [...]` in config.toml. No comprehensive hook system—community requesting this feature. | **NOT BUILT** |
+| Tool | Hook Mechanism | Adapter Script | Integration Status |
+|------|----------------|----------------|-------------------|
+| Claude Code | `Stop` hook | `.agent/hooks/claude-code/stop.sh` | ✅ **IMPLEMENTED** |
+| Gemini CLI | `AfterAgent` hook | `.agent/hooks/gemini-cli/after-agent.sh` | ✅ **IMPLEMENTED** |
+| Cursor | `stop` hook | `.agent/hooks/cursor/stop.sh` | ✅ **IMPLEMENTED** |
+| Codex CLI | Notification hook | `.agent/hooks/codex-cli/notify.sh` | ✅ **IMPLEMENTED** (limited) |
 
-**Sources:**
-- [Claude Code Hooks Reference](https://docs.claude.com/en/docs/claude-code/hooks)
-- [Gemini CLI Hooks](https://geminicli.com/docs/hooks/)
-- [Cursor Hooks Docs](https://cursor.com/docs/agent/hooks)
-- [Codex CLI Hooks Discussion](https://github.com/openai/codex/discussions/2150)
-
-**Control files (what exists vs what's planned):**
+**Control files:**
 
 | File | Status | Purpose |
 |------|--------|---------|
 | `AUTONOMOUS_MODE.txt` | ✅ **EXISTS** | Contains "TRUE" or "FALSE" to control loop continuation |
-| `.agent/stop_reflect.md` | ❌ **NOT BUILT** | Would contain the reflection prompt injected on every stop |
-| `.agent/LOOP` | ❌ **NOT BUILT** | Would be sentinel file (existence = continue looping) |
+| `.agent/stop_reflect.md` | ✅ **EXISTS** | Reflection prompt injected on every stop attempt |
+| `.agent/LOOP` | ✅ **EXISTS** | Sentinel file (existence = continue looping) |
+| `.agent/invariant-ledger.md` | ✅ **EXISTS** | Tracks discovered invariants and their fix status |
 
-**To make this work, each tool would need:**
-1. A hook script that reads `AUTONOMOUS_MODE.txt` and `.agent/stop_reflect.md`
-2. Logic to inject the reflection prompt into the agent's context
-3. A way to signal "continue" vs "stop" back to the tool
+**Convenience script:**
+
+```bash
+./scripts/loop-toggle         # Toggle autonomous mode on/off
+./scripts/loop-toggle status  # Show current state
+```
+
+This manages both `AUTONOMOUS_MODE.txt` and `.agent/LOOP` together.
 
 ### 4.5 Invariant Ledger
 
-> **⚠️ IMPLEMENTATION STATUS: ASPIRATIONAL**
+> **✅ IMPLEMENTATION STATUS: COMPLETE (Jan 28, 2026)**
 >
-> This ledger format does not exist as a concrete artifact. Currently, invariants are documented informally in lab notebooks (`~/hypergumbo_lab_notebook/`) and CHANGELOG.md. The structured ledger below is a *proposed format* that would need to be created.
+> The invariant ledger exists at `.agent/invariant-ledger.md` and tracks all discovered invariants. As of v1.1.0, all invariants (INV-001 through INV-006) are **FIXED**.
 
-A persistent artifact tracking discovered invariants:
+The ledger tracks:
 
-```markdown
-# Invariant Ledger
+| Invariant | Statement | Status |
+|-----------|-----------|--------|
+| INV-001 | Every `calls` edge has a non-null caller symbol | ✅ FIXED |
+| INV-002 | Usage patterns become concepts on nodes | ✅ FIXED (deferred resolution) |
+| INV-003 | Nested decorated functions must be extracted | ✅ FIXED |
+| INV-004 | Routes have edges to handler functions | ✅ FIXED (route_handler linker) |
+| INV-005 | Edge IDs must be unique | ✅ FIXED |
+| INV-006 | Rails resource routes have handler metadata | ✅ FIXED (RESTful expansion) |
 
-## INV-001: Call Attribution Completeness
-- **Statement:** Every emitted `calls` edge has a non-null caller symbol
-- **Violated by:** JS/TS arrow function special-case early-return
-- **Depends on:** Call graph density, entrypoint scoring, slicing
-- **Guards:** Tests in test_js_ts.py, test_kotlin.py, test_ruby.py, etc.
-- **Regression tests:** TestCallbackCallAttribution (13 tests)
+The ledger also documents **meta-invariants** — higher-level principles that unify specific invariants:
 
-## INV-002: Usage-to-Concept Flow
-- **Statement:** Usage patterns extracted by analyzers become concepts on nodes
-- **Violated by:** `symbol_ref` gate in framework_patterns.py Phase 3
-- **Depends on:** Route detection, entrypoint detection, slicing
-- **Guards:** ⚠️ WORKAROUND — Route symbols created directly at analyzer level, bypassing UsageContext flow
-- **Regression tests:** test_ruby.py::test_rails_routes
-- **Status:** ROOT CAUSE UNFIXED — gate remains at `framework_patterns.py:992-993`
-```
+- **META-001:** Metadata must become graph structure
+- **META-002:** Extraction completeness
+- **META-003:** Data integrity
 
 ### 4.6 Progress Guardrails
 
@@ -710,19 +706,19 @@ Implementation: Streaming JSON output + aggressive cleanup of intermediate data 
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| **`symbol_ref` gate** | UsageContexts without symbol references are skipped in framework pattern matching | ⚠️ **UNFIXED** — workarounds exist per-framework (see Part 3) |
+| **`symbol_ref` gate** | UsageContexts without symbol references are skipped in framework pattern matching | ✅ **FIXED** — deferred resolution in `resolve_deferred_symbol_refs()` (see INV-002) |
 | Re-export resolution incomplete | Imports through re-exporting modules may not resolve | ADR-0007 import tracking (phases 1-3A complete) |
 | No type resolution in Spec A | Method calls on untyped variables may not resolve | Planned for Spec B with language servers |
 | Dynamic dispatch not captured | Reflection, eval(), dynamic imports missed | Logged in `limits.not_captured[]` |
 | No incremental analysis | Full re-analysis on every run | Caching at file level |
 
-> **Note:** The `symbol_ref` gate at `framework_patterns.py:992-993` is the root cause of multiple "fixed" issues (Rails routes, JS/TS anonymous handlers, library exports). Each "fix" works around the gate rather than removing it. New frameworks with string-based handler references will hit the same wall.
+> **Note (Updated Jan 28, 2026):** The `symbol_ref` gate issue (INV-002) was fixed via deferred resolution. After all analyzers complete, `resolve_deferred_symbol_refs()` uses the complete symbol table to resolve string-based handler references before enrichment runs.
 
 ### 6.2 Bakeoff Limitations
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| Library entrypoints partially detected | Anonymous exports, re-exports still missed | PR #535 covers named exports; `symbol_ref` gate blocks others |
+| Library entrypoints partially detected | Anonymous exports, re-exports still missed | PR #535 covers named exports; deferred resolution helps but some edge cases remain |
 | Firmware/driver entry points | No main(), linker-defined entry | Expected; use `--entry <symbol>` |
 | Spec-only repos | No analyzable code | Exclude from cohorts |
 
@@ -802,10 +798,7 @@ Implementation: Streaming JSON output + aggressive cleanup of intermediate data 
 4. Test with representative repositories
 5. Verify routes and entrypoints are detected
 
-> **⚠️ `symbol_ref` Gate Warning:** If the framework uses string-based handler references (e.g., `'controller#action'`, `'module.handler'`) or anonymous inline handlers, the YAML pattern will match but the UsageContext will be skipped by the gate at `framework_patterns.py:992-993`. You'll need either:
-> - A workaround in the analyzer (create Symbol objects directly, like Rails), or
-> - Position-based symbol lookup (like JS/TS anonymous functions), or
-> - Fix the gate itself (the structural solution)
+> **Note (Updated Jan 28, 2026):** The `symbol_ref` gate issue is now handled by deferred resolution (`resolve_deferred_symbol_refs()`). When adding framework patterns for string-based handler references (e.g., `'controller#action'`, `'module.handler'`), store resolution hints in the UsageContext metadata (e.g., `view_name`, `controller_action`) and the deferred resolution phase will attempt to resolve them after all analyzers complete.
 
 ---
 

@@ -1,0 +1,39 @@
+# Naming-based heuristic patterns (ADR-0003 v1.4.x)
+#
+# These patterns detect entrypoints by naming conventions alone, without
+# requiring explicit annotations or base class inheritance. This is the
+# lowest-confidence tier (0.70) because:
+# - Naming can be misleading (TestController, ControllerHelper)
+# - Some projects use different conventions
+# - Framework-specific detection is more reliable
+#
+# The patterns here serve as a fallback when no framework-specific
+# detection matches. The deduplication in entrypoints.py ensures
+# symbols with explicit annotations won't get duplicate entrypoints.
+
+id: naming-conventions
+language: multi
+
+patterns:
+  # ====== Controller-like classes ======
+  # Classes ending in "Controller" are often HTTP controllers
+  # Exclude test/mock/helper patterns to reduce false positives
+  - concept: controller_by_name
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*Controller$"
+    symbol_kind: "^class$"
+    # Note: This pattern intentionally does NOT filter by language
+    # because controller naming is common across Java, Python, Ruby, PHP, etc.
+
+  # ====== Handler-like classes ======
+  # Classes ending in "Handler" may be request handlers
+  - concept: handler_by_name
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*Handler$"
+    symbol_kind: "^class$"
+
+  # ====== Service-like classes ======
+  # Classes ending in "Service" are often business logic entry points
+  - concept: service_by_name
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*Service$"
+    symbol_kind: "^class$"
+
+linkers: []

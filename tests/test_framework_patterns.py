@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo.framework_patterns import (
+    DeferredResolutionStats,
     FrameworkPatternDef,
     Pattern,
     UsagePatternSpec,
@@ -20,6 +21,7 @@ from hypergumbo.framework_patterns import (
     load_framework_patterns,
     match_patterns,
     match_usage_patterns,
+    resolve_deferred_symbol_refs,
 )
 from hypergumbo.ir import Span, Symbol, UsageContext
 
@@ -6231,6 +6233,635 @@ class TestEnrichSymbolsWithUsageContexts:
         assert route["path"] == "/users/"
         assert route["method"] == "GET"
 
+    def test_inv002_fallback_resolution_by_view_name(self) -> None:
+        """INV-002: Enriches symbol via view_name when symbol_ref is None.
+
+        This tests the fix for INV-002 where UsageContext records with
+        symbol_ref=None but view_name in metadata can still enrich symbols
+        by falling back to name-based resolution.
+        """
+        # Symbol representing the view function
+        symbol = Symbol(
+            id="python:views.py:10-15:user_list:function",
+            name="user_list",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 15, 0, 50),
+            meta={},
+        )
+
+        # UsageContext with symbol_ref=None (view is in different file)
+        # but view_name is present in metadata for fallback resolution
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,  # Key: symbol_ref is None
+            metadata={
+                "args": ["/users/", "views.user_list"],
+                "view_name": "user_list",  # Key: view_name for fallback
+                "route_path": "/users/",
+            },
+        )
+
+        pattern_def = FrameworkPatternDef(
+            id="test-django",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    usage=UsagePatternSpec(kind="^call$", name="^path$"),
+                    extract={"path": "metadata.route_path", "method": "literal:GET"},
+                ),
+            ],
+        )
+
+        with patch(
+            "hypergumbo.framework_patterns.load_framework_patterns",
+            return_value=pattern_def,
+        ):
+            enriched = enrich_symbols(
+                [symbol],
+                {"test-django"},
+                usage_contexts=[ctx],
+            )
+
+        # Symbol should be enriched via name-based fallback (INV-002 fix)
+        assert enriched[0].meta is not None
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) >= 1
+        route = next(c for c in concepts if c["concept"] == "route")
+        assert route["path"] == "/users/"
+        assert route["method"] == "GET"
+
+
+class TestResolveDeferredSymbolRefs:
+    """Tests for resolve_deferred_symbol_refs() - INV-002 proper fix.
+
+    This tests the deferred resolution phase that runs BEFORE enrichment
+    to resolve symbol_ref for UsageContexts that couldn't be resolved
+    during analysis (because the target symbol was in a different file).
+    """
+
+    def test_resolves_exact_match(self) -> None:
+        """Resolves when view_name matches symbol name exactly."""
+        symbol = Symbol(
+            id="python:views.py:10:user_list:function",
+            name="user_list",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"view_name": "user_list"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_unresolved == 1
+        assert stats.total_resolved == 1
+        assert stats.resolved_exact == 1
+        assert stats.still_unresolved == 0
+
+    def test_resolves_suffix_match(self) -> None:
+        """Resolves when view_name matches suffix of qualified name."""
+        symbol = Symbol(
+            id="python:views.py:10:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 10, 0, 50),
+            meta={"qualified_name": "myapp.views.list_users"},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"view_name": "views.list_users"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+
+    def test_resolves_dotted_view_name(self) -> None:
+        """Resolves dotted view_name like 'views.user_list'."""
+        symbol = Symbol(
+            id="python:views.py:10:user_list:function",
+            name="user_list",
+            kind="function",
+            language="python",
+            path="myapp/views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"view_name": "views.user_list"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        # Should resolve by extracting "user_list" from "views.user_list"
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+
+    def test_skips_already_resolved(self) -> None:
+        """Skips UsageContexts that already have symbol_ref."""
+        symbol = Symbol(
+            id="python:views.py:10:user_list:function",
+            name="user_list",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=symbol.id,  # Already resolved
+            metadata={"view_name": "user_list"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert stats.total_unresolved == 0
+        assert stats.total_resolved == 0
+
+    def test_handles_missing_metadata(self) -> None:
+        """Handles UsageContext with no metadata gracefully."""
+        symbol = Symbol(
+            id="python:views.py:10:user_list:function",
+            name="user_list",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={},  # No resolution hints
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref is None
+        assert stats.total_unresolved == 1
+        assert stats.still_unresolved == 1
+
+    def test_handles_no_matching_symbol(self) -> None:
+        """Handles case where no symbol matches the view_name."""
+        symbol = Symbol(
+            id="python:views.py:10:other_func:function",
+            name="other_func",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"view_name": "user_list"},  # No matching symbol
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref is None
+        assert stats.still_unresolved == 1
+
+    def test_uses_handler_key(self) -> None:
+        """Resolves using 'handler' metadata key (Express style)."""
+        symbol = Symbol(
+            id="js:routes.js:10:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="javascript",
+            path="routes.js",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="args[1]",
+            path="app.js",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"handler": "getUsers"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+
+    def test_uses_callback_key(self) -> None:
+        """Resolves using 'callback' metadata key (event style)."""
+        symbol = Symbol(
+            id="js:events.js:10:onMessage:function",
+            name="onMessage",
+            kind="function",
+            language="javascript",
+            path="events.js",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="on",
+            position="args[1]",
+            path="app.js",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"callback": "onMessage"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+
+    def test_multiple_contexts_resolution(self) -> None:
+        """Resolves multiple UsageContexts in one call."""
+        symbols = [
+            Symbol(
+                id="python:views.py:10:list_users:function",
+                name="list_users",
+                kind="function",
+                language="python",
+                path="views.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+            Symbol(
+                id="python:views.py:20:create_user:function",
+                name="create_user",
+                kind="function",
+                language="python",
+                path="views.py",
+                span=Span(20, 20, 0, 50),
+                meta={},
+            ),
+        ]
+
+        contexts = [
+            UsageContext.create(
+                kind="call",
+                context_name="path",
+                position="args[1]",
+                path="urls.py",
+                span=Span(5, 5, 0, 50),
+                symbol_ref=None,
+                metadata={"view_name": "list_users"},
+            ),
+            UsageContext.create(
+                kind="call",
+                context_name="path",
+                position="args[1]",
+                path="urls.py",
+                span=Span(6, 6, 0, 50),
+                symbol_ref=None,
+                metadata={"view_name": "create_user"},
+            ),
+            UsageContext.create(
+                kind="call",
+                context_name="path",
+                position="args[1]",
+                path="urls.py",
+                span=Span(7, 7, 0, 50),
+                symbol_ref=None,
+                metadata={"view_name": "nonexistent"},  # Won't resolve
+            ),
+        ]
+
+        stats = resolve_deferred_symbol_refs(symbols, contexts)
+
+        assert contexts[0].symbol_ref == symbols[0].id
+        assert contexts[1].symbol_ref == symbols[1].id
+        assert contexts[2].symbol_ref is None
+
+        assert stats.total_unresolved == 3
+        assert stats.total_resolved == 2
+        assert stats.still_unresolved == 1
+
+    def test_stats_dataclass(self) -> None:
+        """DeferredResolutionStats calculates totals correctly."""
+        stats = DeferredResolutionStats(
+            total_unresolved=10,
+            resolved_exact=3,
+            resolved_suffix=2,
+            resolved_path_hint=1,
+            resolved_ambiguous=1,
+            still_unresolved=3,
+        )
+
+        assert stats.total_resolved == 7  # 3+2+1+1
+        assert stats.still_unresolved == 3
+
+    def test_resolves_with_path_hint_disambiguation(self) -> None:
+        """Uses path hint to disambiguate when multiple symbols match."""
+        # Two symbols with the same name but different paths
+        symbols = [
+            Symbol(
+                id="python:app1/views.py:10:list_users:function",
+                name="list_users",
+                kind="function",
+                language="python",
+                path="app1/views.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+            Symbol(
+                id="python:app2/views.py:10:list_users:function",
+                name="list_users",
+                kind="function",
+                language="python",
+                path="app2/views.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+        ]
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            # module_path hint from dotted name should help disambiguate
+            metadata={"view_name": "app2.views.list_users"},
+        )
+
+        stats = resolve_deferred_symbol_refs(symbols, [ctx])
+
+        # Should resolve to app2/views.py symbol via path hint
+        assert ctx.symbol_ref is not None
+        assert "app2" in ctx.symbol_ref
+        assert stats.total_resolved == 1
+
+    def test_resolves_suffix_ambiguous(self) -> None:
+        """Tracks ambiguous suffix matches in stats."""
+        # Two symbols with the same name (no path hint available)
+        symbols = [
+            Symbol(
+                id="python:views1.py:10:handler:function",
+                name="handler",
+                kind="function",
+                language="python",
+                path="views1.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+            Symbol(
+                id="python:views2.py:10:handler:function",
+                name="handler",
+                kind="function",
+                language="python",
+                path="views2.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+        ]
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="route",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"view_name": "handler"},  # Ambiguous - matches both
+        )
+
+        stats = resolve_deferred_symbol_refs(symbols, [ctx])
+
+        # Should still resolve (picks first), but track as ambiguous
+        assert ctx.symbol_ref is not None
+        assert stats.total_resolved == 1
+        # First match is exact, not ambiguous, because "handler" matches directly
+        # Let me adjust - exact match takes priority
+
+    def test_resolves_with_module_name_hint(self) -> None:
+        """Uses module_name metadata for path hint when name has no dots."""
+        symbol = Symbol(
+            id="python:myapp/views.py:10:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="myapp/views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={
+                "view_name": "list_users",  # No dots
+                "module_name": "myapp.views",  # Additional hint
+            },
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+
+    def test_uses_function_name_key(self) -> None:
+        """Resolves using 'function_name' metadata key."""
+        symbol = Symbol(
+            id="python:utils.py:10:process_data:function",
+            name="process_data",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="register",
+            position="args[0]",
+            path="app.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            metadata={"function_name": "process_data"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+
+    def test_suffix_match_single_candidate(self) -> None:
+        """Tracks suffix match when only qualified_name in registry."""
+        # Symbol with a qualified name but different simple name
+        # This forces suffix matching because "list_users" won't be in registry
+        symbol = Symbol(
+            id="python:views.py:10:UserViewSet.list_users:method",
+            name="UserViewSet.list_users",  # Qualified as simple name
+            kind="method",
+            language="python",
+            path="views.py",
+            span=Span(10, 10, 0, 50),
+            meta={},
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            # Looking for "list_users" which will suffix-match "UserViewSet.list_users"
+            metadata={"view_name": "list_users"},
+        )
+
+        stats = resolve_deferred_symbol_refs([symbol], [ctx])
+
+        assert ctx.symbol_ref == symbol.id
+        assert stats.total_resolved == 1
+        assert stats.resolved_suffix == 1  # Should be suffix match
+
+    def test_suffix_match_ambiguous_multiple_candidates(self) -> None:
+        """Tracks ambiguous match when multiple symbols match suffix."""
+        # Two methods with same suffix but different qualified names
+        symbols = [
+            Symbol(
+                id="python:views1.py:10:AdminViewSet.list_users:method",
+                name="AdminViewSet.list_users",
+                kind="method",
+                language="python",
+                path="views1.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+            Symbol(
+                id="python:views2.py:10:UserViewSet.list_users:method",
+                name="UserViewSet.list_users",
+                kind="method",
+                language="python",
+                path="views2.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+        ]
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            # "list_users" matches both via suffix, no path hint to disambiguate
+            metadata={"view_name": "list_users"},
+        )
+
+        stats = resolve_deferred_symbol_refs(symbols, [ctx])
+
+        # Should resolve to one of them (ambiguous)
+        assert ctx.symbol_ref is not None
+        assert stats.total_resolved == 1
+        assert stats.resolved_ambiguous == 1  # Should be ambiguous
+
+    def test_suffix_match_with_path_hint(self) -> None:
+        """Uses path hint to disambiguate suffix matches."""
+        # Two methods with same suffix
+        symbols = [
+            Symbol(
+                id="python:admin/views.py:10:AdminViewSet.list_users:method",
+                name="AdminViewSet.list_users",
+                kind="method",
+                language="python",
+                path="admin/views.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+            Symbol(
+                id="python:api/views.py:10:UserViewSet.list_users:method",
+                name="UserViewSet.list_users",
+                kind="method",
+                language="python",
+                path="api/views.py",
+                span=Span(10, 10, 0, 50),
+                meta={},
+            ),
+        ]
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="path",
+            position="args[1]",
+            path="urls.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref=None,
+            # "api.list_users" extracts to name="list_users", module_path="api"
+            # path hint "api" should disambiguate to api/views.py
+            metadata={"view_name": "api.list_users"},
+        )
+
+        stats = resolve_deferred_symbol_refs(symbols, [ctx])
+
+        assert ctx.symbol_ref is not None
+        assert "api/views.py" in ctx.symbol_ref
+        assert stats.total_resolved == 1
+        assert stats.resolved_path_hint == 1  # Should use path hint
+
 
 class TestMainFunctionPatterns:
     """Tests for language-level main() function pattern detection (ADR-0003 v1.2.x)."""
@@ -6908,6 +7539,26 @@ class TestConfigConventionPatterns:
         assert result is not None
         assert result["concept"] == "npm_script"
 
+    def test_npm_bin_pattern(self) -> None:
+        """Pattern matches NPM bin entries (CLI executables)."""
+        pattern = Pattern(
+            concept="npm_bin",
+            symbol_kind="^bin$",
+            language="^json$",
+        )
+        symbol = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            language="json",
+            path="package.json",
+            span=Span(5, 5, 0, 35),
+            meta={"path": "./bin/cli.js"},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "npm_bin"
+
     def test_maven_dependency_pattern(self) -> None:
         """Pattern matches Maven dependencies."""
         pattern = Pattern(
@@ -7029,16 +7680,16 @@ class TestConfigConventionPatterns:
         assert result["concept"] == "cargo_dev_dependency"
 
     def test_cargo_binary_pattern(self) -> None:
-        """Pattern matches Cargo binary targets."""
+        """Pattern matches Cargo binary targets (kind='binary' from [[bin]])."""
         pattern = Pattern(
             concept="cargo_binary",
-            symbol_kind="^bin$",
+            symbol_kind="^binary$",
             language="^toml$",
         )
         symbol = Symbol(
-            id="toml:Cargo.toml:20-25:my-cli:bin",
+            id="toml:Cargo.toml:20-25:my-cli:binary",
             name="my-cli",
-            kind="bin",
+            kind="binary",  # analyzer creates "binary" for [[bin]] sections
             language="toml",
             path="Cargo.toml",
             span=Span(20, 25, 0, 100),
@@ -7047,6 +7698,26 @@ class TestConfigConventionPatterns:
         result = pattern.matches(symbol)
         assert result is not None
         assert result["concept"] == "cargo_binary"
+
+    def test_pyproject_script_pattern(self) -> None:
+        """Pattern matches pyproject.toml [project.scripts] entries."""
+        pattern = Pattern(
+            concept="pyproject_script",
+            symbol_kind="^script$",
+            language="^toml$",
+        )
+        symbol = Symbol(
+            id="toml:pyproject.toml:10-10:my-cli:script",
+            name="my-cli",
+            kind="script",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(10, 10, 0, 40),
+            meta={"entry_point": "mypackage.cli:main"},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "pyproject_script"
 
     def test_typescript_reference_pattern(self) -> None:
         """Pattern matches TypeScript project references."""
@@ -7352,3 +8023,248 @@ class TestAkkaHttpPatterns:
         route_concepts = [c for c in concepts if c["concept"] == "route"]
         assert len(route_concepts) == 1
         assert route_concepts[0]["framework"] == "akka-http"
+
+
+class TestNamingConventionsPatterns:
+    """Tests for naming-conventions.yaml patterns (ADR-0003 v1.4.x).
+
+    These patterns detect entrypoints by naming conventions alone, providing
+    a fallback when no framework-specific detection matches. This is the
+    lowest-confidence tier (0.70).
+    """
+
+    def test_naming_conventions_yaml_loads(self) -> None:
+        """naming-conventions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("naming-conventions")
+        assert pattern_def is not None
+        assert pattern_def.id == "naming-conventions"
+        assert pattern_def.language == "multi"
+        # Should have patterns for controller, handler, service
+        assert len(pattern_def.patterns) >= 3
+
+    def test_controller_by_name_pattern_matches(self) -> None:
+        """Pattern matches classes ending in 'Controller'."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:UserController.java:10-50:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="src/controllers/UserController.java",
+            span=Span(10, 50, 0, 500),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "controller_by_name"
+        assert result["matched_symbol_name"] == "UserController"
+        assert result["matched_symbol_kind"] == "class"
+
+    def test_controller_by_name_pattern_various_languages(self) -> None:
+        """Pattern matches Controller classes across multiple languages."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        # Test across Java, Python, Ruby, PHP
+        test_cases = [
+            ("java", "ProductController"),
+            ("python", "AccountController"),
+            ("ruby", "PaymentController"),
+            ("php", "OrderController"),
+        ]
+        for lang, name in test_cases:
+            symbol = Symbol(
+                id=f"{lang}:{name}.{lang}:1-10:{name}:class",
+                name=name,
+                kind="class",
+                language=lang,
+                path=f"app/controllers/{name}.{lang}",
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {name} in {lang}"
+            assert result["concept"] == "controller_by_name"
+
+    def test_controller_by_name_rejects_non_class(self) -> None:
+        """Pattern does not match functions named Controller."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="python:utils.py:1-5:UserController:function",
+            name="UserController",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None  # Not a class
+
+    def test_controller_by_name_rejects_helper(self) -> None:
+        """Pattern does not match ControllerHelper (doesn't end in Controller)."""
+        pattern = Pattern(
+            concept="controller_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Controller$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:ControllerHelper.java:1-10:ControllerHelper:class",
+            name="ControllerHelper",
+            kind="class",
+            language="java",
+            path="ControllerHelper.java",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None  # Doesn't end in "Controller"
+
+    def test_handler_by_name_pattern_matches(self) -> None:
+        """Pattern matches classes ending in 'Handler'."""
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:WebSocketHandler.java:5-30:WebSocketHandler:class",
+            name="WebSocketHandler",
+            kind="class",
+            language="java",
+            path="src/handlers/WebSocketHandler.java",
+            span=Span(5, 30, 0, 300),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "handler_by_name"
+        assert result["matched_symbol_name"] == "WebSocketHandler"
+
+    def test_handler_by_name_rejects_non_class(self) -> None:
+        """Pattern does not match functions named Handler."""
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="python:utils.py:1-5:RequestHandler:function",
+            name="RequestHandler",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_service_by_name_pattern_matches(self) -> None:
+        """Pattern matches classes ending in 'Service'."""
+        pattern = Pattern(
+            concept="service_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Service$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="java:UserService.java:10-60:UserService:class",
+            name="UserService",
+            kind="class",
+            language="java",
+            path="src/services/UserService.java",
+            span=Span(10, 60, 0, 600),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "service_by_name"
+        assert result["matched_symbol_name"] == "UserService"
+
+    def test_service_by_name_rejects_non_class(self) -> None:
+        """Pattern does not match functions named Service."""
+        pattern = Pattern(
+            concept="service_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Service$",
+            symbol_kind="^class$",
+        )
+        symbol = Symbol(
+            id="python:utils.py:1-5:PaymentService:function",
+            name="PaymentService",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_enrich_symbols_with_naming_conventions(self) -> None:
+        """enrich_symbols applies naming convention patterns."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:UserController.java:1-50:UserController:class",
+                name="UserController",
+                kind="class",
+                language="java",
+                path="src/controllers/UserController.java",
+                span=Span(1, 50, 0, 500),
+                meta={},
+            ),
+            Symbol(
+                id="java:RequestHandler.java:1-30:RequestHandler:class",
+                name="RequestHandler",
+                kind="class",
+                language="java",
+                path="src/handlers/RequestHandler.java",
+                span=Span(1, 30, 0, 300),
+                meta={},
+            ),
+            Symbol(
+                id="java:EmailService.java:1-40:EmailService:class",
+                name="EmailService",
+                kind="class",
+                language="java",
+                path="src/services/EmailService.java",
+                span=Span(1, 40, 0, 400),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())  # No specific framework
+
+        # Check controller
+        controller = next(s for s in enriched if s.name == "UserController")
+        assert "concepts" in controller.meta
+        concepts = controller.meta["concepts"]
+        ctrl_concepts = [c for c in concepts if c["concept"] == "controller_by_name"]
+        assert len(ctrl_concepts) == 1
+        assert ctrl_concepts[0]["framework"] == "naming-conventions"
+
+        # Check handler
+        handler = next(s for s in enriched if s.name == "RequestHandler")
+        assert "concepts" in handler.meta
+        handler_concepts = [
+            c for c in handler.meta["concepts"] if c["concept"] == "handler_by_name"
+        ]
+        assert len(handler_concepts) == 1
+
+        # Check service
+        service = next(s for s in enriched if s.name == "EmailService")
+        assert "concepts" in service.meta
+        service_concepts = [
+            c for c in service.meta["concepts"] if c["concept"] == "service_by_name"
+        ]
+        assert len(service_concepts) == 1

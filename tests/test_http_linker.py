@@ -816,3 +816,57 @@ class TestConceptMetadataSupport:
         assert concept_route in routes
         assert legacy_route in routes
         assert non_route not in routes
+
+    def test_links_to_route_symbol_with_direct_metadata(self, tmp_path):
+        """Links HTTP calls to route symbols with direct route_path/http_method metadata.
+
+        Route symbols from analyzers (Ruby, PHP, Elixir, JS) store route info
+        in meta.route_path and meta.http_method, not meta.concepts.
+        """
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/users")')
+
+        # Route symbol with direct metadata (from analyzer, not FRAMEWORK_PATTERNS)
+        route_symbol = Symbol(
+            id="routes.rb::GET /users::route",
+            name="GET /users",
+            kind="route",
+            path=str(tmp_path / "routes.rb"),
+            span=Span(start_line=5, start_col=0, end_line=5, end_col=30),
+            language="ruby",
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "controller_action": "users#index",
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == route_symbol.id
+        assert edge.meta["http_method"] == "GET"
+        assert edge.meta["cross_language"] is True  # JS client -> Ruby route
+
+    def test_get_route_info_direct_metadata_fallback(self):
+        """_get_route_info_from_concept falls back to direct meta fields."""
+        from hypergumbo.linkers.http import _get_route_info_from_concept
+
+        # Symbol with direct metadata, no concepts
+        symbol = Symbol(
+            id="routes.rb::GET /api::route",
+            name="GET /api",
+            kind="route",
+            path="routes.rb",
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="ruby",
+            meta={
+                "route_path": "/api/users",
+                "http_method": "POST",
+            },
+        )
+
+        path, method = _get_route_info_from_concept(symbol)
+        assert path == "/api/users"
+        assert method == "POST"

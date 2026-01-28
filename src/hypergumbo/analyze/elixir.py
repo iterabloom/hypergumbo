@@ -303,22 +303,26 @@ def _extract_elixir_signature(
     return "()"  # pragma: no cover - defensive
 
 
-def _extract_phoenix_usage_contexts(
+def _extract_phoenix_routes(
     node: "tree_sitter.Node",
     source: bytes,
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
-) -> list[UsageContext]:
-    """Extract UsageContext records for Phoenix router DSL calls.
+    run: AnalysisRun,
+) -> tuple[list[UsageContext], list[Symbol]]:
+    """Extract UsageContext records AND Symbol objects for Phoenix router DSL calls.
 
     Detects patterns like:
     - get "/", PageController, :index
     - post "/users", UserController, :create
     - resources "/posts", PostController
 
-    Returns a list of UsageContext records for YAML pattern matching.
+    Returns:
+        Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
+        Symbols have kind="route" which enables route-handler linking.
     """
     contexts: list[UsageContext] = []
+    route_symbols: list[Symbol] = []
 
     for n in iter_tree(node):
         if n.type != "call":
@@ -377,8 +381,9 @@ def _extract_phoenix_usage_contexts(
             continue
 
         # Build metadata
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
         metadata: dict[str, str | None] = {
-            "route_path": route_path if route_path.startswith("/") else f"/{route_path}",
+            "route_path": normalized_path,
             "http_method": method_name.upper() if method_name in PHOENIX_HTTP_METHODS else "RESOURCES",
         }
         if controller:
@@ -405,7 +410,76 @@ def _extract_phoenix_usage_contexts(
         )
         contexts.append(ctx)
 
-    return contexts
+        # Create route Symbol(s) - enables route-handler linking
+        if method_name == "resources":
+            # Phoenix resources creates 7 RESTful routes (same as Rails)
+            restful_routes = [
+                ("GET", normalized_path, "index"),
+                ("GET", f"{normalized_path}/new", "new"),
+                ("POST", normalized_path, "create"),
+                ("GET", f"{normalized_path}/:id", "show"),
+                ("GET", f"{normalized_path}/:id/edit", "edit"),
+                ("PATCH", f"{normalized_path}/:id", "update"),
+                ("DELETE", f"{normalized_path}/:id", "delete"),  # Phoenix uses :delete
+            ]
+            for http_meth, route_pth, act in restful_routes:
+                route_name = f"{http_meth} {route_pth}"
+                route_id = _make_symbol_id(
+                    path=str(file_path),
+                    start_line=span.start_line,
+                    end_line=span.end_line,
+                    name=route_name,
+                    kind="route",
+                )
+                route_symbol = Symbol(
+                    id=route_id,
+                    name=route_name,
+                    kind="route",
+                    language="elixir",
+                    path=str(file_path),
+                    span=span,
+                    meta={
+                        "http_method": http_meth,
+                        "route_path": route_pth,
+                        "controller": controller,
+                        "action": act,
+                    },
+                    origin=run.pass_id,
+                    origin_run_id=run.execution_id,
+                )
+                route_symbols.append(route_symbol)
+        else:
+            # Single HTTP method route
+            http_method = method_name.upper()
+            route_name = f"{http_method} {normalized_path}"
+            route_id = _make_symbol_id(
+                path=str(file_path),
+                start_line=span.start_line,
+                end_line=span.end_line,
+                name=route_name,
+                kind="route",
+            )
+            route_symbol = Symbol(
+                id=route_id,
+                name=route_name,
+                kind="route",
+                language="elixir",
+                path=str(file_path),
+                span=span,
+                meta={
+                    "http_method": http_method,
+                    "route_path": normalized_path,
+                },
+                origin=run.pass_id,
+                origin_run_id=run.execution_id,
+            )
+            if controller:
+                route_symbol.meta["controller"] = controller
+            if action:
+                route_symbol.meta["action"] = action
+            route_symbols.append(route_symbol)
+
+    return contexts, route_symbols
 
 
 @dataclass
@@ -705,14 +779,15 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
         )
         all_edges.extend(edges)
 
-        # Extract Phoenix router usage contexts
+        # Extract Phoenix router usage contexts and route symbols
         try:
             source = ex_file.read_bytes()
             tree = parser.parse(source)
-            usage_contexts = _extract_phoenix_usage_contexts(
-                tree.root_node, source, ex_file, analysis.symbol_by_name
+            usage_contexts, route_symbols = _extract_phoenix_routes(
+                tree.root_node, source, ex_file, analysis.symbol_by_name, run
             )
             all_usage_contexts.extend(usage_contexts)
+            all_symbols.extend(route_symbols)
         except (OSError, IOError):  # pragma: no cover
             pass
 

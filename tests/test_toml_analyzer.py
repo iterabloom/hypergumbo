@@ -105,6 +105,34 @@ dev = ["pytest", "black"]
     assert "click" in dep_names
 
 
+def test_analyze_pyproject_scripts(tmp_path):
+    """Test detection of CLI entry points from pyproject.toml [project.scripts].
+
+    The [project.scripts] table defines console script entry points - CLI commands
+    that are installed when the package is installed.
+    """
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.scripts]
+my-cli = "mypackage.cli:main"
+my-tool = "mypackage.tool:run"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    # Should detect script entry points
+    scripts = [s for s in result.symbols if s.kind == "script"]
+    assert len(scripts) >= 2
+
+    my_cli = next((s for s in scripts if s.name == "my-cli"), None)
+    assert my_cli is not None
+    assert my_cli.meta is not None
+    assert my_cli.meta.get("entry_point") == "mypackage.cli:main"
+    assert my_cli.canonical_name == "my-cli"  # CLI command name
+
+
 def test_analyze_table_array(tmp_path):
     """Test detection of array of tables (e.g., [[bin]])."""
     toml_file = tmp_path / "Cargo.toml"

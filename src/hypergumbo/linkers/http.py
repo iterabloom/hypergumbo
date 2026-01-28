@@ -506,19 +506,31 @@ def _has_route_concept(symbol: Symbol) -> bool:
 
 
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
-    """Extract route path and method from concept metadata.
+    """Extract route path and method from symbol metadata.
+
+    Checks in order:
+    1. Concept metadata (meta.concepts[].path/method) - from FRAMEWORK_PATTERNS enrichment
+    2. Direct metadata (meta.route_path/http_method) - from analyzer-created route symbols
 
     Returns:
-        Tuple of (route_path, http_method) from the first route concept,
-        or (None, None) if no route concept exists.
+        Tuple of (route_path, http_method), or (None, None) if not found.
     """
     if not symbol.meta:
         return None, None
 
+    # First, try concept metadata (from FRAMEWORK_PATTERNS enrichment)
     concepts = symbol.meta.get("concepts", [])
     for concept in concepts:
         if isinstance(concept, dict) and concept.get("concept") == "route":
             return concept.get("path"), concept.get("method")
+
+    # Fallback: check direct metadata (from analyzer-created route symbols)
+    # Route symbols from Ruby, PHP, Elixir, JS analyzers store info here
+    route_path = symbol.meta.get("route_path")
+    http_method = symbol.meta.get("http_method")
+    if route_path or http_method:
+        return route_path, http_method
+
     return None, None
 
 

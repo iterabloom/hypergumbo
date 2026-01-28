@@ -1,7 +1,8 @@
 # 8. Autonomous Governance and Vendor-Agnostic Hook System
 
 Date: 2026-01-24
-Status: Proposed
+Updated: 2026-01-27
+Status: Accepted
 
 ## Context
 
@@ -9,7 +10,7 @@ Status: Proposed
 
 Hypergumbo's bakeoff infrastructure successfully surfaces real bugs (CRITICAL/HIGH signals). However, analysis of recent "fixes" reveals a pattern: **we repeatedly ship workarounds that bypass problematic code paths rather than fixing the root causes**.
 
-Three case studies illustrate this (documented in full in `/tmp/analysis1.md`):
+Three case studies illustrate this (documented in full in `docs/governance-case-critiques.md`):
 
 | Case | Symptom | Root Cause | What We Did | Result |
 |------|---------|------------|-------------|--------|
@@ -56,32 +57,62 @@ Each AI coding tool has different hook mechanisms. We will create adapter script
 .agent/
 ├── hooks/
 │   ├── claude-code/
-│   │   └── stop.sh           # Claude Code Stop hook
+│   │   └── stop.sh           # Claude Code Stop hook script
 │   ├── gemini-cli/
-│   │   └── after-agent.sh    # Gemini CLI AfterAgent hook
+│   │   └── after-agent.sh    # Gemini CLI AfterAgent hook script
 │   ├── cursor/
-│   │   └── hooks.json        # Cursor hooks config
+│   │   └── stop.sh           # Cursor stop hook script
 │   └── codex-cli/
 │       └── notify.sh         # Codex CLI notification (limited)
 ├── stop_reflect.md           # The reflection prompt (shared)
 ├── LOOP                      # Sentinel file (exists = continue)
 └── invariant-ledger.md       # Structured invariant tracking
+
+# Vendor config files (reference the scripts above):
+.claude/settings.json         # Claude Code hooks config
+.cursor/hooks.json            # Cursor hooks config
+.gemini/config.yaml           # Gemini CLI hooks config
+~/.codex/config.toml          # Codex CLI config (user-level)
 ```
 
 ### 2. Implement Hook Adapters
 
 #### Claude Code (`Stop` hook)
 
-Claude Code's Stop hook supports `type: "prompt"` for LLM-based evaluation.
+Claude Code's Stop hook receives JSON via stdin and returns JSON via stdout.
+When `decision: "block"` is returned, the `reason` field is sent to Claude as guidance.
+
+**Input schema:**
+```json
+{
+  "session_id": "string",
+  "transcript_path": "string",
+  "cwd": "string",
+  "hook_event_name": "Stop",
+  "stop_hook_active": boolean
+}
+```
+
+**Output schema:**
+```json
+{
+  "decision": "block" | "approve",
+  "reason": "string (guidance sent to Claude when blocking)"
+}
+```
 
 ```json
-// .claude/hooks.json
+// .claude/settings.json
 {
   "hooks": {
     "Stop": [
       {
-        "type": "command",
-        "command": ".agent/hooks/claude-code/stop.sh"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agent/hooks/claude-code/stop.sh"
+          }
+        ]
       }
     ]
   }
@@ -104,12 +135,12 @@ if [[ ! -f .agent/LOOP ]]; then
   exit 0
 fi
 
-# Inject reflection prompt
+# Inject reflection prompt via the "reason" field
+REFLECTION_PROMPT=$(cat .agent/stop_reflect.md | jq -Rs .)
 cat <<EOF
 {
   "decision": "block",
-  "reason": "Reflection required before stopping",
-  "continue": "$(cat .agent/stop_reflect.md | jq -Rs .)"
+  "reason": $REFLECTION_PROMPT
 }
 EOF
 ```
@@ -117,6 +148,29 @@ EOF
 #### Gemini CLI (`AfterAgent` hook)
 
 Gemini CLI's hooks are experimental but support `type: "command"`.
+**Important:** Hooks must output JSON only—plain text output causes failures.
+Use `decision: "deny"` with `reason` to inject a continuation prompt.
+
+**Input schema:**
+```json
+{
+  "session_id": "string",
+  "transcript_path": "string",
+  "cwd": "string",
+  "hook_event_name": "AfterAgent",
+  "prompt": "string",
+  "prompt_response": "string",
+  "stop_hook_active": boolean
+}
+```
+
+**Output schema:**
+```json
+{
+  "decision": "allow" | "deny",
+  "reason": "string (sent as new prompt when denying)"
+}
+```
 
 ```yaml
 # .gemini/config.yaml
@@ -130,28 +184,68 @@ hooks:
 #!/bin/bash
 # .agent/hooks/gemini-cli/after-agent.sh
 
+INPUT=$(cat)  # Read JSON from stdin
+
 if [[ "$(cat AUTONOMOUS_MODE.txt 2>/dev/null)" != "TRUE" ]]; then
+  echo '{"decision": "allow"}'
   exit 0
 fi
 
 if [[ ! -f .agent/LOOP ]]; then
+  echo '{"decision": "allow"}'
   exit 0
 fi
 
-# Gemini CLI reads stdout as continuation prompt
-cat .agent/stop_reflect.md
+# Check stop_hook_active to prevent infinite loops
+STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
+if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
+  echo '{"decision": "allow"}'
+  exit 0
+fi
+
+# Inject reflection prompt via decision: "deny" with reason
+REFLECTION_PROMPT=$(cat .agent/stop_reflect.md | jq -Rs .)
+cat <<EOF
+{
+  "decision": "deny",
+  "reason": $REFLECTION_PROMPT
+}
+EOF
 ```
 
 #### Cursor (`stop` hook)
 
-Cursor's hooks are configured in `.cursor/hooks.json` and can output `ASK` to pause.
+Cursor's hooks receive JSON via stdin and return JSON via stdout.
+Return `followup_message` to automatically continue the agent loop.
+Default loop limit is 5 iterations to prevent infinite loops.
+
+**Input schema:**
+```json
+{
+  "conversation_id": "string",
+  "status": "completed" | "aborted" | "error",
+  "loop_count": number
+}
+```
+
+**Output schema:**
+```json
+{
+  "followup_message": "string (optional, auto-submitted as next user message)"
+}
+```
 
 ```json
 // .cursor/hooks.json
 {
-  "stop": {
-    "command": ".agent/hooks/cursor/stop.sh",
-    "timeout": 5000
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": ".agent/hooks/cursor/stop.sh",
+        "loop_limit": 10
+      }
+    ]
   }
 }
 ```
@@ -160,37 +254,82 @@ Cursor's hooks are configured in `.cursor/hooks.json` and can output `ASK` to pa
 #!/bin/bash
 # .agent/hooks/cursor/stop.sh
 
+INPUT=$(cat)  # Read JSON from stdin
+
 if [[ "$(cat AUTONOMOUS_MODE.txt 2>/dev/null)" != "TRUE" ]]; then
+  echo '{}'
   exit 0
 fi
 
 if [[ ! -f .agent/LOOP ]]; then
+  echo '{}'
   exit 0
 fi
 
-# Output ASK to pause and inject reflection
-echo "ASK"
-cat .agent/stop_reflect.md
+# Check loop_count to prevent infinite loops
+LOOP_COUNT=$(echo "$INPUT" | jq -r '.loop_count // 0')
+if [[ "$LOOP_COUNT" -ge 5 ]]; then
+  echo '{}'
+  exit 0
+fi
+
+# Return followup_message to continue the agent loop
+REFLECTION_PROMPT=$(cat .agent/stop_reflect.md | jq -Rs .)
+cat <<EOF
+{
+  "followup_message": $REFLECTION_PROMPT
+}
+EOF
 ```
 
 #### Codex CLI (limited)
 
-Codex CLI only supports `notify = [...]` in config.toml — no comprehensive hook system.
+Codex CLI only supports `notify = [...]` in config.toml — **cannot block or inject prompts**.
+The notify script receives a JSON argument (not stdin) with event details.
+Currently only `agent-turn-complete` events are supported.
+
+**Input schema (command-line argument):**
+```json
+{
+  "type": "agent-turn-complete",
+  "thread-id": "string",
+  "turn-id": "string",
+  "cwd": "string",
+  "input-messages": [...],
+  "last-assistant-message": "string"
+}
+```
+
+**Output:** Stderr is displayed to user. Cannot affect agent behavior.
 
 ```toml
-# codex.toml
-[hooks]
+# ~/.codex/config.toml
 notify = [".agent/hooks/codex-cli/notify.sh"]
 ```
 
 ```bash
 #!/bin/bash
 # .agent/hooks/codex-cli/notify.sh
-# Limited: can only notify, cannot block or inject prompt
+# LIMITATION: Can only notify, cannot block or inject prompt
+
+JSON_ARG="${1:-"{}"}"  # Note: quotes required to avoid bash brace expansion
+EVENT_TYPE=$(echo "$JSON_ARG" | jq -r '.type // "unknown"')
+
+if [[ "$EVENT_TYPE" != "agent-turn-complete" ]]; then
+  exit 0
+fi
 
 if [[ "$(cat AUTONOMOUS_MODE.txt 2>/dev/null)" == "TRUE" ]]; then
   if [[ -f .agent/LOOP ]]; then
-    echo "WARNING: Autonomous mode active. Review .agent/stop_reflect.md before stopping."
+    # Output full reflection prompt to stderr - gets it into context window
+    cat >&2 <<'EOF'
+════════════════════════════════════════════════════════════════════
+  AUTONOMOUS MODE ACTIVE - REFLECTION REQUIRED BEFORE STOPPING
+  (If Codex CLI does not auto-continue, review and manually proceed)
+════════════════════════════════════════════════════════════════════
+
+EOF
+    cat .agent/stop_reflect.md >&2
   fi
 fi
 ```
@@ -302,38 +441,39 @@ cat .agent/invariant-ledger.md | grep -A5 "Status: ❌"
 
 ### Phase 1: Infrastructure
 
-- [ ] Create `.agent/` directory structure
-- [ ] Write `stop_reflect.md` reflection prompt
-- [ ] Initialize `invariant-ledger.md` with INV-001, INV-002
-- [ ] Create `.agent/LOOP` sentinel mechanism
+- [x] Create `.agent/` directory structure
+- [x] Write `stop_reflect.md` reflection prompt
+- [x] Initialize `invariant-ledger.md` with INV-001, INV-002
+- [x] Create `.agent/LOOP` sentinel mechanism
 
 ### Phase 2: Hook Adapters
 
-- [ ] **Claude Code:** Implement `stop.sh`, test with `type: "command"`
-- [ ] **Gemini CLI:** Implement `after-agent.sh`, test with experimental hooks
-- [ ] **Cursor:** Implement `hooks.json` + `stop.sh`, test ASK output
-- [ ] **Codex CLI:** Implement `notify.sh` (limited enforcement)
+- [x] **Claude Code:** Implement `stop.sh` with correct JSON schema (2026-01-27)
+- [x] **Gemini CLI:** Implement `after-agent.sh` with correct JSON schema (2026-01-27)
+- [x] **Cursor:** Implement `stop.sh` with `followup_message` output (2026-01-27)
+- [x] **Codex CLI:** Implement `notify.sh` (limited enforcement) (2026-01-27)
 
 ### Phase 3: Integration
 
-- [ ] Update `AGENTS.md` with governance checklist
-- [ ] Add `.agent/` to repository
-- [ ] Document hook setup in `docs/contributing.md`
-- [ ] Test full loop: bakeoff signal → fix → reflection → verify
+- [x] Update `AGENTS.md` with governance checklist
+- [x] Add `.agent/` to repository
+- [x] Document hook setup in `CONTRIBUTING.md` (2026-01-28)
+- [x] Test full loop: bakeoff signal → fix → reflection → verify (INV-001 through INV-006)
 
 ### Phase 4: Fix the Root Cause
 
-- [ ] **Address `symbol_ref` gate:** Either remove the gate or ensure all analyzers populate `symbol_ref`
-- [ ] **Generalize position-based lookup:** Extract from JS/TS into shared helper
-- [ ] **Remove workarounds:** Once gate is fixed, undo Rails direct-symbol-creation hack
-- [ ] **Verify:** Run bakeoff on frameworks with string-based handlers (Rails, Django, Phoenix)
+- [x] **Address `symbol_ref` gate:** Fixed via deferred resolution (`resolve_deferred_symbol_refs()`) — see INV-002 in invariant ledger
+- [x] **Position-based lookup:** Each language has its own `_get_enclosing_function()` appropriate for its AST; no shared helper needed (by design)
+- [x] **Workaround status:** Rails `symbol_ref=None` is NOT a workaround — routes don't reference symbols directly; the `route_handler` linker handles the connection (see INV-004, INV-006)
+- [x] **Verify:** Bakeoff runs on Rails, Django, FastAPI, Phoenix, Spring confirmed fixes work (2026-01-28)
 
 ## References
 
 - `docs/governance-case-critiques.md`: Full technical analysis with case critiques
 - ADR-0001: Portable Agent Instructions (establishes `AGENTS.md` as canonical)
 - `framework_patterns.py:992-993`: The `symbol_ref` gate
-- [Claude Code Hooks Reference](https://docs.claude.com/en/docs/claude-code/hooks)
-- [Gemini CLI Hooks](https://geminicli.com/docs/hooks/) (experimental)
+- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks.md)
+- [Gemini CLI Hooks Reference](https://geminicli.com/docs/hooks/reference/)
 - [Cursor Hooks Docs](https://cursor.com/docs/agent/hooks)
+- [Codex CLI Config Reference](https://developers.openai.com/codex/config-reference/)
 - [Codex CLI Hooks Discussion](https://github.com/openai/codex/discussions/2150)

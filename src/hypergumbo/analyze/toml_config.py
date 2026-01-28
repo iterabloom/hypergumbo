@@ -217,6 +217,9 @@ def _process_toml_tree(
                 _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
             elif is_pyproject and table_name == "project":
                 _extract_pyproject_dependencies(node, rel_path, symbols, content)
+            # Process pyproject.toml [project.scripts] - CLI entry points
+            elif is_pyproject and table_name == "project.scripts":
+                _extract_pyproject_scripts(node, rel_path, symbols, content)
 
         elif node.type == "table_array_element":
             table_name = _extract_table_name(node)
@@ -477,3 +480,56 @@ def _extract_pyproject_dependencies(
                                 origin=PASS_ID,
                             )
                         )
+
+
+def _extract_pyproject_scripts(
+    table_node, rel_path: str, symbols: list[Symbol], content: str
+):
+    """Extract CLI entry points from a pyproject.toml [project.scripts] table.
+
+    The [project.scripts] table defines console script entry points:
+    - my-cli = "mypackage.cli:main"
+
+    These become executable commands when the package is installed.
+    """
+    for child in table_node.children:
+        if child.type == "pair":
+            script_name = None
+            entry_point = None
+            for pair_child in child.children:
+                if pair_child.type in ("bare_key", "quoted_key"):
+                    script_name = _get_key_text(pair_child)
+                elif pair_child.type == "string":
+                    entry_point = _get_string_value(pair_child)
+
+            if script_name:
+                start_line = child.start_point[0] + 1
+                end_line = child.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, script_name, "script")
+                node_bytes = content[child.start_byte : child.end_byte].encode()
+
+                meta: dict = {}
+                if entry_point:
+                    meta["entry_point"] = entry_point
+
+                symbols.append(
+                    Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=script_name,
+                        fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                        kind="script",
+                        name=script_name,
+                        path=rel_path,
+                        language="toml",
+                        span=Span(
+                            start_line=start_line,
+                            start_col=child.start_point[1],
+                            end_line=end_line,
+                            end_col=child.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        meta=meta,
+                    )
+                )

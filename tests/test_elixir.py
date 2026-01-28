@@ -738,3 +738,77 @@ end
         assert "DELETE" in methods
         assert "HEAD" in methods
         assert "OPTIONS" in methods
+
+
+class TestPhoenixRouteSymbols:
+    """Tests for Phoenix route Symbol extraction (enables route-handler linking)."""
+
+    def test_route_symbols_created_for_http_methods(self, tmp_path: Path) -> None:
+        """Phoenix HTTP routes create Symbol objects with kind='route'."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  get "/users", UserController, :index
+  post "/sessions", SessionController, :create
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+
+        get_route = next((s for s in route_symbols if "GET" in s.name), None)
+        assert get_route is not None
+        assert get_route.name == "GET /users"
+        assert get_route.meta["http_method"] == "GET"
+        assert get_route.meta["route_path"] == "/users"
+        assert get_route.meta["controller"] == "UserController"
+        assert get_route.meta["action"] == "index"
+        assert get_route.language == "elixir"
+
+        post_route = next((s for s in route_symbols if "POST" in s.name), None)
+        assert post_route is not None
+        assert post_route.name == "POST /sessions"
+
+    def test_route_symbols_for_resources_macro(self, tmp_path: Path) -> None:
+        """Phoenix resources macro creates expanded RESTful route symbols."""
+        from hypergumbo.analyze.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  resources "/posts", PostController
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        # Phoenix resources creates 7 RESTful routes (same as Rails)
+        assert len(route_symbols) == 7
+
+        routes_by_action = {s.meta["action"]: s for s in route_symbols}
+
+        # Collection routes
+        assert "index" in routes_by_action
+        assert routes_by_action["index"].meta["http_method"] == "GET"
+        assert routes_by_action["index"].meta["route_path"] == "/posts"
+
+        assert "create" in routes_by_action
+        assert routes_by_action["create"].meta["http_method"] == "POST"
+
+        assert "new" in routes_by_action
+        assert routes_by_action["new"].meta["http_method"] == "GET"
+        assert routes_by_action["new"].meta["route_path"] == "/posts/new"
+
+        # Member routes (with :id parameter)
+        assert "show" in routes_by_action
+        assert routes_by_action["show"].meta["http_method"] == "GET"
+        assert routes_by_action["show"].meta["route_path"] == "/posts/:id"
+
+        assert "edit" in routes_by_action
+        assert "update" in routes_by_action
+        assert "delete" in routes_by_action
+
+        # All should reference the controller
+        for route in route_symbols:
+            assert route.meta["controller"] == "PostController"

@@ -14,12 +14,13 @@
   When AUTONOMOUS_MODE.txt is TRUE:
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
-  - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed root causes related to your work
+  - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
-  - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations". 
+  - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
+  - Use `./scripts/loop-toggle` to enable/disable autonomous mode (manages both `AUTONOMOUS_MODE.txt` and `.agent/LOOP` sentinel).
 
 ## Required Checks
 - **100% Coverage:** No code may be committed without full test coverage. Verify with:
@@ -112,8 +113,9 @@ pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
 # 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 
 # 4. If fixing a bakeoff signal: Check invariant ledger (see ADR-0008)
-cat .agent/invariant-ledger.md 2>/dev/null | grep -A5 "Status: ❌" || true
-# If your change relates to an UNFIXED invariant, fix the root cause, not a workaround
+cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
+# If any items show, read the full ledger for context
+# If your change relates to an UNFIXED or PARTIALLY ADDRESSED invariant, fix the root cause, not a workaround
 
 # 5. Commit with sign-off
 git commit -s -m "feat: description"
@@ -363,7 +365,7 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
 
 ## Autonomous Development Mode Stipulations
 When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work:
-- **PUSH IT TO THE LIMIT.** Keep adding features, frameworks, cross-language & cross-environment communication detection, and languages.
+- **PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using the bakeoff loop defined in the scripts. Keep refactoring, improving, or adding features, frameworks, and cross-language & cross-environment communication detection.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
@@ -373,20 +375,22 @@ When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE",
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
 - **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
 - **Do NOT draw conclusions from mini-trials:** Mini-trials are only for smoke testing (does the setup work?) and ballpark runtime estimation. The sample size is far too small for meaningful conclusions. Save analysis for the full experiment results.
+- **Avoid premature timeouts in bakeoff:** Large, popular repos may take significant time to analyze. Do not use short timeouts that would cause false failures. If a repo genuinely takes too long, note it in the lab notebook and investigate optimization opportunities rather than masking the issue with aggressive timeouts.
 - **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
 - **Adjust specs based on experiments:** If experiments reveal better approaches, update Spec A/B.
-- **If you run out of Spec A items, dive into Spec B. (Ignore the stuff about timelines, personnel, budgets, etc -- just focus on building good software)**
-- **Don't stop until you've finished Spec B (its software elements, anyway) or you've become profoundly stuck.**
+- **If you run out of Spec A items, dive into Spec B. Focus on building good software.**
+- **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
 Priority queue:
-1. **Unfixed root causes** in `.agent/invariant-ledger.md` (Status: ❌) — these block structural progress
-2. Check `pip index versions tree-sitter-<lang>` for available grammars
-3. Languages with tree-sitter packages
-4. Framework-specific packs: Django routes, FastAPI routes, Phoenix channels, etc.
+1. **Actionable invariants** in `.agent/invariant-ledger.md`:
+   - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
+   - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
+2. Frameworks: Django, FastAPI, Phoenix, Rails, etc.
+3. Linkers: polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+
 
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-01-05.0 -->
-
+<!-- CANARY: agents-policy-v2026-01-28.0 -->

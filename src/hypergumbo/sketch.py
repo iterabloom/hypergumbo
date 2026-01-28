@@ -817,6 +817,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
         result = []
         try:
             data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+            # Skip non-dict package.json files
+            if not isinstance(data, dict):
+                return result
             info = []
 
             # Core metadata

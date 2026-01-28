@@ -206,6 +206,113 @@ def helper(): Unit = {
         assert len(call_edges) >= 1
 
 
+class TestScalaLambdaCallAttribution:
+    """Tests for call edge attribution inside lambda expressions.
+
+    Scala uses lambdas heavily (foreach, map, filter). Calls inside these
+    lambdas must be attributed to the enclosing named function.
+    """
+
+    def test_call_inside_foreach_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside foreach lambda are attributed to enclosing function.
+
+        When you have:
+            def processItems(): Unit = {
+                items.foreach { x => helper(x) }
+            }
+
+        The call to helper() should be attributed to processItems.
+        """
+        from hypergumbo.analyze.scala import analyze_scala
+
+        scala_file = tmp_path / "Test.scala"
+        scala_file.write_text("""
+object Test {
+  def helper(x: Int): Unit = {
+    println(x)
+  }
+
+  def processItems(): Unit = {
+    val items = List(1, 2, 3)
+    items.foreach { x =>
+      helper(x)
+    }
+  }
+
+  def main(args: Array[String]): Unit = {
+    processItems()
+  }
+}
+""")
+
+        result = analyze_scala(tmp_path)
+
+        # Find symbols
+        process_func = next(
+            (s for s in result.symbols if s.name == "Test.processItems"),
+            None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "Test.helper"),
+            None,
+        )
+
+        assert process_func is not None, "processItems function should be found"
+        assert helper_func is not None, "helper function should be found"
+
+        # Find call edge from processItems to helper (inside lambda)
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_func.id
+                and e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to helper() inside foreach lambda should be attributed to processItems"
+
+    def test_call_inside_map_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside map lambda are attributed to enclosing function."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        scala_file = tmp_path / "Test.scala"
+        scala_file.write_text("""
+object Test {
+  def transform(x: Int): Int = x * 2
+
+  def processData(): List[Int] = {
+    val nums = List(1, 2, 3)
+    nums.map(x => transform(x))
+  }
+}
+""")
+
+        result = analyze_scala(tmp_path)
+
+        process_func = next(
+            (s for s in result.symbols if s.name == "Test.processData"),
+            None,
+        )
+        transform_func = next(
+            (s for s in result.symbols if s.name == "Test.transform"),
+            None,
+        )
+
+        assert process_func is not None
+        assert transform_func is not None
+
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_func.id
+                and e.dst == transform_func.id
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to transform() inside map lambda should be attributed to processData"
+
+
 class TestScalaImports:
     """Tests for detecting Scala import statements."""
 
