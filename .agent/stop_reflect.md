@@ -26,8 +26,17 @@ For the last change made:
 - [ ] If root cause fixed or truly isolated: document in invariant ledger (`.agent/invariant-ledger.md`), then take a step back and think about the best thing to do from a big-picture software quality perspective. Strongly consider activating or reactivating the bakeoff loop using `scripts/bakeoff`, `scripts/bakeoff-reflect`, and `scripts/hypergumbo_diag.py` (as detailed in Parts 2 & 3 of `docs/governance-case-critiques.md`).
 
 ## 6. Artifact Analysis
-- [ ] Have existing bakeoff artifacts been analyzed (not just generated)?
-- [ ] Analysis tools available:
+- [ ] **IMPORTANT:** Prefer mining existing artifacts over running new bakeoffs — large repos take significant time and there are likely enough artifacts already
+- [ ] Run qualitative reflection first:
+  ```bash
+  ./scripts/bakeoff-reflect /tmp/bakeoff_session/out/cohort-001/iter-001 --cycle N
+  ```
+  - This generates "needs work" vs "doing something special" insights
+  - Run it REPEATEDLY with different cohorts — value is in the variation
+  - It surfaces concerns (NO_CALL_EDGES, LOW_RESOLUTION, LOW_CROSS_FILE)
+  - It highlights strengths (STRONG_CROSS_FILE, RICH_EDGE_TYPES, HIGH_RESOLUTION)
+  - It asks open-ended questions that change each run to explore the problem space
+- [ ] For deeper quantitative analysis, use:
   - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
   - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
   - `~/hypergumbo_lab_notebook/analysis_lib/` — reusable analysis scripts:
@@ -39,8 +48,8 @@ For the last change made:
     - `06_signature_quality.py` — function signature completeness
     - `07_complexity_metrics.py` — cyclomatic complexity distribution
 - [ ] Add new analysis scripts to `analysis_lib/` as needed (follow naming: `NN_short_name.py`)
-- [ ] Prefer mining existing data over running more bakeoffs — large repos take significant time
 - [ ] Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage
+- [ ] If analysis reveals concerns, investigate the root cause before stopping
 
 ## 7. Commit Check
 - [ ] Run `git status` — are there uncommitted changes?
