@@ -1156,6 +1156,10 @@ def _extract_file_analysis(
         symbols.append(module_symbol)
         symbol_by_name["<module>"] = module_symbol
 
+    # Track functions already processed as methods (to avoid duplicates)
+    # Key: (start_line, name) tuple
+    processed_functions: set[tuple[int, str]] = set()
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             class_name = node.name
@@ -1201,7 +1205,7 @@ def _extract_file_analysis(
 
             # Extract methods inside the class
             for item in node.body:
-                if isinstance(item, ast.FunctionDef):
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     method_end_line = item.end_lineno or item.lineno
                     method_end_col = item.end_col_offset or 0
                     method_span = Span(
@@ -1249,14 +1253,28 @@ def _extract_file_analysis(
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
                     symbol_by_name[item.name] = method_symbol
+                    # Track as processed to avoid duplicate extraction
+                    processed_functions.add((item.lineno, item.name))
 
-        elif isinstance(node, ast.FunctionDef):
-            # Check if this is a top-level function (not inside a class)
-            # We do this by checking if the parent is the module
-            # ast.walk doesn't give parent info, so we need to handle this differently
-            # For now, we skip functions that were already processed as methods
-            # by checking if the function is at module level (column 0)
-            if node.col_offset == 0:
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Skip if already processed as a class method
+            if (node.lineno, node.name) in processed_functions:
+                continue
+
+            # Extract functions that are either:
+            # 1. Top-level (col_offset == 0) - always extract
+            # 2. Nested but have decorators - extract for patterns like FastAPI router factories
+            #    where route handlers are defined as decorated nested functions:
+            #        def get_router():
+            #            router = APIRouter()
+            #            @router.get("/items")  # <-- This should be extracted
+            #            def list_items(): ...
+            is_top_level = node.col_offset == 0
+            has_decorators = bool(node.decorator_list)
+
+            if is_top_level or has_decorators:
+                # Track as processed
+                processed_functions.add((node.lineno, node.name))
                 end_line = node.end_lineno or node.lineno
                 end_col = node.end_col_offset or 0
                 span = Span(

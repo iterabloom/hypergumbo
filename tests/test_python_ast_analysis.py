@@ -3309,3 +3309,146 @@ class TestUnresolvedEdgeEmission:
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 
 
+class TestNestedFunctionExtraction:
+    """Tests for extracting nested functions (closures) with decorators.
+
+    This addresses the FastAPI router factory pattern where route handlers
+    are defined as nested functions inside a factory function:
+
+        def get_entity_router():
+            router = APIRouter()
+
+            @router.get("/entities")
+            def list_entities():  # <-- This should be extracted
+                ...
+
+            return router
+    """
+
+    def test_nested_function_with_route_decorator_is_extracted(self, tmp_path: Path) -> None:
+        """Nested functions with route decorators should be detected.
+
+        The FastAPI APIRouter factory pattern uses nested functions as route handlers.
+        These should be extracted so framework patterns can detect routes.
+        """
+        py_file = tmp_path / "routes.py"
+        py_file.write_text(
+            "from fastapi import APIRouter\n"
+            "\n"
+            "def get_entity_router():\n"
+            "    router = APIRouter()\n"
+            "\n"
+            "    @router.get('/entities')\n"
+            "    def list_entities():\n"
+            "        return []\n"
+            "\n"
+            "    @router.get('/entities/{id}')\n"
+            "    def get_entity(id: int):\n"
+            "        return {'id': id}\n"
+            "\n"
+            "    @router.post('/entities')\n"
+            "    def create_entity():\n"
+            "        return {'created': True}\n"
+            "\n"
+            "    return router\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        # Should include the factory function AND the nested route handlers
+        assert "get_entity_router" in func_names, "Factory function should be extracted"
+        assert "list_entities" in func_names, "Nested route handler should be extracted"
+        assert "get_entity" in func_names, "Nested route handler should be extracted"
+        assert "create_entity" in func_names, "Nested route handler should be extracted"
+
+        # Verify the nested functions have their decorator metadata
+        nested_funcs = {f["name"]: f for f in functions if f["name"] in ["list_entities", "get_entity", "create_entity"]}
+
+        for name, func in nested_funcs.items():
+            decorators = func.get("meta", {}).get("decorators", [])
+            assert len(decorators) >= 1, f"{name} should have decorator metadata"
+            assert decorators[0]["name"].startswith("router."), f"{name} decorator should be router.*"
+
+    def test_nested_function_without_decorator_not_extracted(self, tmp_path: Path) -> None:
+        """Nested helper functions without decorators should NOT be extracted.
+
+        We don't want to clutter the symbol list with private helper closures.
+        Only nested functions with decorators (indicating they serve as handlers) should be extracted.
+        """
+        py_file = tmp_path / "utils.py"
+        py_file.write_text(
+            "def outer():\n"
+            "    def inner_helper():\n"
+            "        return 42\n"
+            "\n"
+            "    return inner_helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        # Should only have the outer function, not the inner helper
+        assert "outer" in func_names
+        assert "inner_helper" not in func_names, "Undecorated nested function should not be extracted"
+
+    def test_nested_async_function_with_decorator_is_extracted(self, tmp_path: Path) -> None:
+        """Async nested functions with decorators should also be extracted."""
+        py_file = tmp_path / "async_routes.py"
+        py_file.write_text(
+            "from fastapi import APIRouter\n"
+            "\n"
+            "def get_async_router():\n"
+            "    router = APIRouter()\n"
+            "\n"
+            "    @router.get('/async')\n"
+            "    async def async_handler():\n"
+            "        return {'async': True}\n"
+            "\n"
+            "    return router\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        assert "get_async_router" in func_names
+        assert "async_handler" in func_names, "Async nested handler should be extracted"
+
+    def test_deeply_nested_decorated_function_is_extracted(self, tmp_path: Path) -> None:
+        """Decorated functions nested more than one level deep should be extracted."""
+        py_file = tmp_path / "deep.py"
+        py_file.write_text(
+            "def level1():\n"
+            "    def level2():\n"
+            "        @some_decorator\n"
+            "        def level3_decorated():\n"
+            "            pass\n"
+            "        return level3_decorated\n"
+            "    return level2()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func_names = [f["name"] for f in functions]
+
+        assert "level1" in func_names
+        assert "level3_decorated" in func_names, "Deeply nested decorated function should be extracted"
+        # level2 has no decorator, so should not be extracted
+        assert "level2" not in func_names
+
+
