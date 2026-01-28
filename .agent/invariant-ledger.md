@@ -117,6 +117,45 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro`
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular`
 
+---
+
+## Meta-Invariants (Consolidated Principles)
+
+The specific invariants above can be grouped into higher-level principles:
+
+### META-001: Metadata Must Become Graph Structure
+> "Semantic relationships expressed in metadata must become traversable graph structure."
+
+**Unified by:**
+- INV-002 (usage patterns → concepts on nodes)
+- INV-004 (route metadata → handler edges)
+- INV-006 (resources macro → route symbols with controller_action)
+
+**Implication:** When an analyzer stores relationship information in metadata (view_name,
+controller_action, etc.), there should be a corresponding linker or enrichment phase that
+converts that metadata into edges or concepts. Metadata alone is not traversable.
+
+### META-002: Extraction Completeness
+> "Symbols that exist in source code must be extracted for analysis."
+
+**Unified by:**
+- INV-001 (call edges must have caller symbols - implies callers are extracted)
+- INV-003 (nested decorated functions must be extracted)
+
+**Implication:** Special cases (nested functions, lambdas, callbacks) should not silently
+skip symbol extraction. If code can be called, it must be extractable.
+
+### META-003: Data Integrity
+> "Graph elements must have valid, unique identifiers for reliable lookup."
+
+**Unified by:**
+- INV-005 (edge IDs must be unique)
+
+**Implication:** ID generation must include all disambiguating information (source, target,
+type, AND location).
+
+---
+
 ## INV-007: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
