@@ -1055,6 +1055,109 @@ class TestSemanticEntryDetection:
         lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(lib_eps) == 1
 
+    def test_npm_bin_entrypoint_detection(self) -> None:
+        """npm bin entries (package.json "bin") are detected as CLI entrypoints."""
+        # npm_bin concept comes from config-conventions.yaml matching kind="bin"
+        sym = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            path="package.json",
+            language="json",
+            span=Span(5, 5, 0, 30),
+            meta={"concepts": [{"concept": "npm_bin", "framework": "config-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        assert cli_eps[0].confidence == 0.99  # Declared in manifest - highest confidence
+        assert "npm CLI" in cli_eps[0].label
+        assert "my-cli" in cli_eps[0].label
+
+    def test_cargo_binary_entrypoint_detection(self) -> None:
+        """Cargo binary targets ([[bin]]) are detected as CLI entrypoints."""
+        # cargo_binary concept comes from config-conventions.yaml matching kind="binary"
+        sym = Symbol(
+            id="toml:Cargo.toml:20-25:my-tool:binary",
+            name="my-tool",
+            kind="binary",
+            path="Cargo.toml",
+            language="toml",
+            span=Span(20, 25, 0, 100),
+            meta={"concepts": [{"concept": "cargo_binary", "framework": "config-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        assert cli_eps[0].confidence == 0.99  # Declared in manifest
+        assert "Cargo binary" in cli_eps[0].label
+
+    def test_pyproject_script_entrypoint_detection(self) -> None:
+        """pyproject.toml [project.scripts] entries are detected as CLI entrypoints."""
+        # pyproject_script concept will come from config-conventions.yaml
+        sym = Symbol(
+            id="toml:pyproject.toml:10-10:my-app:script",
+            name="my-app",
+            kind="script",
+            path="pyproject.toml",
+            language="toml",
+            span=Span(10, 10, 0, 40),
+            meta={"concepts": [{"concept": "pyproject_script", "framework": "config-conventions"}]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+        assert cli_eps[0].confidence == 0.99  # Declared in manifest
+        assert "Python CLI" in cli_eps[0].label
+
+    def test_symbol_with_empty_concepts_skipped(self) -> None:
+        """Symbols with meta but empty concepts list are skipped."""
+        sym = Symbol(
+            id="test:empty:1-5:test:function",
+            name="test",
+            kind="function",
+            path="test.py",
+            language="python",
+            span=Span(1, 5, 0, 30),
+            meta={"concepts": []},  # Empty concepts list
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+        assert len(entrypoints) == 0
+
+    def test_duplicate_manifest_concepts_deduplicated(self) -> None:
+        """Multiple manifest concepts on same symbol don't create duplicate entries."""
+        # Unlikely in practice but tests defensive deduplication
+        sym = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            path="package.json",
+            language="json",
+            span=Span(5, 5, 0, 30),
+            meta={"concepts": [
+                {"concept": "npm_bin", "framework": "config-conventions"},
+                {"concept": "npm_bin", "framework": "config-conventions"},  # Duplicate
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Should only create one CLI_COMMAND entry despite duplicate concepts
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cli_eps) == 1
+
 
 class TestConnectivityBasedRanking:
     """Tests for connectivity-based entrypoint ranking."""

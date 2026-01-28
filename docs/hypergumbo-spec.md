@@ -1430,7 +1430,7 @@ Confidence scores reflect detection reliability, enabling meaningful ordering in
 
 | Tier | Confidence | Detection Method | Examples |
 |------|------------|------------------|----------|
-| ⬜ **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
+| 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
 | 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
 | ⬜ **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
 | ⬜ **Naming** | 0.70 | Heuristic patterns | Function named `main`, class named `*Controller` without annotations |

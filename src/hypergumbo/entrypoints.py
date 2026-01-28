@@ -297,6 +297,27 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.CLI_COMMAND)
 
+            # Manifest-declared CLI entry points (highest confidence)
+            # npm_bin: package.json "bin" entries
+            # cargo_binary: Cargo.toml [[bin]] entries
+            # pyproject_script: pyproject.toml [project.scripts] entries
+            elif concept_type in ("npm_bin", "cargo_binary", "pyproject_script"):
+                if EntrypointKind.CLI_COMMAND in added_kinds:
+                    continue
+                if concept_type == "npm_bin":
+                    label = f"npm CLI: {sym.name}"
+                elif concept_type == "cargo_binary":
+                    label = f"Cargo binary: {sym.name}"
+                else:
+                    label = f"Python CLI: {sym.name}"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CLI_COMMAND,
+                    confidence=0.99,  # Declared in manifest - highest confidence
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CLI_COMMAND)
+
             # LiveView concept -> CONTROLLER (real-time UI is an entry point)
             elif concept_type == "liveview":
                 if EntrypointKind.CONTROLLER in added_kinds:

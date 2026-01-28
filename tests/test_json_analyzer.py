@@ -88,6 +88,58 @@ def test_analyze_package_json_scripts(tmp_path):
     assert start_script.canonical_name == "npm run start"
 
 
+def test_analyze_package_json_bin_entries(tmp_path):
+    """Test parsing package.json bin entries (CLI executables).
+
+    The "bin" field in package.json defines CLI entry points:
+    - String form: "bin": "./cli.js" (uses package name)
+    - Object form: "bin": {"my-cli": "./bin/cli.js", "other": "./bin/other.js"}
+
+    These are important entrypoints because they're what users invoke from the command line.
+    """
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-cli-tool",
+  "bin": {
+    "my-cli": "./bin/cli.js",
+    "my-tool": "./bin/tool.js"
+  }
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    bins = [s for s in result.symbols if s.kind == "bin"]
+    assert len(bins) >= 2
+
+    my_cli = next((b for b in bins if b.name == "my-cli"), None)
+    assert my_cli is not None
+    assert my_cli.meta is not None
+    assert my_cli.meta.get("path") == "./bin/cli.js"
+    assert my_cli.canonical_name == "my-cli"  # CLI command name
+
+
+def test_analyze_package_json_bin_string_form(tmp_path):
+    """Test parsing package.json bin as a string (single binary).
+
+    When bin is a string, the command name is the package name.
+    """
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-tool",
+  "bin": "./bin/main.js"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    bins = [s for s in result.symbols if s.kind == "bin"]
+    assert len(bins) >= 1
+
+    my_tool = bins[0]
+    assert my_tool.name == "my-tool"  # Uses package name when bin is string
+    assert my_tool.meta is not None
+    assert my_tool.meta.get("path") == "./bin/main.js"
+
+
 def test_analyze_package_json_dependency_edges(tmp_path):
     """Test that dependency edges are created."""
     pkg_file = tmp_path / "package.json"

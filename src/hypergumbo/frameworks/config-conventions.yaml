@@ -27,6 +27,11 @@ patterns:
     symbol_kind: "^script$"
     language: "^json$"
 
+  # NPM bin entries are CLI entry points (executables installed globally)
+  - concept: npm_bin
+    symbol_kind: "^bin$"
+    language: "^json$"
+
   # Package definition
   - concept: package_definition
     symbol_kind: "^package$"
@@ -109,14 +114,20 @@ patterns:
     symbol_kind: "^workspace-member$"
     language: "^toml$"
 
-  # Cargo binary target
+  # Cargo binary target (analyzer creates kind="binary" for [[bin]] sections)
   - concept: cargo_binary
-    symbol_kind: "^bin$"
+    symbol_kind: "^binary$"
     language: "^toml$"
 
   # Cargo library target
   - concept: cargo_library
     symbol_kind: "^lib$"
+    language: "^toml$"
+
+  # Python (pyproject.toml) console scripts - CLI entry points
+  # [project.scripts] defines executables installed with the package
+  - concept: pyproject_script
+    symbol_kind: "^script$"
     language: "^toml$"
 
   # Poetry (Python) dependencies

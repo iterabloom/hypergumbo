@@ -7539,6 +7539,26 @@ class TestConfigConventionPatterns:
         assert result is not None
         assert result["concept"] == "npm_script"
 
+    def test_npm_bin_pattern(self) -> None:
+        """Pattern matches NPM bin entries (CLI executables)."""
+        pattern = Pattern(
+            concept="npm_bin",
+            symbol_kind="^bin$",
+            language="^json$",
+        )
+        symbol = Symbol(
+            id="json:package.json:5-5:my-cli:bin",
+            name="my-cli",
+            kind="bin",
+            language="json",
+            path="package.json",
+            span=Span(5, 5, 0, 35),
+            meta={"path": "./bin/cli.js"},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "npm_bin"
+
     def test_maven_dependency_pattern(self) -> None:
         """Pattern matches Maven dependencies."""
         pattern = Pattern(
@@ -7660,16 +7680,16 @@ class TestConfigConventionPatterns:
         assert result["concept"] == "cargo_dev_dependency"
 
     def test_cargo_binary_pattern(self) -> None:
-        """Pattern matches Cargo binary targets."""
+        """Pattern matches Cargo binary targets (kind='binary' from [[bin]])."""
         pattern = Pattern(
             concept="cargo_binary",
-            symbol_kind="^bin$",
+            symbol_kind="^binary$",
             language="^toml$",
         )
         symbol = Symbol(
-            id="toml:Cargo.toml:20-25:my-cli:bin",
+            id="toml:Cargo.toml:20-25:my-cli:binary",
             name="my-cli",
-            kind="bin",
+            kind="binary",  # analyzer creates "binary" for [[bin]] sections
             language="toml",
             path="Cargo.toml",
             span=Span(20, 25, 0, 100),
@@ -7678,6 +7698,26 @@ class TestConfigConventionPatterns:
         result = pattern.matches(symbol)
         assert result is not None
         assert result["concept"] == "cargo_binary"
+
+    def test_pyproject_script_pattern(self) -> None:
+        """Pattern matches pyproject.toml [project.scripts] entries."""
+        pattern = Pattern(
+            concept="pyproject_script",
+            symbol_kind="^script$",
+            language="^toml$",
+        )
+        symbol = Symbol(
+            id="toml:pyproject.toml:10-10:my-cli:script",
+            name="my-cli",
+            kind="script",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(10, 10, 0, 40),
+            meta={"entry_point": "mypackage.cli:main"},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "pyproject_script"
 
     def test_typescript_reference_pattern(self) -> None:
         """Pattern matches TypeScript project references."""

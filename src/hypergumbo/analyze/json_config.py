@@ -268,6 +268,94 @@ def _process_scripts(
                 symbols.append(sym)
 
 
+def _process_bin(
+    bin_node: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    symbols: list[Symbol],
+    pkg_name: Optional[str],
+) -> None:
+    """Extract npm bin entries from a bin object or string.
+
+    The "bin" field can be:
+    - String: "./cli.js" (uses package name as command)
+    - Object: {"my-cli": "./bin/cli.js", ...}
+
+    These define CLI entry points - executables that npm installs globally.
+    """
+    if bin_node.type == "string":
+        # String form: single binary using package name
+        bin_path = _get_string_content(bin_node, source)
+        if bin_path and pkg_name:
+            start_line = bin_node.start_point[0] + 1
+            end_line = bin_node.end_point[0] + 1
+            symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "bin")
+
+            sym = Symbol(
+                id=symbol_id,
+                stable_id=None,
+                shape_id=None,
+                canonical_name=pkg_name,
+                fingerprint=hashlib.sha256(source[bin_node.start_byte:bin_node.end_byte]).hexdigest()[:16],
+                kind="bin",
+                name=pkg_name,
+                path=rel_path,
+                language="json",
+                span=Span(
+                    start_line=start_line,
+                    end_line=end_line,
+                    start_col=bin_node.start_point[1],
+                    end_col=bin_node.end_point[1],
+                ),
+                origin=PASS_ID,
+                meta={"path": bin_path},
+            )
+            symbols.append(sym)
+        return
+
+    if bin_node.type != "object":
+        return  # pragma: no cover - unexpected type
+
+    # Object form: multiple binaries
+    for child in bin_node.children:
+        if child.type == "pair":
+            bin_name = _get_pair_key(child, source)
+            path_node = _get_pair_value(child)
+            bin_path = None
+            if path_node:
+                bin_path = _get_string_content(path_node, source)
+
+            if bin_name:
+                start_line = child.start_point[0] + 1
+                end_line = child.end_point[0] + 1
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, bin_name, "bin")
+
+                meta: dict = {}
+                if bin_path:
+                    meta["path"] = bin_path
+
+                sym = Symbol(
+                    id=symbol_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=bin_name,
+                    fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
+                    kind="bin",
+                    name=bin_name,
+                    path=rel_path,
+                    language="json",
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=child.start_point[1],
+                        end_col=child.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    meta=meta,
+                )
+                symbols.append(sym)
+
+
 def _process_package_json(
     root: "tree_sitter.Node",
     source: bytes,
@@ -343,6 +431,11 @@ def _process_package_json(
     scripts_node = _find_object_key(obj_node, source, "scripts")
     if scripts_node:
         _process_scripts(scripts_node, source, rel_path, symbols)
+
+    # Process bin entries (CLI executables)
+    bin_node = _find_object_key(obj_node, source, "bin")
+    if bin_node:
+        _process_bin(bin_node, source, rel_path, symbols, pkg_name)
 
 
 def _process_tsconfig(
