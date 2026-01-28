@@ -67,7 +67,29 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 - **Regression tests:**
   - `test_python_ast_analysis.py::TestNestedFunctionExtraction` (4 tests)
 
-## INV-004: Template for New Invariants
+## INV-004: Route-to-Handler Edge Completeness
+- **Statement:** Routes should have edges to their handler functions when handler info is available
+- **Status:** ❌ UNFIXED
+- **Root cause:** Analyzers store handler information in metadata (e.g., `controller_action`,
+  `view_name`) but no edges are created from routes to handlers. Analysis shows only 15.8%
+  of routes across bakeoff artifacts have outgoing edges:
+  - Ruby: `analyze/ruby.py:392` sets `symbol_ref=None` with comment "Route DSL doesn't
+    reference a handler symbol directly" - but `controller_action` IS stored in metadata
+  - Elixir: `analyze/elixir.py:403` sets `symbol_ref=None` with comment "Router DSL
+    doesn't directly reference symbols"
+  - PHP: `analyze/php.py:340` sets `symbol_ref=None`
+- **Fix needed:** Create a linker (or extend `resolve_deferred_symbol_refs`) that:
+  1. Finds route symbols with handler metadata (`controller_action`, `view_name`, etc.)
+  2. Resolves the handler reference to actual method/function symbols
+  3. Creates `routes_to` or `handled_by` edges connecting routes to handlers
+- **Evidence:** `./scripts/analyze-artifacts route-connectivity` shows:
+  - feast-fastapi: 80.6% connectivity (decorators work)
+  - django-full: 78.1% connectivity (INV-002 fix helped)
+  - postal (Rails): 0% connectivity (controller_action metadata exists but not used)
+  - fastapi: 0% connectivity (patterns vary)
+- **Regression tests:** [None yet - need to add]
+
+## INV-005: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED]
 - **Root cause:** [File:line or description]
