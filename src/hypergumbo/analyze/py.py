@@ -418,6 +418,53 @@ def _get_file_end_line(source: str) -> int:
     return len(source.splitlines())
 
 
+def _has_main_guard(tree: ast.Module) -> bool:
+    """Check if a module has the `if __name__ == "__main__":` pattern.
+
+    This is a structural entry point indicator for Python scripts.
+    The pattern indicates the file is designed to be run as a script.
+
+    Handles both:
+    - if __name__ == "__main__":  (standard)
+    - if "__main__" == __name__:  (reversed)
+    - Single and double quotes
+
+    Returns:
+        True if the main guard pattern is detected, False otherwise.
+    """
+    for node in tree.body:
+        if not isinstance(node, ast.If):
+            continue
+
+        test = node.test
+        if not isinstance(test, ast.Compare):
+            continue
+
+        # Check for: __name__ == "__main__"
+        if len(test.ops) != 1 or not isinstance(test.ops[0], ast.Eq):
+            continue
+
+        left = test.left
+        comparators = test.comparators
+
+        if len(comparators) != 1:  # pragma: no cover - defensive: len(ops) == len(comparators) in valid AST
+            continue
+
+        right = comparators[0]
+
+        # Pattern 1: __name__ == "__main__"
+        if (isinstance(left, ast.Name) and left.id == "__name__" and
+                isinstance(right, ast.Constant) and right.value == "__main__"):
+            return True
+
+        # Pattern 2: "__main__" == __name__
+        if (isinstance(left, ast.Constant) and left.value == "__main__" and
+                isinstance(right, ast.Name) and right.id == "__name__"):
+            return True
+
+    return False
+
+
 def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, str | None]]:
     """Extract Django URL patterns from path(), re_path(), url() calls.
 
@@ -1143,6 +1190,13 @@ def _extract_file_analysis(
             start_col=0,
             end_col=0,
         )
+
+        # Detect structural entry point: if __name__ == "__main__"
+        # This concept enables entrypoint detection for executable Python scripts
+        module_meta: dict[str, object] | None = None
+        if _has_main_guard(tree):
+            module_meta = {"concepts": ["main_guard"]}
+
         module_symbol = Symbol(
             id=_make_symbol_id(str(py_file), 1, end_line, f"<module:{module_name}>", "module"),
             name=f"<module:{module_name}>",
@@ -1152,6 +1206,7 @@ def _extract_file_analysis(
             span=module_span,
             origin="",
             origin_run_id="",
+            meta=module_meta,
         )
         symbols.append(module_symbol)
         symbol_by_name["<module>"] = module_symbol

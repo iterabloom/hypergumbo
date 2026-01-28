@@ -12,9 +12,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Summary
 - **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
 - **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
-- **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern).
+- **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern); Python `if __name__ == "__main__"` structural entrypoint detection (adds `main_guard` concept to module symbols).
 - **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
-- **Tests:** Scala lambda attribution tests for INV-001; Python nested function extraction tests.
+- **Tests:** Scala lambda attribution tests for INV-001; Python nested function extraction tests; Python main guard detection tests (7 tests).
 
 ### Added
 

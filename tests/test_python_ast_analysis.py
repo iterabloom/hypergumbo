@@ -3452,3 +3452,166 @@ class TestNestedFunctionExtraction:
         assert "level2" not in func_names
 
 
+class TestIfNameMainDetection:
+    """Tests for detecting Python's if __name__ == "__main__" pattern.
+
+    This structural pattern indicates a file is designed to be run as a script.
+    Detection enables entrypoint identification for Python modules that serve
+    as executable scripts.
+    """
+
+    def test_module_with_main_guard_has_concept(self, tmp_path: Path) -> None:
+        """Module with if __name__ == "__main__" should have main_guard concept."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "def main():\n"
+            "    print('Hello')\n"
+            "\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find the module symbol
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1, "Should have exactly one module symbol"
+
+        module = modules[0]
+        meta = module.get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" in concepts, "Module with main guard should have main_guard concept"
+
+    def test_module_without_main_guard_has_no_concept(self, tmp_path: Path) -> None:
+        """Module without if __name__ == "__main__" should not have main_guard concept."""
+        # A file with module-level code but no main guard
+        py_file = tmp_path / "library.py"
+        py_file.write_text(
+            "def helper():\n"
+            "    return 42\n"
+            "\n"
+            "# Module-level code to ensure module symbol is created\n"
+            "x = helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        # Find the module symbol
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        module = modules[0]
+        meta = module.get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" not in concepts, "Module without main guard should not have main_guard concept"
+
+    def test_main_guard_with_double_quotes(self, tmp_path: Path) -> None:
+        """Main guard with double quotes should also be detected."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            'if __name__ == "__main__":\n'
+            '    print("Hello")\n'
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" in concepts
+
+    def test_main_guard_with_reversed_comparison(self, tmp_path: Path) -> None:
+        """Main guard with reversed comparison should also be detected."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "if '__main__' == __name__:\n"
+            "    pass\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" in concepts
+
+    def test_if_with_non_compare_test_not_detected(self, tmp_path: Path) -> None:
+        """if statement with non-comparison test should not be detected as main guard."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "# Module with if using non-Compare test\n"
+            "if True:\n"
+            "    x = 1\n"
+            "\n"
+            "y = x + 1  # Module-level code to ensure module symbol exists\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" not in concepts
+
+    def test_if_with_not_equal_comparison_not_detected(self, tmp_path: Path) -> None:
+        """if __name__ != "__main__" should not be detected as main guard."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "# Module with != comparison instead of ==\n"
+            "if __name__ != '__main__':\n"
+            "    x = 1\n"
+            "\n"
+            "y = 2  # Module-level code to ensure module symbol exists\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" not in concepts
+
+    def test_if_with_chained_comparison_not_detected(self, tmp_path: Path) -> None:
+        """Chained comparison like 'if a == b == c' should not be detected as main guard."""
+        py_file = tmp_path / "script.py"
+        py_file.write_text(
+            "# Module with chained comparison\n"
+            "x = 1\n"
+            "if 0 < x < 10:\n"
+            "    y = x\n"
+            "\n"
+            "z = y + 1  # Module-level code to ensure module symbol exists\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        assert len(modules) == 1
+
+        meta = modules[0].get("meta") or {}
+        concepts = meta.get("concepts", [])
+        assert "main_guard" not in concepts
+
+

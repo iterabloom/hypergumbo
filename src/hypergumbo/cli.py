@@ -2987,8 +2987,8 @@ def run_behavior_map(
     # symbol table, resolve these references using multi-strategy lookup.
     show_progress("Resolving symbol references", 48)
     resolution_stats = resolve_deferred_symbol_refs(all_symbols, all_usage_contexts)
-    if resolution_stats.total_resolved > 0:  # pragma: no cover - debug logging
-        _log_memory(
+    if resolution_stats.total_resolved > 0:
+        _log_memory(  # pragma: no cover - debug logging
             f"resolved {resolution_stats.total_resolved}/{resolution_stats.total_unresolved} "
             f"deferred refs (exact={resolution_stats.resolved_exact}, "
             f"suffix={resolution_stats.resolved_suffix})"
