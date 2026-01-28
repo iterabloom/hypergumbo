@@ -24,10 +24,10 @@ fi
 REFLECTION_PROMPT=$(cat "$REPO_ROOT/.agent/stop_reflect.md" | jq -Rs .)
 
 # Inject reflection prompt - block the stop and continue with reflection
+# The "reason" field contains the guidance message Claude receives
 cat <<EOF
 {
   "decision": "block",
-  "reason": "Reflection required before stopping",
-  "continue": $REFLECTION_PROMPT
+  "reason": $REFLECTION_PROMPT
 }
 EOF
