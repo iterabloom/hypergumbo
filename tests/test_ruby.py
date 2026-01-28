@@ -777,7 +777,11 @@ end
         assert post_route.meta["http_method"] == "POST"
 
     def test_route_symbols_for_resources_macro(self, tmp_path: Path) -> None:
-        """Resources macro creates route Symbol with RESOURCES http_method."""
+        """Resources macro creates expanded RESTful route symbols.
+
+        INV-006 improvement: Instead of single RESOURCES symbol, emit all
+        7 RESTful routes to enable route-handler linking for all actions.
+        """
         from hypergumbo.analyze.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
@@ -788,11 +792,70 @@ end
         result = analyze_ruby(tmp_path)
 
         route_symbols = [s for s in result.symbols if s.kind == "route"]
-        assert len(route_symbols) == 1
-        assert route_symbols[0].name == "RESOURCES /articles"
-        assert route_symbols[0].meta["http_method"] == "RESOURCES"
-        # INV-006: Infer controller_action for resources routes
-        assert route_symbols[0].meta["controller_action"] == "articles#index"
+        # Should have 7 RESTful routes: index, show, new, create, edit, update, destroy
+        assert len(route_symbols) == 7
+
+        # Check each route has correct http_method and controller_action
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # Collection routes
+        assert "articles#index" in routes_by_action
+        assert routes_by_action["articles#index"].meta["http_method"] == "GET"
+        assert routes_by_action["articles#index"].meta["route_path"] == "/articles"
+
+        assert "articles#create" in routes_by_action
+        assert routes_by_action["articles#create"].meta["http_method"] == "POST"
+
+        assert "articles#new" in routes_by_action
+        assert routes_by_action["articles#new"].meta["http_method"] == "GET"
+        assert routes_by_action["articles#new"].meta["route_path"] == "/articles/new"
+
+        # Member routes (with :id parameter)
+        assert "articles#show" in routes_by_action
+        assert routes_by_action["articles#show"].meta["http_method"] == "GET"
+        assert routes_by_action["articles#show"].meta["route_path"] == "/articles/:id"
+
+        assert "articles#edit" in routes_by_action
+        assert routes_by_action["articles#edit"].meta["http_method"] == "GET"
+
+        assert "articles#update" in routes_by_action
+        assert routes_by_action["articles#update"].meta["http_method"] in ("PATCH", "PUT")
+
+        assert "articles#destroy" in routes_by_action
+        assert routes_by_action["articles#destroy"].meta["http_method"] == "DELETE"
+
+    def test_route_symbols_for_resource_singular(self, tmp_path: Path) -> None:
+        """Singular resource macro creates 6 RESTful route symbols (no index).
+
+        resource :profile creates routes without :id param and no index.
+        """
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resource :profile
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        # Singular resource: show, new, create, edit, update, destroy (no index)
+        assert len(route_symbols) == 6
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # No index for singular resource
+        assert "profiles#index" not in routes_by_action
+
+        # Singular routes don't have :id in path
+        assert "profiles#show" in routes_by_action
+        assert routes_by_action["profiles#show"].meta["route_path"] == "/profile"
+
+        assert "profiles#create" in routes_by_action
+        assert "profiles#new" in routes_by_action
+        assert "profiles#edit" in routes_by_action
+        assert "profiles#update" in routes_by_action
+        assert "profiles#destroy" in routes_by_action
 
     def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
         """Route symbols include controller_action in metadata when specified."""

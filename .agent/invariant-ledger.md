@@ -101,19 +101,21 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 
 ## INV-006: Rails Resource Route Handler Resolution
 - **Statement:** Rails resource routes should have handler metadata for route-handler linking
-- **Status:** FIXED
+- **Status:** FIXED (with full RESTful expansion)
 - **Root cause:** Ruby analyzer only extracted `controller_action` from explicit `to: "controller#action"`
   syntax. `resources :users` and `resource :profile` macros didn't get controller_action metadata.
-- **Fix:** Modified Ruby analyzer to infer `controller_action` for resources/resource routes:
-  - `resources :users` → `controller_action = "users#index"`
-  - `resource :profile` → `controller_action = "profile#index"`
-  This enables the route-handler linker to connect resource routes to their controller's index action.
-- **Limitation:** Only links to #index action; other RESTful actions (show, create, update, destroy)
-  are not individually linked. This is acceptable as index is the primary entry point.
+- **Original fix:** Inferred `controller_action` for resources/resource routes to enable linking.
+- **Enhanced fix (v2):** Full RESTful route expansion:
+  - `resources :users` → 7 route symbols (index, show, new, create, edit, update, destroy)
+  - `resource :profile` → 6 route symbols (show, new, create, edit, update, destroy - no index)
+  Each route symbol has correct HTTP method, path, and controller_action, enabling the
+  route-handler linker to connect to ALL controller actions, not just index.
+- **Limitation:** None - all standard RESTful actions are now linked.
 - **Regression tests:**
   - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resources_route`
   - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular`
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro`
+  - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular`
 
 ## INV-007: Template for New Invariants
 - **Statement:** [What must always be true]
