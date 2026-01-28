@@ -497,7 +497,7 @@ def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, 
         elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
             continue  # Skip dynamic patterns (f-strings)
 
-        if not route_path:  # pragma: no cover
+        if route_path is None:  # pragma: no cover - unsupported pattern type
             continue
 
         # Extract view name from second argument
@@ -567,7 +567,7 @@ def _extract_django_usage_contexts(
         elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
             continue  # Skip dynamic patterns (f-strings)
 
-        if not route_path:  # pragma: no cover
+        if route_path is None:  # pragma: no cover - unsupported pattern type
             continue
 
         # Extract view reference from second argument
@@ -685,7 +685,7 @@ def _extract_flask_usage_contexts(
         elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
             continue  # Skip dynamic patterns (f-strings)
 
-        if not route_path:  # pragma: no cover
+        if route_path is None:  # pragma: no cover - unsupported pattern type
             continue
 
         # Extract view function - can be:

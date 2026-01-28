@@ -1074,6 +1074,33 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
     assert "/users/<int:pk>/" in route_paths or "users/<int:pk>/" in route_paths
 
 
+def test_django_path_empty_string_root_route(tmp_path: Path) -> None:
+    """Django path('') for root URL should be detected as route."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('', views.index, name='index'),\n"
+        "    path('about/', views.about),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2, "Both empty string root and /about/ should be detected"
+
+    route_paths = {r.get("meta", {}).get("route_path") for r in routes}
+    # Empty path gets normalized to "/"
+    assert "/" in route_paths, f"Root route should be detected, got: {route_paths}"
+    assert "/about/" in route_paths or "about/" in route_paths
+
+
 def test_django_re_path_urlpattern(tmp_path: Path) -> None:
     """Django re_path() URL patterns should be detected as routes."""
     urls_file = tmp_path / "urls.py"
