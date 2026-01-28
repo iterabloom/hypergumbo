@@ -12,9 +12,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Summary
 - **Analyzers:** large expansion (languages + templates + config/build/docs); highlights: Twig, SCSS/Sass, Prisma, Smithy, BitBake, Robot Framework, KDL.
 - **CLI:** `compact` subcommand to convert existing behavior maps to LLM-friendly compact form (no re-analysis).
-- **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash.
+- **Quality:** INV-002 fallback resolution; non-object `package.json` / `composer.json` no longer crash; Python nested decorated functions now extracted (FastAPI router factory pattern).
 - **Agent workflow:** invariant-ledger now treats **UNFIXED** + **PARTIALLY ADDRESSED** as actionable; bakeoff guidance tightened (agents-policy-v2026-01-25.0).
-- **Tests:** Scala lambda attribution tests for INV-001.
+- **Tests:** Scala lambda attribution tests for INV-001; Python nested function extraction tests.
 
 ### Added
 
@@ -78,6 +78,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Fixed
 - **INV-002 (ADR-0008)**: Proper deferred resolution for `UsageContext(symbol_ref=None)`. Added `resolve_deferred_symbol_refs()` phase that runs after all analyzers complete, using `NameResolver` with multi-strategy lookup (exact → suffix → path hint) to resolve string-based handler references. This enables concept annotations for Django URL patterns, Express routes, and any framework using cross-file handler references. 17 regression tests.
 - **JSON manifests**: Avoid crash when `package.json` / `composer.json` top-level JSON is non-object; affected `_detect_js_frameworks`, `_detect_php_frameworks`, `detect_package_roots`, `_extract_package_json` (sketch).
+- **Python nested functions**: Extract decorated nested functions (closures) for FastAPI router factory pattern. Previously, only top-level functions were extracted, missing route handlers like `@router.get("/entities") def list_entities()` inside factory functions.
 
 ### Tests
 - Added Scala lambda call attribution tests for INV-001 (`lambda_expression` nodes).
