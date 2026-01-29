@@ -677,12 +677,19 @@ def _extract_edges_from_file(
     for node in iter_tree(tree.root_node):
         # Detect call nodes (require statements and method calls)
         if node.type == "call":
-            # Get method name from identifier child
-            method_node = None
-            for child in node.children:
-                if child.type == "identifier":
-                    method_node = child
-                    break
+            # Get method name from the 'method' field (not the first identifier!)
+            # For `data.chop`, the tree has:
+            #   call: receiver=identifier("data"), method=identifier("chop")
+            # We want "chop", not "data"
+            method_node = node.child_by_field_name("method")
+            # Fallback for simple calls without receiver (e.g., `require "foo"`)
+            # All tested call forms have method field, but this handles potential
+            # edge cases in tree-sitter-ruby grammar versions.
+            if method_node is None:  # pragma: no cover
+                for child in node.children:
+                    if child.type == "identifier":
+                        method_node = child
+                        break
 
             if method_node:
                 callee_name = _node_text(method_node, source)
