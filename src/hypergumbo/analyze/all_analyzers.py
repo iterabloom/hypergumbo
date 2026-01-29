@@ -285,4 +285,13 @@ def run_all_analyzers(
         if spec.capture_symbols_as and not result.skipped:
             captured_symbols[spec.capture_symbols_as] = list(result.symbols)
 
+    # Deduplicate edges by ID (some analyzers may produce duplicate edges)
+    seen_edge_ids: set[str] = set()
+    deduped_edges: list[Edge] = []
+    for edge in all_edges:
+        if edge.id not in seen_edge_ids:
+            seen_edge_ids.add(edge.id)
+            deduped_edges.append(edge)
+    all_edges = deduped_edges
+
     return analysis_runs, all_symbols, all_edges, all_usage_contexts, limits, captured_symbols

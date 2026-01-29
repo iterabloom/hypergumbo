@@ -4727,6 +4727,15 @@ def _run_analysis(
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
 
+    # Deduplicate edges by ID (some analyzers may produce duplicate edges)
+    seen_edge_ids: set[str] = set()
+    deduped_edges: list[Edge] = []
+    for edge in all_edges:
+        if edge.id not in seen_edge_ids:
+            seen_edge_ids.add(edge.id)
+            deduped_edges.append(edge)
+    all_edges = deduped_edges
+
     return all_symbols, all_edges, coverage_stats
 
 
