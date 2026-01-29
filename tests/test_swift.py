@@ -591,3 +591,122 @@ func caller() {
             None,
         )
         assert call_edge is not None, "Call inside completion handler should be attributed to caller"
+
+
+class TestSwiftInheritanceExtraction:
+    """Tests for Swift inheritance/conformance extraction.
+
+    Swift uses inheritance for classes (: SuperClass) and protocol conformance
+    (: Protocol) with the same syntax. The base_classes metadata enables the
+    centralized inheritance linker to create edges.
+    """
+
+    def test_extracts_class_inheritance(self, tmp_path: Path) -> None:
+        """Extracts base class from class inheritance."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "Models.swift"
+        swift_file.write_text("""
+class Animal {
+    func speak() {}
+}
+
+class Dog: Animal {
+    override func speak() {}
+}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        dog = next((s for s in result.symbols if s.name == "Dog"), None)
+        assert dog is not None
+        assert dog.meta is not None
+        assert "base_classes" in dog.meta
+        assert "Animal" in dog.meta["base_classes"]
+
+    def test_extracts_protocol_conformance(self, tmp_path: Path) -> None:
+        """Extracts protocol conformance as base_classes."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "Protocols.swift"
+        swift_file.write_text("""
+protocol Drawable {
+    func draw()
+}
+
+class Circle: Drawable {
+    func draw() {}
+}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        circle = next((s for s in result.symbols if s.name == "Circle"), None)
+        assert circle is not None
+        assert circle.meta is not None
+        assert "base_classes" in circle.meta
+        assert "Drawable" in circle.meta["base_classes"]
+
+    def test_extracts_multiple_protocols(self, tmp_path: Path) -> None:
+        """Extracts multiple protocol conformances."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "Multi.swift"
+        swift_file.write_text("""
+protocol Equatable {}
+protocol Hashable {}
+
+struct Point: Equatable, Hashable {
+    var x: Int
+    var y: Int
+}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        point = next((s for s in result.symbols if s.name == "Point"), None)
+        assert point is not None
+        assert point.meta is not None
+        assert "base_classes" in point.meta
+        assert "Equatable" in point.meta["base_classes"]
+        assert "Hashable" in point.meta["base_classes"]
+
+    def test_extracts_class_plus_protocol(self, tmp_path: Path) -> None:
+        """Extracts both class inheritance and protocol conformance."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "Mixed.swift"
+        swift_file.write_text("""
+class Vehicle {}
+protocol Drivable {}
+
+class Car: Vehicle, Drivable {}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        car = next((s for s in result.symbols if s.name == "Car"), None)
+        assert car is not None
+        assert car.meta is not None
+        assert "base_classes" in car.meta
+        assert "Vehicle" in car.meta["base_classes"]
+        assert "Drivable" in car.meta["base_classes"]
+
+    def test_no_base_classes_when_none(self, tmp_path: Path) -> None:
+        """Does not add base_classes when class has no inheritance."""
+        from hypergumbo.analyze.swift import analyze_swift
+
+        swift_file = tmp_path / "Standalone.swift"
+        swift_file.write_text("""
+class StandaloneClass {
+    var value: Int = 0
+}
+""")
+
+        result = analyze_swift(tmp_path)
+
+        standalone = next((s for s in result.symbols if s.name == "StandaloneClass"), None)
+        assert standalone is not None
+        # Either no meta or no base_classes key
+        if standalone.meta:
+            assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []

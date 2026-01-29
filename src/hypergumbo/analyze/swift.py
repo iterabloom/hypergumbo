@@ -131,6 +131,30 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_base_classes_swift(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base classes/protocols from Swift type declaration.
+
+    Swift uses the same syntax for class inheritance and protocol conformance:
+        class Dog: Animal { }           -> ["Animal"]
+        class Car: Vehicle, Drivable { } -> ["Vehicle", "Drivable"]
+        struct Point: Equatable { }      -> ["Equatable"]
+
+    The AST has `inheritance_specifier` nodes containing `user_type` with `type_identifier`.
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        if child.type == "inheritance_specifier":
+            # Get the type from user_type -> type_identifier
+            user_type = _find_child_by_type(child, "user_type")
+            if user_type:
+                type_id = _find_child_by_type(user_type, "type_identifier")
+                if type_id:
+                    base_classes.append(_node_text(type_id, source))
+
+    return base_classes
+
+
 def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing class/struct/enum/protocol name."""
     current = node.parent
@@ -303,6 +327,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract base classes/protocols for inheritance linker
+                base_classes = _extract_base_classes_swift(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -317,18 +345,23 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
         # Standalone protocol declaration (for older grammar versions)
-        elif node.type == "protocol_declaration":  # pragma: no cover - grammar fallback
+        elif node.type == "protocol_declaration":
             name_node = _find_child_by_type(node, "type_identifier")
 
             if name_node:
                 type_name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Protocols can inherit from other protocols
+                base_classes = _extract_base_classes_swift(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, type_name, "protocol"),
@@ -344,6 +377,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
