@@ -144,7 +144,14 @@ git commit -s -m "feat: description"
 - **TDD Protocol:**
   1. **Red:** Write a failing test first.
   2. **Green:** Write minimal code to pass the test.
-  3. **Refactor:** Clean up code and then re-run tests. If tests go red, no worries; that just means you are back at step 1; repeat for as many cycles as seems appropriate.
+  3. **Refactor:** CRITICAL phase - do not skip! This is where you pay down technical debt:
+     - Look for repetitive patterns that could be extracted into shared utilities
+     - Identify copy-paste code that creates maintenance burden
+     - Recognize structural similarities across languages/frameworks
+     - Ask: "If I add another language/framework, would I need to copy this code?"
+     - Apply DRY: if you see the same pattern 3+ times, extract it
+     - Green code that works is not the same as good code
+     - Re-run tests after refactoring. If they go red, you're back at step 1; iterate.
 - **Branch Naming:** Use `<author>/[feat|fix|docs|refactor]/<short-description>` (e.g., `jgstern-agent/feat/dart-analyzer`).
 - **Integration Protocol:**
   1. Run full suite locally (`pytest`).
