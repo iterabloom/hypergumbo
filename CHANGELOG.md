@@ -9,10 +9,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Centralized inheritance linker**: New `linkers/inheritance.py` creates `extends`/`implements` edges from `base_classes` metadata across ALL languages, eliminating duplicate edge-creation logic in individual analyzers.
+
 ### Fixed
 
-- **Python/JS/TS inheritance edges (INV-008)**: Classes with `base_classes` metadata now create `extends` and `implements` edges to base classes/interfaces defined in the repo. This enables the type hierarchy linker to create `dispatches_to` edges for polymorphic dispatch. Previously, only Java created these edges; Python and JS/TS stored base class info in metadata without creating traversable edges.
-- **Ruby/Kotlin inheritance edges (INV-009)**: Ruby and Kotlin analyzers now extract inheritance information and create `extends`/`implements` edges. Ruby extracts superclass from `class Foo < Bar` syntax; Kotlin extracts from `class Foo : Bar(), Interface1` delegation specifiers. This completes META-001 (Metadata Must Become Graph Structure) at 100%.
+- **Python/JS/TS inheritance edges (INV-008)**: Classes with `base_classes` metadata now create `extends` and `implements` edges to base classes/interfaces defined in the repo. This enables the type hierarchy linker to create `dispatches_to` edges for polymorphic dispatch.
+- **Ruby/Kotlin inheritance edges (INV-009)**: Ruby and Kotlin analyzers now extract inheritance information.
+- **Swift/C++/Objective-C/Apex base_classes extraction**: Completes META-001 (Metadata Must Become Graph Structure) at 100%. All 13 languages with class inheritance now extract `base_classes` metadata:
+  - Swift: class/struct/protocol inheritance and protocol conformance
+  - C++: class/struct inheritance with qualified names (std::exception)
+  - Objective-C: superclass + protocol conformance
+  - Apex: extends + implements clauses
 
 ## [1.2.1] - 2026-01-29
 
