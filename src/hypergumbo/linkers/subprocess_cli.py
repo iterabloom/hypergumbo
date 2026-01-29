@@ -147,13 +147,13 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
         try:
             import tomllib  # pragma: no cover
             data = tomllib.loads(content)  # pragma: no cover
-        except ImportError:
-            try:
+        except ImportError:  # pragma: no cover
+            try:  # pragma: no cover
                 import tomli  # pragma: no cover
                 data = tomli.loads(content)  # pragma: no cover
-            except ImportError:
+            except ImportError:  # pragma: no cover
                 # Fall back to regex parsing
-                data = None
+                data = None  # pragma: no cover
 
         if data:
             # Get project name
