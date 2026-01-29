@@ -57,10 +57,66 @@ if TYPE_CHECKING:
 PASS_ID = "fsharp-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
+# Forth files often use .fs extension (Open Firmware Forth, GForth, etc.)
+# These patterns indicate Forth rather than F#
+_FORTH_PATTERNS = [
+    r"^\\ ",  # Forth line comment (backslash followed by space)
+    r"^: \w",  # Forth word definition (colon followed by space and word)
+    r"\bVALUE\b",  # Forth VALUE word
+    r"\bCONSTANT\b",  # Forth CONSTANT word
+    r"\bVARIABLE\b",  # Forth VARIABLE word
+    r"\bCREATE\b",  # Forth CREATE word
+    r"\bDOES>\b",  # Forth DOES> word
+    r"\bINCLUDE\b",  # Forth INCLUDE word
+]
+
+
+def _is_likely_forth_file(path: Path, sample_lines: int = 30) -> bool:
+    """Check if a .fs file is likely Forth rather than F#.
+
+    Forth and F# both use .fs extension. This function reads the first N lines
+    and checks for Forth-specific patterns to avoid parsing Forth as F#.
+
+    Args:
+        path: Path to the .fs file.
+        sample_lines: Number of lines to sample for detection.
+
+    Returns:
+        True if the file appears to be Forth, False if it appears to be F#.
+    """
+    import re
+
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            # Read first N lines for pattern matching
+            lines = []
+            for i, line in enumerate(f):
+                if i >= sample_lines:
+                    break
+                lines.append(line)
+            content = "".join(lines)
+
+            # Check for Forth patterns
+            for pattern in _FORTH_PATTERNS:
+                if re.search(pattern, content, re.MULTILINE):
+                    return True
+
+            return False
+    except (OSError, IOError):
+        return False
+
 
 def find_fsharp_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all F# files in the repository."""
-    yield from find_files(repo_root, ["*.fs", "*.fsi", "*.fsx"])
+    """Yield all F# files in the repository.
+
+    Filters out .fs files that appear to be Forth (Open Firmware Forth, GForth)
+    based on content heuristics.
+    """
+    for path in find_files(repo_root, ["*.fs", "*.fsi", "*.fsx"]):
+        # .fsi and .fsx are unambiguously F#, only .fs needs disambiguation
+        if path.suffix == ".fs" and _is_likely_forth_file(path):
+            continue
+        yield path
 
 
 def is_fsharp_tree_sitter_available() -> bool:

@@ -407,3 +407,134 @@ let process items =
         assert not result.skipped
         symbols = [s for s in result.symbols if s.kind == "function"]
         assert any(s.name == "process" for s in symbols)
+
+
+class TestForthFileDetection:
+    """Test detection and filtering of Forth files with .fs extension.
+
+    Forth (Open Firmware Forth, GForth) and F# both use .fs extension.
+    The analyzer should skip Forth files to avoid parsing errors.
+    """
+
+    def test_skips_forth_file_with_backslash_comments(self, tmp_path: Path) -> None:
+        """Skips files with Forth-style backslash comments."""
+        forth_file = tmp_path / "boot.fs"
+        forth_file.write_text(
+            """\\ SLOF boot script
+\\ Copyright (c) IBM Corporation
+
+0 VALUE phb-debug?
+1000 CONSTANT tce-ps
+""",
+            encoding="utf-8",
+        )
+        fsharp_file = tmp_path / "Main.fs"
+        fsharp_file.write_text(
+            """module Main
+let main args = 0
+""",
+            encoding="utf-8",
+        )
+
+        result = analyze_fsharp(tmp_path)
+
+        # Should only analyze the F# file, not the Forth file
+        assert not result.skipped
+        paths = [s.path for s in result.symbols]
+        assert any("Main.fs" in p for p in paths)
+        assert not any("boot.fs" in p for p in paths)
+
+    def test_skips_forth_file_with_word_definitions(self, tmp_path: Path) -> None:
+        """Skips files with Forth word definitions (: name ... ;)."""
+        forth_file = tmp_path / "words.fs"
+        forth_file.write_text(
+            """: double ( n -- n*2 )
+    2 * ;
+
+: quadruple ( n -- n*4 )
+    double double ;
+""",
+            encoding="utf-8",
+        )
+
+        result = analyze_fsharp(tmp_path)
+
+        # Should skip the Forth file
+        assert result.skipped or len(result.symbols) == 0
+
+    def test_skips_forth_file_with_constant_value(self, tmp_path: Path) -> None:
+        """Skips files with Forth CONSTANT/VALUE/VARIABLE."""
+        forth_file = tmp_path / "constants.fs"
+        forth_file.write_text(
+            """0 VALUE counter
+1024 CONSTANT buffer-size
+VARIABLE result
+""",
+            encoding="utf-8",
+        )
+
+        result = analyze_fsharp(tmp_path)
+
+        # Should skip the Forth file
+        assert result.skipped or len(result.symbols) == 0
+
+    def test_analyzes_fsharp_file_normally(self, tmp_path: Path) -> None:
+        """Does not skip legitimate F# files."""
+        fsharp_file = tmp_path / "App.fs"
+        fsharp_file.write_text(
+            """module App
+
+// This is an F# comment
+let double x = x * 2
+
+let constant = 42
+""",
+            encoding="utf-8",
+        )
+
+        result = analyze_fsharp(tmp_path)
+
+        # Should analyze the F# file normally
+        assert not result.skipped
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert any(s.name == "double" for s in funcs)
+
+    def test_fsi_fsx_not_filtered(self, tmp_path: Path) -> None:
+        """Does not filter .fsi or .fsx files (unambiguously F#)."""
+        # .fsi is F# interface file (no Forth equivalent)
+        fsi_file = tmp_path / "Api.fsi"
+        fsi_file.write_text(
+            """module Api
+
+val double: int -> int
+""",
+            encoding="utf-8",
+        )
+
+        result = analyze_fsharp(tmp_path)
+
+        # Should analyze the .fsi file
+        assert not result.skipped
+        assert any("Api.fsi" in s.path for s in result.symbols)
+
+    def test_long_forth_file_hits_sample_limit(self, tmp_path: Path) -> None:
+        """Long Forth files still detected within sample limit."""
+        # Create a Forth file with many lines but Forth pattern in first 30
+        lines = ["\\ Forth comment line\n"]
+        for i in range(50):
+            lines.append(f"0 VALUE var{i}\n")
+        forth_file = tmp_path / "long.fs"
+        forth_file.write_text("".join(lines), encoding="utf-8")
+
+        from hypergumbo.analyze.fsharp import _is_likely_forth_file
+
+        # Should detect Forth pattern in first 30 lines
+        assert _is_likely_forth_file(forth_file) is True
+
+    def test_forth_detection_handles_io_error(self, tmp_path: Path) -> None:
+        """Forth detection gracefully handles I/O errors."""
+        from hypergumbo.analyze.fsharp import _is_likely_forth_file
+
+        # Non-existent file returns False (not a crash)
+        nonexistent = tmp_path / "nonexistent.fs"
+        assert _is_likely_forth_file(nonexistent) is False
