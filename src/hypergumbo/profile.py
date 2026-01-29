@@ -275,6 +275,12 @@ JAVA_FRAMEWORKS = {
     "javalin": ["javalin", "io.javalin"],
     "helidon": ["helidon", "io.helidon"],
     "spark": ["spark-java", "com.sparkjava"],
+    # JAX-RS and implementations
+    "jax-rs": ["javax.ws.rs", "jakarta.ws.rs"],
+    "jersey": ["org.glassfish.jersey", "jersey-server", "jersey-container"],
+    "resteasy": ["org.jboss.resteasy", "resteasy-jaxrs"],
+    # API documentation
+    "swagger": ["io.swagger", "swagger-annotations"],
     # Kotlin-specific
     "ktor": ["ktor", "io.ktor"],
     # Android - detect from build.gradle plugins, dependencies, and android {} blocks
