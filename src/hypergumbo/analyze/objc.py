@@ -188,6 +188,43 @@ def _extract_class_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     return None  # pragma: no cover
 
 
+def _extract_base_classes_objc(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base classes/protocols from Objective-C class interface.
+
+    Objective-C uses single inheritance and multiple protocol conformance:
+        @interface Dog : Animal <MyProtocol>      -> ["Animal", "MyProtocol"]
+        @interface Cat : Animal <A, B>            -> ["Animal", "A", "B"]
+
+    The AST structure:
+    - First identifier = class name
+    - Second identifier (after `:`) = superclass
+    - parameterized_arguments contains protocol conformance
+    """
+    base_classes: list[str] = []
+    seen_class_name = False
+    seen_colon = False
+
+    for child in node.children:
+        if child.type == "identifier":
+            if not seen_class_name:
+                # First identifier is the class name, skip it
+                seen_class_name = True
+            elif seen_colon:
+                # Identifier after `:` is the superclass
+                base_classes.append(_node_text(child, source))
+        elif child.type == ":":
+            seen_colon = True
+        elif child.type == "parameterized_arguments":
+            # Protocol conformance: <ProtocolA, ProtocolB>
+            for param_child in child.children:
+                if param_child.type == "type_name":
+                    type_id = _find_child_by_type(param_child, "type_identifier")
+                    if type_id:
+                        base_classes.append(_node_text(type_id, source))
+
+    return base_classes
+
+
 def _extract_protocol_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract protocol name from protocol_declaration node."""
     for child in node.children:
@@ -287,6 +324,10 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, class_name, "class")
 
+                # Extract base classes/protocols for inheritance linker
+                base_classes = _extract_base_classes_objc(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=symbol_id,
                     name=class_name,
@@ -301,6 +342,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol

@@ -523,3 +523,99 @@ class TestObjCSignatureExtraction:
         methods = [s for s in result.symbols if s.kind == "method" and "getName" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "(): NSString*"
+
+
+class TestObjCInheritanceExtraction:
+    """Tests for Objective-C inheritance extraction (base_classes metadata).
+
+    Objective-C uses single inheritance for classes and multiple protocol conformance:
+        @interface Dog : Animal <MyProtocol>
+    The base_classes metadata enables the centralized inheritance linker.
+    """
+
+    def test_extracts_superclass(self, tmp_path: Path) -> None:
+        """Extracts superclass from class interface."""
+        from hypergumbo.analyze.objc import analyze_objc
+
+        objc_file = tmp_path / "Dog.h"
+        objc_file.write_text("""
+@interface Animal : NSObject
+@end
+
+@interface Dog : Animal
+@end
+""")
+
+        result = analyze_objc(tmp_path)
+
+        dog = next((s for s in result.symbols if s.name == "Dog"), None)
+        assert dog is not None
+        assert dog.meta is not None
+        assert "base_classes" in dog.meta
+        assert "Animal" in dog.meta["base_classes"]
+
+    def test_extracts_protocol_conformance(self, tmp_path: Path) -> None:
+        """Extracts protocol conformance as base_classes."""
+        from hypergumbo.analyze.objc import analyze_objc
+
+        objc_file = tmp_path / "Logger.h"
+        objc_file.write_text("""
+@protocol Printable
+@end
+
+@interface Logger : NSObject <Printable>
+@end
+""")
+
+        result = analyze_objc(tmp_path)
+
+        logger = next((s for s in result.symbols if s.name == "Logger"), None)
+        assert logger is not None
+        assert logger.meta is not None
+        assert "base_classes" in logger.meta
+        # Should have both NSObject (superclass) and Printable (protocol)
+        assert "NSObject" in logger.meta["base_classes"]
+        assert "Printable" in logger.meta["base_classes"]
+
+    def test_extracts_multiple_protocols(self, tmp_path: Path) -> None:
+        """Extracts multiple protocol conformances."""
+        from hypergumbo.analyze.objc import analyze_objc
+
+        objc_file = tmp_path / "Multi.h"
+        objc_file.write_text("""
+@interface Widget : NSObject <Drawable, Clickable>
+@end
+""")
+
+        result = analyze_objc(tmp_path)
+
+        widget = next((s for s in result.symbols if s.name == "Widget"), None)
+        assert widget is not None
+        assert widget.meta is not None
+        assert "base_classes" in widget.meta
+        assert "NSObject" in widget.meta["base_classes"]
+        assert "Drawable" in widget.meta["base_classes"]
+        assert "Clickable" in widget.meta["base_classes"]
+
+    def test_no_base_classes_for_root_class(self, tmp_path: Path) -> None:
+        """No base_classes when class has no inheritance specified.
+
+        Note: In real Objective-C, all classes inherit from NSObject, but
+        we only extract what's explicitly written in the source.
+        """
+        from hypergumbo.analyze.objc import analyze_objc
+
+        # Root class pattern without explicit superclass
+        objc_file = tmp_path / "Root.h"
+        objc_file.write_text("""
+@interface RootClass
+@end
+""")
+
+        result = analyze_objc(tmp_path)
+
+        root = next((s for s in result.symbols if s.name == "RootClass"), None)
+        assert root is not None
+        # Either no meta or no base_classes key
+        if root.meta:
+            assert "base_classes" not in root.meta or root.meta["base_classes"] == []
