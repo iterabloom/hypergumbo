@@ -8,75 +8,75 @@ language: ruby
 patterns:
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # graphql-ruby type class
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema::Object$"
 
   # graphql-ruby base object type (common convention)
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^Types::BaseObject$"
 
   # graphql-ruby input type
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema::InputObject$"
 
   # graphql-ruby base input type (common convention)
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^Types::BaseInputObject$"
 
   # graphql-ruby resolver class
-  - concept: resolver
+  - concept: graphql_resolver
     base_class: "^GraphQL::Schema::Resolver$"
 
   # graphql-ruby base resolver (common convention)
-  - concept: resolver
+  - concept: graphql_resolver
     base_class: "^Resolvers::Base$"
 
   # graphql-ruby mutation class
-  - concept: resolver
+  - concept: graphql_resolver
     base_class: "^GraphQL::Schema::Mutation$"
 
   # graphql-ruby base mutation (common convention)
-  - concept: resolver
+  - concept: graphql_resolver
     base_class: "^Mutations::Base$"
 
   # graphql-ruby relay mutation
-  - concept: resolver
+  - concept: graphql_resolver
     base_class: "^GraphQL::Schema::RelayClassicMutation$"
 
   # graphql-ruby enum type
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema::Enum$"
 
   # graphql-ruby interface type
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema::Interface$"
 
   # graphql-ruby union type
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema::Union$"
 
   # graphql-ruby scalar type
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema::Scalar$"
 
   # graphql-ruby field definition
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^field$"
 
   # graphql-ruby argument definition
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^argument$"
 
   # graphql-ruby connection
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^connection$"
 
   # graphql-ruby schema class
-  - concept: schema
+  - concept: graphql_schema
     base_class: "^GraphQL::Schema$"
 
   # graphql-ruby subscription class
-  - concept: resolver
+  - concept: graphql_resolver
     base_class: "^GraphQL::Schema::Subscription$"
 
 linkers:

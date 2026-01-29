@@ -12,47 +12,47 @@ language: javascript
 patterns:
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Apollo Server / Type-GraphQL Query resolver
-  - concept: resolver
+  - concept: graphql_resolver
     decorator: "^Query$"
 
   # Apollo Server / Type-GraphQL Mutation resolver
-  - concept: resolver
+  - concept: graphql_resolver
     decorator: "^Mutation$"
 
   # Apollo Server / Type-GraphQL Subscription resolver
-  - concept: resolver
+  - concept: graphql_resolver
     decorator: "^Subscription$"
 
   # GraphQL field resolver
-  - concept: resolver
+  - concept: graphql_resolver
     decorator: "^(FieldResolver|ResolveField)$"
 
   # NestJS GraphQL Resolver decorator
-  - concept: resolver
+  - concept: graphql_resolver
     decorator: "^Resolver$"
 
   # Type-GraphQL / NestJS ObjectType
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^ObjectType$"
 
   # Type-GraphQL / NestJS InputType
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^InputType$"
 
   # Type-GraphQL InterfaceType
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^InterfaceType$"
 
   # Type-GraphQL Union types
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^(Union|createUnionType)$"
 
   # Type-GraphQL enum registration
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^(registerEnumType|EnumType)$"
 
   # GraphQL custom scalars
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^(Scalar|GraphQLScalarType)$"
 
   # GraphQL directive
@@ -88,15 +88,15 @@ patterns:
     base_class: "^DataLoader$"
 
   # GraphQL Args decorator
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^(Args|Arg)$"
 
   # GraphQL Field decorator
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^Field$"
 
   # GraphQL Info decorator
-  - concept: schema
+  - concept: graphql_schema
     decorator: "^Info$"
 
 linkers:
