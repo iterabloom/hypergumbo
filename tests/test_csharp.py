@@ -1185,3 +1185,146 @@ public class Test {}
         # Last component of qualified name
         assert "Linq" in aliases
         assert aliases["Linq"] == "System.Linq"
+
+
+class TestCSharpLambdaCallAttribution:
+    """Tests for call edge attribution inside C# lambda expressions.
+
+    C# uses lambdas extensively in LINQ (.Where, .Select), callbacks, and async
+    patterns. Calls inside these lambdas must be attributed to the enclosing method.
+
+    This confirms META-002 (Extraction Completeness) for C# lambdas - the implicit
+    walk-up past lambda_expression nodes correctly finds the enclosing method.
+    """
+
+    def test_call_inside_linq_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside LINQ lambda expressions are attributed to enclosing method.
+
+        When you have:
+            void Process() {
+                items.Where(x => Filter(x));
+            }
+
+        The call to Filter() should be attributed to Process, not lost.
+        """
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Lambda.cs"
+        cs_file.write_text("""
+public class Example {
+    public void Process() {
+        var list = new List<int> { 1, 2, 3 };
+        list.Where(x => Filter(x));
+    }
+
+    private bool Filter(int x) {
+        return x > 0;
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        process_method = next(
+            (s for s in result.symbols if s.name == "Example.Process" and s.kind == "method"),
+            None,
+        )
+        filter_method = next(
+            (s for s in result.symbols if s.name == "Example.Filter" and s.kind == "method"),
+            None,
+        )
+
+        assert process_method is not None, "Should find Process method"
+        assert filter_method is not None, "Should find Filter method"
+
+        # The call to Filter() inside the lambda should be attributed to Process
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == process_method.id
+                and e.dst == filter_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call to Filter() inside lambda should be attributed to Process"
+
+    def test_call_inside_foreach_lambda_attributed(self, tmp_path: Path) -> None:
+        """Calls inside ForEach lambda are attributed to enclosing method."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "ForEach.cs"
+        cs_file.write_text("""
+public class Example {
+    public void Caller() {
+        var list = new List<int> { 1, 2, 3 };
+        list.ForEach(x => Helper(x));
+    }
+
+    private void Helper(int x) { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        caller = next(
+            (s for s in result.symbols if s.name == "Example.Caller" and s.kind == "method"),
+            None,
+        )
+        helper = next(
+            (s for s in result.symbols if s.name == "Example.Helper" and s.kind == "method"),
+            None,
+        )
+
+        assert caller is not None
+        assert helper is not None
+
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.src == caller.id and e.dst == helper.id and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Call inside ForEach lambda should be attributed to Caller"
+
+    def test_chained_linq_lambdas_attributed(self, tmp_path: Path) -> None:
+        """Calls in chained LINQ lambdas are all attributed to enclosing method."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "LinqChain.cs"
+        cs_file.write_text("""
+public class Example {
+    public void Process() {
+        var result = items
+            .Where(x => Filter(x))
+            .Select(x => Transform(x))
+            .ToList();
+    }
+
+    private bool Filter(int x) { return true; }
+    private int Transform(int x) { return x; }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        process = next((s for s in result.symbols if s.name == "Example.Process"), None)
+        filter_m = next((s for s in result.symbols if s.name == "Example.Filter"), None)
+        transform_m = next((s for s in result.symbols if s.name == "Example.Transform"), None)
+
+        assert process is not None
+        assert filter_m is not None
+        assert transform_m is not None
+
+        filter_call = next(
+            (e for e in result.edges if e.src == process.id and e.dst == filter_m.id),
+            None,
+        )
+        transform_call = next(
+            (e for e in result.edges if e.src == process.id and e.dst == transform_m.id),
+            None,
+        )
+
+        assert filter_call is not None, "Filter call in LINQ chain should be attributed to Process"
+        assert transform_call is not None, "Transform call in LINQ chain should be attributed to Process"
