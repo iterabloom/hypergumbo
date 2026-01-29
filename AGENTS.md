@@ -385,7 +385,7 @@ Priority queue:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
    - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
-2. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for web frameworks helps hypergumbo understand routes, handlers, and application structure.
+2. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
    - **Python:** Django, Flask, FastAPI, Starlette, Tornado, Bottle, Pyramid, Falcon, Sanic, Aiohttp, Quart, Litestar, etc.
    - **JavaScript/Node.js:** Express, Fastify, Koa, Hapi, NestJS, Restify, AdonisJS, Sails.js, LoopBack, Feathers, etc.
    - **JS Meta-frameworks:** Next.js, Nuxt, Remix, SvelteKit, Gatsby, Astro, Qwik
