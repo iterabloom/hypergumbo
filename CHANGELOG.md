@@ -9,6 +9,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Bottle framework support**: Added patterns for the Bottle Python micro-framework. Detects route decorators (`@app.get`, `@app.route`, `@route`), hooks (`@app.hook`), and error handlers (`@app.error`).
+- **JAX-RS implementation aliases**: Dropwizard, Jersey, and RESTEasy frameworks now use JAX-RS patterns automatically. This enables route detection for Java REST APIs using these frameworks.
+
 ## [1.3.1] - 2026-01-29
 
 ### Added
