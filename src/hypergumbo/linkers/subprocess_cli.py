@@ -145,12 +145,12 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
 
         # Try to parse with tomllib (Python 3.11+) or tomli
         try:
-            import tomllib
-            data = tomllib.loads(content)
-        except ImportError:  # pragma: no cover
+            import tomllib  # pragma: no cover
+            data = tomllib.loads(content)  # pragma: no cover
+        except ImportError:
             try:
-                import tomli
-                data = tomli.loads(content)
+                import tomli  # pragma: no cover
+                data = tomli.loads(content)  # pragma: no cover
             except ImportError:
                 # Fall back to regex parsing
                 data = None

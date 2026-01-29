@@ -271,7 +271,7 @@ def _print_output_summary(
             print(f"  {prefix}{artifact_path.resolve()}", file=file)
     if stdout_output:
         print("  Output: stdout", file=file)
-    if embeddings_dir:
+    if embeddings_dir:  # pragma: no cover - only when embeddings available
         print(f"  Embeddings cached: {embeddings_dir.resolve()}", file=file)
 
 
@@ -569,8 +569,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             # Check for embeddings directory
             fingerprint_dir = cache_dir.parent.parent  # Go from results/<hash> to fingerprint
             embed_dir = fingerprint_dir / "embeddings"
-            if embed_dir.exists() and any(embed_dir.iterdir()):
-                embeddings_dir = embed_dir
+            if embed_dir.exists() and any(embed_dir.iterdir()):  # pragma: no cover
+                embeddings_dir = embed_dir  # only when embeddings cached
         except Exception:  # pragma: no cover - cache inspection errors
             pass
 

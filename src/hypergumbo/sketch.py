@@ -3063,12 +3063,12 @@ def _extract_readme_description(
 
     # Try embedding-based extraction first (more accurate)
     try:
-        from .sketch_embeddings import extract_readme_description_embedding
-        description = extract_readme_description_embedding(readme_path)
-        if description:
-            return _truncate_description(description, max_chars)
-    except Exception:  # pragma: no cover
-        pass  # Fall back to heuristic
+        from .sketch_embeddings import extract_readme_description_embedding  # pragma: no cover
+        description = extract_readme_description_embedding(readme_path)  # pragma: no cover
+        if description:  # pragma: no cover
+            return _truncate_description(description, max_chars)  # pragma: no cover
+    except Exception:
+        pass  # Fall back to heuristic - embeddings unavailable
 
     # Fall back to heuristic extraction
     description = _extract_readme_description_heuristic(readme_path, max_chars)
@@ -5832,7 +5832,7 @@ def generate_sketch(
         max_additional_files = max(1, budget_for_files // tokens_per_file)
 
         # Create progress callback for embedding telemetry
-        def embedding_progress(current: int, total: int) -> None:
+        def embedding_progress(current: int, total: int) -> None:  # pragma: no cover
             prog.update_item_progress("Embedding files", current, total)
 
         # Create progress callback for centrality computation
