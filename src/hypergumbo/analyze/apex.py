@@ -70,6 +70,35 @@ def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
     return f"apex:{rel_path}:{kind}:{name}"
 
 
+def _extract_base_classes_apex(node: "tree_sitter.Node") -> list[str]:
+    """Extract base classes/interfaces from Apex class declaration.
+
+    Apex uses Java-like syntax:
+        class Dog extends Animal implements Comparable { }
+
+    The AST structure:
+    - superclass node contains extends + type_identifier
+    - interfaces node contains implements + type_list with type_identifiers
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        if child.type == "superclass":
+            # Extract the base class
+            for subchild in child.children:
+                if subchild.type == "type_identifier":
+                    base_classes.append(_get_node_text(subchild))
+        elif child.type == "interfaces":
+            # Extract implemented interfaces
+            for subchild in child.children:
+                if subchild.type == "type_list":
+                    for type_node in subchild.children:
+                        if type_node.type == "type_identifier":
+                            base_classes.append(_get_node_text(type_node))
+
+    return base_classes
+
+
 def find_apex_files(repo_root: Path) -> list[Path]:
     """Find all Apex files in the repository."""
     cls_files = list(repo_root.glob("**/*.cls"))
@@ -252,6 +281,11 @@ class ApexAnalyzer:
                 meta["abstract"] = True
             if modifiers.get("virtual"):
                 meta["virtual"] = True
+
+            # Extract base classes for inheritance linker
+            base_classes = _extract_base_classes_apex(node)
+            if base_classes:
+                meta["base_classes"] = base_classes
 
             sym = Symbol(
                 id=_make_stable_id(path, self.repo_root, name, "class"),

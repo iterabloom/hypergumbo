@@ -715,3 +715,80 @@ public class Singleton {
         ctor = next((s for s in result.symbols if s.kind == "constructor"), None)
         assert ctor is not None
         assert ctor.meta.get("visibility") == "private"
+
+
+class TestApexInheritanceExtraction:
+    """Tests for Apex inheritance extraction (base_classes metadata).
+
+    Apex uses Java-like syntax for inheritance:
+        public class Dog extends Animal implements IComparable { }
+    The base_classes metadata enables the centralized inheritance linker.
+    """
+
+    def test_extracts_superclass(self, tmp_path: Path) -> None:
+        """Extracts superclass from extends clause."""
+        make_apex_file(tmp_path, "Dog.cls", """
+public class Animal {}
+public class Dog extends Animal {}
+""")
+        result = analyze_apex(tmp_path)
+
+        dog = next((s for s in result.symbols if s.name == "Dog"), None)
+        assert dog is not None
+        assert "base_classes" in dog.meta
+        assert "Animal" in dog.meta["base_classes"]
+
+    def test_extracts_interface_implementation(self, tmp_path: Path) -> None:
+        """Extracts implemented interfaces as base_classes."""
+        make_apex_file(tmp_path, "Logger.cls", """
+public interface Printable {}
+public class Logger implements Printable {}
+""")
+        result = analyze_apex(tmp_path)
+
+        logger = next((s for s in result.symbols if s.name == "Logger"), None)
+        assert logger is not None
+        assert "base_classes" in logger.meta
+        assert "Printable" in logger.meta["base_classes"]
+
+    def test_extracts_both_extends_and_implements(self, tmp_path: Path) -> None:
+        """Extracts both superclass and interfaces."""
+        make_apex_file(tmp_path, "Controller.cls", """
+public class BaseController {}
+public interface IController {}
+public class Controller extends BaseController implements IController {}
+""")
+        result = analyze_apex(tmp_path)
+
+        controller = next((s for s in result.symbols if s.name == "Controller"), None)
+        assert controller is not None
+        assert "base_classes" in controller.meta
+        assert "BaseController" in controller.meta["base_classes"]
+        assert "IController" in controller.meta["base_classes"]
+
+    def test_extracts_multiple_interfaces(self, tmp_path: Path) -> None:
+        """Extracts multiple interface implementations."""
+        make_apex_file(tmp_path, "Multi.cls", """
+public class Multi implements Comparable, Serializable {}
+""")
+        result = analyze_apex(tmp_path)
+
+        multi = next((s for s in result.symbols if s.name == "Multi"), None)
+        assert multi is not None
+        assert "base_classes" in multi.meta
+        assert "Comparable" in multi.meta["base_classes"]
+        assert "Serializable" in multi.meta["base_classes"]
+
+    def test_no_base_classes_when_none(self, tmp_path: Path) -> None:
+        """No base_classes when class has no inheritance."""
+        make_apex_file(tmp_path, "Standalone.cls", """
+public class Standalone {
+    public void run() {}
+}
+""")
+        result = analyze_apex(tmp_path)
+
+        standalone = next((s for s in result.symbols if s.name == "Standalone"), None)
+        assert standalone is not None
+        # Either no base_classes key or empty list
+        assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []
