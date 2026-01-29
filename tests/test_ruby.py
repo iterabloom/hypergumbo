@@ -354,6 +354,34 @@ end
         self_refs = [e for e in logger_edges if e.src == e.dst]
         assert len(self_refs) == 0, f"Found self-referential edges: {self_refs}"
 
+    def test_bare_method_call_cross_file(self, tmp_path: Path) -> None:
+        """Bare method call (no parens) to method in another file is resolved."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        # Define a method in one file
+        (tmp_path / "helper.rb").write_text("""
+def global_helper
+  puts "helping globally"
+end
+""")
+
+        # Call it with bare identifier in another file
+        (tmp_path / "caller.rb").write_text("""
+def do_work
+  global_helper
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Should have edge from do_work to global_helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cross_file_edges = [
+            e for e in call_edges
+            if "do_work" in e.src and "global_helper" in e.dst
+        ]
+        assert len(cross_file_edges) >= 1, f"Expected cross-file bare call edge: {call_edges}"
+
 
 class TestRubyRequires:
     """Tests for detecting Ruby require statements."""

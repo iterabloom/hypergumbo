@@ -745,7 +745,13 @@ def _extract_edges_from_file(
                                 ))
 
         # Detect bare method calls (identifier nodes that are method names)
+        # Skip identifiers that are part of a call/method_call - those are handled above
         elif node.type == "identifier":
+            # If parent is a call-related node, skip (already handled by call handler)
+            if node.parent is not None and node.parent.type in (
+                "call", "method_call", "element_reference", "scope_resolution"
+            ):
+                continue
             current_method = _get_enclosing_method(node, source, local_symbols)
             if current_method is not None:
                 callee_name = _node_text(node, source)
