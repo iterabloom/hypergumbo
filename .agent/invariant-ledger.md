@@ -132,12 +132,12 @@ high-level, their status is expressed as a percentage indicating confidence they
 ### META-001: Metadata Must Become Graph Structure
 > "Semantic relationships expressed in metadata must become traversable graph structure."
 
-- **Status:** 75%
+- **Status:** 80%
 - **Notes:**
-  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift
+  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++
   - **NOT DONE (have class inheritance but don't extract base_classes):**
-    C++, Objective-C, Apex, and possibly others
-  - The 75% estimate reflects that ~10/13 languages with class inheritance are handled.
+    Objective-C, Apex, and possibly others
+  - The 80% estimate reflects that ~11/13 languages with class inheritance are handled.
     The gap isn't just "edges from metadata" - these languages don't extract the metadata at all.
 
 **Unified by:**

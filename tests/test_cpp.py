@@ -630,3 +630,133 @@ void caller() {
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert any(s.name == "caller" for s in funcs)
 
+
+class TestCppInheritanceExtraction:
+    """Tests for C++ inheritance extraction (base_classes metadata).
+
+    C++ uses single and multiple inheritance with access specifiers:
+        class Dog : public Animal { };
+        class Cat : Animal, public Printable { };
+    The base_classes metadata enables the centralized inheritance linker.
+    """
+
+    def test_extracts_class_inheritance(self, tmp_path: Path) -> None:
+        """Extracts base class from public inheritance."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "animal.cpp"
+        cpp_file.write_text("""
+class Animal {
+public:
+    virtual void speak() {}
+};
+
+class Dog : public Animal {
+public:
+    void speak() override {}
+};
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        dog = next((s for s in result.symbols if s.name == "Dog"), None)
+        assert dog is not None
+        assert dog.meta is not None
+        assert "base_classes" in dog.meta
+        assert "Animal" in dog.meta["base_classes"]
+
+    def test_extracts_private_inheritance(self, tmp_path: Path) -> None:
+        """Extracts base class from private inheritance."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "impl.cpp"
+        cpp_file.write_text("""
+class Base {};
+class Impl : private Base {};
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        impl = next((s for s in result.symbols if s.name == "Impl"), None)
+        assert impl is not None
+        assert impl.meta is not None
+        assert "base_classes" in impl.meta
+        assert "Base" in impl.meta["base_classes"]
+
+    def test_extracts_multiple_inheritance(self, tmp_path: Path) -> None:
+        """Extracts multiple base classes."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "multi.cpp"
+        cpp_file.write_text("""
+class Animal {};
+class Printable {};
+class Cat : public Animal, public Printable {};
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        cat = next((s for s in result.symbols if s.name == "Cat"), None)
+        assert cat is not None
+        assert cat.meta is not None
+        assert "base_classes" in cat.meta
+        assert "Animal" in cat.meta["base_classes"]
+        assert "Printable" in cat.meta["base_classes"]
+
+    def test_extracts_struct_inheritance(self, tmp_path: Path) -> None:
+        """Extracts inheritance for struct (default public)."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "vec.cpp"
+        cpp_file.write_text("""
+struct BaseStruct { int x; };
+struct Vector : BaseStruct { int y; };
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        vec = next((s for s in result.symbols if s.name == "Vector"), None)
+        assert vec is not None
+        assert vec.meta is not None
+        assert "base_classes" in vec.meta
+        assert "BaseStruct" in vec.meta["base_classes"]
+
+    def test_extracts_qualified_base_class(self, tmp_path: Path) -> None:
+        """Extracts qualified base class names (std::exception)."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "err.cpp"
+        cpp_file.write_text("""
+class MyError : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        err = next((s for s in result.symbols if s.name == "MyError"), None)
+        assert err is not None
+        assert err.meta is not None
+        assert "base_classes" in err.meta
+        # Should extract the full qualified name
+        assert "std::runtime_error" in err.meta["base_classes"]
+
+    def test_no_base_classes_when_none(self, tmp_path: Path) -> None:
+        """No base_classes when class has no inheritance."""
+        from hypergumbo.analyze.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "standalone.cpp"
+        cpp_file.write_text("""
+class Standalone {
+    int value;
+};
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        standalone = next((s for s in result.symbols if s.name == "Standalone"), None)
+        assert standalone is not None
+        # Either no meta or no base_classes key
+        if standalone.meta:
+            assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []
+

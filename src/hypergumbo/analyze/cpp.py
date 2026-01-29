@@ -85,6 +85,34 @@ def _make_file_id(path: str) -> str:
     return _base_make_file_id("cpp", path)
 
 
+def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base classes from C++ class/struct declaration.
+
+    C++ uses single and multiple inheritance with optional access specifiers:
+        class Dog : public Animal { }
+        class Cat : Animal, public Printable { }
+        struct Vector : public BaseType { }
+
+    The AST has a `base_class_clause` containing `type_identifier` or
+    `qualified_identifier` nodes for each base class.
+    """
+    base_classes: list[str] = []
+
+    base_clause = _find_child_by_type(node, "base_class_clause")
+    if base_clause is None:
+        return base_classes
+
+    for child in base_clause.children:
+        if child.type == "type_identifier":
+            # Simple base class name
+            base_classes.append(_node_text(child, source))
+        elif child.type == "qualified_identifier":
+            # Qualified name like std::runtime_error
+            base_classes.append(_node_text(child, source))
+
+    return base_classes
+
+
 def _extract_cpp_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -194,6 +222,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract base classes for inheritance linker
+                base_classes = _extract_base_classes_cpp(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
                     name=name,
@@ -208,6 +240,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -219,6 +252,10 @@ def _extract_symbols_from_file(
                 name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+
+                # Extract base classes for inheritance linker
+                base_classes = _extract_base_classes_cpp(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
@@ -234,6 +271,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
