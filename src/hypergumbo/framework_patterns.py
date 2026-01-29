@@ -675,6 +675,10 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "gotham": "rust-web",
     "poem": "rust-web",
     "salvo": "rust-web",
+    # Java JAX-RS implementations -> jax-rs.yaml
+    "dropwizard": "jax-rs",
+    "jersey": "jax-rs",
+    "resteasy": "jax-rs",
 }
 
 

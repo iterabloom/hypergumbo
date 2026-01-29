@@ -1418,6 +1418,112 @@ class TestFlaskPatterns:
         assert route_concept["framework"] == "flask"
 
 
+class TestBottlePatterns:
+    """Tests for Bottle framework pattern matching."""
+
+    def test_bottle_get_route_pattern(self) -> None:
+        """Bottle @app.get decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+
+        assert pattern_def is not None, "Bottle patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.py:1:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_bottle_classic_route_pattern(self) -> None:
+        """Bottle @app.route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+
+        symbol = Symbol(
+            id="test:app.py:1:home:function",
+            name="home",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.route", "args": ["/"], "kwargs": {"method": "GET"}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/"
+
+    def test_bottle_standalone_route_decorator(self) -> None:
+        """Bottle @route decorator (without app prefix) matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+
+        symbol = Symbol(
+            id="test:app.py:1:index:function",
+            name="index",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "route", "args": ["/index"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/index"
+
+    def test_bottle_hook_pattern(self) -> None:
+        """Bottle @app.hook decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+
+        symbol = Symbol(
+            id="test:app.py:1:before_request:function",
+            name="before_request",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.hook", "args": ["before_request"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+
 class TestNestJSPatterns:
     """Tests for NestJS framework pattern matching."""
 
