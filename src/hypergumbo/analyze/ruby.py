@@ -582,6 +582,20 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract superclass if present (META-001)
+                meta: dict[str, object] | None = None
+                superclass_node = _find_child_by_field(node, "superclass")
+                if superclass_node:
+                    # The superclass node contains a child with the base class name
+                    # For "class User < BaseModel": superclass has constant "BaseModel"
+                    # For "class User < ActiveRecord::Base": superclass has scope_resolution
+                    # We take the first named child which is the actual type reference
+                    for child in superclass_node.children:
+                        if child.is_named:
+                            superclass_name = _node_text(child, source)
+                            meta = {"base_classes": [superclass_name]}
+                            break
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, class_name, "class"),
                     name=class_name,
@@ -596,6 +610,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
@@ -769,6 +784,62 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_inheritance_edges(
+    symbols: list[Symbol],
+    class_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract extends edges from class inheritance (META-001).
+
+    For each class with base_classes metadata, creates extends edges to
+    base classes that exist in the analyzed codebase. This enables the
+    type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
+
+    Args:
+        symbols: All extracted symbols
+        class_symbols: Map of class name -> Symbol for class lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of extends edges for inheritance relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.kind != "class":
+            continue
+
+        base_classes = sym.meta.get("base_classes", []) if sym.meta else []
+        if not base_classes:
+            continue
+
+        for base_class_name in base_classes:
+            # Handle qualified names like "ActiveRecord::Base" -> look for last segment too
+            base_name = base_class_name.split("::")[-1] if "::" in base_class_name else base_class_name
+
+            # Try exact match first, then last segment
+            if base_class_name in class_symbols:
+                base_sym = class_symbols[base_class_name]
+            elif base_name in class_symbols:
+                base_sym = class_symbols[base_name]
+            else:
+                continue  # External class, no edge
+
+            edge = Edge.create(
+                src=sym.id,
+                dst=base_sym.id,
+                edge_type="extends",
+                line=sym.span.start_line if sym.span else 0,
+                confidence=0.95,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="ast_extends",
+            )
+            edges.append(edge)
+
+    return edges
+
+
 def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
     """Analyze all Ruby files in a repository.
 
@@ -858,6 +929,11 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
+
+    # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
+    class_symbols = {s.name: s for s in all_symbols if s.kind == "class"}
+    inheritance_edges = _extract_inheritance_edges(all_symbols, class_symbols, run)
+    all_edges.extend(inheritance_edges)
 
     return RubyAnalysisResult(
         symbols=all_symbols,

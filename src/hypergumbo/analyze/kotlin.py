@@ -271,6 +271,75 @@ def _extract_imports(
     return imports
 
 
+def _extract_delegation_specifiers(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> list[str]:
+    """Extract base classes and interfaces from delegation_specifiers (META-001).
+
+    Kotlin syntax: class Foo : Bar(), Interface1, Interface2 { }
+    AST structure:
+        class_declaration
+            identifier "Foo"
+            delegation_specifiers
+                delegation_specifier
+                    constructor_invocation (for classes with ())
+                        user_type
+                            identifier "Bar"
+                delegation_specifier
+                    user_type (for interfaces without ())
+                        identifier "Interface1"
+
+    Returns list of base type names (without parentheses).
+    """
+    base_classes: list[str] = []
+
+    # Find delegation_specifiers child
+    for child in node.children:
+        if child.type == "delegation_specifiers":
+            # Iterate through each delegation_specifier
+            for spec in child.children:
+                if spec.type != "delegation_specifier":
+                    continue
+
+                # Look for user_type directly or inside constructor_invocation
+                for spec_child in spec.children:
+                    if spec_child.type == "user_type":
+                        # Interface implementation (no parentheses)
+                        base_name = _extract_user_type_name(spec_child, source)
+                        if base_name:
+                            base_classes.append(base_name)
+                        break
+                    elif spec_child.type == "constructor_invocation":
+                        # Class inheritance (with parentheses)
+                        for inv_child in spec_child.children:
+                            if inv_child.type == "user_type":
+                                base_name = _extract_user_type_name(inv_child, source)
+                                if base_name:
+                                    base_classes.append(base_name)
+                                break
+                        break
+
+    return base_classes
+
+
+def _extract_user_type_name(user_type_node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract the type name from a user_type node.
+
+    Handles both simple names (List) and qualified names (kotlin.collections.List).
+    Returns just the simple name.
+    """
+    for child in user_type_node.children:
+        if child.type in ("simple_identifier", "identifier", "type_identifier"):
+            return _node_text(child, source)
+    # Fallback: return the whole text, strip any generic parameters
+    text = _node_text(user_type_node, source)  # pragma: no cover - defensive
+    # Strip generic parameters: List<Int> -> List
+    if "<" in text:  # pragma: no cover - defensive
+        text = text.split("<")[0]  # pragma: no cover - defensive
+    return text if text else None  # pragma: no cover - defensive
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -345,6 +414,12 @@ def _extract_symbols_from_file(
 
                 kind = "interface" if is_interface else "class"
 
+                # Extract base classes/interfaces (META-001)
+                meta: dict[str, object] | None = None
+                base_classes = _extract_delegation_specifiers(node, source)
+                if base_classes:
+                    meta = {"base_classes": base_classes}
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -359,6 +434,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -622,6 +698,66 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_inheritance_edges(
+    symbols: list[Symbol],
+    class_symbols: dict[str, Symbol],
+    interface_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract extends/implements edges from class inheritance (META-001).
+
+    For each class with base_classes metadata, creates:
+    - extends edges to base classes
+    - implements edges to interfaces
+
+    Args:
+        symbols: All extracted symbols
+        class_symbols: Map of class name -> Symbol for class lookup
+        interface_symbols: Map of interface name -> Symbol for interface lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of extends/implements edges for inheritance relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.kind not in ("class", "interface"):
+            continue
+
+        base_classes = sym.meta.get("base_classes", []) if sym.meta else []
+        if not base_classes:
+            continue
+
+        for base_class_name in base_classes:
+            # Strip generics: List<Int> -> List
+            base_name = base_class_name.split("<")[0] if "<" in base_class_name else base_class_name
+
+            # Determine edge type based on whether target is interface or class
+            if base_name in interface_symbols:
+                base_sym = interface_symbols[base_name]
+                edge_type = "implements"
+            elif base_name in class_symbols:
+                base_sym = class_symbols[base_name]
+                edge_type = "extends"
+            else:
+                continue  # External type, no edge
+
+            edge = Edge.create(
+                src=sym.id,
+                dst=base_sym.id,
+                edge_type=edge_type,
+                line=sym.span.start_line if sym.span else 0,
+                confidence=0.95,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="ast_extends" if edge_type == "extends" else "ast_implements",
+            )
+            edges.append(edge)
+
+    return edges
+
+
 def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
     """Analyze all Kotlin files in a repository.
 
@@ -693,6 +829,14 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
+
+    # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
+    class_symbols = {s.name: s for s in all_symbols if s.kind == "class"}
+    interface_symbols = {s.name: s for s in all_symbols if s.kind == "interface"}
+    inheritance_edges = _extract_inheritance_edges(
+        all_symbols, class_symbols, interface_symbols, run
+    )
+    all_edges.extend(inheritance_edges)
 
     return KotlinAnalysisResult(
         symbols=all_symbols,

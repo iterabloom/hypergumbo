@@ -132,18 +132,18 @@ high-level, their status is expressed as a percentage indicating confidence they
 ### META-001: Metadata Must Become Graph Structure
 > "Semantic relationships expressed in metadata must become traversable graph structure."
 
-- **Status:** 95%
-- **Notes:** Core cases (INV-002, INV-004, INV-006) are fixed. Python and JS/TS now
-  create `extends` and `implements` edges from `base_classes` metadata (fixed 2026-01-29).
-  Java already created these edges. Type hierarchy linker works with these edges to
-  create `dispatches_to` edges for polymorphic dispatch. Remaining gap: other languages
-  with `base_classes` metadata (e.g., Kotlin, Ruby) may not yet create edges.
+- **Status:** 100%
+- **Notes:** All known cases are fixed. Python, JS/TS, Ruby, and Kotlin now create
+  `extends` and `implements` edges from `base_classes` metadata. Java already created
+  these edges. Type hierarchy linker works with these edges to create `dispatches_to`
+  edges for polymorphic dispatch.
 
 **Unified by:**
 - INV-002 (usage patterns → concepts on nodes)
 - INV-004 (route metadata → handler edges)
 - INV-006 (resources macro → route symbols with controller_action)
 - INV-008 (base_classes → extends/implements edges for Python/JS/TS)
+- INV-009 (base_classes → extends/implements edges for Ruby/Kotlin)
 
 **Implication:** When an analyzer stores relationship information in metadata (view_name,
 controller_action, etc.), there should be a corresponding linker or enrichment phase that
@@ -208,6 +208,22 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_python_ast_analysis.py::TestPythonInheritanceEdges` (4 tests)
   - `tests/test_js_ts.py::TestJsTsInheritanceEdges` (4 tests)
+
+## INV-009: Ruby/Kotlin Base Classes Metadata to Extends Edges
+- **Statement:** Ruby and Kotlin class symbols with inheritance must create `extends` or `implements`
+  edges to base classes/interfaces that exist in the analyzed codebase
+- **Status:** ✅ FIXED
+- **Root cause:** Ruby and Kotlin analyzers did not extract `base_classes` metadata or create edges.
+  This gap was identified as part of META-001 scope expansion after INV-008.
+- **Fix:** Added inheritance extraction to both Ruby and Kotlin analyzers:
+  - `analyze/ruby.py`: Extracts superclass from `superclass` AST node, creates `extends` edges
+  - `analyze/kotlin.py`: Extracts from `delegation_specifiers`, creates `extends` for classes and
+    `implements` for interfaces
+  - Ruby handles qualified names like `ActiveRecord::Base` → matches `Base` class
+  - Kotlin handles multiple inheritance (class + multiple interfaces)
+- **Regression tests:**
+  - `tests/test_ruby.py::TestRubyInheritanceEdges` (5 tests)
+  - `tests/test_kotlin.py::TestKotlinInheritanceEdges` (6 tests)
 
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]

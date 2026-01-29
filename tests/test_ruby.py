@@ -131,6 +131,138 @@ end
         assert "InternalData" in class_names
 
 
+class TestRubyInheritanceEdges:
+    """Tests for extracting Ruby inheritance edges (META-001)."""
+
+    def test_extracts_base_class_metadata(self, tmp_path: Path) -> None:
+        """Extracts base_classes metadata for class with superclass."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "models.rb"
+        rb_file.write_text("""
+class BaseModel
+  def save
+  end
+end
+
+class User < BaseModel
+  def greet
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        assert user.meta is not None
+        assert user.meta.get("base_classes") == ["BaseModel"]
+
+    def test_creates_extends_edge(self, tmp_path: Path) -> None:
+        """Creates extends edge from class to its superclass."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "models.rb"
+        rb_file.write_text("""
+class BaseModel
+  def save
+  end
+end
+
+class User < BaseModel
+  def greet
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        base = next((s for s in result.symbols if s.name == "BaseModel"), None)
+        assert user is not None
+        assert base is not None
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert extends_edges[0].src == user.id
+        assert extends_edges[0].dst == base.id
+
+    def test_no_edge_for_external_superclass(self, tmp_path: Path) -> None:
+        """No edge created when superclass is not in analyzed codebase."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "models.rb"
+        rb_file.write_text("""
+class User < ActiveRecord::Base
+  def greet
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        # base_classes metadata should still be extracted
+        assert user.meta is not None
+        assert user.meta.get("base_classes") == ["ActiveRecord::Base"]
+
+        # But no extends edge (ActiveRecord::Base is external)
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 0
+
+    def test_qualified_name_matches_simple_name(self, tmp_path: Path) -> None:
+        """Edge created when qualified superclass matches a simple class name."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "models.rb"
+        rb_file.write_text("""
+class Base
+  def save
+  end
+end
+
+class User < SomeModule::Base
+  def greet
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        base = next((s for s in result.symbols if s.name == "Base"), None)
+        assert user is not None
+        assert base is not None
+        assert user.meta is not None
+        assert user.meta.get("base_classes") == ["SomeModule::Base"]
+
+        # Edge should be created (SomeModule::Base matches Base via last segment)
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert extends_edges[0].src == user.id
+        assert extends_edges[0].dst == base.id
+
+    def test_no_metadata_for_class_without_superclass(self, tmp_path: Path) -> None:
+        """Class without superclass has no base_classes metadata."""
+        from hypergumbo.analyze.ruby import analyze_ruby
+
+        rb_file = tmp_path / "models.rb"
+        rb_file.write_text("""
+class User
+  def greet
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        # No base_classes metadata when there's no superclass
+        assert user.meta is None or user.meta.get("base_classes") is None
+
+
 class TestRubyModuleExtraction:
     """Tests for extracting Ruby modules."""
 

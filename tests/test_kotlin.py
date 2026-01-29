@@ -181,6 +181,165 @@ interface Clickable {
         assert "Clickable" in interface_names
 
 
+class TestKotlinInheritanceEdges:
+    """Tests for extracting Kotlin inheritance edges (META-001)."""
+
+    def test_extracts_base_class_metadata(self, tmp_path: Path) -> None:
+        """Extracts base_classes metadata for class with superclass."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Models.kt"
+        kt_file.write_text("""
+open class BaseModel {
+    fun save() {}
+}
+
+class User : BaseModel() {
+    fun greet() {}
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        assert user.meta is not None
+        assert user.meta.get("base_classes") == ["BaseModel"]
+
+    def test_extracts_interface_implementation(self, tmp_path: Path) -> None:
+        """Extracts base_classes metadata for class implementing interface."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Models.kt"
+        kt_file.write_text("""
+interface Drawable {
+    fun draw()
+}
+
+class Circle : Drawable {
+    override fun draw() {}
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        circle = next((s for s in result.symbols if s.name == "Circle"), None)
+        assert circle is not None
+        assert circle.meta is not None
+        assert circle.meta.get("base_classes") == ["Drawable"]
+
+    def test_extracts_multiple_inheritance(self, tmp_path: Path) -> None:
+        """Extracts all base classes for class extending class and interfaces."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Models.kt"
+        kt_file.write_text("""
+open class BaseModel {
+    fun save() {}
+}
+
+interface Drawable {
+    fun draw()
+}
+
+interface Clickable {
+    fun onClick()
+}
+
+class Widget : BaseModel(), Drawable, Clickable {
+    override fun draw() {}
+    override fun onClick() {}
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        widget = next((s for s in result.symbols if s.name == "Widget"), None)
+        assert widget is not None
+        assert widget.meta is not None
+        base_classes = widget.meta.get("base_classes")
+        assert base_classes is not None
+        assert "BaseModel" in base_classes
+        assert "Drawable" in base_classes
+        assert "Clickable" in base_classes
+
+    def test_creates_extends_edge(self, tmp_path: Path) -> None:
+        """Creates extends edge from class to its superclass."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Models.kt"
+        kt_file.write_text("""
+open class BaseModel {
+    fun save() {}
+}
+
+class User : BaseModel() {
+    fun greet() {}
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        base = next((s for s in result.symbols if s.name == "BaseModel"), None)
+        assert user is not None
+        assert base is not None
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert extends_edges[0].src == user.id
+        assert extends_edges[0].dst == base.id
+
+    def test_creates_implements_edge_for_interface(self, tmp_path: Path) -> None:
+        """Creates implements edge from class to interface."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Models.kt"
+        kt_file.write_text("""
+interface Drawable {
+    fun draw()
+}
+
+class Circle : Drawable {
+    override fun draw() {}
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        circle = next((s for s in result.symbols if s.name == "Circle"), None)
+        drawable = next((s for s in result.symbols if s.name == "Drawable"), None)
+        assert circle is not None
+        assert drawable is not None
+
+        implements_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(implements_edges) == 1
+        assert implements_edges[0].src == circle.id
+        assert implements_edges[0].dst == drawable.id
+
+    def test_no_edge_for_external_superclass(self, tmp_path: Path) -> None:
+        """No edge created when superclass is not in analyzed codebase."""
+        from hypergumbo.analyze.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Models.kt"
+        kt_file.write_text("""
+class UserController : AbstractController() {
+    fun index() {}
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        controller = next((s for s in result.symbols if s.name == "UserController"), None)
+        assert controller is not None
+        assert controller.meta is not None
+        assert controller.meta.get("base_classes") == ["AbstractController"]
+
+        # No edges (AbstractController is external)
+        extends_edges = [e for e in result.edges if e.edge_type in ("extends", "implements")]
+        assert len(extends_edges) == 0
+
+
 class TestKotlinFunctionCalls:
     """Tests for detecting function calls in Kotlin."""
 

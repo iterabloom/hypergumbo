@@ -12,6 +12,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Fixed
 
 - **Python/JS/TS inheritance edges (INV-008)**: Classes with `base_classes` metadata now create `extends` and `implements` edges to base classes/interfaces defined in the repo. This enables the type hierarchy linker to create `dispatches_to` edges for polymorphic dispatch. Previously, only Java created these edges; Python and JS/TS stored base class info in metadata without creating traversable edges.
+- **Ruby/Kotlin inheritance edges (INV-009)**: Ruby and Kotlin analyzers now extract inheritance information and create `extends`/`implements` edges. Ruby extracts superclass from `class Foo < Bar` syntax; Kotlin extracts from `class Foo : Bar(), Interface1` delegation specifiers. This completes META-001 (Metadata Must Become Graph Structure) at 100%.
 
 ## [1.2.1] - 2026-01-29
 
