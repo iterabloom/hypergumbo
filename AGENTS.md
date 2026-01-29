@@ -385,8 +385,23 @@ Priority queue:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
    - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
-2. Frameworks: Django, FastAPI, Phoenix, Rails, etc.
-3. Linkers: polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+2. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for web frameworks helps hypergumbo understand routes, handlers, and application structure.
+   - **Python:** Django, Flask, FastAPI, Starlette, Tornado, Bottle, Pyramid, Falcon, Sanic, Aiohttp, Quart, Litestar, etc.
+   - **JavaScript/Node.js:** Express, Fastify, Koa, Hapi, NestJS, Restify, AdonisJS, Sails.js, LoopBack, Feathers, etc.
+   - **JS Meta-frameworks:** Next.js, Nuxt, Remix, SvelteKit, Gatsby, Astro, Qwik
+   - **Frontend JS:** React, Vue, Angular, Svelte, Solid.js, Ember.js, Preact, Lit, Stencil
+   - **Ruby:** Rails, Sinatra, Hanami, Grape, Roda, Padrino
+   - **PHP:** Laravel, Symfony, Slim, Lumen, CodeIgniter, Yii, CakePHP, Laminas
+   - **Java/Kotlin:** Spring Boot, Micronaut, Quarkus, Dropwizard, Vert.x, Javalin, Play, Ktor, Jersey
+   - **Go:** Gin, Echo, Fiber, Chi, Gorilla Mux, Buffalo, Iris, Beego, Revel
+   - **Rust:** Actix-web, Axum, Rocket, Warp, Tide, Poem, Salvo
+   - **Elixir:** Phoenix, Plug, Raxx
+   - **Scala:** Play, Akka HTTP, Finatra, Scalatra, http4s, ZIO HTTP
+   - **.NET:** ASP.NET Core, Blazor, Nancy, ServiceStack; **F#:** Giraffe, Suave
+   - **Swift:** Vapor, Perfect, Kitura
+   - **Haskell:** Servant, Yesod, Scotty, Snap; **Clojure:** Ring, Compojure, Luminus, Pedestal
+   - And 50+ more in other languages (Dart, OCaml, Crystal, Nim, Perl, etc.)
+3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 
 
 ## Modifying This Document
