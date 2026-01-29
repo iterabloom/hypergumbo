@@ -154,4 +154,18 @@ patterns:
     decorator: "^test$"
     language: "^php$"
 
+  # ====== C/C++ ======
+  # Google Test: TEST(), TEST_F(), TEST_P() macros
+  # These macros expand to functions named TEST/TEST_F/TEST_P
+  - concept: test_function
+    symbol_name: "^TEST(_F|_P)?$"
+    symbol_kind: "^function$"
+    language: "^(cpp|c)$"
+
+  # Catch2: TEST_CASE(), SCENARIO() macros
+  - concept: test_function
+    symbol_name: "^(TEST_CASE|SCENARIO)$"
+    symbol_kind: "^function$"
+    language: "^(cpp|c)$"
+
 linkers: []

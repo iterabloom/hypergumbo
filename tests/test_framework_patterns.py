@@ -7228,6 +7228,70 @@ class TestTestFrameworkPatterns:
         assert result is not None
         assert result["concept"] == "test_function"
 
+    def test_cpp_gtest_test_macro_pattern(self) -> None:
+        """Pattern matches C++ Google Test TEST() macro functions."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^TEST(_F|_P)?$",
+            symbol_kind="^function$",
+            language="^(cpp|c)$",
+        )
+        symbol = Symbol(
+            id="cpp:unit_tests/test_utils.cpp:21-38:TEST:function",
+            name="TEST",
+            kind="function",
+            language="cpp",
+            path="unit_tests/test_utils.cpp",
+            span=Span(21, 38, 0, 1),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+        assert result["matched_symbol_name"] == "TEST"
+
+    def test_cpp_gtest_test_f_macro_pattern(self) -> None:
+        """Pattern matches C++ Google Test TEST_F() macro functions."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^TEST(_F|_P)?$",
+            symbol_kind="^function$",
+            language="^(cpp|c)$",
+        )
+        symbol = Symbol(
+            id="cpp:tests/fixture_test.cpp:50-80:TEST_F:function",
+            name="TEST_F",
+            kind="function",
+            language="cpp",
+            path="tests/fixture_test.cpp",
+            span=Span(50, 80, 0, 1),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_cpp_catch2_test_case_pattern(self) -> None:
+        """Pattern matches C++ Catch2 TEST_CASE() macro functions."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^(TEST_CASE|SCENARIO)$",
+            symbol_kind="^function$",
+            language="^(cpp|c)$",
+        )
+        symbol = Symbol(
+            id="cpp:tests/vector_tests.cpp:10-30:TEST_CASE:function",
+            name="TEST_CASE",
+            kind="function",
+            language="cpp",
+            path="tests/vector_tests.cpp",
+            span=Span(10, 30, 0, 1),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
     def test_enrich_symbols_with_test_function(self) -> None:
         """enrich_symbols enriches Python test function with test_function concept."""
         symbol = Symbol(
