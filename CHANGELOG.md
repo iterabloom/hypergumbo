@@ -9,9 +9,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
-## [1.2.1] - 2026-01-28
-
-## [1.2.0] - 2026-01-28
+## [1.2.1] - 2026-01-29
 
 ### Summary
 
@@ -110,6 +108,9 @@ Major expansion: **37 new analyzers** across languages, templates, config format
 #### Entrypoint detection
 - **cargo_binary**: YAML pattern now matches `kind="binary"` (actual analyzer output).
 - **HTTP linker**: Falls back to direct `meta.route_path`/`meta.http_method` when concept metadata unavailable.
+
+#### Symbol resolution
+- **INV-007**: Go import path resolution now correctly disambiguates when multiple files define the same symbol (e.g., generated protobuf files). `ListNameResolver` tries progressively shorter path suffixes and falls back to deterministic ordering.
 
 ## [1.1.0] - 2026-01-24
 
