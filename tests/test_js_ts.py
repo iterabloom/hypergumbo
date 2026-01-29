@@ -4757,3 +4757,120 @@ export default MyComponent;
         assert ctx.metadata["is_default"] is True
         # The export_name should be the identifier
         assert ctx.metadata["export_name"] == "MyComponent"
+
+
+# ============================================================================
+# JS/TS Inheritance Edge Tests (META-001)
+# ============================================================================
+
+
+class TestJsTsInheritanceEdges:
+    """Tests for JS/TS inheritance edge detection.
+
+    META-001 requires that base_classes metadata becomes extends edges so that
+    the type hierarchy linker can create dispatches_to edges for polymorphic dispatch.
+    """
+
+    def test_extracts_extends_edge_same_file(self, tmp_path: Path) -> None:
+        """Extracts extends relationship edges for classes in the same file."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "models.ts").write_text("""
+class Animal {
+    speak() {
+        return "";
+    }
+}
+
+class Dog extends Animal {
+    speak() {
+        return "Woof";
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) >= 1
+
+        # Edge should be from Dog to Animal (child extends parent)
+        edge = extends_edges[0]
+        assert "Dog" in edge.src
+        assert "Animal" in edge.dst
+
+    def test_extracts_implements_edge(self, tmp_path: Path) -> None:
+        """Extracts implements relationship edges for interfaces."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "service.ts").write_text("""
+interface UserService {
+    findUser(id: number): User;
+}
+
+class UserServiceImpl implements UserService {
+    findUser(id: number): User {
+        return { id };
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # Should have an implements edge
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) >= 1
+
+        edge = impl_edges[0]
+        assert "UserServiceImpl" in edge.src
+        assert "UserService" in edge.dst
+
+    def test_extracts_extends_edge_with_generics(self, tmp_path: Path) -> None:
+        """Extracts extends edges when base class has generics."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "repo.ts").write_text("""
+class Repository<T> {
+    save(item: T) {}
+}
+
+class UserRepository extends Repository<User> {
+    findByEmail(email: string) {}
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) >= 1
+
+        # Edge should be from UserRepository to Repository (generic stripped)
+        edge = extends_edges[0]
+        assert "UserRepository" in edge.src
+        assert "Repository" in edge.dst
+
+    def test_no_extends_edge_for_external_class(self, tmp_path: Path) -> None:
+        """No extends edge created when base class is external (not in repo)."""
+        from hypergumbo.analyze.js_ts import analyze_javascript
+
+        (tmp_path / "component.tsx").write_text("""
+import React from 'react';
+
+class MyComponent extends React.Component {
+    render() {
+        return null;
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        # base_classes metadata should still be set
+        my_class = next((s for s in result.symbols if s.name == "MyComponent"), None)
+        assert my_class is not None
+        assert "base_classes" in (my_class.meta or {})
+
+        # But no extends edge since React.Component is external
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 0

@@ -9,6 +9,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **Python/JS/TS inheritance edges (INV-008)**: Classes with `base_classes` metadata now create `extends` and `implements` edges to base classes/interfaces defined in the repo. This enables the type hierarchy linker to create `dispatches_to` edges for polymorphic dispatch. Previously, only Java created these edges; Python and JS/TS stored base class info in metadata without creating traversable edges.
+
 ## [1.2.1] - 2026-01-29
 
 ### Summary

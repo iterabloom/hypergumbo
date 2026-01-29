@@ -3651,3 +3651,125 @@ class TestIfNameMainDetection:
         assert "main_guard" not in concept_names
 
 
+# ============================================================================
+# Python Inheritance Edge Tests (META-001)
+# ============================================================================
+
+
+class TestPythonInheritanceEdges:
+    """Tests for Python inheritance edge detection.
+
+    META-001 requires that base_classes metadata becomes extends edges so that
+    the type hierarchy linker can create dispatches_to edges for polymorphic dispatch.
+    """
+
+    def test_extracts_extends_edge_same_file(self, tmp_path: Path) -> None:
+        """Extracts extends relationship edges for classes in the same file."""
+        from hypergumbo.analyze.py import analyze_python
+
+        py_file = tmp_path / "models.py"
+        py_file.write_text(
+            "class Animal:\n"
+            "    def speak(self):\n"
+            "        pass\n"
+            "\n"
+            "class Dog(Animal):\n"
+            "    def speak(self):\n"
+            "        return 'Woof'\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        assert result.run is not None
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) >= 1
+
+        # Edge should be from Dog to Animal (child extends parent)
+        edge = extends_edges[0]
+        assert "Dog" in edge.src
+        assert "Animal" in edge.dst
+
+    def test_extracts_extends_edge_cross_file(self, tmp_path: Path) -> None:
+        """Extracts extends relationship edges for classes in different files."""
+        from hypergumbo.analyze.py import analyze_python
+
+        (tmp_path / "base.py").write_text(
+            "class BaseModel:\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+        (tmp_path / "models.py").write_text(
+            "from base import BaseModel\n"
+            "\n"
+            "class User(BaseModel):\n"
+            "    def __init__(self, name):\n"
+            "        self.name = name\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) >= 1
+
+        # Edge should be from User to BaseModel
+        edge = extends_edges[0]
+        assert "User" in edge.src
+        assert "BaseModel" in edge.dst
+
+    def test_extracts_multiple_inheritance_edges(self, tmp_path: Path) -> None:
+        """Extracts extends edges for multiple inheritance."""
+        from hypergumbo.analyze.py import analyze_python
+
+        py_file = tmp_path / "mixins.py"
+        py_file.write_text(
+            "class LogMixin:\n"
+            "    def log(self):\n"
+            "        pass\n"
+            "\n"
+            "class SaveMixin:\n"
+            "    def save(self):\n"
+            "        pass\n"
+            "\n"
+            "class Model(LogMixin, SaveMixin):\n"
+            "    pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        # Should have 2 edges: Model -> LogMixin, Model -> SaveMixin
+        assert len(extends_edges) >= 2
+
+        src_names = {e.src for e in extends_edges}
+        dst_names = {e.dst for e in extends_edges}
+        # All edges should be from Model
+        assert all("Model" in src for src in src_names)
+        # Destinations should include both mixins
+        assert any("LogMixin" in dst for dst in dst_names)
+        assert any("SaveMixin" in dst for dst in dst_names)
+
+    def test_no_extends_edge_for_external_base_class(self, tmp_path: Path) -> None:
+        """No extends edge created when base class is external (not in repo)."""
+        from hypergumbo.analyze.py import analyze_python
+
+        py_file = tmp_path / "models.py"
+        py_file.write_text(
+            "from pydantic import BaseModel\n"
+            "\n"
+            "class User(BaseModel):\n"
+            "    name: str\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        # base_classes metadata should still be set
+        user_class = next((s for s in result.symbols if s.name == "User"), None)
+        assert user_class is not None
+        assert "base_classes" in (user_class.meta or {})
+        assert "BaseModel" in user_class.meta["base_classes"]
+
+        # But no extends edge since BaseModel is external
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 0
+
+

@@ -132,15 +132,18 @@ high-level, their status is expressed as a percentage indicating confidence they
 ### META-001: Metadata Must Become Graph Structure
 > "Semantic relationships expressed in metadata must become traversable graph structure."
 
-- **Status:** 90%
-- **Notes:** Core cases (INV-002, INV-004, INV-006) are fixed. Some metadata fields
-  (e.g., `base_classes` in Python/JS/TS) don't yet create edges. Type hierarchy linker
-  added for extends/implements, but not all languages create these edges.
+- **Status:** 95%
+- **Notes:** Core cases (INV-002, INV-004, INV-006) are fixed. Python and JS/TS now
+  create `extends` and `implements` edges from `base_classes` metadata (fixed 2026-01-29).
+  Java already created these edges. Type hierarchy linker works with these edges to
+  create `dispatches_to` edges for polymorphic dispatch. Remaining gap: other languages
+  with `base_classes` metadata (e.g., Kotlin, Ruby) may not yet create edges.
 
 **Unified by:**
 - INV-002 (usage patterns → concepts on nodes)
 - INV-004 (route metadata → handler edges)
 - INV-006 (resources macro → route symbols with controller_action)
+- INV-008 (base_classes → extends/implements edges for Python/JS/TS)
 
 **Implication:** When an analyzer stores relationship information in metadata (view_name,
 controller_action, etc.), there should be a corresponding linker or enrichment phase that
@@ -189,6 +192,22 @@ type, AND location).
   3. Sort candidates deterministically (by path) when falling back to ambiguous resolution
 - **Regression tests:**
   - `tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path`
+
+## INV-008: Base Classes Metadata to Extends Edges
+- **Statement:** Class symbols with `base_classes` metadata must create `extends` or `implements`
+  edges to base classes/interfaces that exist in the analyzed codebase
+- **Status:** ✅ FIXED
+- **Root cause:** Python and JS/TS analyzers extracted `base_classes` into metadata but did not
+  create edges. The type hierarchy linker requires `extends`/`implements` edges to build
+  inheritance maps for polymorphic dispatch. Java was already creating these edges.
+- **Fix:** Added `_extract_inheritance_edges()` function to both Python and JS/TS analyzers:
+  - `analyze/py.py`: Creates `extends` edges after symbol collection in Pass 2
+  - `analyze/js_ts.py`: Creates `extends`/`implements` edges, distinguishing classes from interfaces
+  - Edges only created for base classes that exist in the analyzed codebase (not external packages)
+  - Generic type parameters stripped (e.g., `Repository<User>` → `Repository`)
+- **Regression tests:**
+  - `tests/test_python_ast_analysis.py::TestPythonInheritanceEdges` (4 tests)
+  - `tests/test_js_ts.py::TestJsTsInheritanceEdges` (4 tests)
 
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]

@@ -1149,6 +1149,57 @@ def _extract_import_edges(
     return edges
 
 
+def _extract_inheritance_edges(
+    symbols: list[Symbol],
+    class_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract extends edges from class inheritance.
+
+    For each class with base_classes metadata, creates extends edges to
+    base classes that exist in the analyzed codebase. This enables the
+    type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
+
+    Args:
+        symbols: All extracted symbols
+        class_symbols: Map of class name -> Symbol for class lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of extends edges for inheritance relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.kind != "class":
+            continue
+
+        base_classes = sym.meta.get("base_classes", []) if sym.meta else []
+        if not base_classes:
+            continue
+
+        for base_class_name in base_classes:
+            # Strip generics from base class name (e.g., "Generic[T]" -> "Generic")
+            base_name = base_class_name.split("[")[0]
+
+            # Look up base class in the symbol table
+            if base_name in class_symbols:
+                base_sym = class_symbols[base_name]
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=base_sym.id,
+                    edge_type="extends",
+                    line=sym.span.start_line if sym.span else 0,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_extends",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 def _extract_file_analysis(
     py_file: Path,
     repo_root: Path | None = None,
@@ -1895,6 +1946,17 @@ def analyze_python(
 
         # Collect usage contexts (v1.1.x)
         all_usage_contexts.extend(analysis.usage_contexts)
+
+    # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
+    # Build a class symbol lookup by name
+    class_symbols: dict[str, Symbol] = {}
+    for sym in all_symbols:
+        if sym.kind == "class":
+            class_symbols[sym.name] = sym
+
+    # Create extends edges for base classes that exist in the repo
+    inheritance_edges = _extract_inheritance_edges(all_symbols, class_symbols, run)
+    all_edges.extend(inheritance_edges)
 
     # Update run metadata
     run.files_analyzed = len(file_analyses)

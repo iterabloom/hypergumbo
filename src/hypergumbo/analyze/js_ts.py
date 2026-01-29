@@ -1252,6 +1252,79 @@ def _extract_library_export_contexts(
     return contexts
 
 
+def _extract_inheritance_edges(
+    symbols: list[Symbol],
+    class_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract extends/implements edges from class inheritance.
+
+    For each class with base_classes metadata, creates extends/implements edges
+    to base classes/interfaces that exist in the analyzed codebase. This enables
+    the type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
+
+    Args:
+        symbols: All extracted symbols
+        class_symbols: Map of class name -> Symbol for class lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of extends/implements edges for inheritance relationships
+    """
+    edges: list[Edge] = []
+
+    # Also build interface symbol lookup
+    interface_symbols: dict[str, Symbol] = {}
+    for sym in symbols:
+        if sym.kind == "interface":
+            interface_symbols[sym.name] = sym
+
+    for sym in symbols:
+        if sym.kind != "class":
+            continue
+
+        base_classes = sym.meta.get("base_classes", []) if sym.meta else []
+        if not base_classes:
+            continue
+
+        for base_class_name in base_classes:
+            # Strip generics from base class name (e.g., "Repository<User>" -> "Repository")
+            base_name = base_class_name.split("<")[0]
+            # Handle qualified names like "React.Component" -> use just "Component"
+            if "." in base_name:
+                base_name = base_name.split(".")[-1]
+
+            # Check if it's a class (extends) or interface (implements)
+            if base_name in class_symbols:
+                base_sym = class_symbols[base_name]
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=base_sym.id,
+                    edge_type="extends",
+                    line=sym.span.start_line if sym.span else 0,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_extends",
+                )
+                edges.append(edge)
+            elif base_name in interface_symbols:
+                iface_sym = interface_symbols[base_name]
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=iface_sym.id,
+                    edge_type="implements",
+                    line=sym.span.start_line if sym.span else 0,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_implements",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 def _detect_nestjs_decorator(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[str | None, str | None]:
@@ -2623,6 +2696,10 @@ def analyze_javascript(
             pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
         )
         all_usage_contexts.extend(library_contexts)
+
+    # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
+    inheritance_edges = _extract_inheritance_edges(all_symbols, global_classes, run)
+    all_edges.extend(inheritance_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
