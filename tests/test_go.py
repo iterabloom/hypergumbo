@@ -975,39 +975,39 @@ class TestGoImportPathResolution:
         When multiple files declare the same package name, hypergumbo should
         use the import path to disambiguate, not pick arbitrarily.
 
-        We use 'frontend' vs 'checkoutservice' naming to ensure alphabetical
-        ordering would pick the WRONG file (frontend < checkoutservice).
+        We use 'aaa_wrong' vs 'zzz_correct' naming to ensure alphabetical
+        ordering would pick the WRONG file (aaa < zzz).
         """
         from hypergumbo.analyze.go import analyze_go
 
         # Create structure where alphabetically first file has 'wrong' definition
-        # frontend comes before checkoutservice alphabetically
-        frontend_proto = tmp_path / "src" / "frontend" / "genproto"
-        frontend_proto.mkdir(parents=True)
-        checkout_proto = tmp_path / "src" / "checkoutservice" / "genproto"
-        checkout_proto.mkdir(parents=True)
+        # aaa_wrong comes before zzz_correct alphabetically
+        wrong_proto = tmp_path / "src" / "aaa_wrong" / "genproto"
+        wrong_proto.mkdir(parents=True)
+        correct_proto = tmp_path / "src" / "zzz_correct" / "genproto"
+        correct_proto.mkdir(parents=True)
 
         # Both files define same function in package hipstershop
-        (frontend_proto / "demo.pb.go").write_text("""package hipstershop
+        (wrong_proto / "demo.pb.go").write_text("""package hipstershop
 
 func RegisterCheckoutServiceServer(s interface{}, srv interface{}) {
-    // WRONG - frontend copy
+    // WRONG - should not be picked
 }
 """)
 
-        (checkout_proto / "demo.pb.go").write_text("""package hipstershop
+        (correct_proto / "demo.pb.go").write_text("""package hipstershop
 
 func RegisterCheckoutServiceServer(s interface{}, srv interface{}) {
-    // CORRECT - checkoutservice copy
+    // CORRECT - matches import path
 }
 """)
 
-        # main.go imports checkoutservice's genproto (not frontend's)
-        checkout = tmp_path / "src" / "checkoutservice"
-        (checkout / "main.go").write_text("""package main
+        # main.go imports zzz_correct's genproto (not aaa_wrong's)
+        main_dir = tmp_path / "src" / "zzz_correct"
+        (main_dir / "main.go").write_text("""package main
 
 import (
-    pb "github.com/example/src/checkoutservice/genproto"
+    pb "github.com/example/src/zzz_correct/genproto"
 )
 
 func main() {
@@ -1023,13 +1023,13 @@ func main() {
 
         assert len(main_calls) >= 1, "Should have call edge from main"
 
-        # The destination MUST be in checkoutservice/genproto, NOT frontend/genproto
+        # The destination MUST be in zzz_correct/genproto, NOT aaa_wrong/genproto
         dst_id = main_calls[0].dst
-        assert "checkoutservice" in dst_id, (
-            f"Call should resolve to checkoutservice/genproto based on import path, got {dst_id}"
+        assert "zzz_correct" in dst_id, (
+            f"Call should resolve to zzz_correct/genproto based on import path, got {dst_id}"
         )
-        assert "frontend" not in dst_id, (
-            f"Call should NOT resolve to frontend/genproto, got {dst_id}"
+        assert "aaa_wrong" not in dst_id, (
+            f"Call should NOT resolve to aaa_wrong/genproto, got {dst_id}"
         )
 
 
