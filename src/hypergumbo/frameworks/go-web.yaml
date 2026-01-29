@@ -1,6 +1,6 @@
 # Go Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
-# Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http.
+# Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http, go-restful.
 # Symbols matching these patterns get enriched with concept metadata.
 #
 # Definition-based patterns (v1.0.x): Match base_class for GORM, gRPC, etc.
@@ -33,6 +33,14 @@ patterns:
       path: "metadata.route_path"
       method: "metadata.http_method"
 
+  # go-restful framework - ws.Route(ws.GET("/path").To(handler))
+  # The handler is specified in the .To() call, not as a direct argument
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "\\.To$"
+      position: "^args\\[0\\]$"
+
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Note: These decorator patterns are kept for backwards compatibility but
   # the primary route detection now uses UsageContext patterns above.
@@ -55,6 +63,10 @@ patterns:
   # Echo middleware
   - concept: middleware
     decorator: "^echo\\.middleware\\."
+
+  # go-restful WebService (Kubernetes-style API frameworks)
+  - concept: web_service
+    base_class: "^restful\\.WebService$"
 
   # GORM models (ORM)
   - concept: model

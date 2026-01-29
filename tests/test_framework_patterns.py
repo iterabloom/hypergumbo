@@ -4530,6 +4530,61 @@ class TestGoWebPatterns:
         assert "concepts" in model.meta
         assert any(c["concept"] == "model" for c in model.meta["concepts"])
 
+    def test_go_restful_route_pattern_via_usage_context(self) -> None:
+        """go-restful ws.GET().To(handler) matches via UsageContext pattern.
+
+        go-restful uses a fluent API: ws.Route(ws.GET("/path").To(handler))
+        The handler is specified in the .To() call.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        # Create a UsageContext for a go-restful .To() call
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="RouteBuilder.To",
+            position="args[0]",
+            path="routes.go",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:routes.go:10:getVersion:function",
+            metadata={
+                "handler_name": "getVersion",
+                "receiver": "RouteBuilder",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_go_restful_webservice_pattern(self) -> None:
+        """go-restful WebService base class matches web_service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-web")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:api/routes.go:1:Routes:struct",
+            name="Routes",
+            kind="struct",
+            language="go",
+            path="api/routes.go",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["restful.WebService"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "web_service"
+        assert results[0]["matched_base_class"] == "restful.WebService"
+
 
 class TestRustWebPatterns:
     """Tests for Rust web framework patterns (Actix-web, Rocket, Axum)."""
