@@ -91,6 +91,39 @@ patterns:
   - concept: websocket_namespace
     decorator: "^io\\.of$"
 
+  # ==================== HTTP CLIENT PATTERNS ====================
+  # These detect frontend API calls that could link to backend routes
+
+  # Fetch API - fetch('/api/users')
+  - concept: http_client
+    usage:
+      kind: "^call$"
+      name: "^fetch$"
+      position: "^args\\[0\\]$"
+
+  # Axios - axios.get('/api/users'), axios.post('/api/users')
+  - concept: http_client
+    usage:
+      kind: "^call$"
+      name: "^axios\\.(get|post|put|delete|patch|head|options|request)$"
+      position: "^args\\[0\\]$"
+
+  # Axios instance - api.get('/users'), client.post('/data')
+  - concept: http_client
+    decorator: "^(axios|api|client|http)\\.(get|post|put|delete|patch|head|options|request)$"
+
+  # Ky HTTP client - ky.get('/api/users')
+  - concept: http_client
+    decorator: "^ky\\.(get|post|put|delete|patch|head|extend)$"
+
+  # Got HTTP client - got.get('/api/users')
+  - concept: http_client
+    decorator: "^got\\.(get|post|put|delete|patch|head|stream)$"
+
+  # Superagent - request.get('/api/users')
+  - concept: http_client
+    decorator: "^(request|superagent)\\.(get|post|put|delete|patch|head)$"
+
 linkers:
   - http
   - websocket

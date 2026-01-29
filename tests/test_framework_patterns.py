@@ -3032,6 +3032,83 @@ class TestExpressPatterns:
         assert "concepts" in auth.meta
         assert any(c["concept"] == "auth_strategy" for c in auth.meta["concepts"])
 
+    def test_axios_http_client_pattern(self) -> None:
+        """Axios HTTP client calls match http_client pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:api.js:10:fetchUsers:function",
+            name="fetchUsers",
+            kind="function",
+            language="javascript",
+            path="api.js",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "axios.get", "args": ["/api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "http_client"
+        assert results[0]["matched_decorator"] == "axios.get"
+
+    def test_fetch_http_client_pattern_via_usage_context(self) -> None:
+        """Fetch API calls match http_client pattern via UsageContext."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="fetch",
+            position="args[0]",
+            path="api.ts",
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:api.ts:15:fetchData:function",
+            metadata={
+                "url": "/api/data",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "http_client"
+
+    def test_ky_http_client_pattern(self) -> None:
+        """Ky HTTP client calls match http_client pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("express")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:client.ts:5:getUser:function",
+            name="getUser",
+            kind="function",
+            language="typescript",
+            path="client.ts",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "ky.get", "args": ["/users/1"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "http_client"
+
 
 class TestCeleryPatterns:
     """Tests for Celery framework pattern matching."""
