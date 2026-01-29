@@ -107,6 +107,50 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_base_classes_groovy(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base class and interface names from class declaration.
+
+    Handles:
+    - class Foo extends Bar
+    - class Foo implements IBar
+    - class Foo extends Bar implements IBaz, IQux
+    - Generic types: List<String> -> List
+
+    Args:
+        node: class_declaration node
+        source: Source code bytes
+
+    Returns:
+        List of base class/interface names (without generic params)
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        # superclass clause: class Foo extends Bar
+        if child.type == "superclass":
+            for sub in child.children:
+                if sub.type == "type_identifier":
+                    base_classes.append(_node_text(sub, source))
+                elif sub.type == "generic_type":
+                    # Generic type: List<String> -> extract just the type name
+                    type_id = _find_child_by_type(sub, "type_identifier")
+                    if type_id:
+                        base_classes.append(_node_text(type_id, source))
+        # super_interfaces clause: class Foo implements IBar, IBaz
+        elif child.type == "super_interfaces":
+            type_list = _find_child_by_type(child, "type_list")
+            if type_list:
+                for sub in type_list.children:
+                    if sub.type == "type_identifier":
+                        base_classes.append(_node_text(sub, source))
+                    elif sub.type == "generic_type":
+                        type_id = _find_child_by_type(sub, "type_identifier")
+                        if type_id:
+                            base_classes.append(_node_text(type_id, source))
+
+    return base_classes
+
+
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:  # pragma: no cover
     """Find child by field name."""
     return node.child_by_field_name(field_name)
@@ -260,6 +304,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract base classes and interfaces
+                base_classes = _extract_base_classes_groovy(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, class_name, "class"),
                     name=class_name,
@@ -274,6 +322,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol

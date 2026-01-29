@@ -692,3 +692,187 @@ class Main {
         run_calls = [e for e in call_edges if "run" in e.src]
         assert len(run_calls) >= 1
         assert any("helper" in e.dst for e in run_calls)
+
+
+class TestGroovyInheritanceEdges:
+    """Tests for Groovy base_classes metadata extraction.
+
+    The inheritance linker creates edges from base_classes metadata.
+    These tests verify that the Groovy analyzer extracts base_classes correctly.
+    """
+
+    def test_class_extends_class_has_base_classes(self, tmp_path: Path) -> None:
+        """Class extending another class has base_classes metadata."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Models.groovy").write_text("""
+class BaseModel {
+    void save() {}
+}
+
+class User extends BaseModel {
+    void greet() {}
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "BaseModel" in user_class.meta["base_classes"]
+
+    def test_class_implements_interface_has_base_classes(self, tmp_path: Path) -> None:
+        """Class implementing interface has base_classes metadata."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Models.groovy").write_text("""
+interface Serializable {
+    String serialize()
+}
+
+class User implements Serializable {
+    String serialize() { return "" }
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "Serializable" in user_class.meta["base_classes"]
+
+    def test_class_extends_and_implements_has_both(self, tmp_path: Path) -> None:
+        """Class extending and implementing has both in base_classes."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Models.groovy").write_text("""
+class BaseModel {}
+interface Serializable {}
+interface Comparable {}
+
+class User extends BaseModel implements Serializable, Comparable {
+    void save() {}
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "BaseModel" in user_class.meta["base_classes"]
+        assert "Serializable" in user_class.meta["base_classes"]
+        assert "Comparable" in user_class.meta["base_classes"]
+
+    def test_generic_base_class_strips_type_params(self, tmp_path: Path) -> None:
+        """Generic base class has type params stripped in base_classes."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Repository.groovy").write_text("""
+class Repository<T> {
+    T find() { return null }
+}
+
+class UserRepository extends Repository<User> {
+    User findByName(String name) { return null }
+}
+
+class User {}
+""")
+        result = analyze_groovy(tmp_path)
+
+        user_repo = next(
+            (s for s in result.symbols if s.name == "UserRepository" and s.kind == "class"),
+            None,
+        )
+        assert user_repo is not None
+        assert user_repo.meta is not None
+        assert "base_classes" in user_repo.meta
+        # Should be "Repository", not "Repository<User>"
+        assert "Repository" in user_repo.meta["base_classes"]
+
+    def test_generic_interface_strips_type_params(self, tmp_path: Path) -> None:
+        """Generic interface has type params stripped in base_classes."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Comparable.groovy").write_text("""
+interface Comparable<T> {
+    int compareTo(T other)
+}
+
+class User implements Comparable<User> {
+    int compareTo(User other) { return 0 }
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        # Should be "Comparable", not "Comparable<User>"
+        assert "Comparable" in user_class.meta["base_classes"]
+
+    def test_class_without_extends_has_no_base_classes(self, tmp_path: Path) -> None:
+        """Class without extends clause has no base_classes metadata."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+
+        (tmp_path / "Simple.groovy").write_text("""
+class SimpleClass {
+    void method() {}
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        simple_class = next(
+            (s for s in result.symbols if s.name == "SimpleClass" and s.kind == "class"),
+            None,
+        )
+        assert simple_class is not None
+        # No meta or no base_classes is fine
+        if simple_class.meta:
+            assert simple_class.meta.get("base_classes", []) == []
+
+    def test_linker_creates_extends_edge(self, tmp_path: Path) -> None:
+        """Inheritance linker creates extends edge from base_classes."""
+        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo.linkers.inheritance import link_inheritance
+        from hypergumbo.linkers.registry import LinkerContext
+
+        (tmp_path / "Models.groovy").write_text("""
+class BaseModel {
+    void save() {}
+}
+
+class User extends BaseModel {
+    void greet() {}
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=result.symbols,
+            edges=result.edges,
+        )
+        linker_result = link_inheritance(ctx)
+
+        # Should create an extends edge
+        extends_edges = [e for e in linker_result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert "User" in extends_edges[0].src
+        assert "BaseModel" in extends_edges[0].dst
