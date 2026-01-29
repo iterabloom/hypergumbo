@@ -152,10 +152,12 @@ converts that metadata into edges or concepts. Metadata alone is not traversable
 ### META-002: Extraction Completeness
 > "Symbols that exist in source code must be extracted for analysis."
 
-- **Status:** 95%
-- **Notes:** Known cases (INV-001, INV-003) are fixed. Edge cases may remain for exotic
-  constructs (e.g., heavily metaprogrammed code, eval-generated functions). Need to
-  audit more languages for extraction gaps.
+- **Status:** 98%
+- **Notes:** Known cases (INV-001, INV-003) are fixed. Lambda/closure call attribution
+  audited for Go, Java, Rust, C# - all use implicit walk-up that correctly attributes
+  calls inside lambdas to enclosing methods. Test coverage added for C# lambdas.
+  Remaining 2% is for theoretical exotic constructs (heavily metaprogrammed code,
+  eval-generated functions) that would need specific failing repos to identify.
 
 **Unified by:**
 - INV-001 (call edges must have caller symbols - implies callers are extracted)
