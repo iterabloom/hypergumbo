@@ -977,6 +977,9 @@ class TestGoImportPathResolution:
 
         We use 'aaa_wrong' vs 'zzz_correct' naming to ensure alphabetical
         ordering would pick the WRONG file (aaa < zzz).
+
+        Fixed in INV-007: ListNameResolver now tries progressively shorter
+        path suffixes to find unique matches.
         """
         from hypergumbo.analyze.go import analyze_go
 

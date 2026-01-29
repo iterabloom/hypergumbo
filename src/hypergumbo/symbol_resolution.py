@@ -584,20 +584,41 @@ class ListNameResolver:
 
         # Multiple candidates - try to disambiguate with path hint
         if path_hint:
-            # Extract directory hint from path (e.g., "grpc" from "/path/to/grpc/server.go")
-            dir_hint = path_hint.rstrip("/").rsplit("/", 1)[-1] if "/" in path_hint else path_hint
-            for candidate in candidates:
-                if dir_hint in candidate.path:
+            # Try progressively shorter suffixes of the path hint to find unique match
+            # e.g., for "github.com/example/src/zzz_correct/genproto", try:
+            #   1. "src/zzz_correct/genproto" (longest useful suffix)
+            #   2. "zzz_correct/genproto"
+            #   3. "genproto" (shortest)
+            path_parts = path_hint.rstrip("/").split("/")
+
+            # Start from second-to-last segment (skip domain parts like github.com)
+            # and try progressively shorter suffixes
+            for i in range(len(path_parts) - 1, 0, -1):
+                suffix = "/".join(path_parts[i:])
+                matching = [c for c in candidates if suffix in c.path]
+                if len(matching) == 1:
                     return LookupResult(
-                        symbol=candidate,
+                        symbol=matching[0],
                         confidence=self.CONFIDENCE_PATH_HINT,
                         match_type="path_hint",
                         candidates=candidates,
                     )
 
-        # Ambiguous - return first with low confidence
+            # Fallback: try just the last segment
+            dir_hint = path_parts[-1]
+            matching = [c for c in candidates if dir_hint in c.path]
+            if len(matching) == 1:
+                return LookupResult(
+                    symbol=matching[0],
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
+
+        # Ambiguous - sort for deterministic ordering, return first with low confidence
+        sorted_candidates = sorted(candidates, key=lambda s: s.path)
         return LookupResult(
-            symbol=candidates[0],
+            symbol=sorted_candidates[0],
             confidence=self.CONFIDENCE_AMBIGUOUS,
             match_type="ambiguous",
             candidates=candidates,

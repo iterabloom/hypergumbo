@@ -176,7 +176,21 @@ type, AND location).
 
 ---
 
-## INV-007: Template for New Invariants
+## INV-007: Go Import Path Resolution
+- **Statement:** When multiple Go files define the same symbol (same package name, same function),
+  call resolution must use the import path to pick the correct target file
+- **Status:** ✅ FIXED
+- **Root cause:** `symbol_resolution.py:ListNameResolver.lookup()` only checked the last directory
+  segment of the import path (e.g., "genproto") which matched multiple candidates. When no unique
+  match was found, it returned the first candidate, which was non-deterministic across Python versions.
+- **Fix:** Enhanced `ListNameResolver.lookup()` to:
+  1. Try progressively shorter suffixes of the import path (e.g., "zzz_correct/genproto", "genproto")
+  2. Return when exactly one candidate matches a suffix
+  3. Sort candidates deterministically (by path) when falling back to ambiguous resolution
+- **Regression tests:**
+  - `tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path`
+
+## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED | TBD]
 - **Root cause:** [File:line or description]
