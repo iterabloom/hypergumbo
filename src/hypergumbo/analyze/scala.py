@@ -97,6 +97,41 @@ def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["t
     return None
 
 
+def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base class/trait names from extends clause.
+
+    Handles:
+    - extends BaseClass
+    - extends BaseClass with Trait1 with Trait2
+    - extends GenericClass[T]
+
+    Args:
+        node: class_definition or trait_definition node
+        source: Source code bytes
+
+    Returns:
+        List of base class/trait names (without generic type params)
+    """
+    base_classes: list[str] = []
+
+    extends_clause = _find_child_by_type(node, "extends_clause")
+    if extends_clause is None:
+        return base_classes
+
+    for child in extends_clause.children:
+        if child.type == "type_identifier":
+            # Simple type: extends BaseClass
+            base_classes.append(_node_text(child, source))
+        elif child.type == "generic_type":
+            # Generic type: extends Repository[User]
+            # Extract just the type name, not the type arguments
+            type_id = _find_child_by_type(child, "type_identifier")
+            if type_id:
+                base_classes.append(_node_text(type_id, source))
+
+    return base_classes
+
+
 def _extract_import_hints(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -346,6 +381,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract base classes from extends clause
+                base_classes = _extract_extends_clause(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, type_name, "class"),
                     name=type_name,
@@ -360,6 +399,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -400,6 +440,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract base traits from extends clause
+                base_classes = _extract_extends_clause(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, type_name, "trait"),
                     name=type_name,
@@ -414,6 +458,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol

@@ -614,6 +614,170 @@ class TestScalaHelperFunctions:
         assert result is None
 
 
+class TestScalaInheritanceEdges:
+    """Tests for Scala base_classes metadata extraction.
+
+    The inheritance linker creates edges from base_classes metadata.
+    These tests verify that the Scala analyzer extracts base_classes correctly.
+    """
+
+    def test_class_extends_class_has_base_classes(self, tmp_path: Path) -> None:
+        """Class extending another class has base_classes metadata."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Models.scala").write_text("""
+class BaseModel {
+    def save(): Unit = {}
+}
+
+class User extends BaseModel {
+    def greet(): Unit = {}
+}
+""")
+        result = analyze_scala(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "BaseModel" in user_class.meta["base_classes"]
+
+    def test_class_with_trait_has_base_classes(self, tmp_path: Path) -> None:
+        """Class with mixed-in traits has base_classes including traits."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Models.scala").write_text("""
+trait Serializable {
+    def toJson(): String
+}
+
+trait Comparable {
+    def compare(): Int
+}
+
+class User extends Serializable with Comparable {
+    def toJson(): String = "{}"
+    def compare(): Int = 0
+}
+""")
+        result = analyze_scala(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        # Should include both Serializable (extends) and Comparable (with)
+        assert "Serializable" in user_class.meta["base_classes"]
+        assert "Comparable" in user_class.meta["base_classes"]
+
+    def test_trait_extends_trait_has_base_classes(self, tmp_path: Path) -> None:
+        """Trait extending another trait has base_classes."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Traits.scala").write_text("""
+trait Entity {
+    def id: String
+}
+
+trait Persistable extends Entity {
+    def save(): Unit
+}
+""")
+        result = analyze_scala(tmp_path)
+
+        persistable_trait = next(
+            (s for s in result.symbols if s.name == "Persistable" and s.kind == "trait"),
+            None,
+        )
+        assert persistable_trait is not None
+        assert persistable_trait.meta is not None
+        assert "base_classes" in persistable_trait.meta
+        assert "Entity" in persistable_trait.meta["base_classes"]
+
+    def test_generic_base_class_strips_type_params(self, tmp_path: Path) -> None:
+        """Generic base class has type params stripped in base_classes."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Repository.scala").write_text("""
+class Repository[T] {
+    def find(): T = ???
+}
+
+class UserRepository extends Repository[User] {
+    def findByName(name: String): User = ???
+}
+
+class User
+""")
+        result = analyze_scala(tmp_path)
+
+        user_repo = next(
+            (s for s in result.symbols if s.name == "UserRepository" and s.kind == "class"),
+            None,
+        )
+        assert user_repo is not None
+        assert user_repo.meta is not None
+        assert "base_classes" in user_repo.meta
+        # Should be "Repository", not "Repository[User]"
+        assert "Repository" in user_repo.meta["base_classes"]
+
+    def test_class_without_extends_has_no_base_classes(self, tmp_path: Path) -> None:
+        """Class without extends clause has no base_classes metadata."""
+        from hypergumbo.analyze.scala import analyze_scala
+
+        (tmp_path / "Simple.scala").write_text("""
+class SimpleClass {
+    def method(): Unit = {}
+}
+""")
+        result = analyze_scala(tmp_path)
+
+        simple_class = next(
+            (s for s in result.symbols if s.name == "SimpleClass" and s.kind == "class"),
+            None,
+        )
+        assert simple_class is not None
+        # No meta or no base_classes is fine
+        if simple_class.meta:
+            assert simple_class.meta.get("base_classes", []) == []
+
+    def test_linker_creates_extends_edge(self, tmp_path: Path) -> None:
+        """Inheritance linker creates extends edge from base_classes."""
+        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo.linkers.inheritance import link_inheritance
+        from hypergumbo.linkers.registry import LinkerContext
+
+        (tmp_path / "Models.scala").write_text("""
+class BaseModel {
+    def save(): Unit = {}
+}
+
+class User extends BaseModel {
+    def greet(): Unit = {}
+}
+""")
+        result = analyze_scala(tmp_path)
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=result.symbols,
+            edges=result.edges,
+        )
+        linker_result = link_inheritance(ctx)
+
+        # Should create an extends edge
+        extends_edges = [e for e in linker_result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert "User" in extends_edges[0].src
+        assert "BaseModel" in extends_edges[0].dst
+
+
 class TestScalaSignatureExtraction:
     """Tests for Scala function signature extraction."""
 
