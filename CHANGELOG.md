@@ -14,6 +14,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Bottle framework support**: Added patterns for the Bottle Python micro-framework. Detects route decorators (`@app.get`, `@app.route`, `@route`), hooks (`@app.hook`), and error handlers (`@app.error`).
 - **JAX-RS implementation aliases**: Dropwizard, Jersey, and RESTEasy frameworks now use JAX-RS patterns automatically. This enables route detection for Java REST APIs using these frameworks.
 
+### Fixed
+
+- **Linker duplicate edge elimination**: Added edge deduplication after linkers run. The event-sourcing linker could create duplicate edges when matching publisher-subscriber pairs. Example: killbill repo went from 25494 edges (472 duplicates) to 25022 unique edges.
+
 ## [1.3.1] - 2026-01-29
 
 ### Added

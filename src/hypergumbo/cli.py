@@ -3030,6 +3030,16 @@ def run_behavior_map(
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
     del linker_ctx, captured_symbols  # Free linker data structures
+
+    # Deduplicate edges by ID (linkers may create duplicate edges)
+    seen_edge_ids: set[str] = set()
+    unique_edges: list[Edge] = []
+    for edge in all_edges:
+        if edge.id not in seen_edge_ids:
+            seen_edge_ids.add(edge.id)
+            unique_edges.append(edge)
+    all_edges = unique_edges
+    del seen_edge_ids, unique_edges
     _log_memory("after linkers")
 
     # Apply supply chain classification to all symbols
