@@ -441,6 +441,37 @@ def _extract_using_aliases(
     return aliases
 
 
+def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base classes and interfaces from base_list (META-001).
+
+    C# syntax: class User : BaseModel, IEntity, IDisposable { }
+    AST structure:
+        class_declaration
+            identifier "User"
+            base_list
+                identifier "BaseModel"
+                identifier "IEntity"
+                identifier "IDisposable"
+
+    Returns list of base type names.
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        if child.type == "base_list":
+            for base_child in child.children:
+                if base_child.type in ("identifier", "generic_name", "qualified_name"):
+                    base_name = _node_text(base_child, source)
+                    # Strip generic parameters: List<int> -> List
+                    if "<" in base_name:
+                        base_name = base_name.split("<")[0]
+                    if base_name:
+                        base_classes.append(base_name)
+            break
+
+    return base_classes
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -478,9 +509,16 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for FRAMEWORK_PATTERNS phase
                 annotations = _extract_annotations(node, source)
+                # Extract base classes/interfaces (META-001)
+                base_classes = _extract_base_list(node, source)
+
                 meta: dict[str, object] | None = None
-                if annotations:
-                    meta = {"annotations": annotations}
+                if annotations or base_classes:
+                    meta = {}
+                    if annotations:
+                        meta["annotations"] = annotations
+                    if base_classes:
+                        meta["base_classes"] = base_classes
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),

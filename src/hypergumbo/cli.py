@@ -63,6 +63,7 @@ import hypergumbo.linkers.route_handler as _route_handler_linker  # noqa: F401
 import hypergumbo.linkers.subprocess_cli as _subprocess_linker  # noqa: F401
 import hypergumbo.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo.linkers.websocket as _websocket_linker  # noqa: F401
+import hypergumbo.linkers.inheritance as _inheritance_linker  # noqa: F401
 import hypergumbo.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, Span

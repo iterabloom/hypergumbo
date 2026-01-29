@@ -332,12 +332,13 @@ def _extract_user_type_name(user_type_node: "tree_sitter.Node", source: bytes) -
     for child in user_type_node.children:
         if child.type in ("simple_identifier", "identifier", "type_identifier"):
             return _node_text(child, source)
-    # Fallback: return the whole text, strip any generic parameters
-    text = _node_text(user_type_node, source)  # pragma: no cover - defensive
-    # Strip generic parameters: List<Int> -> List
-    if "<" in text:  # pragma: no cover - defensive
-        text = text.split("<")[0]  # pragma: no cover - defensive
-    return text if text else None  # pragma: no cover - defensive
+    # Defensive fallback for unexpected AST shapes
+    if True:  # pragma: no cover
+        text = _node_text(user_type_node, source)
+        if "<" in text:
+            text = text.split("<")[0]
+        return text if text else None
+    return None  # unreachable, but keeps mypy happy
 
 
 def _extract_symbols_from_file(

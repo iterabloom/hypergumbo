@@ -196,6 +196,202 @@ class TestCSharpSymbolExtraction:
             assert symbol.span.end_line >= symbol.span.start_line
 
 
+class TestCSharpInheritanceEdges:
+    """Tests for extracting C# inheritance edges (META-001)."""
+
+    def test_extracts_base_class_metadata(self, tmp_path: Path) -> None:
+        """Extracts base_classes metadata for class with base class."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public class BaseModel {
+    public void Save() {}
+}
+
+public class User : BaseModel {
+    public void Greet() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        assert user.meta is not None
+        assert user.meta.get("base_classes") == ["BaseModel"]
+
+    def test_extracts_interface_implementation(self, tmp_path: Path) -> None:
+        """Extracts base_classes metadata for class implementing interface."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public interface IEntity {
+    void Save();
+}
+
+public class User : IEntity {
+    public void Save() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        assert user.meta is not None
+        assert user.meta.get("base_classes") == ["IEntity"]
+
+    def test_extracts_multiple_inheritance(self, tmp_path: Path) -> None:
+        """Extracts all base types for class extending class and interfaces."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public class BaseModel {
+    public virtual void Save() {}
+}
+
+public interface IEntity {
+    void Id();
+}
+
+public interface IDisposable {
+    void Dispose();
+}
+
+public class User : BaseModel, IEntity, IDisposable {
+    public void Id() {}
+    public void Dispose() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        assert user is not None
+        assert user.meta is not None
+        base_classes = user.meta.get("base_classes")
+        assert base_classes is not None
+        assert "BaseModel" in base_classes
+        assert "IEntity" in base_classes
+        assert "IDisposable" in base_classes
+
+    def test_strips_generic_parameters(self, tmp_path: Path) -> None:
+        """Strips generic parameters from base class names."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public class UserRepository : Repository<User> {
+    public void Find() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        repo = next((s for s in result.symbols if s.name == "UserRepository"), None)
+        assert repo is not None
+        assert repo.meta is not None
+        # Should be "Repository", not "Repository<User>"
+        assert repo.meta.get("base_classes") == ["Repository"]
+
+    def test_creates_extends_edge(self, tmp_path: Path) -> None:
+        """Creates extends edge from class to its base class via linker."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo.linkers.inheritance import link_inheritance
+        from hypergumbo.linkers.registry import LinkerContext
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public class BaseModel {
+    public void Save() {}
+}
+
+public class User : BaseModel {
+    public void Greet() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+        linker_ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges
+        )
+        linker_result = link_inheritance(linker_ctx)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        base = next((s for s in result.symbols if s.name == "BaseModel"), None)
+        assert user is not None
+        assert base is not None
+
+        extends_edges = [e for e in linker_result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert extends_edges[0].src == user.id
+        assert extends_edges[0].dst == base.id
+
+    def test_creates_implements_edge_for_interface(self, tmp_path: Path) -> None:
+        """Creates implements edge from class to interface via linker."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo.linkers.inheritance import link_inheritance
+        from hypergumbo.linkers.registry import LinkerContext
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public interface IEntity {
+    void Save();
+}
+
+public class User : IEntity {
+    public void Save() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+        linker_ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges
+        )
+        linker_result = link_inheritance(linker_ctx)
+
+        user = next((s for s in result.symbols if s.name == "User"), None)
+        entity = next((s for s in result.symbols if s.name == "IEntity"), None)
+        assert user is not None
+        assert entity is not None
+
+        implements_edges = [e for e in linker_result.edges if e.edge_type == "implements"]
+        assert len(implements_edges) == 1
+        assert implements_edges[0].src == user.id
+        assert implements_edges[0].dst == entity.id
+
+    def test_no_edge_for_external_base_class(self, tmp_path: Path) -> None:
+        """No edge created when base class is not in analyzed codebase."""
+        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo.linkers.inheritance import link_inheritance
+        from hypergumbo.linkers.registry import LinkerContext
+
+        cs_file = tmp_path / "Models.cs"
+        cs_file.write_text("""
+public class UserController : Controller {
+    public void Index() {}
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+        linker_ctx = LinkerContext(
+            repo_root=tmp_path, symbols=result.symbols, edges=result.edges
+        )
+        linker_result = link_inheritance(linker_ctx)
+
+        controller = next((s for s in result.symbols if s.name == "UserController"), None)
+        assert controller is not None
+        assert controller.meta is not None
+        assert controller.meta.get("base_classes") == ["Controller"]
+
+        # No edges (Controller is external)
+        extends_edges = [e for e in linker_result.edges if e.edge_type in ("extends", "implements")]
+        assert len(extends_edges) == 0
+
+
 class TestCSharpEdgeExtraction:
     """Tests for edge extraction from C# files."""
 
