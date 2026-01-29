@@ -158,6 +158,14 @@ converts that metadata into edges or concepts. Metadata alone is not traversable
   calls inside lambdas to enclosing methods. Test coverage added for C# lambdas.
   Remaining 2% is for theoretical exotic constructs (heavily metaprogrammed code,
   eval-generated functions) that would need specific failing repos to identify.
+- **Artifact Analysis (2026-01-29):** Extensive analysis of 25+ bakeoff repos across
+  5 cohorts found no actionable extraction gaps:
+  - C++ test patterns (Google Test, Catch2): FIXED via test-frameworks.yaml
+  - C header declarations: Correct behavior (declarations don't have call edges)
+  - Spec repos (NO_CALL_EDGES): Correct (declarative code, no callable functions)
+  - Go repos with external deps (LOW_RESOLUTION): Correct (external calls unresolvable)
+  - Language metrics (Python, Ruby, Rust, TypeScript, C, Go): All healthy
+  The 98% represents the practical maximum achievable without specific failing repos.
 
 **Unified by:**
 - INV-001 (call edges must have caller symbols - implies callers are extracted)
