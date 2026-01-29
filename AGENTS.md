@@ -22,6 +22,24 @@
   - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
   - Use `./scripts/loop-toggle` to enable/disable autonomous mode (manages both `AUTONOMOUS_MODE.txt` and `.agent/LOOP` sentinel).
 
+## No Weasel Words
+When documenting status, coverage, or completion:
+- **BANNED:** "all known issues", "no known problems", "all identified cases"
+  - These are copouts. If you haven't investigated something, you don't know it's not a problem.
+  - "All known" just means "cases I bothered to check" — it's the guy from Memento saying "I've investigated all known leads."
+- **BANNED:** "should work", "mostly complete", "generally handles"
+  - Either it works or it doesn't. Be specific about what works and what doesn't.
+- **BANNED:** "in most cases", "typically", "usually"
+  - State the actual scope. Which cases? Under what conditions?
+- **REQUIRED:** Concrete enumeration over vague claims
+  - ❌ "All major languages are supported"
+  - ✅ "Supported: Java, Python, JS/TS, Ruby, Kotlin. Not supported: C#, Scala, Swift, PHP, Go, C++."
+- **REQUIRED:** Explicit gaps over implicit completeness
+  - ❌ "META-001 is 100% fixed"
+  - ✅ "META-001: 5/13 languages done. Missing: C#, Scala, Swift, PHP, Groovy, C++, Objective-C, Apex."
+
+No weak shit. If you don't know, say you don't know. If you haven't checked, say you haven't checked.
+
 ## Required Checks
 - **100% Coverage:** No code may be committed without full test coverage. Verify with:
   - **Fast (parallel):** `pytest -n auto --cov=src --cov-fail-under=100` (~2 min)
