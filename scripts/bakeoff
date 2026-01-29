@@ -604,7 +604,9 @@ def cmd_diagnose(args):
                 flags.append("NO_CALL_EDGES")
             # If dom_lang is in NOT_EXPECTED, this is fine - don't flag
 
-        if routes == 0 and any(x in repo_name.lower() for x in ["api", "server", "web", "http", "rest"]):
+        # GraphQL frameworks use resolvers instead of traditional HTTP routes
+        is_graphql_repo = any(x in repo_name.lower() for x in ["graphql", "apollo"])
+        if routes == 0 and not is_graphql_repo and any(x in repo_name.lower() for x in ["api", "server", "web", "http", "rest"]):
             flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
 
         # Create issues
