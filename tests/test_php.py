@@ -1057,3 +1057,159 @@ Route::resource('photos', PhotoController::class);
         assert "PhotoController@edit" in routes_by_action
         assert "PhotoController@update" in routes_by_action
         assert "PhotoController@destroy" in routes_by_action
+
+
+class TestPhpInheritanceEdges:
+    """Tests for PHP base_classes metadata extraction.
+
+    The inheritance linker creates edges from base_classes metadata.
+    These tests verify that the PHP analyzer extracts base_classes correctly.
+    """
+
+    def test_class_extends_class_has_base_classes(self, tmp_path: Path) -> None:
+        """Class extending another class has base_classes metadata."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Models.php").write_text("""<?php
+class BaseModel {
+    public function save() {}
+}
+
+class User extends BaseModel {
+    public function greet() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "BaseModel" in user_class.meta["base_classes"]
+
+    def test_class_implements_interface_has_base_classes(self, tmp_path: Path) -> None:
+        """Class implementing interface has base_classes metadata."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Models.php").write_text("""<?php
+interface Serializable {
+    public function serialize();
+}
+
+class User implements Serializable {
+    public function serialize() { return ""; }
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "Serializable" in user_class.meta["base_classes"]
+
+    def test_class_extends_and_implements_has_both(self, tmp_path: Path) -> None:
+        """Class extending and implementing has both in base_classes."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Models.php").write_text("""<?php
+class BaseModel {}
+interface Serializable {}
+interface Comparable {}
+
+class User extends BaseModel implements Serializable, Comparable {
+    public function save() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        user_class = next(
+            (s for s in result.symbols if s.name == "User" and s.kind == "class"),
+            None,
+        )
+        assert user_class is not None
+        assert user_class.meta is not None
+        assert "base_classes" in user_class.meta
+        assert "BaseModel" in user_class.meta["base_classes"]
+        assert "Serializable" in user_class.meta["base_classes"]
+        assert "Comparable" in user_class.meta["base_classes"]
+
+    def test_class_without_extends_has_no_base_classes(self, tmp_path: Path) -> None:
+        """Class without extends/implements has no base_classes metadata."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Simple.php").write_text("""<?php
+class SimpleClass {
+    public function method() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        simple_class = next(
+            (s for s in result.symbols if s.name == "SimpleClass" and s.kind == "class"),
+            None,
+        )
+        assert simple_class is not None
+        # No meta or no base_classes is fine
+        if simple_class.meta:
+            assert simple_class.meta.get("base_classes", []) == []
+
+    def test_qualified_names_in_base_classes(self, tmp_path: Path) -> None:
+        """Extracts fully qualified namespace names in extends/implements."""
+        from hypergumbo.analyze.php import analyze_php
+
+        (tmp_path / "Controller.php").write_text(r"""<?php
+namespace App\Controllers;
+
+class UserController extends \Illuminate\Routing\Controller implements \App\Contracts\UserInterface {
+    public function index() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        controller = next(
+            (s for s in result.symbols if s.name == "UserController" and s.kind == "class"),
+            None,
+        )
+        assert controller is not None
+        assert controller.meta is not None
+        assert "base_classes" in controller.meta
+        # Should have both the qualified base class and interface
+        assert r"\Illuminate\Routing\Controller" in controller.meta["base_classes"]
+        assert r"\App\Contracts\UserInterface" in controller.meta["base_classes"]
+
+    def test_linker_creates_extends_edge(self, tmp_path: Path) -> None:
+        """Inheritance linker creates extends edge from base_classes."""
+        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo.linkers.inheritance import link_inheritance
+        from hypergumbo.linkers.registry import LinkerContext
+
+        (tmp_path / "Models.php").write_text("""<?php
+class BaseModel {
+    public function save() {}
+}
+
+class User extends BaseModel {
+    public function greet() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=result.symbols,
+            edges=result.edges,
+        )
+        linker_result = link_inheritance(ctx)
+
+        # Should create an extends edge
+        extends_edges = [e for e in linker_result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert "User" in extends_edges[0].src
+        assert "BaseModel" in extends_edges[0].dst

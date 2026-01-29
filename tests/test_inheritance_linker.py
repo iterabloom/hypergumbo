@@ -158,6 +158,43 @@ class TestInheritanceLinker:
         assert result.edges[0].dst == "sym:Base"
         assert result.edges[0].edge_type == "extends"
 
+    def test_handles_qualified_names_with_dots(self) -> None:
+        """Handles dot-qualified names (Foo.Bar) like C# namespaces."""
+        base = Symbol(
+            id="sym:Controller",
+            name="Controller",
+            kind="class",
+            language="csharp",
+            path="/test.cs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        derived = Symbol(
+            id="sym:UserController",
+            name="UserController",
+            kind="class",
+            language="csharp",
+            path="/test.cs",
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Microsoft.AspNetCore.Mvc.Controller"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[base, derived],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        # Should match Controller from Microsoft.AspNetCore.Mvc.Controller
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == "sym:Controller"
+        assert result.edges[0].edge_type == "extends"
+
     def test_skips_existing_edges(self) -> None:
         """Skips edge creation if edge already exists from analyzer."""
         base = Symbol(

@@ -153,6 +153,43 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None
 
 
+def _extract_base_classes_php(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract base class and interface names from class declaration.
+
+    Handles:
+    - class Foo extends Bar
+    - class Foo implements IBar
+    - class Foo extends Bar implements IBaz, IQux
+
+    Args:
+        node: class_declaration node
+        source: Source code bytes
+
+    Returns:
+        List of base class/interface names
+    """
+    base_classes: list[str] = []
+
+    for child in node.children:
+        # extends clause: class Foo extends Bar
+        if child.type == "base_clause":
+            for sub in child.children:
+                if sub.type == "name":
+                    base_classes.append(_node_text(sub, source))
+                elif sub.type == "qualified_name":
+                    # Fully qualified: extends \Namespace\Class
+                    base_classes.append(_node_text(sub, source))
+        # implements clause: class Foo implements IBar, IBaz
+        elif child.type == "class_interface_clause":
+            for sub in child.children:
+                if sub.type == "name":
+                    base_classes.append(_node_text(sub, source))
+                elif sub.type == "qualified_name":
+                    base_classes.append(_node_text(sub, source))
+
+    return base_classes
+
+
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing class name."""
     current = node.parent
@@ -578,6 +615,11 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+
+                # Extract base classes and interfaces
+                base_classes = _extract_base_classes_php(node, source)
+                meta = {"base_classes": base_classes} if base_classes else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class"),
                     name=name,
@@ -587,6 +629,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=meta,
                 )
                 symbols.append(symbol)
 
