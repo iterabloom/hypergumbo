@@ -1,0 +1,60 @@
+# Litestar framework patterns (ADR-0003)
+#
+# Litestar (formerly Starlite) is a powerful, performant Python ASGI framework
+# that emphasizes a "batteries included" approach while maintaining flexibility.
+#
+# Litestar uses standalone decorators (@get, @post, etc.) for route handling,
+# rather than decorators bound to an app instance like Flask.
+#
+# Controller pattern: Classes extending Controller provide grouped route handling.
+#
+# See: https://litestar.dev/ and https://github.com/litestar-org/litestar
+
+id: litestar
+language: python
+
+patterns:
+  # ==================== DECORATOR-BASED PATTERNS ====================
+
+  # Litestar route decorators - @get("/path"), @post("/path"), etc.
+  # These are standalone decorators, not app-bound methods.
+  - concept: route
+    decorator: "^(get|post|put|delete|patch|head|options)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name_upper"
+
+  # WebSocket handler - @websocket("/ws")
+  - concept: websocket_handler
+    decorator: "^websocket$"
+    extract_path: "args[0]"
+
+  # WebSocket listener - @websocket_listener("/ws")
+  - concept: websocket_handler
+    decorator: "^websocket_listener$"
+    extract_path: "args[0]"
+
+  # Before/after request hooks (guards and middleware)
+  - concept: middleware
+    decorator: "^(before_request|after_request)$"
+
+  # Exception handlers - @exception_handler(SomeException)
+  - concept: error_handler
+    decorator: "^exception_handler$"
+
+  # ==================== CLASS-BASED PATTERNS ====================
+
+  # Controller base class - class UserController(Controller):
+  - concept: controller
+    base_class: "^Controller$"
+
+  # Pydantic models (validation/serialization) - common with Litestar
+  - concept: model
+    base_class: "^(pydantic\\.)?BaseModel$"
+
+  # DTOData base class (Litestar-specific data transfer objects)
+  - concept: serializer
+    base_class: "^(AbstractDTO|DTOData)$"
+
+linkers:
+  - http
+  - websocket

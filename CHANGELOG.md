@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Bottle framework support**: Added patterns for the Bottle Python micro-framework. Detects route decorators (`@app.get`, `@app.route`, `@route`), hooks (`@app.hook`), and error handlers (`@app.error`).
 - **JAX-RS implementation aliases**: Dropwizard, Jersey, and RESTEasy frameworks now use JAX-RS patterns automatically. This enables route detection for Java REST APIs using these frameworks.
 - **Flask-Appbuilder framework support**: Added patterns for Flask-Appbuilder (used by Apache Superset). Detects `@expose` route decorators, auth decorators (`@has_access`, `@protect`), and base classes (`BaseView`, `ModelRestApi`, `ModelView`). Enables route detection for enterprise Flask applications built on Flask-Appbuilder.
+- **Litestar framework support**: Added patterns for the Litestar (formerly Starlite) async Python ASGI framework. Detects standalone route decorators (`@get`, `@post`, `@put`, `@delete`, `@patch`), WebSocket handlers (`@websocket`, `@websocket_listener`), middleware (`@before_request`, `@after_request`), exception handlers (`@exception_handler`), and Controller base classes. Enables route detection for high-performance async Python APIs built with Litestar.
 
 ### Fixed
 

@@ -9660,3 +9660,156 @@ class TestFalconPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "controller"
+
+
+class TestLitestarPatterns:
+    """Tests for Litestar framework pattern matching."""
+
+    def test_litestar_get_route_pattern(self) -> None:
+        """Litestar @get decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("litestar")
+
+        assert pattern_def is not None, "Litestar patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:routes.py:5:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_litestar_post_route_pattern(self) -> None:
+        """Litestar @post decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("litestar")
+
+        symbol = Symbol(
+            id="test:routes.py:20:create_user:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_litestar_put_route_pattern(self) -> None:
+        """Litestar @put decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("litestar")
+
+        symbol = Symbol(
+            id="test:routes.py:35:update_user:function",
+            name="update_user",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(35, 45, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "put", "args": ["/users/{user_id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "PUT"
+
+    def test_litestar_delete_route_pattern(self) -> None:
+        """Litestar @delete decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("litestar")
+
+        symbol = Symbol(
+            id="test:routes.py:50:delete_user:function",
+            name="delete_user",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(50, 55, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "delete", "args": ["/users/{user_id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "DELETE"
+
+    def test_litestar_websocket_pattern(self) -> None:
+        """Litestar @websocket decorator matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("litestar")
+
+        symbol = Symbol(
+            id="test:routes.py:60:ws_handler:function",
+            name="ws_handler",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(60, 70, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "websocket", "args": ["/ws"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+
+    def test_litestar_controller_class_pattern(self) -> None:
+        """Litestar Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("litestar")
+
+        symbol = Symbol(
+            id="test:controllers.py:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="python",
+            path="controllers.py",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
