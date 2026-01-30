@@ -11996,3 +11996,139 @@ class TestRestifyPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "client"
+
+
+class TestCodeIgniterPatterns:
+    """Tests for CodeIgniter framework pattern matching."""
+
+    def test_codeigniter_controller_base_class(self) -> None:
+        """CodeIgniter BaseController base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("codeigniter")
+
+        assert pattern_def is not None, "CodeIgniter patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UserController.php:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="php",
+            path="app/Controllers/UserController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["BaseController"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_codeigniter_model_base_class(self) -> None:
+        """CodeIgniter Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("codeigniter")
+
+        symbol = Symbol(
+            id="test:UserModel.php:1:UserModel:class",
+            name="UserModel",
+            kind="class",
+            language="php",
+            path="app/Models/UserModel.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_codeigniter_get_route_via_usage_context(self) -> None:
+        """CodeIgniter $routes->get() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("codeigniter")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$routes->get",
+            position="args[0]",
+            path="app/Config/Routes.php",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:Routes.php:10:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_codeigniter_post_route_via_usage_context(self) -> None:
+        """CodeIgniter $routes->post() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("codeigniter")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$routes->post",
+            position="args[0]",
+            path="app/Config/Routes.php",
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:Routes.php:15:create_user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_codeigniter_resource_route_via_usage_context(self) -> None:
+        """CodeIgniter $routes->resource() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("codeigniter")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$routes->resource",
+            position="args[0]",
+            path="app/Config/Routes.php",
+            span=Span(20, 20, 0, 50),
+            symbol_ref="test:Routes.php:20:users_resource:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_codeigniter_filter_interface(self) -> None:
+        """CodeIgniter FilterInterface matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("codeigniter")
+
+        symbol = Symbol(
+            id="test:AuthFilter.php:1:AuthFilter:class",
+            name="AuthFilter",
+            kind="class",
+            language="php",
+            path="app/Filters/AuthFilter.php",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["FilterInterface"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
