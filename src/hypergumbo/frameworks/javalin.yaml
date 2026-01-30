@@ -1,0 +1,178 @@
+# Javalin framework patterns (ADR-0003 v1.1.x)
+#
+# Javalin is a lightweight Java/Kotlin web framework.
+# Routes are defined using app.get(), app.post(), etc. with lambda handlers.
+# Known for simplicity and minimal boilerplate.
+
+id: javalin
+language: java
+
+patterns:
+  # Javalin application creation
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^Javalin\\.(create|start)$"
+
+  # GET route handler - app.get("/path", ctx -> {...})
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # HEAD route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.head$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "HEAD"
+      path: "metadata.url"
+
+  # OPTIONS route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.options$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "OPTIONS"
+      path: "metadata.url"
+
+  # WebSocket handler - app.ws("/path", ws -> {...})
+  - concept: websocket
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.ws$"
+      position: "^args\\[0\\]$"
+
+  # WebSocket handler - app.wsBefore, app.wsAfter
+  - concept: websocket_middleware
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.ws(Before|After)$"
+
+  # Before handler (middleware) - app.before(handler)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.before$"
+
+  # After handler (middleware) - app.after(handler)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.after$"
+
+  # Exception handler - app.exception(Exception.class, handler)
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.exception$"
+
+  # Error handler - app.error(404, handler)
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.error$"
+
+  # Server-sent events - app.sse("/path", handler)
+  - concept: sse_handler
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.sse$"
+      position: "^args\\[0\\]$"
+
+  # CRUD handler - app.crud("/path", handler)
+  - concept: crud_handler
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.crud$"
+      position: "^args\\[0\\]$"
+
+  # Route group - app.routes { path("/api") { ... } }
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^(app|javalin)\\.routes$"
+
+  # Path prefix in route groups
+  - concept: route_prefix
+    usage:
+      kind: "^call$"
+      name: "^path$"
+      position: "^args\\[0\\]$"
+
+  # Handler interface implementation
+  - concept: handler
+    base_class: "^Handler$"
+
+  # CrudHandler interface implementation
+  - concept: crud_handler
+    base_class: "^CrudHandler$"
+
+  # WsConfig for WebSocket configuration
+  - concept: websocket_config
+    base_class: "^WsConfig$"
+
+  # JavalinConfig for app configuration
+  - concept: config
+    usage:
+      kind: "^call$"
+      name: "^config\\.(accessManager|bundledPlugins|compression|contextResolver|http|jetty|jsonMapper|pvoting|requestLogger|router|showJavalinBanner|spaRoot|staticFiles|validation)$"
+
+  # OpenAPI documentation annotation
+  - concept: api_doc
+    decorator: "^@OpenApi$"
+
+  # OpenAPI parameter annotations
+  - concept: api_param
+    decorator: "^@(PathParam|QueryParam|FormParam|CookieParam|HeaderParam)$"
+
+linkers:
+  - http

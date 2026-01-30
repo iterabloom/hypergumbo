@@ -11161,3 +11161,179 @@ class TestRodaPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "plugin"
+
+
+class TestJavalinPatterns:
+    """Tests for Javalin framework pattern matching."""
+
+    def test_javalin_create_via_usage_context(self) -> None:
+        """Javalin.create() matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        assert pattern_def is not None, "Javalin patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="Javalin.create",
+            position="args[0]",
+            path="App.java",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="test:App.java:5:create_app:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+    def test_javalin_get_route_via_usage_context(self) -> None:
+        """Javalin app.get() matches route pattern with GET method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.get",
+            position="args[0]",
+            path="App.java",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:App.java:10:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_javalin_post_route_via_usage_context(self) -> None:
+        """Javalin app.post() matches route pattern with POST method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.post",
+            position="args[0]",
+            path="App.java",
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:App.java:15:create_user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_javalin_delete_route_via_usage_context(self) -> None:
+        """Javalin app.delete() matches route pattern with DELETE method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.delete",
+            position="args[0]",
+            path="App.java",
+            span=Span(20, 20, 0, 50),
+            symbol_ref="test:App.java:20:delete_user:other",
+            metadata={
+                "url": "/users/{id}",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_javalin_websocket_via_usage_context(self) -> None:
+        """Javalin app.ws() matches websocket pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.ws",
+            position="args[0]",
+            path="App.java",
+            span=Span(25, 25, 0, 50),
+            symbol_ref="test:App.java:25:websocket:other",
+            metadata={
+                "url": "/chat",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket"
+
+    def test_javalin_before_middleware_via_usage_context(self) -> None:
+        """Javalin app.before() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.before",
+            position="args[0]",
+            path="App.java",
+            span=Span(8, 8, 0, 40),
+            symbol_ref="test:App.java:8:auth_middleware:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_javalin_exception_handler_via_usage_context(self) -> None:
+        """Javalin app.exception() matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.exception",
+            position="args[0]",
+            path="App.java",
+            span=Span(30, 30, 0, 60),
+            symbol_ref="test:App.java:30:exception_handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_javalin_handler_base_class(self) -> None:
+        """Javalin Handler interface implementation matches handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("javalin")
+
+        symbol = Symbol(
+            id="test:UserHandler.java:1:UserHandler:class",
+            name="UserHandler",
+            kind="class",
+            language="java",
+            path="handlers/UserHandler.java",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Handler"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "handler"
