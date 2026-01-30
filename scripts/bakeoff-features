@@ -644,12 +644,13 @@ def cmd_run(args):
                 f.write(str(rc))
             print("OK" if rc == 0 else f"FAIL({rc})")
 
-        # 6. Symbols report
+        # 6. Symbols report (exclude test code for cleaner rankings)
         print("  symbols...", end=" ", flush=True)
         rc, stdout, stderr = run_cmd([
             "hypergumbo", "symbols",
             "--input", hg_json,
             "--all",
+            "-x",  # Exclude test files for more useful centrality rankings
         ])
         with open(os.path.join(repo_out, "symbols.txt"), "w") as f:
             f.write(stdout)
