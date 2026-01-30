@@ -1,0 +1,121 @@
+# FuelPHP framework patterns (ADR-0003 v1.1.x)
+#
+# FuelPHP is a PHP HMVC (Hierarchical Model-View-Controller) framework.
+# Controllers extend Controller, Controller_Rest, Controller_Template, etc.
+# Models extend Model, Model_Crud, or Orm\Model.
+# Supports packages, modules, and tasks for CLI operations.
+
+id: fuelphp
+language: php
+
+patterns:
+  # Base Controller
+  - concept: controller
+    base_class: "^Controller$"
+
+  # REST Controller
+  - concept: controller
+    base_class: "^Controller_Rest$"
+
+  # Template Controller
+  - concept: controller
+    base_class: "^Controller_Template$"
+
+  # Hybrid Controller
+  - concept: controller
+    base_class: "^Controller_Hybrid$"
+
+  # Base Model
+  - concept: model
+    base_class: "^Model$"
+
+  # CRUD Model
+  - concept: model
+    base_class: "^Model_Crud$"
+
+  # ORM Model
+  - concept: model
+    base_class: "^Orm\\\\Model$"
+
+  # Temporal ORM Model
+  - concept: model
+    base_class: "^Orm\\\\Model_Temporal$"
+
+  # Soft delete Model
+  - concept: model
+    base_class: "^Orm\\\\Model_Soft$"
+
+  # Nested set Model
+  - concept: model
+    base_class: "^Orm\\\\Model_Nestedset$"
+
+  # Task (CLI command)
+  - concept: command
+    base_class: "^Task$"
+
+  # ViewModel (presenter pattern)
+  - concept: view_model
+    base_class: "^ViewModel$"
+
+  # Migration
+  - concept: migration
+    base_class: "^Migration$"
+
+  # Validation
+  - concept: validation
+    base_class: "^Validation$"
+
+  # Fieldset
+  - concept: form
+    base_class: "^Fieldset$"
+
+  # Session
+  - concept: session
+    base_class: "^Session$"
+
+  # Auth driver
+  - concept: authentication
+    base_class: "^(Auth_Login_Driver|Auth_Group_Driver|Auth_Acl_Driver)$"
+
+  # Cache handler
+  - concept: cache
+    base_class: "^Cache_Handler_Driver$"
+
+  # Database connection
+  - concept: database
+    base_class: "^Database_Connection$"
+
+  # Log handler
+  - concept: logger
+    base_class: "^Log_Handler$"
+
+  # Package
+  - concept: package
+    base_class: "^Package$"
+
+  # Module
+  - concept: module
+    base_class: "^Module$"
+
+  # Event
+  - concept: event
+    base_class: "^Event$"
+
+  # Observer (ORM)
+  - concept: event_listener
+    base_class: "^Observer$"
+
+  # Email driver
+  - concept: mailer
+    base_class: "^Email_Driver$"
+
+  # Upload handler
+  - concept: upload
+    base_class: "^Upload$"
+
+  # Parser driver (templates)
+  - concept: template
+    base_class: "^Parser_Driver$"
+
+linkers:
+  - http

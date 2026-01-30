@@ -12842,3 +12842,151 @@ class TestLaminasPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "model"
+
+
+class TestFuelPHPPatterns:
+    """Tests for FuelPHP framework pattern matching."""
+
+    def test_fuelphp_controller_base_class(self) -> None:
+        """FuelPHP Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("fuelphp")
+
+        assert pattern_def is not None, "FuelPHP patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:Welcome.php:1:Controller_Welcome:class",
+            name="Controller_Welcome",
+            kind="class",
+            language="php",
+            path="fuel/app/classes/controller/welcome.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_fuelphp_orm_model_base_class(self) -> None:
+        """FuelPHP Orm Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("fuelphp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:User.php:1:Model_User:class",
+            name="Model_User",
+            kind="class",
+            language="php",
+            path="fuel/app/classes/model/user.php",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "base_classes": ["Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_fuelphp_task_base_class(self) -> None:
+        """FuelPHP Task base class matches command pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("fuelphp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:Robots.php:1:Task_Robots:class",
+            name="Task_Robots",
+            kind="class",
+            language="php",
+            path="fuel/app/tasks/robots.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Task"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "command"
+
+    def test_fuelphp_viewmodel_base_class(self) -> None:
+        """FuelPHP ViewModel base class matches view_model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("fuelphp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:Welcome.php:1:ViewModel_Welcome:class",
+            name="ViewModel_Welcome",
+            kind="class",
+            language="php",
+            path="fuel/app/classes/view/welcome.php",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["ViewModel"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "view_model"
+
+    def test_fuelphp_rest_controller_base_class(self) -> None:
+        """FuelPHP Controller_Rest base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("fuelphp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:Api.php:1:Controller_Api:class",
+            name="Controller_Api",
+            kind="class",
+            language="php",
+            path="fuel/app/classes/controller/api.php",
+            span=Span(1, 80, 0, 0),
+            meta={
+                "base_classes": ["Controller_Rest"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_fuelphp_migration_base_class(self) -> None:
+        """FuelPHP Migration base class matches migration pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("fuelphp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:001_create_users.php:1:Migration_Create_Users:class",
+            name="Migration_Create_Users",
+            kind="class",
+            language="php",
+            path="fuel/app/migrations/001_create_users.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Migration"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "migration"
