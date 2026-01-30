@@ -1,0 +1,159 @@
+# Symfony framework patterns (ADR-0003)
+#
+# Symfony is a leading PHP framework and set of reusable PHP components.
+# Used by major applications like Drupal, phpBB, and as the foundation
+# for many enterprise PHP applications.
+#
+# Symfony uses:
+# - Inheritance patterns (controllers extend AbstractController)
+# - PHP 8 attributes (when attribute extraction is available)
+# - Interface implementations (EventSubscriberInterface, etc.)
+# - Convention-based file organization (src/Controller/, src/Form/, etc.)
+#
+# See: https://symfony.com/ and https://github.com/symfony/symfony
+
+id: symfony
+language: php
+
+patterns:
+  # ==================== CONTROLLERS ====================
+  # Symfony controllers extend AbstractController
+
+  - concept: controller
+    base_class: "^AbstractController$"
+
+  - concept: controller
+    base_class: "^Symfony\\\\Bundle\\\\FrameworkBundle\\\\Controller\\\\AbstractController$"
+
+  # Legacy controller class (Symfony 3.x)
+  - concept: controller
+    base_class: "^Controller$"
+
+  # ==================== FORMS ====================
+  # Symfony forms extend AbstractType
+
+  - concept: form
+    base_class: "^AbstractType$"
+
+  - concept: form
+    base_class: "^Symfony\\\\Component\\\\Form\\\\AbstractType$"
+
+  # ==================== COMMANDS (Console) ====================
+  # Symfony console commands extend Command
+
+  - concept: command
+    base_class: "^Command$"
+
+  - concept: command
+    base_class: "^Symfony\\\\Component\\\\Console\\\\Command\\\\Command$"
+
+  # ==================== EVENT HANDLING ====================
+  # Event subscribers implement EventSubscriberInterface
+
+  - concept: event_handler
+    base_class: "^EventSubscriberInterface$"
+
+  - concept: event_handler
+    base_class: "^Symfony\\\\Component\\\\EventDispatcher\\\\EventSubscriberInterface$"
+
+  # Kernel event listener (common pattern)
+  - concept: event_handler
+    base_class: "^EventListener$"
+
+  # ==================== REPOSITORY (Doctrine) ====================
+  # Doctrine entity repositories extend ServiceEntityRepository or EntityRepository
+
+  - concept: repository
+    base_class: "^ServiceEntityRepository$"
+
+  - concept: repository
+    base_class: "^Doctrine\\\\Bundle\\\\DoctrineBundle\\\\Repository\\\\ServiceEntityRepository$"
+
+  - concept: repository
+    base_class: "^EntityRepository$"
+
+  - concept: repository
+    base_class: "^Doctrine\\\\ORM\\\\EntityRepository$"
+
+  # ==================== VALIDATION ====================
+  # Custom constraint classes extend Constraint
+
+  - concept: validator
+    base_class: "^Constraint$"
+
+  - concept: validator
+    base_class: "^Symfony\\\\Component\\\\Validator\\\\Constraint$"
+
+  # Custom constraint validators extend ConstraintValidator
+  - concept: validator
+    base_class: "^ConstraintValidator$"
+
+  - concept: validator
+    base_class: "^Symfony\\\\Component\\\\Validator\\\\ConstraintValidator$"
+
+  # ==================== SECURITY ====================
+  # Security voters extend Voter
+
+  - concept: authorization
+    base_class: "^Voter$"
+
+  - concept: authorization
+    base_class: "^Symfony\\\\Component\\\\Security\\\\Core\\\\Authorization\\\\Voter\\\\Voter$"
+
+  # Authenticators extend AbstractAuthenticator or implement AuthenticatorInterface
+  - concept: authentication
+    base_class: "^AbstractAuthenticator$"
+
+  - concept: authentication
+    base_class: "^AbstractLoginFormAuthenticator$"
+
+  - concept: authentication
+    base_class: "^AuthenticatorInterface$"
+
+  # ==================== DEPENDENCY INJECTION ====================
+  # Compiler passes modify container building
+
+  - concept: provider
+    base_class: "^CompilerPassInterface$"
+
+  - concept: provider
+    base_class: "^Symfony\\\\Component\\\\DependencyInjection\\\\Compiler\\\\CompilerPassInterface$"
+
+  # Bundle classes extend Bundle
+  - concept: provider
+    base_class: "^Bundle$"
+
+  - concept: provider
+    base_class: "^Symfony\\\\Component\\\\HttpKernel\\\\Bundle\\\\Bundle$"
+
+  # ==================== TWIG EXTENSIONS ====================
+  # Twig extensions extend AbstractExtension
+
+  - concept: helper
+    base_class: "^AbstractExtension$"
+
+  - concept: helper
+    base_class: "^Twig\\\\Extension\\\\AbstractExtension$"
+
+  # ==================== DATA FIXTURES (Testing) ====================
+  # Fixtures extend Fixture
+
+  - concept: seeder
+    base_class: "^Fixture$"
+
+  - concept: seeder
+    base_class: "^Doctrine\\\\Bundle\\\\FixturesBundle\\\\Fixture$"
+
+  # ==================== MESSENGER (Queue/Messages) ====================
+  # Message handlers implement MessageHandlerInterface
+
+  - concept: task
+    base_class: "^MessageHandlerInterface$"
+
+  - concept: task
+    base_class: "^Symfony\\\\Component\\\\Messenger\\\\Handler\\\\MessageHandlerInterface$"
+
+linkers:
+  - http
+  - database_query
+  - message_queue

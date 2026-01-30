@@ -9813,3 +9813,163 @@ class TestLitestarPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "controller"
+
+
+class TestSymfonyPatterns:
+    """Tests for Symfony PHP framework pattern matching."""
+
+    def test_symfony_abstract_controller_pattern(self) -> None:
+        """Symfony AbstractController base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        assert pattern_def is not None, "Symfony patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UserController.php:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="php",
+            path="src/Controller/UserController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["AbstractController"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_symfony_form_type_pattern(self) -> None:
+        """Symfony AbstractType base class matches form pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        symbol = Symbol(
+            id="test:UserType.php:1:UserType:class",
+            name="UserType",
+            kind="class",
+            language="php",
+            path="src/Form/UserType.php",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["AbstractType"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "form"
+
+    def test_symfony_command_pattern(self) -> None:
+        """Symfony Command base class matches command pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        symbol = Symbol(
+            id="test:SendEmailCommand.php:1:SendEmailCommand:class",
+            name="SendEmailCommand",
+            kind="class",
+            language="php",
+            path="src/Command/SendEmailCommand.php",
+            span=Span(1, 60, 0, 0),
+            meta={
+                "base_classes": ["Command"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "command"
+
+    def test_symfony_event_subscriber_pattern(self) -> None:
+        """Symfony EventSubscriberInterface matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        symbol = Symbol(
+            id="test:UserEventSubscriber.php:1:UserEventSubscriber:class",
+            name="UserEventSubscriber",
+            kind="class",
+            language="php",
+            path="src/EventSubscriber/UserEventSubscriber.php",
+            span=Span(1, 45, 0, 0),
+            meta={
+                "base_classes": ["EventSubscriberInterface"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_symfony_entity_repository_pattern(self) -> None:
+        """Symfony ServiceEntityRepository base class matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        symbol = Symbol(
+            id="test:UserRepository.php:1:UserRepository:class",
+            name="UserRepository",
+            kind="class",
+            language="php",
+            path="src/Repository/UserRepository.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ServiceEntityRepository"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "repository"
+
+    def test_symfony_constraint_pattern(self) -> None:
+        """Symfony Constraint base class matches validator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        symbol = Symbol(
+            id="test:ValidEmail.php:1:ValidEmail:class",
+            name="ValidEmail",
+            kind="class",
+            language="php",
+            path="src/Validator/Constraints/ValidEmail.php",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Constraint"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "validator"
+
+    def test_symfony_constraint_validator_pattern(self) -> None:
+        """Symfony ConstraintValidator base class matches validator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("symfony")
+
+        symbol = Symbol(
+            id="test:ValidEmailValidator.php:1:ValidEmailValidator:class",
+            name="ValidEmailValidator",
+            kind="class",
+            language="php",
+            path="src/Validator/Constraints/ValidEmailValidator.php",
+            span=Span(1, 35, 0, 0),
+            meta={
+                "base_classes": ["ConstraintValidator"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "validator"
