@@ -270,9 +270,11 @@ class Pattern:
         # Try symbol_name + symbol_kind combined match (for language conventions like main())
         # When both are specified, both must match (AND semantics)
         # When only symbol_name is specified, only it must match
+        # Note: We use search() instead of match() to support end-of-string patterns
+        # like "\.mount$" for Elixir qualified names (e.g., "MyApp.Pages.Index.mount")
         if self._symbol_name_re:
             # Check symbol_name (required)
-            if not self._symbol_name_re.match(symbol.name):
+            if not self._symbol_name_re.search(symbol.name):
                 # symbol_name specified but doesn't match - don't match this pattern
                 pass  # Fall through to other pattern types
             else:

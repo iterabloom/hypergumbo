@@ -22,37 +22,44 @@ patterns:
 
   # ==================== FUNCTION-BASED PATTERNS ====================
   # These match functions that serve as route handlers in Nex
+  # Note: Elixir uses qualified names like "Module.function", so we match at end
 
   # Page lifecycle - mount/1 initializes page state
   - concept: lifecycle_hook
-    symbol_name: "^mount$"
+    symbol_name: "\\.mount$"
     symbol_kind: "^function$"
 
   # Page lifecycle - render/1 returns HTML
   - concept: lifecycle_hook
-    symbol_name: "^render$"
+    symbol_name: "\\.render$"
     symbol_kind: "^function$"
 
   # API route handlers - HTTP method functions
+  # Only match when in pages/ or api/ paths to avoid false positives
   - concept: route_handler
-    symbol_name: "^get$"
+    symbol_name: "\\.get$"
     symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
 
   - concept: route_handler
-    symbol_name: "^post$"
+    symbol_name: "\\.post$"
     symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
 
   - concept: route_handler
-    symbol_name: "^put$"
+    symbol_name: "\\.put$"
     symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
 
   - concept: route_handler
-    symbol_name: "^delete$"
+    symbol_name: "\\.delete$"
     symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
 
   - concept: route_handler
-    symbol_name: "^patch$"
+    symbol_name: "\\.patch$"
     symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
 
   # ==================== USAGE-BASED PATTERNS ====================
 
