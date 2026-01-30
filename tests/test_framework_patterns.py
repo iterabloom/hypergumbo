@@ -12132,3 +12132,139 @@ class TestCodeIgniterPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "middleware"
+
+
+class TestLumenPatterns:
+    """Tests for Lumen framework pattern matching."""
+
+    def test_lumen_controller_base_class(self) -> None:
+        """Lumen Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lumen")
+
+        assert pattern_def is not None, "Lumen patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UserController.php:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="php",
+            path="app/Http/Controllers/UserController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_lumen_router_get_route_via_usage_context(self) -> None:
+        """Lumen $router->get() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lumen")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$router->get",
+            position="args[0]",
+            path="routes/web.php",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:web.php:10:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_lumen_router_post_route_via_usage_context(self) -> None:
+        """Lumen $router->post() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lumen")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$router->post",
+            position="args[0]",
+            path="routes/web.php",
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:web.php:15:create_user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_lumen_app_get_route_via_usage_context(self) -> None:
+        """Lumen $app->get() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lumen")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$app->get",
+            position="args[0]",
+            path="routes/web.php",
+            span=Span(20, 20, 0, 50),
+            symbol_ref="test:web.php:20:get_api:other",
+            metadata={
+                "url": "/api/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_lumen_route_group_via_usage_context(self) -> None:
+        """Lumen $router->group() matches route_group pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lumen")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$router->group",
+            position="args[0]",
+            path="routes/web.php",
+            span=Span(5, 20, 0, 0),
+            symbol_ref="test:web.php:5:api_group:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_group"
+
+    def test_lumen_service_provider_base_class(self) -> None:
+        """Lumen ServiceProvider base class matches service_provider pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lumen")
+
+        symbol = Symbol(
+            id="test:AppServiceProvider.php:1:AppServiceProvider:class",
+            name="AppServiceProvider",
+            kind="class",
+            language="php",
+            path="app/Providers/AppServiceProvider.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ServiceProvider"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service_provider"

@@ -1,0 +1,180 @@
+# Lumen framework patterns (ADR-0003 v1.1.x)
+#
+# Lumen is Laravel's micro-framework for APIs and microservices.
+# Routes: $router->get('/path', handler), $app->get('/path', handler)
+# Shares many patterns with Laravel but lighter weight.
+
+id: lumen
+language: php
+
+patterns:
+  # Controller base class
+  - concept: controller
+    base_class: "^Controller$"
+
+  # GET route via $router
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$router->get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route via $router
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$router->post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route via $router
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$router->put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route via $router
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$router->delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route via $router
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$router->patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # OPTIONS route via $router
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$router->options$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "OPTIONS"
+      path: "metadata.url"
+
+  # GET route via $app
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$app->get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route via $app
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$app->post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route via $app
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$app->put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route via $app
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$app->delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # Route group
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^\\$router->group$"
+
+  # Route group via $app
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^\\$app->group$"
+
+  # Middleware interface
+  - concept: middleware
+    base_class: "^Middleware$"
+
+  # Middleware registration
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^\\$app->middleware$"
+
+  # Route middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^\\$app->routeMiddleware$"
+
+  # Service provider
+  - concept: service_provider
+    base_class: "^ServiceProvider$"
+
+  # Register service provider
+  - concept: service_provider
+    usage:
+      kind: "^call$"
+      name: "^\\$app->register$"
+
+  # Model (Eloquent)
+  - concept: model
+    base_class: "^Model$"
+
+  # Event listener
+  - concept: event_listener
+    base_class: "^Listener$"
+
+  # Job for queues
+  - concept: job
+    base_class: "^Job$"
+
+  # Command for CLI
+  - concept: command
+    base_class: "^Command$"
+
+  # Exception handler
+  - concept: error_handler
+    base_class: "^ExceptionHandler$"
+
+  # Validation
+  - concept: validation
+    usage:
+      kind: "^call$"
+      name: "^\\$this->validate$"
+
+linkers:
+  - http
