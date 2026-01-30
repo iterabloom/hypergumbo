@@ -9,6 +9,7 @@ from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.ranking import (
     compute_centrality,
     apply_tier_weights,
+    apply_test_weights,
     group_symbols_by_file,
     compute_file_scores,
     rank_symbols,
@@ -201,6 +202,83 @@ class TestApplyTierWeights:
         result = apply_tier_weights(centrality, [sym], tier_weights=custom_weights)
 
         assert result[sym.id] == 5.0  # 0.5 * 10.0
+
+
+class TestApplyTestWeights:
+    """Tests for apply_test_weights function."""
+
+    def test_test_file_downweighted(self):
+        """Symbols in test files have centrality reduced."""
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        centrality = {test_sym.id: 1.0}
+
+        result = apply_test_weights(centrality, [test_sym], test_weight=0.5)
+
+        assert result[test_sym.id] == 0.5  # 1.0 * 0.5
+
+    def test_production_file_unchanged(self):
+        """Symbols in production files are not affected."""
+        prod_sym = make_symbol("prod_func", path="src/main.py")
+        centrality = {prod_sym.id: 1.0}
+
+        result = apply_test_weights(centrality, [prod_sym], test_weight=0.5)
+
+        assert result[prod_sym.id] == 1.0  # Unchanged
+
+    def test_mixed_files(self):
+        """Mix of test and production files correctly weighted."""
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        prod_sym = make_symbol("prod_func", path="src/main.py")
+        centrality = {test_sym.id: 0.8, prod_sym.id: 0.6}
+
+        result = apply_test_weights(
+            centrality, [test_sym, prod_sym], test_weight=0.5
+        )
+
+        assert result[test_sym.id] == 0.4  # 0.8 * 0.5
+        assert result[prod_sym.id] == 0.6  # Unchanged
+
+    def test_production_beats_higher_centrality_test(self):
+        """Production code with lower centrality can beat test code."""
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        prod_sym = make_symbol("prod_func", path="src/main.py")
+
+        # Test has higher raw centrality
+        centrality = {test_sym.id: 1.0, prod_sym.id: 0.6}
+
+        result = apply_test_weights(
+            centrality, [test_sym, prod_sym], test_weight=0.5
+        )
+
+        # After weighting: test = 0.5, prod = 0.6
+        assert result[prod_sym.id] > result[test_sym.id]
+
+    def test_custom_weight(self):
+        """Custom test weight values work."""
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        centrality = {test_sym.id: 1.0}
+
+        result = apply_test_weights(centrality, [test_sym], test_weight=0.1)
+
+        assert result[test_sym.id] == 0.1  # 1.0 * 0.1
+
+    def test_test_prefix_file(self):
+        """Files with test_ prefix are detected as test files."""
+        test_sym = make_symbol("func", path="test_main.py")
+        centrality = {test_sym.id: 1.0}
+
+        result = apply_test_weights(centrality, [test_sym], test_weight=0.5)
+
+        assert result[test_sym.id] == 0.5
+
+    def test_spec_file(self):
+        """Spec files are detected as test files."""
+        spec_sym = make_symbol("func", path="main.spec.js")
+        centrality = {spec_sym.id: 1.0}
+
+        result = apply_test_weights(centrality, [spec_sym], test_weight=0.5)
+
+        assert result[spec_sym.id] == 0.5
 
 
 class TestGroupSymbolsByFile:

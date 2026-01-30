@@ -57,6 +57,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .ir import Symbol, Edge
+from .paths import is_test_file
 from .selection.filters import is_test_path
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,39 @@ def apply_tier_weights(
         tier = symbol_tiers.get(sid, 1)
         weight = tier_weights.get(tier, 1.0)
         weighted[sid] = score * weight
+    return weighted
+
+
+def apply_test_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    test_weight: float = 0.5,
+) -> Dict[str, float]:
+    """Apply test file weighting to centrality scores.
+
+    Symbols in test files get their centrality reduced by test_weight.
+    This causes production code to rank higher than test code while still
+    including test code in the results.
+
+    This is useful for reverse slicing where test callers are still relevant
+    but production callers should be prioritized.
+
+    Args:
+        centrality: Centrality scores (possibly already tier-weighted).
+        symbols: List of symbols (used to look up paths).
+        test_weight: Multiplier for test file nodes (default 0.5).
+
+    Returns:
+        Dictionary mapping symbol ID to test-weighted centrality score.
+    """
+    symbol_paths = {s.id: s.path for s in symbols}
+    weighted = {}
+    for sid, score in centrality.items():
+        path = symbol_paths.get(sid, "")
+        if is_test_file(path):
+            weighted[sid] = score * test_weight
+        else:
+            weighted[sid] = score
     return weighted
 
 

@@ -60,7 +60,7 @@ from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_file
-from .ranking import compute_centrality, apply_tier_weights
+from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 
 
 class AmbiguousEntryError(Exception):
@@ -415,6 +415,7 @@ def rank_slice_nodes(
     nodes: List[Symbol],
     edges: List[Edge],
     first_party_priority: bool = True,
+    test_weight: float | None = None,
 ) -> List[str]:
     """Rank nodes in a slice by importance.
 
@@ -427,6 +428,9 @@ def rank_slice_nodes(
         nodes: All nodes in the graph (for looking up symbols).
         edges: All edges in the graph (for computing centrality).
         first_party_priority: If True, boost first-party code ranking.
+        test_weight: If set, multiply test file node centrality by this value.
+            Useful for reverse slicing where production callers should rank
+            higher than test callers. Default None (no test weighting).
 
     Returns:
         List of node IDs ordered by importance (highest first).
@@ -453,6 +457,10 @@ def rank_slice_nodes(
         weighted = apply_tier_weights(centrality, slice_nodes)
     else:
         weighted = centrality
+
+    # Apply test file weighting if specified
+    if test_weight is not None:
+        weighted = apply_test_weights(weighted, slice_nodes, test_weight)
 
     # Sort by weighted centrality (highest first), then by name for stability
     sorted_nodes = sorted(

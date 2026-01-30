@@ -1023,3 +1023,103 @@ class TestRankSliceNodes:
         external_rank = ranked.index(external.id)
         first_party_rank = ranked.index(first_party.id)
         assert external_rank < first_party_rank  # external ranks higher
+
+    def test_test_weight_none_no_change(self) -> None:
+        """When test_weight is None, test files not downweighted."""
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        prod_sym = make_symbol("prod_func", path="src/main.py")
+        caller = make_symbol("caller", path="src/other.py")
+
+        # Both test and prod are called by caller equally
+        edge1 = Edge.create(caller.id, test_sym.id, "calls", 5, confidence=0.9)
+        edge2 = Edge.create(caller.id, prod_sym.id, "calls", 6, confidence=0.9)
+
+        result = SliceResult(
+            entry_nodes=[caller.id],
+            node_ids={caller.id, test_sym.id, prod_sym.id},
+            edge_ids={edge1.id, edge2.id},
+            query=SliceQuery(entrypoint="caller"),
+        )
+
+        # With test_weight=None, test files not downweighted
+        ranked = rank_slice_nodes(
+            result,
+            [test_sym, prod_sym, caller],
+            [edge1, edge2],
+            first_party_priority=False,
+            test_weight=None,
+        )
+
+        # Both have same centrality (1 incoming each), order by name
+        assert test_sym.id in ranked
+        assert prod_sym.id in ranked
+
+    def test_test_weight_downweights_test_files(self) -> None:
+        """When test_weight is set, test files are downweighted in ranking."""
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        prod_sym = make_symbol("prod_func", path="src/main.py")
+        caller1 = make_symbol("caller1", path="src/a.py")
+        caller2 = make_symbol("caller2", path="src/b.py")
+
+        # Test file has more incoming edges (2 vs 1)
+        edges = [
+            Edge.create(caller1.id, test_sym.id, "calls", 5, confidence=0.9),
+            Edge.create(caller2.id, test_sym.id, "calls", 6, confidence=0.9),
+            Edge.create(caller1.id, prod_sym.id, "calls", 7, confidence=0.9),
+        ]
+
+        result = SliceResult(
+            entry_nodes=[caller1.id],
+            node_ids={caller1.id, caller2.id, test_sym.id, prod_sym.id},
+            edge_ids={e.id for e in edges},
+            query=SliceQuery(entrypoint="caller"),
+        )
+
+        # With test_weight=0.3, test file centrality reduced significantly
+        ranked = rank_slice_nodes(
+            result,
+            [test_sym, prod_sym, caller1, caller2],
+            edges,
+            first_party_priority=False,
+            test_weight=0.3,
+        )
+
+        # Prod should rank higher than test despite fewer incoming edges
+        # test raw centrality: 1.0 (2 edges, max), weighted: 0.3
+        # prod raw centrality: 0.5 (1 edge), weighted: 0.5
+        prod_rank = ranked.index(prod_sym.id)
+        test_rank = ranked.index(test_sym.id)
+        assert prod_rank < test_rank  # prod ranks higher
+
+    def test_test_weight_useful_for_reverse_slice(self) -> None:
+        """Test weight is useful for reverse slicing to prioritize prod callers."""
+        # Target function that is called by both test and prod
+        target = make_symbol("core_func", path="src/core.py")
+        test_caller = make_symbol("test_core", path="tests/test_core.py")
+        prod_caller = make_symbol("api_handler", path="src/api.py")
+
+        edges = [
+            Edge.create(test_caller.id, target.id, "calls", 10, confidence=0.9),
+            Edge.create(prod_caller.id, target.id, "calls", 20, confidence=0.9),
+        ]
+
+        # In a reverse slice from target, both callers would be in the result
+        result = SliceResult(
+            entry_nodes=[target.id],
+            node_ids={target.id, test_caller.id, prod_caller.id},
+            edge_ids={e.id for e in edges},
+            query=SliceQuery(entrypoint="core_func", reverse=True),
+        )
+
+        ranked = rank_slice_nodes(
+            result,
+            [target, test_caller, prod_caller],
+            edges,
+            first_party_priority=True,
+            test_weight=0.5,
+        )
+
+        # Production caller should rank higher than test caller
+        prod_rank = ranked.index(prod_caller.id)
+        test_rank = ranked.index(test_caller.id)
+        assert prod_rank < test_rank
