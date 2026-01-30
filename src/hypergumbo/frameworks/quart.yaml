@@ -1,0 +1,62 @@
+# Quart framework patterns (ADR-0003)
+#
+# Quart is an async Python micro-framework for building web applications.
+# It is an asyncio reimplementation of Flask with the same API.
+# Symbols matching these patterns get enriched with concept metadata.
+# See: https://quart.palletsprojects.com/ and https://github.com/pallets/quart
+
+id: quart
+language: python
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Quart shortcut routes - @app.get("/path"), @app.post("/path"), etc.
+  - concept: route
+    decorator: "^(app|quart|blueprint|bp)\\.(get|post|put|delete|patch|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Classic Quart route - @app.route("/path"), @app.route("/path", methods=["GET"])
+  - concept: route
+    decorator: "^(app|quart|blueprint|bp)\\.route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # WebSocket handlers - @app.websocket("/path")
+  - concept: websocket_handler
+    decorator: "^(app|quart|blueprint|bp)\\.websocket$"
+    extract_path: "args[0]"
+
+  # Before/after request hooks (middleware)
+  - concept: middleware
+    decorator: "^(app|quart|blueprint|bp)\\.(before_request|after_request|teardown_request)$"
+
+  # Error handlers - @app.errorhandler(404)
+  - concept: error_handler
+    decorator: "^(app|quart|blueprint|bp)\\.errorhandler$"
+
+  # Async lifecycle hooks (Quart-specific)
+  - concept: lifecycle_hook
+    decorator: "^(app|quart)\\.(before_serving|after_serving|while_serving)$"
+
+  # Context processors
+  - concept: middleware
+    decorator: "^(app|quart|blueprint|bp)\\.context_processor$"
+
+  # Teardown app context
+  - concept: lifecycle_hook
+    decorator: "^(app|quart)\\.teardown_appcontext$"
+
+  # Flask-compatible extensions
+  # Flask-SQLAlchemy model
+  - concept: model
+    base_class: "^db\\.Model$"
+
+  # Marshmallow schemas (validation/serialization)
+  - concept: serializer
+    base_class: "^(marshmallow\\.)?Schema$"
+
+linkers:
+  - http
+  - websocket

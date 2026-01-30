@@ -9245,3 +9245,261 @@ class TestSanicPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "event_handler"
+
+
+class TestQuartPatterns:
+    """Tests for Quart framework pattern matching."""
+
+    def test_quart_get_route_pattern(self) -> None:
+        """Quart @app.get decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        assert pattern_def is not None, "Quart patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.py:1:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "app.get"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_quart_post_route_pattern(self) -> None:
+        """Quart @app.post decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:create_user:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_quart_classic_route_pattern(self) -> None:
+        """Quart @app.route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:handle:function",
+            name="handle",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "app.route",
+                        "args": ["/api/data"],
+                        "kwargs": {"methods": ["POST", "PUT"]},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/api/data"
+        assert results[0]["method"] == "POST"  # First method
+
+    def test_quart_blueprint_route_pattern(self) -> None:
+        """Quart blueprint route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:routes.py:1:get_item:function",
+            name="get_item",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "blueprint.get", "args": ["/items/<id>"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/items/<id>"
+
+    def test_quart_websocket_pattern(self) -> None:
+        """Quart @app.websocket decorator matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:ws_handler:function",
+            name="ws_handler",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.websocket", "args": ["/ws"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+
+    def test_quart_before_request_pattern(self) -> None:
+        """Quart @app.before_request decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:log_request:function",
+            name="log_request",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.before_request", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_quart_after_request_pattern(self) -> None:
+        """Quart @app.after_request decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:add_header:function",
+            name="add_header",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.after_request", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_quart_error_handler_pattern(self) -> None:
+        """Quart @app.errorhandler decorator matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:handle_not_found:function",
+            name="handle_not_found",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.errorhandler", "args": [404], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_quart_before_serving_pattern(self) -> None:
+        """Quart @app.before_serving decorator matches lifecycle_hook pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:setup_db:function",
+            name="setup_db",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.before_serving", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "lifecycle_hook"
+
+    def test_quart_after_serving_pattern(self) -> None:
+        """Quart @app.after_serving decorator matches lifecycle_hook pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quart")
+
+        symbol = Symbol(
+            id="test:app.py:1:cleanup:function",
+            name="cleanup",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.after_serving", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "lifecycle_hook"
