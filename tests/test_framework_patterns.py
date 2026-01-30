@@ -10119,3 +10119,129 @@ class TestQuarkusPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "client"
+
+
+class TestNuxtPatterns:
+    """Tests for Nuxt Vue.js meta-framework pattern matching."""
+
+    def test_nuxt_define_page_meta_pattern(self) -> None:
+        """Nuxt definePageMeta function matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nuxt")
+
+        assert pattern_def is not None, "Nuxt patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:pages/about.vue:5:definePageMeta:call",
+            name="definePageMeta",
+            kind="function",
+            language="javascript",
+            path="pages/about.vue",
+            span=Span(5, 10, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_nuxt_define_event_handler_pattern(self) -> None:
+        """Nuxt defineEventHandler (Nitro) matches api_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nuxt")
+
+        symbol = Symbol(
+            id="test:server/api/users.ts:1:defineEventHandler:function",
+            name="defineEventHandler",
+            kind="function",
+            language="typescript",
+            path="server/api/users.ts",
+            span=Span(1, 15, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "api_handler"
+
+    def test_nuxt_define_nuxt_middleware_pattern(self) -> None:
+        """Nuxt defineNuxtRouteMiddleware matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nuxt")
+
+        symbol = Symbol(
+            id="test:middleware/auth.ts:1:defineNuxtRouteMiddleware:function",
+            name="defineNuxtRouteMiddleware",
+            kind="function",
+            language="typescript",
+            path="middleware/auth.ts",
+            span=Span(1, 20, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_nuxt_define_nuxt_plugin_pattern(self) -> None:
+        """Nuxt defineNuxtPlugin matches plugin pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nuxt")
+
+        symbol = Symbol(
+            id="test:plugins/analytics.ts:1:defineNuxtPlugin:function",
+            name="defineNuxtPlugin",
+            kind="function",
+            language="typescript",
+            path="plugins/analytics.ts",
+            span=Span(1, 25, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "plugin"
+
+    def test_nuxt_use_async_data_pattern(self) -> None:
+        """Nuxt useAsyncData composable matches data_fetcher pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nuxt")
+
+        symbol = Symbol(
+            id="test:pages/users.vue:10:useAsyncData:function",
+            name="useAsyncData",
+            kind="function",
+            language="javascript",
+            path="pages/users.vue",
+            span=Span(10, 15, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "data_fetcher"
+
+    def test_nuxt_use_fetch_pattern(self) -> None:
+        """Nuxt useFetch composable matches data_fetcher pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nuxt")
+
+        symbol = Symbol(
+            id="test:pages/posts.vue:8:useFetch:function",
+            name="useFetch",
+            kind="function",
+            language="javascript",
+            path="pages/posts.vue",
+            span=Span(8, 12, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "data_fetcher"
