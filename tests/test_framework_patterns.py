@@ -10593,3 +10593,91 @@ class TestHanamiPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "view"
+
+
+class TestFeathersPatterns:
+    """Tests for Feathers.js real-time framework pattern matching."""
+
+    def test_feathers_service_class_pattern(self) -> None:
+        """Feathers Service class matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("feathers")
+
+        assert pattern_def is not None, "Feathers patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:users.service.ts:1:UsersService:class",
+            name="UsersService",
+            kind="class",
+            language="typescript",
+            path="src/services/users/users.service.ts",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Service"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_feathers_hook_function_pattern(self) -> None:
+        """Feathers hook function matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("feathers")
+
+        symbol = Symbol(
+            id="test:authenticate.ts:1:authenticate:function",
+            name="authenticate",
+            kind="function",
+            language="typescript",
+            path="src/hooks/authenticate.ts",
+            span=Span(1, 20, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_feathers_channel_pattern(self) -> None:
+        """Feathers channels function matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("feathers")
+
+        symbol = Symbol(
+            id="test:channels.ts:1:channels:function",
+            name="channels",
+            kind="function",
+            language="typescript",
+            path="src/channels.ts",
+            span=Span(1, 40, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+
+    def test_feathers_configure_pattern(self) -> None:
+        """Feathers configure function matches config pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("feathers")
+
+        symbol = Symbol(
+            id="test:app.ts:10:configure:function",
+            name="configure",
+            kind="function",
+            language="typescript",
+            path="src/app.ts",
+            span=Span(10, 25, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "config"

@@ -1,0 +1,133 @@
+# Feathers.js framework patterns (ADR-0003)
+#
+# Feathers is a lightweight real-time microservices framework for Node.js
+# and the browser. It provides a service-oriented architecture with
+# hooks for cross-cutting concerns.
+#
+# Key concepts:
+# - Services: CRUD + custom methods for data access
+# - Hooks: Before/after/error middleware for services
+# - Channels: Real-time event routing
+# - Authentication: JWT-based auth via @feathersjs/authentication
+#
+# See: https://feathersjs.com/ and https://github.com/feathersjs/feathers
+
+id: feathers
+language: javascript
+
+patterns:
+  # ==================== SERVICES ====================
+  # Feathers services (data access layer)
+
+  - concept: service
+    base_class: "^Service$"
+
+  - concept: service
+    base_class: "^AdapterService$"
+
+  # Database adapters
+  - concept: service
+    base_class: "^MongooseService$"
+
+  - concept: service
+    base_class: "^SequelizeService$"
+
+  - concept: service
+    base_class: "^KnexService$"
+
+  - concept: service
+    base_class: "^MemoryService$"
+
+  # ==================== HOOKS ====================
+  # Feathers hooks (middleware)
+
+  - concept: middleware
+    symbol_name: "^authenticate$"
+
+  - concept: middleware
+    symbol_name: "^authorize$"
+
+  - concept: middleware
+    symbol_name: "^validateSchema$"
+
+  - concept: middleware
+    symbol_name: "^resolveData$"
+
+  - concept: middleware
+    symbol_name: "^resolveResult$"
+
+  - concept: middleware
+    symbol_name: "^resolveQuery$"
+
+  # ==================== CHANNELS ====================
+  # Real-time event channels
+
+  - concept: websocket_handler
+    symbol_name: "^channels$"
+
+  - concept: websocket_handler
+    symbol_name: "^publish$"
+
+  # ==================== CONFIGURATION ====================
+  # App configuration
+
+  - concept: config
+    symbol_name: "^configure$"
+
+  - concept: config
+    symbol_name: "^configureServices$"
+
+  - concept: config
+    symbol_name: "^configureMiddleware$"
+
+  # ==================== AUTHENTICATION ====================
+  # Auth strategies
+
+  - concept: authentication
+    base_class: "^AuthenticationService$"
+
+  - concept: authentication
+    base_class: "^JWTStrategy$"
+
+  - concept: authentication
+    base_class: "^LocalStrategy$"
+
+  - concept: authentication
+    base_class: "^OAuthStrategy$"
+
+  # ==================== ERRORS ====================
+  # Error handling
+
+  - concept: error_handler
+    symbol_name: "^errorHandler$"
+
+  - concept: error_handler
+    base_class: "^FeathersError$"
+
+  - concept: error_handler
+    base_class: "^NotFound$"
+
+  - concept: error_handler
+    base_class: "^BadRequest$"
+
+  - concept: error_handler
+    base_class: "^NotAuthenticated$"
+
+  # ==================== TRANSPORT ====================
+  # Transport adapters
+
+  - concept: provider
+    symbol_name: "^express$"
+
+  - concept: provider
+    symbol_name: "^koa$"
+
+  - concept: provider
+    symbol_name: "^socketio$"
+
+  - concept: provider
+    symbol_name: "^primus$"
+
+linkers:
+  - http
+  - websocket
