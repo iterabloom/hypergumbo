@@ -339,6 +339,7 @@ ELIXIR_FRAMEWORKS = {
     # Web frameworks
     "phoenix": ["phoenix"],
     "plug": ["plug"],
+    "nex": ["nex", "nex_core"],  # Minimalist web framework
     # Database
     "ecto": ["ecto"],
     # GraphQL

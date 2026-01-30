@@ -8826,8 +8826,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:pages/index.ex:5:mount:function",
-            name="mount",
+            id="test:pages/index.ex:5:MyApp.Pages.Index.mount:function",
+            name="MyApp.Pages.Index.mount",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/pages/index.ex",
@@ -8846,8 +8846,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:pages/index.ex:12:render:function",
-            name="render",
+            id="test:pages/index.ex:12:MyApp.Pages.Index.render:function",
+            name="MyApp.Pages.Index.render",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/pages/index.ex",
@@ -8866,8 +8866,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:api/users.ex:5:get:function",
-            name="get",
+            id="test:api/users.ex:5:MyApp.Api.Users.get:function",
+            name="MyApp.Api.Users.get",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/api/users.ex",
@@ -8886,8 +8886,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:api/users.ex:12:post:function",
-            name="post",
+            id="test:api/users.ex:12:MyApp.Api.Users.post:function",
+            name="MyApp.Api.Users.post",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/api/users.ex",
@@ -8906,8 +8906,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:api/users.ex:20:put:function",
-            name="put",
+            id="test:api/users.ex:20:MyApp.Api.Users.put:function",
+            name="MyApp.Api.Users.put",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/api/users.ex",
@@ -8926,8 +8926,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:api/users.ex:30:delete:function",
-            name="delete",
+            id="test:api/users.ex:30:MyApp.Api.Users.delete:function",
+            name="MyApp.Api.Users.delete",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/api/users.ex",
@@ -8946,8 +8946,8 @@ class TestNexPatterns:
         pattern_def = load_framework_patterns("nex")
 
         symbol = Symbol(
-            id="test:api/users.ex:38:patch:function",
-            name="patch",
+            id="test:api/users.ex:38:MyApp.Api.Users.patch:function",
+            name="MyApp.Api.Users.patch",  # Elixir uses qualified names
             kind="function",
             language="elixir",
             path="src/api/users.ex",
