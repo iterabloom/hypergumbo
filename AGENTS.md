@@ -411,7 +411,8 @@ Use DEEP mode when:
 - You want to test slice limits, supply chain tiers, or graph centrality
 - You're preparing for a release and want qualitative assessment
 
-- **PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using the bakeoff loop defined in the scripts. Keep refactoring, improving, or adding features, frameworks, and cross-language & cross-environment communication detection.
+
+**PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using bakeoff loops, as defined in the scripts. Keep refactoring and improving cross-language & cross-environment communication detection and other developer-centric features and behaviors.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
@@ -427,35 +428,24 @@ Use DEEP mode when:
 - **If you run out of Spec A items, dive into Spec B. Focus on building good software.**
 - **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
-Priority queue:
+### BROAD Mode Priority Queue:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
    - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
-2. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
-   - **Python:** Django, Flask, FastAPI, Starlette, Tornado, Bottle, Pyramid, Falcon, Sanic, Aiohttp, Quart, Litestar, etc.
-   - **JavaScript/Node.js:** Express, Fastify, Koa, Hapi, NestJS, Restify, AdonisJS, Sails.js, LoopBack, Feathers, etc.
-   - **JS Meta-frameworks:** Next.js, Nuxt, Remix, SvelteKit, Gatsby, Astro, Qwik
-   - **Frontend JS:** React, Vue, Angular, Svelte, Solid.js, Ember.js, Preact, Lit, Stencil
-   - **Ruby:** Rails, Sinatra, Hanami, Grape, Roda, Padrino
-   - **PHP:** Laravel, Symfony, Slim, Lumen, CodeIgniter, Yii, CakePHP, Laminas
-   - **Java/Kotlin:** Spring Boot, Micronaut, Quarkus, Dropwizard, Vert.x, Javalin, Play, Ktor, Jersey
-   - **Go:** Gin, Echo, Fiber, Chi, Gorilla Mux, Buffalo, Iris, Beego, Revel
-   - **Rust:** Actix-web, Axum, Rocket, Warp, Tide, Poem, Salvo
-   - **Elixir:** Phoenix, Plug, Raxx
-   - **Scala:** Play, Akka HTTP, Finatra, Scalatra, http4s, ZIO HTTP
-   - **.NET:** ASP.NET Core, Blazor, Nancy, ServiceStack; **F#:** Giraffe, Suave
-   - **Swift:** Vapor, Perfect, Kitura
-   - **Haskell:** Servant, Yesod, Scotty, Snap; **Clojure:** Ring, Compojure, Luminus, Pedestal
-   - And 50+ more in other languages (Dart, OCaml, Crystal, Nim, Perl, etc.)
-3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
-### DEEP Mode Priority Queue (Feature Bakeoff)
+### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than parse correctness:
-1. **Slice quality:** Does forward slice capture actual dependencies?
-2. **Reverse slice:** Does it correctly identify callers?
-3. **Supply chain tiers:** Is tier classification accurate for monorepos?
-4. **Centrality ranking:** Do top-ranked symbols match developer intuition?
-5. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment
+1. **Actionable invariants** in `.agent/invariant-ledger.md`:
+   - Meta-invariants: Any status below 100% (even 99%)
+   - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
+2. **Slice quality:** Does forward slice capture actual dependencies?
+3. **Reverse slice:** Does it correctly identify callers?
+4. **Supply chain tiers:** Is tier classification accurate for monorepos?
+5. **Centrality ranking:** Do top-ranked symbols match developer intuition?
+6. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment
+7. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 
 DEEP mode scripts:
 ```bash
@@ -476,4 +466,4 @@ See ADR-0009 for design rationale.
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-01-28.0 -->
+<!-- CANARY: agents-policy-v2026-01-30.0 -->
