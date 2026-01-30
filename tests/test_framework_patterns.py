@@ -9503,3 +9503,160 @@ class TestQuartPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "lifecycle_hook"
+
+
+class TestFalconPatterns:
+    """Tests for Falcon framework pattern matching."""
+
+    def test_falcon_on_get_responder_pattern(self) -> None:
+        """Falcon on_get method matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        assert pattern_def is not None, "Falcon patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:resources.py:5:UserResource.on_get:method",
+            name="on_get",
+            kind="method",
+            language="python",
+            path="resources.py",
+            span=Span(5, 15, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_falcon_on_post_responder_pattern(self) -> None:
+        """Falcon on_post method matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        symbol = Symbol(
+            id="test:resources.py:20:UserResource.on_post:method",
+            name="on_post",
+            kind="method",
+            language="python",
+            path="resources.py",
+            span=Span(20, 30, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_falcon_on_put_responder_pattern(self) -> None:
+        """Falcon on_put method matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        symbol = Symbol(
+            id="test:resources.py:35:UserResource.on_put:method",
+            name="on_put",
+            kind="method",
+            language="python",
+            path="resources.py",
+            span=Span(35, 45, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_falcon_on_delete_responder_pattern(self) -> None:
+        """Falcon on_delete method matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        symbol = Symbol(
+            id="test:resources.py:50:UserResource.on_delete:method",
+            name="on_delete",
+            kind="method",
+            language="python",
+            path="resources.py",
+            span=Span(50, 55, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_falcon_before_hook_pattern(self) -> None:
+        """Falcon @falcon.before decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        symbol = Symbol(
+            id="test:resources.py:10:on_get:method",
+            name="on_get",
+            kind="method",
+            language="python",
+            path="resources.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "falcon.before", "args": ["validate"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        # Should match both route_handler (from method name) and middleware (from decorator)
+        concepts = {r["concept"] for r in results}
+        assert "middleware" in concepts
+
+    def test_falcon_after_hook_pattern(self) -> None:
+        """Falcon @falcon.after decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        symbol = Symbol(
+            id="test:resources.py:25:on_post:method",
+            name="on_post",
+            kind="method",
+            language="python",
+            path="resources.py",
+            span=Span(25, 35, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "falcon.after", "args": ["log_response"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        concepts = {r["concept"] for r in results}
+        assert "middleware" in concepts
+
+    def test_falcon_resource_class_pattern(self) -> None:
+        """Falcon resource class extending Resource base matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("falcon")
+
+        symbol = Symbol(
+            id="test:resources.py:1:UserResource:class",
+            name="UserResource",
+            kind="class",
+            language="python",
+            path="resources.py",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Resource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"

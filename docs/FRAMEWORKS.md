@@ -7,7 +7,7 @@ This document lists web and application frameworks that hypergumbo can analyze o
 See `src/hypergumbo/frameworks/*.yaml` for the full list. Currently ~49 patterns including:
 
 ### Python
-- Django, Flask, FastAPI, Tornado, Aiohttp, Starlette, Celery, Pyramid, Bottle, Flask-Appbuilder, Sanic, Quart
+- Django, Flask, FastAPI, Tornado, Aiohttp, Starlette, Celery, Pyramid, Bottle, Flask-Appbuilder, Sanic, Quart, Falcon
 
 ### JavaScript/Node.js
 - Express, Fastify, Koa, Hapi, NestJS, Next.js, Electron
