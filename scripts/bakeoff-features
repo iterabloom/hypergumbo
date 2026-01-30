@@ -776,8 +776,8 @@ def cmd_diagnose(args):
         # Supply chain tier distribution
         tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
         for n in nodes:
-            meta = n.get("meta") or {}
-            tier = meta.get("supply_chain_tier", 0)
+            supply_chain = n.get("supply_chain") or {}
+            tier = supply_chain.get("tier", 0)
             if tier in tier_counts:
                 tier_counts[tier] += 1
 
