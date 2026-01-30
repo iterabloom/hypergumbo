@@ -11866,3 +11866,133 @@ class TestVertxPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "server"
+
+
+class TestRestifyPatterns:
+    """Tests for Restify framework pattern matching."""
+
+    def test_restify_create_server_via_usage_context(self) -> None:
+        """Restify createServer matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("restify")
+
+        assert pattern_def is not None, "Restify patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="restify.createServer",
+            position="args[0]",
+            path="server.js",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="test:server.js:5:create_server:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"
+
+    def test_restify_get_route_via_usage_context(self) -> None:
+        """Restify server.get() matches route pattern with GET method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("restify")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="server.get",
+            position="args[0]",
+            path="routes.js",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:routes.js:10:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_restify_post_route_via_usage_context(self) -> None:
+        """Restify server.post() matches route pattern with POST method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("restify")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="server.post",
+            position="args[0]",
+            path="routes.js",
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:routes.js:15:create_user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_restify_pre_middleware_via_usage_context(self) -> None:
+        """Restify server.pre() matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("restify")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="server.pre",
+            position="args[0]",
+            path="server.js",
+            span=Span(8, 8, 0, 50),
+            symbol_ref="test:server.js:8:pre_handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_restify_body_parser_via_usage_context(self) -> None:
+        """Restify bodyParser plugin matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("restify")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="restify.plugins.bodyParser",
+            position="args[0]",
+            path="server.js",
+            span=Span(12, 12, 0, 50),
+            symbol_ref="test:server.js:12:body_parser:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_restify_json_client_via_usage_context(self) -> None:
+        """Restify createJsonClient matches client pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("restify")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="restify.createJsonClient",
+            position="args[0]",
+            path="client.js",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="test:client.js:5:create_client:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "client"
