@@ -12268,3 +12268,135 @@ class TestLumenPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "service_provider"
+
+
+class TestPadrinoPatterns:
+    """Tests for Padrino framework pattern matching."""
+
+    def test_padrino_application_base_class(self) -> None:
+        """Padrino Application base class matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("padrino")
+
+        assert pattern_def is not None, "Padrino patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.rb:1:App:class",
+            name="App",
+            kind="class",
+            language="ruby",
+            path="app/app.rb",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Padrino::Application"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+    def test_padrino_get_route_via_usage_context(self) -> None:
+        """Padrino get route matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("padrino")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="args[0]",
+            path="app/controllers/users.rb",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:users.rb:10:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_padrino_post_route_via_usage_context(self) -> None:
+        """Padrino post route matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("padrino")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="post",
+            position="args[0]",
+            path="app/controllers/users.rb",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:users.rb:20:create_user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_padrino_controller_via_usage_context(self) -> None:
+        """Padrino controller call matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("padrino")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="controller",
+            position="args[0]",
+            path="app/controllers/users.rb",
+            span=Span(5, 50, 0, 0),
+            symbol_ref="test:users.rb:5:users_controller:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_padrino_before_filter_via_usage_context(self) -> None:
+        """Padrino before filter matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("padrino")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="before",
+            position="args[0]",
+            path="app/app.rb",
+            span=Span(8, 12, 0, 0),
+            symbol_ref="test:app.rb:8:auth_filter:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_padrino_mailer_via_usage_context(self) -> None:
+        """Padrino mailer call matches mailer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("padrino")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="mailer",
+            position="args[0]",
+            path="app/mailers/user_mailer.rb",
+            span=Span(5, 20, 0, 0),
+            symbol_ref="test:user_mailer.rb:5:user_mailer:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "mailer"
