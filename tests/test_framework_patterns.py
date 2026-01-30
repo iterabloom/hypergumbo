@@ -10681,3 +10681,144 @@ class TestFeathersPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "config"
+
+
+class TestMasonitePatterns:
+    """Tests for Masonite framework pattern matching."""
+
+    def test_masonite_controller_base_class(self) -> None:
+        """Masonite Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("masonite")
+
+        assert pattern_def is not None, "Masonite patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:controllers.py:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="python",
+            path="app/controllers/UserController.py",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_masonite_route_get_via_usage_context(self) -> None:
+        """Masonite Route.get() call matches route pattern via UsageContext."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("masonite")
+
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="Route.get",
+            position="args[0]",
+            path="routes/web.py",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="test:routes/web.py:5:route_def:other",
+            metadata={
+                "url": "/users",
+                "handler": "UserController@index",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_masonite_route_post_via_usage_context(self) -> None:
+        """Masonite Route.post() call matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("masonite")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="Route.post",
+            position="args[0]",
+            path="routes/web.py",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:routes/web.py:10:route_def:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_masonite_model_base_class(self) -> None:
+        """Masonite Model base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("masonite")
+
+        symbol = Symbol(
+            id="test:models.py:1:User:class",
+            name="User",
+            kind="class",
+            language="python",
+            path="app/models/User.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Model"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_masonite_command_base_class(self) -> None:
+        """Masonite Command base class matches command pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("masonite")
+
+        symbol = Symbol(
+            id="test:commands.py:1:SendEmails:class",
+            name="SendEmails",
+            kind="class",
+            language="python",
+            path="app/commands/SendEmails.py",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["Command"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "command"
+
+    def test_masonite_provider_base_class(self) -> None:
+        """Masonite Provider base class matches service_provider pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("masonite")
+
+        symbol = Symbol(
+            id="test:providers.py:1:AppProvider:class",
+            name="AppProvider",
+            kind="class",
+            language="python",
+            path="app/providers/AppProvider.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Provider"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service_provider"
