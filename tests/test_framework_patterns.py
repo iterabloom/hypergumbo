@@ -10477,3 +10477,119 @@ class TestSvelteKitPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "model"
+
+
+class TestHanamiPatterns:
+    """Tests for Hanami Ruby framework pattern matching."""
+
+    def test_hanami_action_base_class_pattern(self) -> None:
+        """Hanami Action base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hanami")
+
+        assert pattern_def is not None, "Hanami patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:users/index.rb:1:Index:class",
+            name="Index",
+            kind="class",
+            language="ruby",
+            path="app/actions/users/index.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Hanami::Action"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_hanami_repository_pattern(self) -> None:
+        """Hanami Repository base class matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hanami")
+
+        symbol = Symbol(
+            id="test:user_repository.rb:1:UserRepository:class",
+            name="UserRepository",
+            kind="class",
+            language="ruby",
+            path="lib/repositories/user_repository.rb",
+            span=Span(1, 15, 0, 0),
+            meta={
+                "base_classes": ["Hanami::Repository"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "repository"
+
+    def test_hanami_entity_pattern(self) -> None:
+        """Hanami Entity base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hanami")
+
+        symbol = Symbol(
+            id="test:user.rb:1:User:class",
+            name="User",
+            kind="class",
+            language="ruby",
+            path="lib/entities/user.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Hanami::Entity"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_hanami_interactor_pattern(self) -> None:
+        """Hanami Interactor include matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hanami")
+
+        symbol = Symbol(
+            id="test:create_user.rb:1:CreateUser:class",
+            name="CreateUser",
+            kind="class",
+            language="ruby",
+            path="lib/interactors/create_user.rb",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Hanami::Interactor"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_hanami_view_pattern(self) -> None:
+        """Hanami View base class matches view pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("hanami")
+
+        symbol = Symbol(
+            id="test:users/index.rb:1:Index:class",
+            name="Index",
+            kind="class",
+            language="ruby",
+            path="app/views/users/index.rb",
+            span=Span(1, 25, 0, 0),
+            meta={
+                "base_classes": ["Hanami::View"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "view"
