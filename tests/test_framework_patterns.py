@@ -10371,3 +10371,109 @@ class TestRemixPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route_config"
+
+
+class TestSvelteKitPatterns:
+    """Tests for SvelteKit Svelte meta-framework pattern matching."""
+
+    def test_sveltekit_load_pattern(self) -> None:
+        """SvelteKit load function matches data_fetcher pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sveltekit")
+
+        assert pattern_def is not None, "SvelteKit patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:+page.server.ts:5:load:function",
+            name="load",
+            kind="function",
+            language="typescript",
+            path="src/routes/users/+page.server.ts",
+            span=Span(5, 15, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "data_fetcher"
+
+    def test_sveltekit_actions_pattern(self) -> None:
+        """SvelteKit actions export matches mutation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sveltekit")
+
+        symbol = Symbol(
+            id="test:+page.server.ts:20:actions:variable",
+            name="actions",
+            kind="variable",
+            language="typescript",
+            path="src/routes/users/+page.server.ts",
+            span=Span(20, 40, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "mutation"
+
+    def test_sveltekit_handle_hook_pattern(self) -> None:
+        """SvelteKit handle hook matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sveltekit")
+
+        symbol = Symbol(
+            id="test:hooks.server.ts:1:handle:function",
+            name="handle",
+            kind="function",
+            language="typescript",
+            path="src/hooks.server.ts",
+            span=Span(1, 20, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_sveltekit_handle_error_pattern(self) -> None:
+        """SvelteKit handleError hook matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sveltekit")
+
+        symbol = Symbol(
+            id="test:hooks.server.ts:25:handleError:function",
+            name="handleError",
+            kind="function",
+            language="typescript",
+            path="src/hooks.server.ts",
+            span=Span(25, 40, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_sveltekit_page_data_pattern(self) -> None:
+        """SvelteKit PageData type matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sveltekit")
+
+        symbol = Symbol(
+            id="test:+page.ts:1:PageData:interface",
+            name="PageData",
+            kind="interface",
+            language="typescript",
+            path="src/routes/+page.ts",
+            span=Span(1, 10, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"

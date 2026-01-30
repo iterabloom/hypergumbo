@@ -1,0 +1,139 @@
+# SvelteKit framework patterns (ADR-0003)
+#
+# SvelteKit is a meta-framework for Svelte, providing file-based routing,
+# server-side rendering, and full-stack capabilities.
+#
+# Key conventions:
+# - load: Server/universal data loading function
+# - actions: Form action handlers
+# - handle: Server hook for request handling
+# - handleError: Server hook for error handling
+# - handleFetch: Server hook for fetch interception
+#
+# File naming conventions:
+# - +page.svelte: Page component
+# - +page.server.ts: Server-only load/actions
+# - +page.ts: Universal load
+# - +layout.svelte: Layout component
+# - +error.svelte: Error page
+# - hooks.server.ts: Server hooks
+# - hooks.client.ts: Client hooks
+#
+# See: https://kit.svelte.dev/ and https://github.com/sveltejs/kit
+
+id: sveltekit
+language: javascript
+
+patterns:
+  # ==================== DATA LOADING ====================
+  # Load functions for data fetching
+
+  - concept: data_fetcher
+    symbol_name: "^load$"
+
+  # ==================== FORM ACTIONS ====================
+  # Actions for form handling
+
+  - concept: mutation
+    symbol_name: "^actions$"
+
+  # Default action
+  - concept: mutation
+    symbol_name: "^default$"
+
+  # ==================== SERVER HOOKS ====================
+  # Server-side hooks
+
+  - concept: middleware
+    symbol_name: "^handle$"
+
+  - concept: error_handler
+    symbol_name: "^handleError$"
+
+  - concept: middleware
+    symbol_name: "^handleFetch$"
+
+  # ==================== CLIENT HOOKS ====================
+  # Client-side hooks
+
+  - concept: error_handler
+    symbol_name: "^handleClientError$"
+
+  # ==================== PARAM MATCHING ====================
+  # Route parameter matchers
+
+  - concept: route_config
+    symbol_name: "^match$"
+
+  # ==================== DATA TYPES ====================
+  # Common SvelteKit types
+
+  - concept: model
+    symbol_name: "^PageData$"
+
+  - concept: model
+    symbol_name: "^LayoutData$"
+
+  - concept: model
+    symbol_name: "^ActionData$"
+
+  # ==================== NAVIGATION ====================
+  # Navigation utilities
+
+  - concept: router
+    symbol_name: "^goto$"
+
+  - concept: router
+    symbol_name: "^invalidate$"
+
+  - concept: router
+    symbol_name: "^invalidateAll$"
+
+  - concept: router
+    symbol_name: "^prefetch$"
+
+  - concept: router
+    symbol_name: "^beforeNavigate$"
+
+  - concept: router
+    symbol_name: "^afterNavigate$"
+
+  - concept: router
+    symbol_name: "^onNavigate$"
+
+  # ==================== STORES ====================
+  # SvelteKit stores
+
+  - concept: state
+    symbol_name: "^page$"
+
+  - concept: state
+    symbol_name: "^navigating$"
+
+  - concept: state
+    symbol_name: "^updated$"
+
+  # ==================== UTILITIES ====================
+  # Common utilities
+
+  - concept: error_handler
+    symbol_name: "^error$"
+
+  - concept: router
+    symbol_name: "^redirect$"
+
+  - concept: mutation
+    symbol_name: "^fail$"
+
+  # Form enhancement
+  - concept: form
+    symbol_name: "^enhance$"
+
+  - concept: form
+    symbol_name: "^applyAction$"
+
+  - concept: form
+    symbol_name: "^deserialize$"
+
+linkers:
+  - http
