@@ -13122,3 +13122,129 @@ class TestRingCompojurePatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "router"
+
+
+class TestPedestalPatterns:
+    """Tests for Pedestal Clojure framework pattern matching."""
+
+    def test_pedestal_defroutes_via_usage_context(self) -> None:
+        """Pedestal defroutes matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pedestal")
+
+        assert pattern_def is not None, "Pedestal patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="defroutes",
+            position="args[0]",
+            path="src/myapp/service.clj",
+            span=Span(10, 30, 0, 0),
+            symbol_ref="test:service.clj:10:routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_pedestal_table_routes_via_usage_context(self) -> None:
+        """Pedestal table-routes matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pedestal")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="table-routes",
+            position="args[0]",
+            path="src/myapp/service.clj",
+            span=Span(15, 25, 0, 0),
+            symbol_ref="test:service.clj:15:api-routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_pedestal_definterceptor_via_usage_context(self) -> None:
+        """Pedestal definterceptor matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pedestal")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="definterceptor",
+            position="args[0]",
+            path="src/myapp/interceptors.clj",
+            span=Span(5, 15, 0, 0),
+            symbol_ref="test:interceptors.clj:5:auth-interceptor:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_pedestal_interceptor_via_usage_context(self) -> None:
+        """Pedestal interceptor call matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pedestal")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="interceptor",
+            position="args[0]",
+            path="src/myapp/interceptors.clj",
+            span=Span(20, 30, 0, 0),
+            symbol_ref="test:interceptors.clj:20:log-interceptor:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_pedestal_create_server_via_usage_context(self) -> None:
+        """Pedestal create-server matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pedestal")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="create-server",
+            position="args[0]",
+            path="src/myapp/server.clj",
+            span=Span(30, 35, 0, 0),
+            symbol_ref="test:server.clj:30:server:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"
+
+    def test_pedestal_body_params_via_usage_context(self) -> None:
+        """Pedestal body-params matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pedestal")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="body-params",
+            position="args[0]",
+            path="src/myapp/interceptors.clj",
+            span=Span(40, 45, 0, 0),
+            symbol_ref="test:interceptors.clj:40:body-parser:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
