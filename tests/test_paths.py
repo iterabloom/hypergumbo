@@ -10,6 +10,8 @@ from hypergumbo.paths import (
     path_ends_with,
     get_filename,
     is_under_directory,
+    is_test_file,
+    is_utility_file,
 )
 
 
@@ -191,3 +193,85 @@ class TestIsUnderDirectory:
     def test_backslash_path(self) -> None:
         """Backslash paths are normalized."""
         assert is_under_directory("src\\tests\\main.py", "tests") is True
+
+
+class TestIsTestFile:
+    """Tests for is_test_file function."""
+
+    def test_test_prefix(self) -> None:
+        """Files starting with test_ are test files."""
+        assert is_test_file("test_main.py") is True
+        assert is_test_file("src/test_utils.py") is True
+
+    def test_test_suffix(self) -> None:
+        """Files with _test suffix are test files."""
+        assert is_test_file("main_test.py") is True
+        assert is_test_file("utils_test.go") is True
+
+    def test_dot_test_suffix(self) -> None:
+        """Files with .test. suffix are test files."""
+        assert is_test_file("main.test.py") is True
+        assert is_test_file("main.test.js") is True
+
+    def test_spec_patterns(self) -> None:
+        """Spec files are test files."""
+        assert is_test_file("spec_main.py") is True
+        assert is_test_file("main_spec.rb") is True
+        assert is_test_file("main.spec.js") is True
+
+    def test_mock_patterns(self) -> None:
+        """Mock/fake files are test files."""
+        assert is_test_file("main_mock.py") is True
+        assert is_test_file("mock_client.py") is True
+        assert is_test_file("fake_server.go") is True
+
+    def test_test_directories(self) -> None:
+        """Files in test directories are test files."""
+        assert is_test_file("tests/main.py") is True
+        assert is_test_file("test/helper.py") is True
+        assert is_test_file("spec/support.rb") is True
+        assert is_test_file("__tests__/main.js") is True
+
+    def test_not_test_file(self) -> None:
+        """Regular files are not test files."""
+        assert is_test_file("main.py") is False
+        assert is_test_file("src/utils.py") is False
+        assert is_test_file("lib/test.py") is False  # test is the filename, not dir
+
+
+class TestIsUtilityFile:
+    """Tests for is_utility_file function."""
+
+    def test_docs_directories(self) -> None:
+        """Files in docs directories are utility files."""
+        assert is_utility_file("docs/guide.md") is True
+        assert is_utility_file("docs_src/tutorial.py") is True
+        assert is_utility_file("documentation/api.rst") is True
+
+    def test_examples_directories(self) -> None:
+        """Files in examples directories are utility files."""
+        assert is_utility_file("examples/basic.py") is True
+        assert is_utility_file("example/simple.js") is True
+        assert is_utility_file("samples/demo.py") is True
+
+    def test_scripts_directories(self) -> None:
+        """Files in scripts directories are utility files."""
+        assert is_utility_file("scripts/deploy.sh") is True
+        assert is_utility_file("tools/build.py") is True
+        assert is_utility_file("bin/run.sh") is True
+
+    def test_benchmarks_directories(self) -> None:
+        """Files in benchmark directories are utility files."""
+        assert is_utility_file("benchmarks/perf.py") is True
+        assert is_utility_file("bench/speed.go") is True
+
+    def test_not_utility_file(self) -> None:
+        """Regular source files are not utility files."""
+        assert is_utility_file("src/main.py") is False
+        assert is_utility_file("lib/utils.py") is False
+        assert is_utility_file("app/views.py") is False
+
+    def test_case_insensitive(self) -> None:
+        """Directory matching is case-insensitive."""
+        assert is_utility_file("Examples/demo.py") is True
+        assert is_utility_file("DOCS/guide.md") is True

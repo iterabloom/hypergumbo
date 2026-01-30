@@ -48,7 +48,7 @@ from enum import Enum
 from typing import List
 
 from .ir import Symbol, Edge
-from .paths import is_test_file
+from .paths import is_test_file, is_utility_file
 
 
 class EntrypointKind(Enum):
@@ -538,6 +538,11 @@ def detect_entrypoints(
 
         # Penalty for test files (50% reduction)
         if sym.path and is_test_file(sym.path):
+            ep.confidence *= 0.5
+
+        # Penalty for utility/example/docs files (50% reduction)
+        # These are demonstration code, not production entrypoints
+        if sym.path and is_utility_file(sym.path):
             ep.confidence *= 0.5
 
         # Penalty for vendor/external dependencies (70% reduction)

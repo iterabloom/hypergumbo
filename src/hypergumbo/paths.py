@@ -135,6 +135,46 @@ def is_under_directory(path: str, directory: str) -> bool:
     return directory.lower() in [p.lower() for p in parts[:-1]]  # Exclude filename
 
 
+def is_utility_file(path: str) -> bool:
+    """Check if a path looks like a utility/example/documentation file.
+
+    Used for deprioritizing utility code in entrypoint ranking. These are
+    files that exist to demonstrate or document the main codebase, not
+    production code that should be navigated to.
+
+    Matches files in directories:
+    - docs_src/, docs/, documentation/ (documentation source)
+    - examples/, example/, samples/ (example code)
+    - scripts/, tools/, bin/ (utility scripts)
+    - benchmarks/, bench/ (performance tests)
+
+    Args:
+        path: File path to check
+
+    Returns:
+        True if the path appears to be a utility file
+    """
+    normalized = normalize_path(path)
+    path_parts = normalized.split("/")
+
+    utility_dirs = {
+        # Documentation
+        "docs_src", "docs", "documentation", "doc",
+        # Examples
+        "examples", "example", "samples", "sample", "demos", "demo",
+        # Scripts/tools
+        "scripts", "tools", "bin", "utils", "utilities",
+        # Benchmarks
+        "benchmarks", "bench", "perf",
+    }
+
+    for part in path_parts[:-1]:  # Exclude filename
+        if part.lower() in utility_dirs:
+            return True
+
+    return False
+
+
 def is_test_file(path: str) -> bool:
     """Check if a path looks like a test file.
 
