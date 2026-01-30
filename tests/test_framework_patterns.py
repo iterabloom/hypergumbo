@@ -10822,3 +10822,168 @@ class TestMasonitePatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "service_provider"
+
+
+class TestAdonisJSPatterns:
+    """Tests for AdonisJS framework pattern matching."""
+
+    def test_adonisjs_controller_naming_convention(self) -> None:
+        """AdonisJS controller naming convention matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        assert pattern_def is not None, "AdonisJS patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:controllers.ts:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="javascript",
+            path="app/controllers/UserController.ts",
+            span=Span(1, 50, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_adonisjs_get_decorator(self) -> None:
+        """AdonisJS @Get decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        symbol = Symbol(
+            id="test:controllers.ts:10:index:method",
+            name="index",
+            kind="method",
+            language="javascript",
+            path="app/controllers/UserController.ts",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "@Get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/users"
+
+    def test_adonisjs_post_decorator(self) -> None:
+        """AdonisJS @Post decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        symbol = Symbol(
+            id="test:controllers.ts:30:store:method",
+            name="store",
+            kind="method",
+            language="javascript",
+            path="app/controllers/UserController.ts",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "@Post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_adonisjs_middleware_decorator(self) -> None:
+        """AdonisJS @Middleware decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        symbol = Symbol(
+            id="test:controllers.ts:5:show:method",
+            name="show",
+            kind="method",
+            language="javascript",
+            path="app/controllers/UserController.ts",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "@Middleware", "args": ["auth"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_adonisjs_lucid_model(self) -> None:
+        """AdonisJS Lucid model (BaseModel) matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        symbol = Symbol(
+            id="test:models.ts:1:User:class",
+            name="User",
+            kind="class",
+            language="javascript",
+            path="app/models/User.ts",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["BaseModel"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_adonisjs_command_base_class(self) -> None:
+        """AdonisJS command (BaseCommand) matches command pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        symbol = Symbol(
+            id="test:commands.ts:1:SendEmails:class",
+            name="SendEmails",
+            kind="class",
+            language="javascript",
+            path="app/commands/SendEmails.ts",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["BaseCommand"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "command"
+
+    def test_adonisjs_route_get_via_usage_context(self) -> None:
+        """AdonisJS Route.get() call matches route pattern via UsageContext."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("adonisjs")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="Route.get",
+            position="args[0]",
+            path="start/routes.ts",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="test:routes.ts:5:route_def:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
