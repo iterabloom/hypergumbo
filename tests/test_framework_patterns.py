@@ -13376,3 +13376,133 @@ class TestServantPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "error_handler"
+
+
+class TestScottyPatterns:
+    """Tests for Haskell Scotty framework pattern matching."""
+
+    def test_scotty_app_via_usage_context(self) -> None:
+        """Scotty scotty function matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scotty")
+
+        assert pattern_def is not None, "Scotty patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="scotty",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(10, 20, 0, 0),
+            symbol_ref="test:Main.hs:10:main:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+    def test_scotty_get_route_via_usage_context(self) -> None:
+        """Scotty get function matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scotty")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(15, 18, 0, 0),
+            symbol_ref="test:Main.hs:15:getUsers:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_scotty_post_route_via_usage_context(self) -> None:
+        """Scotty post function matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scotty")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="post",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:Main.hs:20:createUser:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_scotty_middleware_via_usage_context(self) -> None:
+        """Scotty middleware function matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scotty")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="middleware",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(8, 10, 0, 0),
+            symbol_ref="test:Main.hs:8:logMiddleware:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_scotty_json_response_via_usage_context(self) -> None:
+        """Scotty json function matches response pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scotty")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="json",
+            position="args[0]",
+            path="app/Handlers.hs",
+            span=Span(30, 32, 0, 0),
+            symbol_ref="test:Handlers.hs:30:response:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "response"
+
+    def test_scotty_raise_error_via_usage_context(self) -> None:
+        """Scotty raise function matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scotty")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="raise",
+            position="args[0]",
+            path="app/Handlers.hs",
+            span=Span(40, 42, 0, 0),
+            symbol_ref="test:Handlers.hs:40:error:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
