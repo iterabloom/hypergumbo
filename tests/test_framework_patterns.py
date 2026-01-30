@@ -12990,3 +12990,135 @@ class TestFuelPHPPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "migration"
+
+
+class TestRingCompojurePatterns:
+    """Tests for Ring/Compojure Clojure framework pattern matching."""
+
+    def test_compojure_defroutes_via_usage_context(self) -> None:
+        """Compojure defroutes matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("ring-compojure")
+
+        assert pattern_def is not None, "Ring/Compojure patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="defroutes",
+            position="args[0]",
+            path="src/myapp/routes.clj",
+            span=Span(10, 30, 0, 0),
+            symbol_ref="test:routes.clj:10:app-routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_compojure_get_route_via_usage_context(self) -> None:
+        """Compojure GET macro matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("ring-compojure")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="GET",
+            position="args[0]",
+            path="src/myapp/routes.clj",
+            span=Span(12, 15, 0, 0),
+            symbol_ref="test:routes.clj:12:get-users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_compojure_post_route_via_usage_context(self) -> None:
+        """Compojure POST macro matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("ring-compojure")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="POST",
+            position="args[0]",
+            path="src/myapp/routes.clj",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:routes.clj:20:create-user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_ring_wrap_middleware_via_usage_context(self) -> None:
+        """Ring wrap-* middleware matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("ring-compojure")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="wrap-json-response",
+            position="args[0]",
+            path="src/myapp/handler.clj",
+            span=Span(5, 8, 0, 0),
+            symbol_ref="test:handler.clj:5:handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_compojure_context_via_usage_context(self) -> None:
+        """Compojure context matches route_group pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("ring-compojure")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="context",
+            position="args[0]",
+            path="src/myapp/routes.clj",
+            span=Span(30, 40, 0, 0),
+            symbol_ref="test:routes.clj:30:api-routes:other",
+            metadata={
+                "url": "/api",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_group"
+
+    def test_compojure_routes_via_usage_context(self) -> None:
+        """Compojure routes matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("ring-compojure")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="routes",
+            position="args[0]",
+            path="src/myapp/handler.clj",
+            span=Span(15, 20, 0, 0),
+            symbol_ref="test:handler.clj:15:all-routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
