@@ -11736,3 +11736,133 @@ class TestHttp4sPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "application"
+
+
+class TestVertxPatterns:
+    """Tests for Vert.x framework pattern matching."""
+
+    def test_vertx_router_via_usage_context(self) -> None:
+        """Vert.x Router.router() matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("vertx")
+
+        assert pattern_def is not None, "Vert.x patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="Router.router",
+            position="args[0]",
+            path="Server.java",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:Server.java:10:create_router:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_vertx_route_get_via_usage_context(self) -> None:
+        """Vert.x router.get() matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("vertx")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="router.get",
+            position="args[0]",
+            path="Server.java",
+            span=Span(15, 15, 0, 50),
+            symbol_ref="test:Server.java:15:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_vertx_handler_via_usage_context(self) -> None:
+        """Vert.x .handler() matches handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("vertx")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=".handler",
+            position="args[0]",
+            path="Server.java",
+            span=Span(20, 20, 0, 50),
+            symbol_ref="test:Server.java:20:handle_request:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "handler"
+
+    def test_vertx_verticle_base_class(self) -> None:
+        """Vert.x AbstractVerticle base class matches verticle pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("vertx")
+
+        symbol = Symbol(
+            id="test:MainVerticle.java:1:MainVerticle:class",
+            name="MainVerticle",
+            kind="class",
+            language="java",
+            path="MainVerticle.java",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["AbstractVerticle"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "verticle"
+
+    def test_vertx_eventbus_consumer_via_usage_context(self) -> None:
+        """Vert.x eventBus.consumer() matches event_consumer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("vertx")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="eventBus.consumer",
+            position="args[0]",
+            path="EventHandler.java",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:EventHandler.java:10:consume_events:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_consumer"
+
+    def test_vertx_http_server_via_usage_context(self) -> None:
+        """Vert.x vertx.createHttpServer() matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("vertx")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="vertx.createHttpServer",
+            position="args[0]",
+            path="Server.java",
+            span=Span(5, 5, 0, 50),
+            symbol_ref="test:Server.java:5:create_server:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"
