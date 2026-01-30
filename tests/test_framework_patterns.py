@@ -8570,3 +8570,222 @@ class TestNamingConventionsPatterns:
             c for c in service.meta["concepts"] if c["concept"] == "service_by_name"
         ]
         assert len(service_concepts) == 1
+
+
+class TestPyramidPatterns:
+    """Tests for Pyramid framework pattern matching."""
+
+    def test_pyramid_view_config_route_pattern(self) -> None:
+        """Pyramid @view_config(route_name='...') matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        assert pattern_def is not None, "Pyramid patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:views.py:1:home:function",
+            name="home",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "view_config",
+                        "args": [],
+                        "kwargs": {"route_name": "home", "request_method": "GET"},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "home"
+        assert results[0]["method"] == "GET"
+
+    def test_pyramid_view_config_without_method(self) -> None:
+        """Pyramid @view_config without request_method still matches."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:views.py:10:users_list:function",
+            name="users_list",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "view_config",
+                        "args": [],
+                        "kwargs": {"route_name": "users"},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "users"
+
+    def test_pyramid_view_defaults_pattern(self) -> None:
+        """Pyramid @view_defaults matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:views.py:1:UserViews:class",
+            name="UserViews",
+            kind="class",
+            language="python",
+            path="views.py",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "view_defaults",
+                        "args": [],
+                        "kwargs": {"route_name": "user"},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_pyramid_notfound_view_config_pattern(self) -> None:
+        """Pyramid @notfound_view_config matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:views.py:100:not_found:function",
+            name="not_found",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(100, 110, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "notfound_view_config", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_pyramid_forbidden_view_config_pattern(self) -> None:
+        """Pyramid @forbidden_view_config matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:views.py:120:forbidden:function",
+            name="forbidden",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(120, 130, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "forbidden_view_config", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_pyramid_exception_view_config_pattern(self) -> None:
+        """Pyramid @exception_view_config matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:views.py:140:handle_exception:function",
+            name="handle_exception",
+            kind="function",
+            language="python",
+            path="views.py",
+            span=Span(140, 150, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "exception_view_config",
+                        "args": ["Exception"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_pyramid_subscriber_pattern(self) -> None:
+        """Pyramid @subscriber matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:events.py:1:on_app_created:function",
+            name="on_app_created",
+            kind="function",
+            language="python",
+            path="events.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "subscriber",
+                        "args": ["ApplicationCreated"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_pyramid_model_base_class_pattern(self) -> None:
+        """Pyramid SQLAlchemy model (Base subclass) matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("pyramid")
+
+        symbol = Symbol(
+            id="test:models.py:1:User:class",
+            name="User",
+            kind="class",
+            language="python",
+            path="models.py",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Base"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"

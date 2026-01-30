@@ -1,0 +1,69 @@
+# Pyramid framework patterns (ADR-0003)
+#
+# Pyramid is a flexible Python web framework that supports both traversal
+# and URL dispatch routing. Matches view_config decorators and config patterns.
+#
+# Symbols matching these patterns get enriched with concept metadata.
+
+id: pyramid
+language: python
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # @view_config(route_name='home', request_method='GET')
+  - concept: route
+    decorator: "^view_config$"
+    extract_path: "kwargs.route_name"
+    extract_method: "kwargs.request_method"
+
+  # @view_defaults(route_name='api') - class-level defaults
+  - concept: controller
+    decorator: "^view_defaults$"
+
+  # @notfound_view_config() - 404 handler
+  - concept: error_handler
+    decorator: "^notfound_view_config$"
+
+  # @forbidden_view_config() - 403 handler (auth failure)
+  - concept: error_handler
+    decorator: "^forbidden_view_config$"
+
+  # @exception_view_config(Exception) - exception handler
+  - concept: error_handler
+    decorator: "^exception_view_config$"
+
+  # @subscriber(ApplicationCreated) - event subscriber
+  - concept: event_handler
+    decorator: "^subscriber$"
+
+  # SQLAlchemy model base class (commonly used with Pyramid)
+  - concept: model
+    base_class: "^(Base|DeclarativeBase)$"
+
+  # Colander schema (validation/serialization for Pyramid)
+  - concept: serializer
+    base_class: "^colander\\.Schema$"
+
+  # Deform schema (form handling)
+  - concept: form
+    base_class: "^deform\\.Form$"
+
+  # ==================== USAGE-BASED PATTERNS (call-based routing) ====================
+
+  # config.add_route('home', '/') - register route
+  - concept: route_registration
+    usage:
+      kind: "^call$"
+      name: "^config\\.add_route$"
+      position: "^args\\[0\\]$"
+
+  # config.add_view(handler, route_name='home') - register view
+  - concept: view_registration
+    usage:
+      kind: "^call$"
+      name: "^config\\.add_view$"
+      position: "^route_name$"
+
+linkers:
+  - http

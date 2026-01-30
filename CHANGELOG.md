@@ -11,6 +11,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Pyramid framework support**: Added patterns for the Pyramid Python web framework. Detects `@view_config` route decorators, `@view_defaults` class decorators, error handlers (`@notfound_view_config`, `@forbidden_view_config`, `@exception_view_config`), event subscribers (`@subscriber`), and SQLAlchemy model base classes. Enables route detection for Pyramid-based applications.
 - **Bottle framework support**: Added patterns for the Bottle Python micro-framework. Detects route decorators (`@app.get`, `@app.route`, `@route`), hooks (`@app.hook`), and error handlers (`@app.error`).
 - **JAX-RS implementation aliases**: Dropwizard, Jersey, and RESTEasy frameworks now use JAX-RS patterns automatically. This enables route detection for Java REST APIs using these frameworks.
 - **Flask-Appbuilder framework support**: Added patterns for Flask-Appbuilder (used by Apache Superset). Detects `@expose` route decorators, auth decorators (`@has_access`, `@protect`), and base classes (`BaseView`, `ModelRestApi`, `ModelView`). Enables route detection for enterprise Flask applications built on Flask-Appbuilder.
