@@ -10245,3 +10245,129 @@ class TestNuxtPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "data_fetcher"
+
+
+class TestRemixPatterns:
+    """Tests for Remix React meta-framework pattern matching."""
+
+    def test_remix_loader_pattern(self) -> None:
+        """Remix loader function matches data_fetcher pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("remix")
+
+        assert pattern_def is not None, "Remix patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:routes/users.tsx:5:loader:function",
+            name="loader",
+            kind="function",
+            language="typescript",
+            path="app/routes/users.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "data_fetcher"
+
+    def test_remix_action_pattern(self) -> None:
+        """Remix action function matches mutation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("remix")
+
+        symbol = Symbol(
+            id="test:routes/users.tsx:20:action:function",
+            name="action",
+            kind="function",
+            language="typescript",
+            path="app/routes/users.tsx",
+            span=Span(20, 35, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "mutation"
+
+    def test_remix_meta_pattern(self) -> None:
+        """Remix meta function matches metadata_generator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("remix")
+
+        symbol = Symbol(
+            id="test:routes/users.tsx:40:meta:function",
+            name="meta",
+            kind="function",
+            language="typescript",
+            path="app/routes/users.tsx",
+            span=Span(40, 50, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "metadata_generator"
+
+    def test_remix_error_boundary_pattern(self) -> None:
+        """Remix ErrorBoundary function matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("remix")
+
+        symbol = Symbol(
+            id="test:routes/users.tsx:60:ErrorBoundary:function",
+            name="ErrorBoundary",
+            kind="function",
+            language="typescript",
+            path="app/routes/users.tsx",
+            span=Span(60, 75, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_remix_links_pattern(self) -> None:
+        """Remix links function matches stylesheet pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("remix")
+
+        symbol = Symbol(
+            id="test:root.tsx:5:links:function",
+            name="links",
+            kind="function",
+            language="typescript",
+            path="app/root.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "stylesheet"
+
+    def test_remix_handle_pattern(self) -> None:
+        """Remix handle export matches route_config pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("remix")
+
+        symbol = Symbol(
+            id="test:routes/admin.tsx:5:handle:variable",
+            name="handle",
+            kind="variable",
+            language="typescript",
+            path="app/routes/admin.tsx",
+            span=Span(5, 10, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_config"
