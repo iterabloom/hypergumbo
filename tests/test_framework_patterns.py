@@ -9973,3 +9973,149 @@ class TestSymfonyPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "validator"
+
+
+class TestQuarkusPatterns:
+    """Tests for Quarkus Java framework pattern matching."""
+
+    def test_quarkus_panache_entity_pattern(self) -> None:
+        """Quarkus PanacheEntity base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quarkus")
+
+        assert pattern_def is not None, "Quarkus patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:User.java:1:User:class",
+            name="User",
+            kind="class",
+            language="java",
+            path="src/main/java/org/example/User.java",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["PanacheEntity"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_quarkus_panache_repository_pattern(self) -> None:
+        """Quarkus PanacheRepository base class matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quarkus")
+
+        symbol = Symbol(
+            id="test:UserRepository.java:1:UserRepository:class",
+            name="UserRepository",
+            kind="class",
+            language="java",
+            path="src/main/java/org/example/UserRepository.java",
+            span=Span(1, 25, 0, 0),
+            meta={
+                "base_classes": ["PanacheRepository"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "repository"
+
+    def test_quarkus_scheduled_annotation_pattern(self) -> None:
+        """Quarkus @Scheduled annotation matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quarkus")
+
+        symbol = Symbol(
+            id="test:TaskService.java:10:sendEmails:method",
+            name="sendEmails",
+            kind="method",
+            language="java",
+            path="src/main/java/org/example/TaskService.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Scheduled", "args": [], "kwargs": {"every": "1h"}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+
+    def test_quarkus_blocking_annotation_pattern(self) -> None:
+        """Quarkus @Blocking annotation matches async pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quarkus")
+
+        symbol = Symbol(
+            id="test:Resource.java:15:blockingMethod:method",
+            name="blockingMethod",
+            kind="method",
+            language="java",
+            path="src/main/java/org/example/Resource.java",
+            span=Span(15, 25, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Blocking", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "async"
+
+    def test_quarkus_liveness_pattern(self) -> None:
+        """Quarkus @Liveness annotation matches health_check pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quarkus")
+
+        symbol = Symbol(
+            id="test:HealthCheck.java:1:AppLiveness:class",
+            name="AppLiveness",
+            kind="class",
+            language="java",
+            path="src/main/java/org/example/HealthCheck.java",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Liveness", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "health_check"
+
+    def test_quarkus_rest_client_pattern(self) -> None:
+        """Quarkus @RegisterRestClient annotation matches client pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("quarkus")
+
+        symbol = Symbol(
+            id="test:ExternalApi.java:1:ExternalApiClient:interface",
+            name="ExternalApiClient",
+            kind="interface",
+            language="java",
+            path="src/main/java/org/example/ExternalApiClient.java",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RegisterRestClient", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "client"
