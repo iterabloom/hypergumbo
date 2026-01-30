@@ -12694,3 +12694,151 @@ class TestYiiPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "action"
+
+
+class TestLaminasPatterns:
+    """Tests for Laminas (formerly Zend) framework pattern matching."""
+
+    def test_laminas_action_controller_base_class(self) -> None:
+        """Laminas AbstractActionController matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laminas")
+
+        assert pattern_def is not None, "Laminas patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:IndexController.php:1:IndexController:class",
+            name="IndexController",
+            kind="class",
+            language="php",
+            path="module/Application/src/Controller/IndexController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["AbstractActionController"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_laminas_restful_controller_base_class(self) -> None:
+        """Laminas AbstractRestfulController matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laminas")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ApiController.php:1:ApiController:class",
+            name="ApiController",
+            kind="class",
+            language="php",
+            path="module/Api/src/Controller/ApiController.php",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "base_classes": ["AbstractRestfulController"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_laminas_form_base_class(self) -> None:
+        """Laminas Form base class matches form pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laminas")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserForm.php:1:UserForm:class",
+            name="UserForm",
+            kind="class",
+            language="php",
+            path="module/Application/src/Form/UserForm.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Form"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "form"
+
+    def test_laminas_middleware_interface(self) -> None:
+        """Laminas MiddlewareInterface matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laminas")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:AuthMiddleware.php:1:AuthMiddleware:class",
+            name="AuthMiddleware",
+            kind="class",
+            language="php",
+            path="src/Middleware/AuthMiddleware.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["MiddlewareInterface"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_laminas_input_filter_base_class(self) -> None:
+        """Laminas InputFilter base class matches validation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laminas")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserInputFilter.php:1:UserInputFilter:class",
+            name="UserInputFilter",
+            kind="class",
+            language="php",
+            path="module/Application/src/InputFilter/UserInputFilter.php",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["InputFilter"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "validation"
+
+    def test_laminas_table_gateway_base_class(self) -> None:
+        """Laminas TableGateway base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("laminas")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserTable.php:1:UserTable:class",
+            name="UserTable",
+            kind="class",
+            language="php",
+            path="module/Application/src/Model/UserTable.php",
+            span=Span(1, 60, 0, 0),
+            meta={
+                "base_classes": ["TableGateway"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
