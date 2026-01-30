@@ -13248,3 +13248,131 @@ class TestPedestalPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "middleware"
+
+
+class TestServantPatterns:
+    """Tests for Haskell Servant framework pattern matching."""
+
+    def test_servant_serve_via_usage_context(self) -> None:
+        """Servant serve function matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("servant")
+
+        assert pattern_def is not None, "Servant patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="serve",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:Main.hs:10:main:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"
+
+    def test_servant_run_via_usage_context(self) -> None:
+        """Servant run function matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("servant")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="run",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(12, 15, 0, 0),
+            symbol_ref="test:Main.hs:12:main:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"
+
+    def test_servant_handler_type_base_class(self) -> None:
+        """Servant Handler type matches handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("servant")
+
+        symbol = Symbol(
+            id="test:API.hs:1:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="haskell",
+            path="src/API.hs",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "base_classes": ["Handler"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "handler"
+
+    def test_servant_hoistserver_via_usage_context(self) -> None:
+        """Servant hoistServer function matches transformer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("servant")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="hoistServer",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:Main.hs:20:app:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "transformer"
+
+    def test_servant_servewithdocs_via_usage_context(self) -> None:
+        """Servant serveWithDocs function matches documentation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("servant")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="serveWithDocs",
+            position="args[0]",
+            path="app/Main.hs",
+            span=Span(30, 35, 0, 0),
+            symbol_ref="test:Main.hs:30:main:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "documentation"
+
+    def test_servant_err404_via_usage_context(self) -> None:
+        """Servant err404 function matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("servant")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="err404",
+            position="args[0]",
+            path="src/Handlers.hs",
+            span=Span(40, 45, 0, 0),
+            symbol_ref="test:Handlers.hs:40:notFound:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
