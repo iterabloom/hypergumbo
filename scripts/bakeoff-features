@@ -588,15 +588,14 @@ def cmd_run(args):
         # Parse entrypoints for slice tests
         entries = []
         try:
-            # Parse the entrypoint output (format varies, try JSON first)
             import re
-            # Look for symbol names in the output
+            # Format: "    python:/path/to/file.py:line-range:SymbolName:kind"
+            # Entry IDs start with language prefix like "python:", "javascript:", etc.
             for line in stdout.split("\n"):
-                if line.strip() and not line.startswith("#"):
-                    # Try to extract entry name
-                    match = re.search(r'^\s*\d+\.\s+(\S+)', line)
-                    if match:
-                        entries.append(match.group(1))
+                line = line.strip()
+                # Match entry IDs that look like "lang:/path:lines:name:kind"
+                if re.match(r'^[a-z]+:/', line):
+                    entries.append(line)
         except Exception:
             pass
 
@@ -742,8 +741,8 @@ def cmd_diagnose(args):
         node_ids = {n.get("id") for n in nodes}
         connected_nodes = set()
         for e in edges:
-            connected_nodes.add(e.get("source"))
-            connected_nodes.add(e.get("target"))
+            connected_nodes.add(e.get("src"))
+            connected_nodes.add(e.get("dst"))
         metrics.orphan_count = len(node_ids - connected_nodes)
         metrics.orphan_rate = (metrics.orphan_count / len(nodes) * 100) if nodes else 0
 
@@ -751,8 +750,8 @@ def cmd_diagnose(args):
         in_degree = {}
         out_degree = {}
         for e in edges:
-            src = e.get("source")
-            tgt = e.get("target")
+            src = e.get("src")
+            tgt = e.get("dst")
             out_degree[src] = out_degree.get(src, 0) + 1
             in_degree[tgt] = in_degree.get(tgt, 0) + 1
 
@@ -777,7 +776,8 @@ def cmd_diagnose(args):
         # Supply chain tier distribution
         tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
         for n in nodes:
-            tier = n.get("meta", {}).get("supply_chain_tier", 0)
+            meta = n.get("meta") or {}
+            tier = meta.get("supply_chain_tier", 0)
             if tier in tier_counts:
                 tier_counts[tier] += 1
 
@@ -804,11 +804,15 @@ def cmd_diagnose(args):
                     slice_node_counts.append(len(slice_nodes))
 
                     # Count cross-file edges
+                    # Edge format: "lang:/path/to/file.py:lines:name:kind"
                     for e in slice_edges:
                         total_slice_edges += 1
-                        src_file = e.get("source_file", "")
-                        tgt_file = e.get("target_file", "")
-                        if src_file and tgt_file and src_file != tgt_file:
+                        src = e.get("src", "")
+                        dst = e.get("dst", "")
+                        # Extract file path (between first : and second :)
+                        src_file = src.split(":")[1] if ":" in src else ""
+                        dst_file = dst.split(":")[1] if ":" in dst else ""
+                        if src_file and dst_file and src_file != dst_file:
                             cross_file_edges += 1
             except Exception:
                 pass
