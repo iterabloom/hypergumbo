@@ -11337,3 +11337,139 @@ class TestJavalinPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "handler"
+
+
+class TestScalatraPatterns:
+    """Tests for Scalatra framework pattern matching."""
+
+    def test_scalatra_servlet_base_class(self) -> None:
+        """Scalatra ScalatraServlet base class matches servlet pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scalatra")
+
+        assert pattern_def is not None, "Scalatra patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:MyServlet.scala:1:MyServlet:class",
+            name="MyServlet",
+            kind="class",
+            language="scala",
+            path="MyServlet.scala",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["ScalatraServlet"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "servlet"
+
+    def test_scalatra_get_route_via_usage_context(self) -> None:
+        """Scalatra get() call matches route pattern with GET method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scalatra")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="args[0]",
+            path="MyServlet.scala",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:MyServlet.scala:10:get_users:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_scalatra_post_route_via_usage_context(self) -> None:
+        """Scalatra post() call matches route pattern with POST method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scalatra")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="post",
+            position="args[0]",
+            path="MyServlet.scala",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:MyServlet.scala:20:create_user:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_scalatra_before_filter_via_usage_context(self) -> None:
+        """Scalatra before() call matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scalatra")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="before",
+            position="args[0]",
+            path="MyServlet.scala",
+            span=Span(5, 8, 0, 0),
+            symbol_ref="test:MyServlet.scala:5:auth_filter:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_scalatra_error_handler_via_usage_context(self) -> None:
+        """Scalatra error() call matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scalatra")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="error",
+            position="args[0]",
+            path="MyServlet.scala",
+            span=Span(30, 35, 0, 0),
+            symbol_ref="test:MyServlet.scala:30:error_handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_scalatra_json_support_trait(self) -> None:
+        """Scalatra JacksonJsonSupport trait matches json_support pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("scalatra")
+
+        symbol = Symbol(
+            id="test:MyServlet.scala:1:MyServlet:class",
+            name="MyServlet",
+            kind="class",
+            language="scala",
+            path="MyServlet.scala",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["ScalatraServlet", "JacksonJsonSupport"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) >= 2  # servlet + json_support
+        concepts = [r["concept"] for r in results]
+        assert "servlet" in concepts
+        assert "json_support" in concepts
