@@ -11,6 +11,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Nex framework support**: Added patterns for the Nex minimalist Elixir web framework. Detects `use Nex` page/API handlers, lifecycle hooks (`mount`, `render`), and HTTP method handlers (`get`, `post`, `put`, `delete`, `patch`). Enables handler detection for Nex-based applications using file-based routing.
 - **Pyramid framework support**: Added patterns for the Pyramid Python web framework. Detects `@view_config` route decorators, `@view_defaults` class decorators, error handlers (`@notfound_view_config`, `@forbidden_view_config`, `@exception_view_config`), event subscribers (`@subscriber`), and SQLAlchemy model base classes. Enables route detection for Pyramid-based applications.
 - **Bottle framework support**: Added patterns for the Bottle Python micro-framework. Detects route decorators (`@app.get`, `@app.route`, `@route`), hooks (`@app.hook`), and error handlers (`@app.error`).
 - **JAX-RS implementation aliases**: Dropwizard, Jersey, and RESTEasy frameworks now use JAX-RS patterns automatically. This enables route detection for Java REST APIs using these frameworks.

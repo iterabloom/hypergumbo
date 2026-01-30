@@ -8789,3 +8789,173 @@ class TestPyramidPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "model"
+
+
+class TestNexPatterns:
+    """Tests for Nex framework pattern matching."""
+
+    def test_nex_use_nex_pattern(self) -> None:
+        """Nex `use Nex` decorator matches page_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        assert pattern_def is not None, "Nex patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:pages/index.ex:1:Index:module",
+            name="Index",
+            kind="module",
+            language="elixir",
+            path="src/pages/index.ex",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "use Nex", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "page_handler"
+
+    def test_nex_mount_function_pattern(self) -> None:
+        """Nex mount/1 function matches lifecycle_hook pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:pages/index.ex:5:mount:function",
+            name="mount",
+            kind="function",
+            language="elixir",
+            path="src/pages/index.ex",
+            span=Span(5, 10, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "lifecycle_hook"
+
+    def test_nex_render_function_pattern(self) -> None:
+        """Nex render/1 function matches lifecycle_hook pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:pages/index.ex:12:render:function",
+            name="render",
+            kind="function",
+            language="elixir",
+            path="src/pages/index.ex",
+            span=Span(12, 20, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "lifecycle_hook"
+
+    def test_nex_get_function_pattern(self) -> None:
+        """Nex get/1 function matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:api/users.ex:5:get:function",
+            name="get",
+            kind="function",
+            language="elixir",
+            path="src/api/users.ex",
+            span=Span(5, 10, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_nex_post_function_pattern(self) -> None:
+        """Nex post/1 function matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:api/users.ex:12:post:function",
+            name="post",
+            kind="function",
+            language="elixir",
+            path="src/api/users.ex",
+            span=Span(12, 20, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_nex_put_function_pattern(self) -> None:
+        """Nex put/1 function matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:api/users.ex:20:put:function",
+            name="put",
+            kind="function",
+            language="elixir",
+            path="src/api/users.ex",
+            span=Span(20, 28, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_nex_delete_function_pattern(self) -> None:
+        """Nex delete/1 function matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:api/users.ex:30:delete:function",
+            name="delete",
+            kind="function",
+            language="elixir",
+            path="src/api/users.ex",
+            span=Span(30, 35, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"
+
+    def test_nex_patch_function_pattern(self) -> None:
+        """Nex patch/1 function matches route_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("nex")
+
+        symbol = Symbol(
+            id="test:api/users.ex:38:patch:function",
+            name="patch",
+            kind="function",
+            language="elixir",
+            path="src/api/users.ex",
+            span=Span(38, 45, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_handler"

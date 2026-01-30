@@ -4,7 +4,7 @@ This document lists web and application frameworks that hypergumbo can analyze o
 
 ## Currently Supported (with YAML patterns)
 
-See `src/hypergumbo/frameworks/*.yaml` for the full list. Currently ~48 patterns including:
+See `src/hypergumbo/frameworks/*.yaml` for the full list. Currently ~49 patterns including:
 
 ### Python
 - Django, Flask, FastAPI, Tornado, Aiohttp, Starlette, Celery, Pyramid, Bottle, Flask-Appbuilder
@@ -28,7 +28,7 @@ See `src/hypergumbo/frameworks/*.yaml` for the full list. Currently ~48 patterns
 - rust-web (covers Actix-web, Axum, Rocket, etc.)
 
 ### Elixir
-- Phoenix, Plug
+- Phoenix, Plug, Nex
 
 ### Swift
 - Vapor
