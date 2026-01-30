@@ -889,6 +889,7 @@ def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
     """Detect Elixir frameworks from mix.exs.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Uses word boundary matching to avoid false positives (e.g., "nex" in "next").
     """
     detected = []
 
@@ -897,7 +898,13 @@ def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in ELIXIR_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            # Use regex for word boundary matching to avoid substring false positives
+            # Match :pattern, "pattern", or 'pattern' (Elixir atom/string syntax)
+            import re
+
+            # Pattern matches :nex, {:nex, or "nex" but not "next"
+            regex = rf'[:"\']{re.escape(pattern)}["\',\s\}}]'
+            if re.search(regex, content, re.IGNORECASE):
                 detected.append(framework)
                 break
 
