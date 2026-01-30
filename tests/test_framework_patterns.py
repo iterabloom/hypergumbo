@@ -12546,3 +12546,151 @@ class TestCakePHPPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "component"
+
+
+class TestYiiPatterns:
+    """Tests for Yii framework pattern matching."""
+
+    def test_yii_controller_base_class(self) -> None:
+        """Yii Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("yii")
+
+        assert pattern_def is not None, "Yii patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:SiteController.php:1:SiteController:class",
+            name="SiteController",
+            kind="class",
+            language="php",
+            path="controllers/SiteController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_yii_activerecord_model_base_class(self) -> None:
+        """Yii ActiveRecord base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("yii")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:User.php:1:User:class",
+            name="User",
+            kind="class",
+            language="php",
+            path="models/User.php",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "base_classes": ["ActiveRecord"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_yii_widget_base_class(self) -> None:
+        """Yii Widget base class matches widget pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("yii")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:NavWidget.php:1:NavWidget:class",
+            name="NavWidget",
+            kind="class",
+            language="php",
+            path="widgets/NavWidget.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Widget"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "widget"
+
+    def test_yii_module_base_class(self) -> None:
+        """Yii Module base class matches module pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("yii")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:AdminModule.php:1:AdminModule:class",
+            name="AdminModule",
+            kind="class",
+            language="php",
+            path="modules/admin/AdminModule.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Module"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "module"
+
+    def test_yii_migration_base_class(self) -> None:
+        """Yii Migration base class matches migration pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("yii")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:m210101_000001_create_users_table.php:1:m210101:class",
+            name="m210101_000001_create_users_table",
+            kind="class",
+            language="php",
+            path="migrations/m210101_000001_create_users_table.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Migration"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "migration"
+
+    def test_yii_action_base_class(self) -> None:
+        """Yii Action base class matches action pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("yii")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ViewAction.php:1:ViewAction:class",
+            name="ViewAction",
+            kind="class",
+            language="php",
+            path="actions/ViewAction.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Action"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "action"
