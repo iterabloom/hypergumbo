@@ -8959,3 +8959,289 @@ class TestNexPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route_handler"
+
+
+class TestSanicPatterns:
+    """Tests for Sanic framework pattern matching."""
+
+    def test_sanic_get_route_pattern(self) -> None:
+        """Sanic @app.get decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        assert pattern_def is not None, "Sanic patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.py:1:get_users:function",
+            name="get_users",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.get", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "app.get"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/users"
+
+    def test_sanic_post_route_pattern(self) -> None:
+        """Sanic @app.post decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:create_user:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.post", "args": ["/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "POST"
+
+    def test_sanic_classic_route_pattern(self) -> None:
+        """Sanic @app.route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:handle:function",
+            name="handle",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "app.route",
+                        "args": ["/api/data"],
+                        "kwargs": {"methods": ["POST", "PUT"]},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/api/data"
+        assert results[0]["method"] == "POST"  # First method
+
+    def test_sanic_blueprint_route_pattern(self) -> None:
+        """Sanic blueprint route decorator matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:routes.py:1:get_item:function",
+            name="get_item",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "bp.get", "args": ["/items/<id>"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/items/<id>"
+
+    def test_sanic_websocket_pattern(self) -> None:
+        """Sanic @app.websocket decorator matches websocket_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:ws_handler:function",
+            name="ws_handler",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.websocket", "args": ["/feed"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket_handler"
+
+    def test_sanic_middleware_on_request_pattern(self) -> None:
+        """Sanic @app.on_request decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:add_key:function",
+            name="add_key",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.on_request", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_sanic_middleware_on_response_pattern(self) -> None:
+        """Sanic @app.on_response decorator matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:custom_header:function",
+            name="custom_header",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.on_response", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_sanic_exception_handler_pattern(self) -> None:
+        """Sanic @app.exception decorator matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:handle_not_found:function",
+            name="handle_not_found",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.exception", "args": ["NotFound"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_sanic_lifecycle_before_server_start_pattern(self) -> None:
+        """Sanic @app.before_server_start decorator matches lifecycle_hook pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:setup_db:function",
+            name="setup_db",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.before_server_start", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "lifecycle_hook"
+
+    def test_sanic_lifecycle_after_server_stop_pattern(self) -> None:
+        """Sanic @app.after_server_stop decorator matches lifecycle_hook pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:cleanup:function",
+            name="cleanup",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.after_server_stop", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "lifecycle_hook"
+
+    def test_sanic_signal_handler_pattern(self) -> None:
+        """Sanic @app.signal decorator matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("sanic")
+
+        symbol = Symbol(
+            id="test:app.py:1:on_request_received:function",
+            name="on_request_received",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "app.signal",
+                        "args": ["http.lifecycle.request"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
