@@ -12400,3 +12400,149 @@ class TestPadrinoPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "mailer"
+
+
+class TestCakePHPPatterns:
+    """Tests for CakePHP framework pattern matching."""
+
+    def test_cakephp_controller_base_class(self) -> None:
+        """CakePHP Controller base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("cakephp")
+
+        assert pattern_def is not None, "CakePHP patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:UsersController.php:1:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="php",
+            path="src/Controller/UsersController.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Controller"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_cakephp_table_model_base_class(self) -> None:
+        """CakePHP Table base class matches model pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("cakephp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersTable.php:1:UsersTable:class",
+            name="UsersTable",
+            kind="class",
+            language="php",
+            path="src/Model/Table/UsersTable.php",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "base_classes": ["Table"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "model"
+
+    def test_cakephp_entity_base_class(self) -> None:
+        """CakePHP Entity base class matches entity pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("cakephp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:User.php:1:User:class",
+            name="User",
+            kind="class",
+            language="php",
+            path="src/Model/Entity/User.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Entity"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "entity"
+
+    def test_cakephp_connect_route_via_usage_context(self) -> None:
+        """CakePHP routes->connect matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("cakephp")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="$routes->connect",
+            position="args[0]",
+            path="config/routes.php",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:routes.php:10:connect:other",
+            metadata={
+                "url": "/users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_cakephp_middleware_base_class(self) -> None:
+        """CakePHP MiddlewareInterface matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("cakephp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:AuthMiddleware.php:1:AuthMiddleware:class",
+            name="AuthMiddleware",
+            kind="class",
+            language="php",
+            path="src/Middleware/AuthMiddleware.php",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["MiddlewareInterface"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_cakephp_component_base_class(self) -> None:
+        """CakePHP Component base class matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("cakephp")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:AuthComponent.php:1:AuthComponent:class",
+            name="AuthComponent",
+            kind="class",
+            language="php",
+            path="src/Controller/Component/AuthComponent.php",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Component"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "component"
