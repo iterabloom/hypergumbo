@@ -10987,3 +10987,177 @@ class TestAdonisJSPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
+
+
+class TestRodaPatterns:
+    """Tests for Roda framework pattern matching."""
+
+    def test_roda_application_base_class(self) -> None:
+        """Roda application base class matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        assert pattern_def is not None, "Roda patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:app.rb:1:App:class",
+            name="App",
+            kind="class",
+            language="ruby",
+            path="app.rb",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Roda"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+    def test_roda_route_definition_via_usage_context(self) -> None:
+        """Roda route block matches route_definition pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="route",
+            position="args[0]",
+            path="app.rb",
+            span=Span(3, 50, 0, 0),
+            symbol_ref="test:app.rb:3:route_block:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_definition"
+
+    def test_roda_root_route_via_usage_context(self) -> None:
+        """Roda r.root matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="r.root",
+            position="args[0]",
+            path="app.rb",
+            span=Span(5, 8, 0, 0),
+            symbol_ref="test:app.rb:5:root_handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_roda_get_route_via_usage_context(self) -> None:
+        """Roda r.get matches route pattern with GET method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="r.get",
+            position="args[0]",
+            path="app.rb",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:app.rb:10:get_handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_roda_post_route_via_usage_context(self) -> None:
+        """Roda r.post matches route pattern with POST method."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="r.post",
+            position="args[0]",
+            path="app.rb",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:app.rb:20:post_handler:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_roda_on_segment_via_usage_context(self) -> None:
+        """Roda r.on matches route_segment pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="r.on",
+            position="args[0]",
+            path="app.rb",
+            span=Span(7, 30, 0, 0),
+            symbol_ref="test:app.rb:7:users_segment:other",
+            metadata={
+                "segment": "users",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_segment"
+
+    def test_roda_is_terminal_via_usage_context(self) -> None:
+        """Roda r.is matches route_terminal pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="r.is",
+            position="args[0]",
+            path="app.rb",
+            span=Span(15, 20, 0, 0),
+            symbol_ref="test:app.rb:15:user_terminal:other",
+            metadata={
+                "segment": "profile",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route_terminal"
+
+    def test_roda_plugin_via_usage_context(self) -> None:
+        """Roda plugin call matches plugin pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("roda")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="plugin",
+            position="args[0]",
+            path="app.rb",
+            span=Span(2, 2, 0, 20),
+            symbol_ref="test:app.rb:2:json_plugin:other",
+            metadata={
+                "plugin_name": ":json",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "plugin"
