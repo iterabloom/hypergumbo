@@ -11606,3 +11606,133 @@ class TestHttp4kPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "server"
+
+
+class TestHttp4sPatterns:
+    """Tests for http4s framework pattern matching."""
+
+    def test_http4s_routes_via_usage_context(self) -> None:
+        """http4s HttpRoutes call matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        assert pattern_def is not None, "http4s patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="HttpRoutes",
+            position="args[0]",
+            path="Routes.scala",
+            span=Span(10, 20, 0, 0),
+            symbol_ref="test:Routes.scala:10:user_routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_http4s_routes_of_via_usage_context(self) -> None:
+        """http4s HttpRoutes.of call matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="HttpRoutes.of",
+            position="args[0]",
+            path="Routes.scala",
+            span=Span(15, 25, 0, 0),
+            symbol_ref="test:Routes.scala:15:api_routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_http4s_blaze_server_via_usage_context(self) -> None:
+        """http4s BlazeServerBuilder call matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="BlazeServerBuilder",
+            position="args[0]",
+            path="Main.scala",
+            span=Span(5, 10, 0, 0),
+            symbol_ref="test:Main.scala:5:server:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"
+
+    def test_http4s_middleware_via_usage_context(self) -> None:
+        """http4s Logger middleware call matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="Logger",
+            position="args[0]",
+            path="Middleware.scala",
+            span=Span(8, 12, 0, 0),
+            symbol_ref="test:Middleware.scala:8:logging:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_http4s_dsl_base_class(self) -> None:
+        """http4s Http4sDsl trait matches dsl pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        symbol = Symbol(
+            id="test:Routes.scala:1:UserRoutes:class",
+            name="UserRoutes",
+            kind="class",
+            language="scala",
+            path="Routes.scala",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "base_classes": ["Http4sDsl"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "dsl"
+
+    def test_http4s_ioapp_base_class(self) -> None:
+        """http4s IOApp trait matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        symbol = Symbol(
+            id="test:Main.scala:1:Main:object",
+            name="Main",
+            kind="class",
+            language="scala",
+            path="Main.scala",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["IOApp"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
