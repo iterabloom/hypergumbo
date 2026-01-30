@@ -1,0 +1,1037 @@
+#!/usr/bin/env python3
+"""
+bakeoff-features - Feature-focused hypergumbo bakeoff runner
+
+This script orchestrates a deep bakeoff cycle focused on testing hypergumbo's
+advanced features (slice, reverse-slice, supply chain, graph operations) on
+diverse, larger repositories.
+
+## Philosophy: Different From Regular Bakeoff
+
+This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
+- **Different repo profiles:** Feature testing needs heavier repos (20-200MB)
+  where slice limits actually matter
+- **Different cadence:** Regular bakeoff for quick regression; feature bakeoff
+  less often (includes expensive LLM reasoning)
+- **Different artifacts:** Produces slice/reverse-slice/tier outputs not needed
+  by regular bakeoff
+- **Separation of concerns:** Regular bakeoff: "does hypergumbo parse correctly?"
+  Feature bakeoff: "are outputs useful to developers?"
+
+## Usage
+
+    # Initialize a new feature bakeoff session
+    ./scripts/bakeoff-features init --pool ~/repos --workdir /tmp/feature-bakeoff
+
+    # Select cohort (larger repos than regular bakeoff)
+    ./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+
+    # Run feature battery on cohort
+    ./scripts/bakeoff-features run
+
+    # Generate diagnostic report with quality metrics
+    ./scripts/bakeoff-features diagnose
+
+    # Check session status
+    ./scripts/bakeoff-features status
+
+    # Full cycle: run + diagnose
+    ./scripts/bakeoff-features cycle
+
+## Quality Metrics
+
+Slice Quality:
+| Metric              | Good Range | Warning      |
+|---------------------|------------|--------------|
+| slice_coverage_pct  | 5-30%      | <1% or >50%  |
+| limit_hit_frequency | <50%       | >80%         |
+| cross_file_ratio    | >20%       | <5%          |
+
+Supply Chain:
+| Metric     | Good Range | Warning        |
+|------------|------------|----------------|
+| tier1_pct  | 40-80%     | <20% or >95%   |
+| tier4_pct  | 0-5%       | >10%           |
+
+Graph:
+| Metric          | Good Range | Warning        |
+|-----------------|------------|----------------|
+| centrality_gini | 0.3-0.7    | <0.1 or >0.9   |
+| orphan_rate     | <20%       | >40%           |
+
+Environment:
+    BAKEOFF_FEATURES_WORKDIR: Override workdir location
+    BAKEOFF_FEATURES_POOL: Override repo pool location
+"""
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Optional
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+DEFAULT_COHORT_SIZE = 4
+DEFAULT_MIN_SIZE_MB = 20
+DEFAULT_MAX_SIZE_MB = 200
+MIN_FILE_COUNT = 500  # Minimum files for complexity
+
+# Issue severity levels
+SEVERITY_CRITICAL = "CRITICAL"
+SEVERITY_HIGH = "HIGH"
+SEVERITY_MEDIUM = "MEDIUM"
+SEVERITY_LOW = "LOW"
+
+# Quality thresholds
+QUALITY_THRESHOLDS = {
+    "slice_coverage_pct": {"good_min": 5, "good_max": 30, "warn_min": 1, "warn_max": 50},
+    "limit_hit_frequency": {"good_max": 50, "warn_max": 80},
+    "cross_file_ratio": {"good_min": 20, "warn_min": 5},
+    "tier1_pct": {"good_min": 40, "good_max": 80, "warn_min": 20, "warn_max": 95},
+    "tier4_pct": {"good_max": 5, "warn_max": 10},
+    "centrality_gini": {"good_min": 0.3, "good_max": 0.7, "warn_min": 0.1, "warn_max": 0.9},
+    "orphan_rate": {"good_max": 20, "warn_max": 40},
+}
+
+# Recommended larger repos for feature testing (diverse languages)
+RECOMMENDED_REPOS = [
+    # Python
+    {"name": "django", "url": "https://github.com/django/django", "lang": "python"},
+    {"name": "flask", "url": "https://github.com/pallets/flask", "lang": "python"},
+    {"name": "fastapi", "url": "https://github.com/tiangolo/fastapi", "lang": "python"},
+    # JavaScript/TypeScript
+    {"name": "express", "url": "https://github.com/expressjs/express", "lang": "javascript"},
+    {"name": "next.js", "url": "https://github.com/vercel/next.js", "lang": "typescript"},
+    {"name": "nest", "url": "https://github.com/nestjs/nest", "lang": "typescript"},
+    # Go
+    {"name": "gin", "url": "https://github.com/gin-gonic/gin", "lang": "go"},
+    {"name": "fiber", "url": "https://github.com/gofiber/fiber", "lang": "go"},
+    # Ruby
+    {"name": "rails", "url": "https://github.com/rails/rails", "lang": "ruby"},
+    {"name": "sinatra", "url": "https://github.com/sinatra/sinatra", "lang": "ruby"},
+    # Java/Kotlin
+    {"name": "spring-boot", "url": "https://github.com/spring-projects/spring-boot", "lang": "java"},
+    {"name": "ktor", "url": "https://github.com/ktorio/ktor", "lang": "kotlin"},
+    # Rust
+    {"name": "actix-web", "url": "https://github.com/actix/actix-web", "lang": "rust"},
+    {"name": "axum", "url": "https://github.com/tokio-rs/axum", "lang": "rust"},
+    # Elixir
+    {"name": "phoenix", "url": "https://github.com/phoenixframework/phoenix", "lang": "elixir"},
+]
+
+
+# =============================================================================
+# Data structures
+# =============================================================================
+
+@dataclass
+class RepoInfo:
+    """Information about a repository."""
+    name: str
+    path: str
+    size_bytes: int
+    size_mb: float
+    file_count: int = 0
+    languages: list = field(default_factory=list)
+    complexity_score: float = 0.0
+
+
+@dataclass
+class FeatureMetrics:
+    """Metrics collected from feature testing."""
+    # Slice metrics
+    slice_coverage_pct: float = 0.0
+    limit_hit_count: int = 0
+    limit_hit_frequency: float = 0.0
+    cross_file_ratio: float = 0.0
+    avg_slice_depth: float = 0.0
+
+    # Supply chain metrics
+    tier1_pct: float = 0.0
+    tier2_pct: float = 0.0
+    tier3_pct: float = 0.0
+    tier4_pct: float = 0.0
+
+    # Graph metrics
+    total_nodes: int = 0
+    total_edges: int = 0
+    orphan_count: int = 0
+    orphan_rate: float = 0.0
+    centrality_gini: float = 0.0
+    max_in_degree: int = 0
+    max_out_degree: int = 0
+
+    # Entrypoint metrics
+    entrypoint_count: int = 0
+    entrypoints_in_tests: int = 0
+    entrypoints_test_ratio: float = 0.0
+
+
+@dataclass
+class RepoVerdict:
+    """Assessment verdict for a repository."""
+    repo_name: str
+    verdict: str  # GOOD, WARN, FAIL
+    highlights: list = field(default_factory=list)
+    concerns: list = field(default_factory=list)
+    metrics: dict = field(default_factory=dict)
+
+
+@dataclass
+class BakeoffFeaturesState:
+    """Persistent state for a feature bakeoff session."""
+    session_id: str
+    pool_path: str
+    workdir: str
+    current_cohort: list = field(default_factory=list)
+    cohort_number: int = 0
+    iteration: int = 0
+    tested_repos: list = field(default_factory=list)
+    verdicts: list = field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+# =============================================================================
+# Utility functions
+# =============================================================================
+
+def get_dir_size(path: str) -> int:
+    """Get directory size in bytes."""
+    total = 0
+    try:
+        for entry in os.scandir(path):
+            if entry.is_file(follow_symlinks=False):
+                total += entry.stat().st_size
+            elif entry.is_dir(follow_symlinks=False):
+                total += get_dir_size(entry.path)
+    except PermissionError:
+        pass
+    return total
+
+
+def count_files(path: str) -> int:
+    """Count files in a directory, excluding hidden and vendor dirs."""
+    count = 0
+    skip_dirs = {".git", "node_modules", "vendor", "deps", "__pycache__", ".venv", "venv"}
+    try:
+        for root, dirs, files in os.walk(path):
+            # Skip hidden and vendor directories
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skip_dirs]
+            count += len(files)
+    except PermissionError:
+        pass
+    return count
+
+
+def detect_languages(repo_path: str) -> list:
+    """Detect primary languages in a repo by file extensions."""
+    ext_count = {}
+    lang_map = {
+        ".py": "python", ".js": "javascript", ".ts": "typescript",
+        ".go": "go", ".rs": "rust", ".c": "c", ".cpp": "cpp", ".h": "c",
+        ".java": "java", ".kt": "kotlin", ".scala": "scala",
+        ".rb": "ruby", ".php": "php", ".swift": "swift",
+        ".cs": "csharp", ".fs": "fsharp", ".ex": "elixir", ".erl": "erlang",
+    }
+
+    skip_dirs = {".git", "node_modules", "vendor", "deps", "__pycache__"}
+
+    try:
+        for root, dirs, files in os.walk(repo_path):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skip_dirs]
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in lang_map:
+                    lang = lang_map[ext]
+                    ext_count[lang] = ext_count.get(lang, 0) + 1
+    except PermissionError:
+        pass
+
+    sorted_langs = sorted(ext_count.items(), key=lambda x: x[1], reverse=True)
+    return [lang for lang, _ in sorted_langs[:3]]
+
+
+def compute_complexity_score(repo: RepoInfo) -> float:
+    """Compute a complexity score for repo selection.
+
+    Higher scores indicate more interesting repos for feature testing.
+    """
+    score = 0.0
+
+    # Size bonus (larger = more interesting, up to a point)
+    if 20 <= repo.size_mb <= 50:
+        score += 1.0
+    elif 50 < repo.size_mb <= 100:
+        score += 2.0
+    elif 100 < repo.size_mb <= 200:
+        score += 1.5
+
+    # File count bonus
+    if repo.file_count >= 500:
+        score += 1.0
+    if repo.file_count >= 1000:
+        score += 1.0
+    if repo.file_count >= 2000:
+        score += 0.5
+
+    # Multi-language bonus
+    if len(repo.languages) >= 2:
+        score += 1.0
+    if len(repo.languages) >= 3:
+        score += 0.5
+
+    return score
+
+
+def load_state(workdir: str) -> Optional[BakeoffFeaturesState]:
+    """Load bakeoff state from workdir."""
+    state_path = os.path.join(workdir, "state.json")
+    if not os.path.exists(state_path):
+        return None
+
+    with open(state_path, "r") as f:
+        data = json.load(f)
+
+    return BakeoffFeaturesState(
+        session_id=data.get("session_id", ""),
+        pool_path=data.get("pool_path", ""),
+        workdir=data.get("workdir", workdir),
+        current_cohort=data.get("current_cohort", []),
+        cohort_number=data.get("cohort_number", 0),
+        iteration=data.get("iteration", 0),
+        tested_repos=data.get("tested_repos", []),
+        verdicts=[RepoVerdict(**v) for v in data.get("verdicts", [])],
+        created_at=data.get("created_at", ""),
+        updated_at=data.get("updated_at", ""),
+    )
+
+
+def save_state(state: BakeoffFeaturesState):
+    """Save bakeoff state to workdir."""
+    state.updated_at = datetime.datetime.now().isoformat()
+    state_path = os.path.join(state.workdir, "state.json")
+
+    data = asdict(state)
+    with open(state_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
+    """Run a command and return (returncode, stdout, stderr)."""
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "Command timed out"
+    except Exception as e:
+        return -1, "", str(e)
+
+
+def assess_metric(name: str, value: float) -> tuple:
+    """Assess a metric against thresholds. Returns (status, message)."""
+    thresholds = QUALITY_THRESHOLDS.get(name, {})
+
+    # Check good range
+    good_min = thresholds.get("good_min")
+    good_max = thresholds.get("good_max")
+
+    if good_min is not None and value < good_min:
+        return ("WARN", f"LOW_{name.upper()}: {value:.1f}% < {good_min}%")
+    if good_max is not None and value > good_max:
+        return ("WARN", f"HIGH_{name.upper()}: {value:.1f}% > {good_max}%")
+
+    # Check warning thresholds
+    warn_min = thresholds.get("warn_min")
+    warn_max = thresholds.get("warn_max")
+
+    if warn_min is not None and value < warn_min:
+        return ("FAIL", f"CRITICAL_LOW_{name.upper()}: {value:.1f}% < {warn_min}%")
+    if warn_max is not None and value > warn_max:
+        return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}% > {warn_max}%")
+
+    return ("GOOD", None)
+
+
+# =============================================================================
+# Commands
+# =============================================================================
+
+def cmd_init(args):
+    """Initialize a new feature bakeoff session."""
+    pool_path = os.path.abspath(os.path.expanduser(args.pool))
+    workdir = os.path.abspath(os.path.expanduser(args.workdir))
+
+    if not os.path.isdir(pool_path):
+        print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
+        return 1
+
+    os.makedirs(workdir, exist_ok=True)
+    os.makedirs(os.path.join(workdir, "cohorts"), exist_ok=True)
+    os.makedirs(os.path.join(workdir, "out"), exist_ok=True)
+    os.makedirs(os.path.join(workdir, "diag"), exist_ok=True)
+
+    session_id = hashlib.sha256(f"{pool_path}:{workdir}:{time.time()}".encode()).hexdigest()[:12]
+
+    state = BakeoffFeaturesState(
+        session_id=session_id,
+        pool_path=pool_path,
+        workdir=workdir,
+        created_at=datetime.datetime.now().isoformat(),
+    )
+    save_state(state)
+
+    print(f"Initialized feature bakeoff session: {session_id}")
+    print(f"  Pool: {pool_path}")
+    print(f"  Workdir: {workdir}")
+    print()
+    print("Next: Run `bakeoff-features cohort` to select repos for testing")
+    return 0
+
+
+def cmd_cohort(args):
+    """Select next cohort of repos (larger, complex repos)."""
+    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found. Run `bakeoff-features init` first.", file=sys.stderr)
+        return 1
+
+    pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
+    min_size_mb = args.min_size or DEFAULT_MIN_SIZE_MB
+    max_size_mb = args.max_size or DEFAULT_MAX_SIZE_MB
+    count = args.count or DEFAULT_COHORT_SIZE
+
+    print(f"Scanning pool: {pool_path}")
+    print(f"  Size range: {min_size_mb}MB - {max_size_mb}MB")
+    print()
+
+    available = []
+
+    for entry in os.scandir(pool_path):
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith("."):
+            continue
+        if entry.name in state.tested_repos:
+            continue
+
+        size_bytes = get_dir_size(entry.path)
+        size_mb = size_bytes / (1024 * 1024)
+
+        # Filter by size
+        if size_mb < min_size_mb or size_mb > max_size_mb:
+            continue
+
+        file_count = count_files(entry.path)
+
+        # Filter by file count (need enough complexity)
+        if file_count < MIN_FILE_COUNT:
+            continue
+
+        languages = detect_languages(entry.path)
+
+        repo = RepoInfo(
+            name=entry.name,
+            path=entry.path,
+            size_bytes=size_bytes,
+            size_mb=size_mb,
+            file_count=file_count,
+            languages=languages,
+        )
+        repo.complexity_score = compute_complexity_score(repo)
+        available.append(repo)
+
+    # Sort by complexity score (highest first), then by size
+    available.sort(key=lambda r: (-r.complexity_score, r.size_mb))
+
+    # Strategic selection: try to get language diversity
+    cohort = []
+    seen_langs = set()
+
+    # Phase 1: Pick repos that add new primary languages
+    for r in available:
+        if len(cohort) >= count:
+            break
+        primary_lang = r.languages[0] if r.languages else None
+        if primary_lang and primary_lang not in seen_langs:
+            cohort.append(r)
+            seen_langs.add(primary_lang)
+
+    # Phase 2: Fill remaining slots with highest complexity repos
+    for r in available:
+        if len(cohort) >= count:
+            break
+        if r not in cohort:
+            cohort.append(r)
+
+    if not cohort:
+        print("No repos matching criteria found in pool!")
+        print(f"  Criteria: {min_size_mb}MB - {max_size_mb}MB, {MIN_FILE_COUNT}+ files")
+        return 1
+
+    # Update state
+    state.cohort_number += 1
+    state.iteration = 0
+    state.current_cohort = [r.name for r in cohort]
+    save_state(state)
+
+    # Write cohort metadata
+    cohort_dir = os.path.join(workdir, "cohorts", f"cohort-{state.cohort_number:03d}")
+    os.makedirs(cohort_dir, exist_ok=True)
+
+    metadata = {
+        "cohort_number": state.cohort_number,
+        "created_at": datetime.datetime.now().isoformat(),
+        "criteria": {
+            "min_size_mb": min_size_mb,
+            "max_size_mb": max_size_mb,
+            "min_file_count": MIN_FILE_COUNT,
+        },
+        "repos": [asdict(r) for r in cohort],
+    }
+    with open(os.path.join(cohort_dir, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"\nSelected cohort #{state.cohort_number} ({len(cohort)} repos):")
+    print()
+    for r in cohort:
+        langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+        print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+
+    print()
+    print(f"Remaining in pool: {len(available) - len(cohort)}")
+    print()
+    print("Next: Run `bakeoff-features run` to test features on these repos")
+    return 0
+
+
+def cmd_run(args):
+    """Run feature battery on current cohort."""
+    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found. Run `bakeoff-features init` first.", file=sys.stderr)
+        return 1
+
+    if not state.current_cohort:
+        print("Error: No cohort selected. Run `bakeoff-features cohort` first.", file=sys.stderr)
+        return 1
+
+    pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
+
+    # Increment iteration
+    state.iteration += 1
+    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    os.makedirs(out_dir, exist_ok=True)
+    save_state(state)
+
+    print(f"Feature bakeoff run: cohort #{state.cohort_number}, iteration #{state.iteration}")
+    print(f"Output: {out_dir}")
+    print()
+
+    for repo_name in state.current_cohort:
+        repo_path = os.path.join(pool_path, repo_name)
+        repo_out = os.path.join(out_dir, repo_name)
+        os.makedirs(repo_out, exist_ok=True)
+
+        print(f"[{repo_name}]")
+        start_time = time.time()
+
+        hg_json = os.path.join(repo_out, "hg.json")
+
+        # 1. Full analysis
+        print("  run...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd(
+            ["hypergumbo", "run", repo_path, "--out", hg_json],
+            timeout=3600,  # 1 hour for large repos
+        )
+        with open(os.path.join(repo_out, "run.exit"), "w") as f:
+            f.write(str(rc))
+        if stderr:
+            with open(os.path.join(repo_out, "run.err"), "w") as f:
+                f.write(stderr)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        if rc != 0:
+            print(f"  Skipping feature tests due to run failure")
+            continue
+
+        # 2. List entrypoints
+        print("  list-entries...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd(
+            ["hypergumbo", "slice", "--input", hg_json, "--list-entries"],
+        )
+        with open(os.path.join(repo_out, "entries.txt"), "w") as f:
+            f.write(stdout)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # Parse entrypoints for slice tests
+        entries = []
+        try:
+            # Parse the entrypoint output (format varies, try JSON first)
+            import re
+            # Look for symbol names in the output
+            for line in stdout.split("\n"):
+                if line.strip() and not line.startswith("#"):
+                    # Try to extract entry name
+                    match = re.search(r'^\s*\d+\.\s+(\S+)', line)
+                    if match:
+                        entries.append(match.group(1))
+        except Exception:
+            pass
+
+        # 3. Forward slices (top entries, up to 5)
+        for i, entry in enumerate(entries[:5]):
+            safe_name = entry.replace("/", "_").replace(":", "_")[:50]
+            print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--inline",
+                "--out", os.path.join(repo_out, f"slice.{i}.json"),
+            ])
+            with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 4. Reverse slices (top 3 entries)
+        for i, entry in enumerate(entries[:3]):
+            print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--reverse",
+                "--inline",
+                "--out", os.path.join(repo_out, f"rslice.{i}.json"),
+            ])
+            with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 5. Tier-bounded slices
+        for tier in [1, 2]:
+            print(f"  slice[tier={tier}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", "auto",
+                "--max-tier", str(tier),
+                "--inline",
+                "--out", os.path.join(repo_out, f"slice.tier{tier}.json"),
+            ])
+            with open(os.path.join(repo_out, f"slice.tier{tier}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 6. Symbols report
+        print("  symbols...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "symbols",
+            "--input", hg_json,
+            "--all",
+        ])
+        with open(os.path.join(repo_out, "symbols.txt"), "w") as f:
+            f.write(stdout)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 7. Routes
+        print("  routes...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "routes",
+            "--input", hg_json,
+        ])
+        with open(os.path.join(repo_out, "routes.txt"), "w") as f:
+            f.write(stdout)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        elapsed = time.time() - start_time
+        with open(os.path.join(repo_out, "time.txt"), "w") as f:
+            f.write(f"{elapsed:.1f}s\n")
+        print(f"  done ({elapsed:.1f}s)")
+        print()
+
+    print(f"Run complete. Output: {out_dir}")
+    print()
+    print("Next: Run `bakeoff-features diagnose` to analyze results")
+    return 0
+
+
+def cmd_diagnose(args):
+    """Diagnose issues and generate quality metrics report."""
+    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    diag_dir = os.path.join(workdir, "diag", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    os.makedirs(diag_dir, exist_ok=True)
+
+    if not os.path.isdir(out_dir):
+        print(f"Error: No output found at {out_dir}. Run `bakeoff-features run` first.", file=sys.stderr)
+        return 1
+
+    print(f"Diagnosing: {out_dir}")
+    print(f"Output: {diag_dir}")
+    print()
+
+    verdicts = []
+
+    for repo_name in state.current_cohort:
+        repo_out = os.path.join(out_dir, repo_name)
+        hg_path = os.path.join(repo_out, "hg.json")
+
+        if not os.path.exists(hg_path):
+            print(f"[{repo_name}] Skipped (no hg.json)")
+            verdicts.append(RepoVerdict(
+                repo_name=repo_name,
+                verdict="SKIP",
+                concerns=["Analysis failed - no hg.json"],
+            ))
+            continue
+
+        print(f"[{repo_name}]")
+
+        try:
+            with open(hg_path) as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"  Error reading hg.json: {e}")
+            verdicts.append(RepoVerdict(
+                repo_name=repo_name,
+                verdict="FAIL",
+                concerns=[f"Failed to parse hg.json: {e}"],
+            ))
+            continue
+
+        nodes = data.get("nodes", [])
+        edges = data.get("edges", [])
+        entrypoints = data.get("entrypoints", [])
+
+        # Compute metrics
+        metrics = FeatureMetrics()
+        metrics.total_nodes = len(nodes)
+        metrics.total_edges = len(edges)
+        metrics.entrypoint_count = len(entrypoints)
+
+        # Compute orphan rate (nodes with no edges)
+        node_ids = {n.get("id") for n in nodes}
+        connected_nodes = set()
+        for e in edges:
+            connected_nodes.add(e.get("source"))
+            connected_nodes.add(e.get("target"))
+        metrics.orphan_count = len(node_ids - connected_nodes)
+        metrics.orphan_rate = (metrics.orphan_count / len(nodes) * 100) if nodes else 0
+
+        # Compute in/out degree distribution
+        in_degree = {}
+        out_degree = {}
+        for e in edges:
+            src = e.get("source")
+            tgt = e.get("target")
+            out_degree[src] = out_degree.get(src, 0) + 1
+            in_degree[tgt] = in_degree.get(tgt, 0) + 1
+
+        if in_degree:
+            metrics.max_in_degree = max(in_degree.values())
+        if out_degree:
+            metrics.max_out_degree = max(out_degree.values())
+
+        # Compute centrality Gini coefficient (measure of inequality)
+        degrees = [in_degree.get(n.get("id"), 0) + out_degree.get(n.get("id"), 0) for n in nodes]
+        if degrees and sum(degrees) > 0:
+            degrees_sorted = sorted(degrees)
+            n = len(degrees_sorted)
+            total = sum(degrees_sorted)
+            cum_sum = 0
+            gini_sum = 0
+            for i, d in enumerate(degrees_sorted):
+                cum_sum += d
+                gini_sum += (2 * (i + 1) - n - 1) * d
+            metrics.centrality_gini = gini_sum / (n * total) if total > 0 else 0
+
+        # Supply chain tier distribution
+        tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+        for n in nodes:
+            tier = n.get("meta", {}).get("supply_chain_tier", 0)
+            if tier in tier_counts:
+                tier_counts[tier] += 1
+
+        total_tiered = sum(tier_counts.values())
+        if total_tiered > 0:
+            metrics.tier1_pct = tier_counts[1] / total_tiered * 100
+            metrics.tier2_pct = tier_counts[2] / total_tiered * 100
+            metrics.tier3_pct = tier_counts[3] / total_tiered * 100
+            metrics.tier4_pct = tier_counts[4] / total_tiered * 100
+
+        # Analyze slice outputs
+        slice_files = [f for f in os.listdir(repo_out) if f.startswith("slice.") and f.endswith(".json")]
+        slice_node_counts = []
+        cross_file_edges = 0
+        total_slice_edges = 0
+
+        for sf in slice_files:
+            try:
+                with open(os.path.join(repo_out, sf)) as f:
+                    slice_data = json.load(f)
+                    feature = slice_data.get("feature", {})
+                    slice_nodes = feature.get("nodes", [])
+                    slice_edges = feature.get("edges", [])
+                    slice_node_counts.append(len(slice_nodes))
+
+                    # Count cross-file edges
+                    for e in slice_edges:
+                        total_slice_edges += 1
+                        src_file = e.get("source_file", "")
+                        tgt_file = e.get("target_file", "")
+                        if src_file and tgt_file and src_file != tgt_file:
+                            cross_file_edges += 1
+            except Exception:
+                pass
+
+        if slice_node_counts:
+            avg_slice_size = sum(slice_node_counts) / len(slice_node_counts)
+            metrics.slice_coverage_pct = (avg_slice_size / len(nodes) * 100) if nodes else 0
+
+        if total_slice_edges > 0:
+            metrics.cross_file_ratio = cross_file_edges / total_slice_edges * 100
+
+        # Entrypoint test ratio
+        test_entrypoints = sum(1 for e in entrypoints if "test" in e.get("file", "").lower())
+        metrics.entrypoints_in_tests = test_entrypoints
+        metrics.entrypoints_test_ratio = (test_entrypoints / len(entrypoints) * 100) if entrypoints else 0
+
+        # Generate verdict
+        highlights = []
+        concerns = []
+
+        # Assess metrics
+        metric_assessments = [
+            ("slice_coverage_pct", metrics.slice_coverage_pct),
+            ("cross_file_ratio", metrics.cross_file_ratio),
+            ("tier1_pct", metrics.tier1_pct),
+            ("tier4_pct", metrics.tier4_pct),
+            ("centrality_gini", metrics.centrality_gini * 100),  # Convert to percentage
+            ("orphan_rate", metrics.orphan_rate),
+        ]
+
+        verdict_status = "GOOD"
+        for metric_name, value in metric_assessments:
+            status, msg = assess_metric(metric_name, value)
+            if status == "FAIL":
+                verdict_status = "FAIL"
+                if msg:
+                    concerns.append(msg)
+            elif status == "WARN":
+                if verdict_status == "GOOD":
+                    verdict_status = "WARN"
+                if msg:
+                    concerns.append(msg)
+
+        # Add highlights
+        if metrics.total_edges > 0:
+            highlights.append(f"Graph: {metrics.total_nodes} nodes, {metrics.total_edges} edges")
+        if metrics.tier1_pct > 0:
+            highlights.append(f"Supply chain: {metrics.tier1_pct:.0f}% tier1 (first-party)")
+        if metrics.entrypoint_count > 0:
+            highlights.append(f"Found {metrics.entrypoint_count} entrypoints")
+
+        verdicts.append(RepoVerdict(
+            repo_name=repo_name,
+            verdict=verdict_status,
+            highlights=highlights,
+            concerns=concerns,
+            metrics=asdict(metrics),
+        ))
+
+        print(f"  Verdict: {verdict_status}")
+        for h in highlights[:2]:
+            print(f"    + {h}")
+        for c in concerns[:2]:
+            print(f"    - {c}")
+        print()
+
+    # Update state
+    state.verdicts = verdicts
+    save_state(state)
+
+    # Write YAML report
+    import yaml
+    report = {
+        "session_id": state.session_id,
+        "cohort": state.cohort_number,
+        "iteration": state.iteration,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "repos": [asdict(v) for v in verdicts],
+    }
+
+    report_path = os.path.join(diag_dir, "report.yaml")
+    with open(report_path, "w") as f:
+        yaml.dump(report, f, default_flow_style=False, sort_keys=False)
+
+    # Summary
+    good_count = sum(1 for v in verdicts if v.verdict == "GOOD")
+    warn_count = sum(1 for v in verdicts if v.verdict == "WARN")
+    fail_count = sum(1 for v in verdicts if v.verdict == "FAIL")
+
+    print("=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print(f"  GOOD: {good_count}  WARN: {warn_count}  FAIL: {fail_count}")
+    print()
+    print(f"Report: {report_path}")
+    print()
+    print("Next: Run `bakeoff-features-reflect` for developer-perspective assessment")
+    return 0
+
+
+def cmd_status(args):
+    """Show feature bakeoff session status."""
+    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    print(f"Feature Bakeoff Session: {state.session_id}")
+    print(f"  Pool: {state.pool_path}")
+    print(f"  Workdir: {state.workdir}")
+    print(f"  Created: {state.created_at}")
+    print()
+    print(f"Current cohort: #{state.cohort_number}")
+    print(f"  Repos: {', '.join(state.current_cohort)}")
+    print(f"  Iteration: {state.iteration}")
+    print()
+    print(f"Tested repos: {len(state.tested_repos)}")
+
+    if state.verdicts:
+        print()
+        print("Latest verdicts:")
+        for v in state.verdicts:
+            print(f"  {v.repo_name}: {v.verdict}")
+            if v.concerns:
+                for c in v.concerns[:2]:
+                    print(f"    - {c}")
+
+    return 0
+
+
+def cmd_cycle(args):
+    """Run full cycle: run + diagnose."""
+    rc = cmd_run(args)
+    if rc != 0:
+        return rc
+    return cmd_diagnose(args)
+
+
+def cmd_recommend(args):
+    """Show recommended repos for feature bakeoff testing."""
+    print("Recommended repos for feature-focused bakeoff:")
+    print()
+
+    by_lang = {}
+    for r in RECOMMENDED_REPOS:
+        lang = r["lang"]
+        by_lang.setdefault(lang, []).append(r)
+
+    for lang, repos in sorted(by_lang.items()):
+        print(f"  {lang.upper()}")
+        for r in repos:
+            print(f"    {r['name']:20s} {r['url']}")
+        print()
+
+    print("Clone these repos into your pool directory, then run:")
+    print("  bakeoff-features init --pool <pool> --workdir <workdir>")
+    print("  bakeoff-features cohort --min-size 20 --max-size 200")
+    return 0
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Feature-focused hypergumbo bakeoff runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    # init
+    p_init = subparsers.add_parser("init", help="Initialize feature bakeoff session")
+    p_init.add_argument("--pool", required=True, help="Path to repo pool")
+    p_init.add_argument("--workdir", required=True, help="Working directory for outputs")
+
+    # cohort
+    p_cohort = subparsers.add_parser("cohort", help="Select next cohort (larger repos)")
+    p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
+    p_cohort.add_argument("--min-size", type=int, help=f"Min repo size in MB (default: {DEFAULT_MIN_SIZE_MB})")
+    p_cohort.add_argument("--max-size", type=int, help=f"Max repo size in MB (default: {DEFAULT_MAX_SIZE_MB})")
+    p_cohort.add_argument("--workdir", help="Override workdir")
+
+    # run
+    p_run = subparsers.add_parser("run", help="Run feature battery on cohort")
+    p_run.add_argument("--workdir", help="Override workdir")
+
+    # diagnose
+    p_diag = subparsers.add_parser("diagnose", help="Generate quality metrics report")
+    p_diag.add_argument("--workdir", help="Override workdir")
+
+    # status
+    p_status = subparsers.add_parser("status", help="Show session status")
+    p_status.add_argument("--workdir", help="Override workdir")
+
+    # cycle
+    p_cycle = subparsers.add_parser("cycle", help="Run full cycle (run + diagnose)")
+    p_cycle.add_argument("--workdir", help="Override workdir")
+
+    # recommend
+    subparsers.add_parser("recommend", help="Show recommended repos for testing")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    commands = {
+        "init": cmd_init,
+        "cohort": cmd_cohort,
+        "run": cmd_run,
+        "diagnose": cmd_diagnose,
+        "status": cmd_status,
+        "cycle": cmd_cycle,
+        "recommend": cmd_recommend,
+    }
+
+    return commands[args.command](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

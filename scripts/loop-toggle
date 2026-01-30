@@ -1,15 +1,22 @@
 #!/bin/bash
-# Toggle autonomous mode on/off
+# Toggle autonomous mode on/off with support for multiple modes
 #
-# This script toggles:
-#   1. AUTONOMOUS_MODE.txt: TRUE <-> FALSE
+# This script manages:
+#   1. AUTONOMOUS_MODE.txt: OFF | BROAD | DEEP (backward compatible: TRUE=BROAD)
 #   2. .agent/LOOP sentinel: .agent/LOOP <-> .agent/disabled.LOOP
 #
+# Modes:
+#   OFF   - Autonomous mode disabled, agent can stop freely
+#   BROAD - Regular bakeoff: parse correctness, fast iteration (legacy TRUE)
+#   DEEP  - Feature bakeoff: usefulness testing, larger repos, LLM assessment
+#
 # Usage:
-#   ./scripts/loop-toggle        # Toggle current state
-#   ./scripts/loop-toggle on     # Force enable
-#   ./scripts/loop-toggle off    # Force disable
-#   ./scripts/loop-toggle status # Show current state
+#   ./scripts/loop-toggle           # Toggle current state (off -> broad -> deep -> off)
+#   ./scripts/loop-toggle off       # Disable autonomous mode
+#   ./scripts/loop-toggle broad     # Enable broad bakeoff (parse correctness)
+#   ./scripts/loop-toggle deep      # Enable deep/feature bakeoff (usefulness)
+#   ./scripts/loop-toggle on        # Alias for 'broad' (backward compatible)
+#   ./scripts/loop-toggle status    # Show current state
 
 set -euo pipefail
 
@@ -23,119 +30,210 @@ DISABLED_LOOP="$REPO_ROOT/.agent/disabled.LOOP"
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-get_current_state() {
-    local mode_state="OFF"
-    local loop_state="disabled"
-
-    if [[ -f "$MODE_FILE" ]] && [[ "$(cat "$MODE_FILE" 2>/dev/null | tr -d '[:space:]')" == "TRUE" ]]; then
-        mode_state="ON"
+get_current_mode() {
+    # Returns: OFF, BROAD, or DEEP
+    if [[ ! -f "$MODE_FILE" ]]; then
+        echo "OFF"
+        return
     fi
 
+    local content
+    content=$(cat "$MODE_FILE" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+
+    case "$content" in
+        OFF|FALSE)
+            echo "OFF"
+            ;;
+        BROAD|TRUE)
+            # TRUE is backward compatible alias for BROAD
+            echo "BROAD"
+            ;;
+        DEEP)
+            echo "DEEP"
+            ;;
+        *)
+            # Unknown value, treat as OFF
+            echo "OFF"
+            ;;
+    esac
+}
+
+get_loop_state() {
     if [[ -f "$LOOP_FILE" ]]; then
-        loop_state="enabled"
+        echo "enabled"
+    else
+        echo "disabled"
     fi
-
-    echo "$mode_state:$loop_state"
 }
 
 show_status() {
-    local state
-    state=$(get_current_state)
-    local mode_state="${state%%:*}"
-    local loop_state="${state##*:}"
+    local mode
+    mode=$(get_current_mode)
+    local loop_state
+    loop_state=$(get_loop_state)
 
     echo "Autonomous Mode Status"
     echo "======================"
+    echo ""
 
-    if [[ "$mode_state" == "ON" ]]; then
-        echo -e "AUTONOMOUS_MODE.txt: ${GREEN}TRUE${NC}"
-    else
-        echo -e "AUTONOMOUS_MODE.txt: ${RED}FALSE${NC}"
-    fi
+    case "$mode" in
+        OFF)
+            echo -e "Mode: ${RED}OFF${NC}"
+            echo "  AUTONOMOUS_MODE.txt = OFF (or FALSE)"
+            ;;
+        BROAD)
+            echo -e "Mode: ${GREEN}BROAD${NC}"
+            echo "  AUTONOMOUS_MODE.txt = BROAD (or TRUE)"
+            echo "  Focus: Parse correctness, fast iteration"
+            echo "  Bakeoff: scripts/bakeoff"
+            ;;
+        DEEP)
+            echo -e "Mode: ${CYAN}DEEP${NC}"
+            echo "  AUTONOMOUS_MODE.txt = DEEP"
+            echo "  Focus: Feature usefulness, larger repos"
+            echo "  Bakeoff: scripts/bakeoff-features"
+            ;;
+    esac
 
+    echo ""
     if [[ "$loop_state" == "enabled" ]]; then
-        echo -e ".agent/LOOP:         ${GREEN}exists${NC}"
+        echo -e ".agent/LOOP: ${GREEN}exists${NC}"
     else
-        echo -e ".agent/LOOP:         ${RED}disabled${NC}"
+        echo -e ".agent/LOOP: ${RED}disabled${NC}"
     fi
 
     echo ""
-    if [[ "$mode_state" == "ON" && "$loop_state" == "enabled" ]]; then
-        echo -e "Status: ${GREEN}AUTONOMOUS MODE ACTIVE${NC}"
+    if [[ "$mode" != "OFF" && "$loop_state" == "enabled" ]]; then
+        echo -e "Status: ${GREEN}AUTONOMOUS MODE ACTIVE${NC} (${mode})"
         echo "Governance hooks will enforce reflection before stopping."
     else
         echo -e "Status: ${YELLOW}AUTONOMOUS MODE INACTIVE${NC}"
         echo "Agent can stop freely without reflection."
     fi
+
+    echo ""
+    echo "Commands:"
+    echo "  ./scripts/loop-toggle off    # Disable"
+    echo "  ./scripts/loop-toggle broad  # Parse correctness bakeoff"
+    echo "  ./scripts/loop-toggle deep   # Feature usefulness bakeoff"
 }
 
-enable_loop() {
-    # Set AUTONOMOUS_MODE.txt to TRUE
-    echo "TRUE" > "$MODE_FILE"
-
+enable_loop_sentinel() {
     # Enable .agent/LOOP (rename back if disabled, or create)
     if [[ -f "$DISABLED_LOOP" ]]; then
         mv "$DISABLED_LOOP" "$LOOP_FILE"
     elif [[ ! -f "$LOOP_FILE" ]]; then
         touch "$LOOP_FILE"
     fi
-
-    echo -e "${GREEN}✓${NC} Autonomous mode ${GREEN}ENABLED${NC}"
-    echo "  - AUTONOMOUS_MODE.txt set to TRUE"
-    echo "  - .agent/LOOP sentinel active"
 }
 
-disable_loop() {
-    # Set AUTONOMOUS_MODE.txt to FALSE
-    echo "FALSE" > "$MODE_FILE"
-
+disable_loop_sentinel() {
     # Disable .agent/LOOP (rename to preserve)
     if [[ -f "$LOOP_FILE" ]]; then
         mv "$LOOP_FILE" "$DISABLED_LOOP"
     fi
+}
+
+set_mode_off() {
+    echo "OFF" > "$MODE_FILE"
+    disable_loop_sentinel
 
     echo -e "${GREEN}✓${NC} Autonomous mode ${RED}DISABLED${NC}"
-    echo "  - AUTONOMOUS_MODE.txt set to FALSE"
+    echo "  - AUTONOMOUS_MODE.txt set to OFF"
     echo "  - .agent/LOOP sentinel disabled"
 }
 
-toggle_loop() {
-    local state
-    state=$(get_current_state)
-    local mode_state="${state%%:*}"
+set_mode_broad() {
+    echo "BROAD" > "$MODE_FILE"
+    enable_loop_sentinel
 
-    if [[ "$mode_state" == "ON" ]]; then
-        disable_loop
-    else
-        enable_loop
-    fi
+    echo -e "${GREEN}✓${NC} Autonomous mode set to ${GREEN}BROAD${NC}"
+    echo "  - AUTONOMOUS_MODE.txt set to BROAD"
+    echo "  - .agent/LOOP sentinel active"
+    echo ""
+    echo "Focus: Parse correctness, call graph quality, route detection"
+    echo "Use: ./scripts/bakeoff for automated testing"
+}
+
+set_mode_deep() {
+    echo "DEEP" > "$MODE_FILE"
+    enable_loop_sentinel
+
+    echo -e "${GREEN}✓${NC} Autonomous mode set to ${CYAN}DEEP${NC}"
+    echo "  - AUTONOMOUS_MODE.txt set to DEEP"
+    echo "  - .agent/LOOP sentinel active"
+    echo ""
+    echo "Focus: Feature usefulness, slice quality, developer perspective"
+    echo "Use: ./scripts/bakeoff-features for feature testing"
+    echo "     ./scripts/bakeoff-features-reflect for LLM assessment"
+}
+
+toggle_mode() {
+    local current_mode
+    current_mode=$(get_current_mode)
+
+    case "$current_mode" in
+        OFF)
+            set_mode_broad
+            ;;
+        BROAD)
+            set_mode_deep
+            ;;
+        DEEP)
+            set_mode_off
+            ;;
+    esac
 }
 
 # Main
 case "${1:-toggle}" in
-    on|enable)
-        enable_loop
-        ;;
     off|disable)
-        disable_loop
+        set_mode_off
+        ;;
+    broad)
+        set_mode_broad
+        ;;
+    deep)
+        set_mode_deep
+        ;;
+    on|enable)
+        # Backward compatible: 'on' means BROAD
+        set_mode_broad
         ;;
     status|s)
         show_status
         ;;
     toggle|t|"")
-        toggle_loop
+        toggle_mode
         ;;
     -h|--help|help)
         echo "Usage: $(basename "$0") [command]"
         echo ""
+        echo "Manage autonomous mode for hypergumbo development."
+        echo ""
+        echo "Modes:"
+        echo "  OFF   - Autonomous mode disabled"
+        echo "  BROAD - Parse correctness bakeoff (fast iteration)"
+        echo "  DEEP  - Feature usefulness bakeoff (larger repos, LLM assessment)"
+        echo ""
         echo "Commands:"
-        echo "  on, enable    Enable autonomous mode"
         echo "  off, disable  Disable autonomous mode"
+        echo "  broad         Enable BROAD mode (parse correctness)"
+        echo "  deep          Enable DEEP mode (feature usefulness)"
+        echo "  on, enable    Alias for 'broad' (backward compatible)"
         echo "  status, s     Show current state"
-        echo "  toggle, t     Toggle current state (default)"
+        echo "  toggle, t     Cycle: off -> broad -> deep -> off (default)"
         echo "  help, -h      Show this help"
+        echo ""
+        echo "When autonomous mode is active:"
+        echo "  - AGENTS.md priority queue guides work"
+        echo "  - Governance hooks enforce reflection before stopping"
+        echo "  - BROAD uses scripts/bakeoff"
+        echo "  - DEEP uses scripts/bakeoff-features"
         ;;
     *)
         echo "Unknown command: $1" >&2

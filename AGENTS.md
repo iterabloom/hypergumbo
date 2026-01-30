@@ -11,7 +11,7 @@
 - **Governance Files:** Changes to `.githooks/**`, `.agent/**`, `scripts/install-hooks`, `scripts/auto-pr`, `scripts/contribute`, `scripts/ci-debug`, `CODEOWNERS`, `AUTONOMOUS_MODE.txt.default`, `ALLOWED_WEBSITES.md` and `AGENTS.md` require human approval. Do NOT self-merge PRs touching these files.
 
 ## Premature Stopping Prevention (Autonomous Mode Only)
-  When AUTONOMOUS_MODE.txt is TRUE:
+  When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
   - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
@@ -19,8 +19,13 @@
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
-  - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
-  - Use `./scripts/loop-toggle` to enable/disable autonomous mode (manages both `AUTONOMOUS_MODE.txt` and `.agent/LOOP` sentinel).
+  - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
+  - Use `./scripts/loop-toggle` to manage autonomous mode:
+    - `./scripts/loop-toggle off` - Disable autonomous mode
+    - `./scripts/loop-toggle broad` - Enable BROAD mode (parse correctness, fast iteration)
+    - `./scripts/loop-toggle deep` - Enable DEEP mode (feature usefulness, larger repos)
+    - `./scripts/loop-toggle status` - Show current mode
+  - Backward compatibility: TRUE is treated as BROAD.
 
 ## No Weasel Words
 When documenting status, coverage, or completion:
@@ -387,9 +392,25 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
   - ADR-0001: Portable agent instructions (this file as canonical source)
   - ADR-0003: YAML-driven framework patterns
   - ADR-0008: Autonomous governance and vendor-agnostic hooks
+  - ADR-0009: Feature-focused bakeoff suite (DEEP mode)
 
 ## Autonomous Development Mode Stipulations
-When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work:
+When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work.
+
+### Mode Selection
+| Mode | Focus | Bakeoff Script | When to Use |
+|------|-------|----------------|-------------|
+| **BROAD** | Parse correctness | `scripts/bakeoff` | Default. Fast iteration on call graph, routes, frameworks |
+| **DEEP** | Feature usefulness | `scripts/bakeoff-features` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
+
+- **BROAD** answers: "Does hypergumbo parse this correctly?"
+- **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
+
+Use DEEP mode when:
+- You've converged on parse correctness (no CRITICAL/HIGH issues)
+- You want to test slice limits, supply chain tiers, or graph centrality
+- You're preparing for a release and want qualitative assessment
+
 - **PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using the bakeoff loop defined in the scripts. Keep refactoring, improving, or adding features, frameworks, and cross-language & cross-environment communication detection.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
@@ -428,6 +449,28 @@ Priority queue:
    - And 50+ more in other languages (Dart, OCaml, Crystal, Nim, Perl, etc.)
 3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 
+### DEEP Mode Priority Queue (Feature Bakeoff)
+When in DEEP mode, focus on feature quality rather than parse correctness:
+1. **Slice quality:** Does forward slice capture actual dependencies?
+2. **Reverse slice:** Does it correctly identify callers?
+3. **Supply chain tiers:** Is tier classification accurate for monorepos?
+4. **Centrality ranking:** Do top-ranked symbols match developer intuition?
+5. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment
+
+DEEP mode scripts:
+```bash
+# Initialize and run feature bakeoff
+./scripts/bakeoff-features init --pool ~/repos --workdir /tmp/feature-bakeoff
+./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+./scripts/bakeoff-features run
+./scripts/bakeoff-features diagnose
+
+# LLM-driven qualitative assessment
+./scripts/bakeoff-features-reflect
+./scripts/bakeoff-features-reflect aggregate
+```
+
+See ADR-0009 for design rationale.
 
 ## Modifying This Document
 - Propose changes via PR with rationale.
