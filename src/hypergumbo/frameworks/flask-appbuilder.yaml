@@ -1,0 +1,73 @@
+# Flask-Appbuilder framework patterns (ADR-0003)
+#
+# Flask-Appbuilder is a rapid application development framework built on Flask.
+# Used by Apache Superset and other enterprise applications.
+#
+# Common patterns:
+# - @expose("/path") decorator for routes
+# - BaseView, ModelView, ModelRestApi base classes
+# - @has_access, @protect decorators for auth
+
+id: flask-appbuilder
+language: python
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Flask-Appbuilder expose decorator - @expose("/path"), @expose("/path", methods=["GET"])
+  - concept: route
+    decorator: "^expose$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # Flask-Appbuilder API expose with rison - @expose("/path", methods=["GET"])
+  # Also handles @expose without arguments (uses class-level route_base)
+  - concept: route
+    decorator: "^flask_appbuilder\\.api\\.expose$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # Flask-Appbuilder base view classes
+  - concept: api_view
+    base_class: "^(flask_appbuilder\\.)?BaseView$"
+
+  - concept: api_view
+    base_class: "^(flask_appbuilder\\.)?ModelView$"
+
+  - concept: api_resource
+    base_class: "^(flask_appbuilder\\.api\\.)?ModelRestApi$"
+
+  - concept: api_resource
+    base_class: "^(flask_appbuilder\\.api\\.)?BaseApi$"
+
+  # Flask-Appbuilder security decorators
+  - concept: auth
+    decorator: "^has_access$"
+
+  - concept: auth
+    decorator: "^protect$"
+
+  - concept: auth
+    decorator: "^permission_name$"
+
+  # Flask-Appbuilder hooks
+  - concept: middleware
+    decorator: "^before_request$"
+
+  # Flask-Appbuilder form view
+  - concept: form_view
+    base_class: "^(flask_appbuilder\\.)?SimpleFormView$"
+
+  - concept: form_view
+    base_class: "^(flask_appbuilder\\.)?FormView$"
+
+  # Flask-Appbuilder chart view
+  - concept: chart_view
+    base_class: "^(flask_appbuilder\\.)?BaseChartView$"
+
+  # Flask-Appbuilder security manager
+  - concept: security
+    base_class: "^(flask_appbuilder\\.security\\.)?BaseSecurityManager$"
+
+linkers:
+  - http

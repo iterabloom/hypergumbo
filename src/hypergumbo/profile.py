@@ -64,6 +64,7 @@ PYTHON_FRAMEWORKS = {
     # Web frameworks
     "fastapi": ["fastapi"],
     "flask": ["flask", "Flask"],
+    "flask-appbuilder": ["flask_appbuilder", "Flask-AppBuilder"],
     "django": ["django", "Django"],
     "aiohttp": ["aiohttp"],
     "starlette": ["starlette"],
