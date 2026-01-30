@@ -11473,3 +11473,136 @@ class TestScalatraPatterns:
         concepts = [r["concept"] for r in results]
         assert "servlet" in concepts
         assert "json_support" in concepts
+
+
+class TestHttp4kPatterns:
+    """Tests for Http4k framework pattern matching."""
+
+    def test_http4k_route_bind_via_usage_context(self) -> None:
+        """Http4k bind call matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4k")
+
+        assert pattern_def is not None, "Http4k patterns YAML should exist"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="bind",
+            position="args[0]",
+            path="Routes.kt",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:Routes.kt:10:user_route:other",
+            metadata={
+                "path": "/users",
+                "method": "GET",
+            },
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_http4k_handler_base_class(self) -> None:
+        """Http4k HttpHandler implementation matches handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4k")
+
+        symbol = Symbol(
+            id="test:UserHandler.kt:1:UserHandler:class",
+            name="UserHandler",
+            kind="class",
+            language="kotlin",
+            path="handlers/UserHandler.kt",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["HttpHandler"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "handler"
+
+    def test_http4k_filter_base_class(self) -> None:
+        """Http4k Filter implementation matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4k")
+
+        symbol = Symbol(
+            id="test:AuthFilter.kt:1:AuthFilter:class",
+            name="AuthFilter",
+            kind="class",
+            language="kotlin",
+            path="filters/AuthFilter.kt",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Filter"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_http4k_routes_via_usage_context(self) -> None:
+        """Http4k routes() call matches router pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4k")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="routes",
+            position="args[0]",
+            path="App.kt",
+            span=Span(5, 20, 0, 0),
+            symbol_ref="test:App.kt:5:routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "router"
+
+    def test_http4k_websocket_via_usage_context(self) -> None:
+        """Http4k websockets() call matches websocket pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4k")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="websockets",
+            position="args[0]",
+            path="App.kt",
+            span=Span(25, 30, 0, 0),
+            symbol_ref="test:App.kt:25:ws_routes:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "websocket"
+
+    def test_http4k_server_via_usage_context(self) -> None:
+        """Http4k asServer() call matches server pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4k")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="asServer",
+            position="args[0]",
+            path="Main.kt",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="test:Main.kt:10:server:other",
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "server"

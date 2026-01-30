@@ -1,0 +1,127 @@
+# Http4k framework patterns (ADR-0003 v1.1.x)
+#
+# Http4k is a functional HTTP toolkit for Kotlin.
+# Routes use DSL binding: "/path" bind GET to { handler }
+# Core abstraction: HttpHandler = (Request) -> Response
+
+id: http4k
+language: kotlin
+
+patterns:
+  # Route binding - "/path" bind GET to handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^bind$"
+      position: "^args\\[0\\]$"
+
+  # HttpHandler type (core abstraction)
+  - concept: handler
+    base_class: "^HttpHandler$"
+
+  # RoutingHttpHandler for routing
+  - concept: router
+    base_class: "^RoutingHttpHandler$"
+
+  # Filter for middleware
+  - concept: middleware
+    base_class: "^Filter$"
+
+  # ServerFilter for server-side middleware
+  - concept: middleware
+    base_class: "^ServerFilter$"
+
+  # ClientFilter for client-side middleware
+  - concept: middleware
+    base_class: "^ClientFilter$"
+
+  # Lens for type-safe extraction
+  - concept: lens
+    usage:
+      kind: "^call$"
+      name: "^(Path|Query|Header|Body|FormField|Cookie)\\.(string|int|long|boolean|double|float|uuid|bigDecimal|bigInteger|instant|localDate|localDateTime|localTime|zonedDateTime)$"
+
+  # Required lens
+  - concept: lens
+    usage:
+      kind: "^call$"
+      name: "\\.required$"
+
+  # Optional lens
+  - concept: lens
+    usage:
+      kind: "^call$"
+      name: "\\.optional$"
+
+  # Multi lens
+  - concept: lens
+    usage:
+      kind: "^call$"
+      name: "\\.multi$"
+
+  # Routes DSL entry point
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^routes$"
+
+  # Static file serving
+  - concept: static_handler
+    usage:
+      kind: "^call$"
+      name: "^static$"
+
+  # Websocket handler
+  - concept: websocket
+    usage:
+      kind: "^call$"
+      name: "^websockets$"
+
+  # SSE handler
+  - concept: sse_handler
+    usage:
+      kind: "^call$"
+      name: "^sse$"
+
+  # Contract for OpenAPI
+  - concept: contract
+    usage:
+      kind: "^call$"
+      name: "^contract$"
+
+  # ContractRoute for typed routes
+  - concept: contract_route
+    base_class: "^ContractRoute$"
+
+  # Http4k server
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^asServer$"
+
+  # Http4k client
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^(ApacheClient|JavaHttpClient|OkHttp|Jetty)$"
+
+  # Request context
+  - concept: context
+    usage:
+      kind: "^call$"
+      name: "^RequestContexts$"
+
+  # Events for observability
+  - concept: events
+    usage:
+      kind: "^call$"
+      name: "^Events$"
+
+  # Auto marshalling
+  - concept: marshalling
+    usage:
+      kind: "^call$"
+      name: "^auto$"
+
+linkers:
+  - http
