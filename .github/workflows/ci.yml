@@ -131,6 +131,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -165,9 +166,9 @@ jobs:
           # Run tests against packages/*/src (new) or src/ directory (legacy)
           # Use -v for verbose output and --tb=short for concise tracebacks
           if [ -d "packages/hypergumbo-core" ]; then
-            pytest -n 2 -v --tb=short --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term 2>&1 | tee coverage-output.txt
+            pytest -n auto -v --tb=short --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term 2>&1 | tee coverage-output.txt
           else
-            pytest -n 2 -v --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
+            pytest -n auto -v --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
           fi
       - name: Update coverage badge
         if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
