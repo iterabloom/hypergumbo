@@ -21,8 +21,16 @@ import pytest
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
-# Add scripts to path for generate-schema imports
-REPO_ROOT = Path(__file__).parent.parent
+# Find repo root by walking up until we find .git
+def _find_repo_root() -> Path:
+    current = Path(__file__).parent
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    raise RuntimeError("Could not find repo root")
+
+REPO_ROOT = _find_repo_root()
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 

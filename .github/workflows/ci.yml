@@ -57,7 +57,7 @@ jobs:
           pip install --upgrade pip
           pip install ruff bandit
       - name: Run Ruff (linting)
-        run: ruff check packages/*/src/ tests/
+        run: ruff check packages/*/src/ packages/*/tests/
       - name: Run Bandit (security)
         run: bandit -r packages/*/src/ -c pyproject.toml
 
@@ -163,10 +163,10 @@ jobs:
           fi
       - name: Run tests with coverage
         run: |
-          # Run tests against packages/*/src (new) or src/ directory (legacy)
+          # Run tests from package directories
           # Use concise output to reduce log size and speed up CI
           if [ -d "packages/hypergumbo-core" ]; then
-            pytest -n 2 --tb=short --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term 2>&1 | tee coverage-output.txt
+            pytest packages/*/tests/ -n 2 --tb=short --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term 2>&1 | tee coverage-output.txt
           else
             pytest -n 2 --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
           fi
