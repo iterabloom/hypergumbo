@@ -8,7 +8,7 @@ Tests verify that the analyzer correctly extracts:
 - Define blocks (functions/macros)
 """
 
-from hypergumbo.analyze.make import (
+from hypergumbo_lang_mainstream.make import (
     PASS_ID,
     PASS_VERSION,
     MakeAnalysisResult,
@@ -236,7 +236,7 @@ def test_span_information(tmp_path):
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.make import is_make_tree_sitter_available
+    from hypergumbo_lang_mainstream.make import is_make_tree_sitter_available
 
     # The function should return a boolean
     result = is_make_tree_sitter_available()

@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import thrift as thrift_module
-from hypergumbo.analyze.thrift import (
+from hypergumbo_lang_common import thrift as thrift_module
+from hypergumbo_lang_common.thrift import (
     analyze_thrift,
     find_thrift_files,
     is_thrift_tree_sitter_available,

@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import pascal as pascal_module
-from hypergumbo.analyze.pascal import (
+from hypergumbo_lang_extended1 import pascal as pascal_module
+from hypergumbo_lang_extended1.pascal import (
     PascalAnalysisResult,
     analyze_pascal,
     find_pascal_files,

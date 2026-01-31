@@ -1,0 +1,88 @@
+# Flask framework patterns (ADR-0003 v1.0.x + v1.1.x)
+#
+# Matches Flask route decorators, blueprint patterns, and common extensions.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Definition-based patterns (v1.0.x): Match decorator-based routing
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
+
+id: flask
+language: python
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
+
+  # Flask add_url_rule - app.add_url_rule('/path', view_func=handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|blueprint|bp)\\.add_url_rule$"
+      position: "^view_func$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.methods"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Flask 2.0+ shortcut routes - @app.get("/path"), @app.post("/path"), etc.
+  - concept: route
+    decorator: "^(app|blueprint|bp)\\.(get|post|put|delete|patch|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Classic Flask route - @app.route("/path"), @app.route("/path", methods=["GET"])
+  - concept: route
+    decorator: "^(app|blueprint|bp)\\.route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # Before/after request hooks
+  - concept: middleware
+    decorator: "^(app|blueprint|bp)\\.(before_request|after_request|teardown_request)$"
+
+  # Error handlers - @app.errorhandler(404)
+  - concept: error_handler
+    decorator: "^(app|blueprint|bp)\\.errorhandler$"
+
+  # Flask-RESTful Resource class
+  - concept: api_resource
+    base_class: "^(flask_restful\\.)?Resource$"
+
+  # Flask-WTF form
+  - concept: form
+    base_class: "^(flask_wtf\\.)?FlaskForm$"
+
+  # Flask-SQLAlchemy model
+  - concept: model
+    base_class: "^db\\.Model$"
+
+  # Marshmallow schemas (validation/serialization)
+  - concept: serializer
+    base_class: "^(marshmallow\\.)?Schema$"
+
+  # Flask-Marshmallow schema
+  - concept: serializer
+    base_class: "^(ma\\.)?SQLAlchemySchema$"
+
+  - concept: serializer
+    base_class: "^(ma\\.)?SQLAlchemyAutoSchema$"
+
+  # Flask context processors
+  - concept: middleware
+    decorator: "^(app|blueprint|bp)\\.context_processor$"
+
+  # Flask-Login user loader
+  - concept: auth
+    decorator: "^login_manager\\.user_loader$"
+
+  # Flask CLI commands
+  - concept: command
+    decorator: "^(app|blueprint|bp)\\.cli\\.command$"
+
+  # Flask-SocketIO event handlers
+  - concept: websocket_handler
+    decorator: "^socketio\\.on$"
+
+linkers:
+  - http
+  - websocket

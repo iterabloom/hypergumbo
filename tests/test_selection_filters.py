@@ -1,6 +1,6 @@
 """Tests for the selection.filters module."""
 
-from hypergumbo.selection.filters import (
+from hypergumbo_core.selection.filters import (
     is_test_path,
     is_example_path,
     EXCLUDED_KINDS,

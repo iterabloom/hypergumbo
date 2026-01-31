@@ -29,7 +29,7 @@ class TestOCamlAnalyzerAvailability:
 
     def test_is_ocaml_tree_sitter_available(self) -> None:
         """Check if tree-sitter-ocaml is detected."""
-        from hypergumbo.analyze.ocaml import is_ocaml_tree_sitter_available
+        from hypergumbo_lang_common.ocaml import is_ocaml_tree_sitter_available
 
         # Should be True since we installed tree-sitter-ocaml
         assert is_ocaml_tree_sitter_available() is True
@@ -40,7 +40,7 @@ class TestOCamlFunctionDetection:
 
     def test_detect_simple_function(self, tmp_path: Path) -> None:
         """Detect simple let binding function."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", """
 let add x y = x + y
@@ -57,7 +57,7 @@ let add x y = x + y
 
     def test_detect_function_with_unit_param(self, tmp_path: Path) -> None:
         """Detect function with unit parameter (main)."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", """
 let main () =
@@ -77,7 +77,7 @@ class TestOCamlTypeDetection:
 
     def test_detect_record_type(self, tmp_path: Path) -> None:
         """Detect record type definition."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "types.ml", """
 type person = { name : string; age : int }
@@ -92,7 +92,7 @@ type person = { name : string; age : int }
 
     def test_detect_variant_type(self, tmp_path: Path) -> None:
         """Detect variant type definition."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "types.ml", """
 type color = Red | Green | Blue
@@ -111,7 +111,7 @@ class TestOCamlModuleDetection:
 
     def test_detect_module(self, tmp_path: Path) -> None:
         """Detect module definition."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "lib.ml", """
 module MyUtils = struct
@@ -132,7 +132,7 @@ class TestOCamlImportEdges:
 
     def test_detect_open_statement(self, tmp_path: Path) -> None:
         """Detect open statement (import)."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", """
 open List
@@ -152,7 +152,7 @@ class TestOCamlCallEdges:
 
     def test_detect_function_call(self, tmp_path: Path) -> None:
         """Detect function call edges."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", """
 let greet name = "Hello " ^ name
@@ -173,7 +173,7 @@ class TestOCamlCrossFileResolution:
 
     def test_cross_file_call(self, tmp_path: Path) -> None:
         """Calls to functions in other files are resolved."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "utils.ml", """
 let helper x = x + 1
@@ -200,7 +200,7 @@ class TestOCamlEdgeCases:
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Empty OCaml file produces no symbols."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "empty.ml", "")
 
@@ -213,7 +213,7 @@ class TestOCamlEdgeCases:
 
     def test_syntax_error_file(self, tmp_path: Path) -> None:
         """File with syntax error is handled gracefully."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "bad.ml", """
 let foo x =
@@ -227,7 +227,7 @@ let foo x =
 
     def test_no_ocaml_files(self, tmp_path: Path) -> None:
         """Directory with no OCaml files returns empty result."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.py", "print('hello')")
 
@@ -243,7 +243,7 @@ class TestOCamlSpanAccuracy:
 
     def test_function_span(self, tmp_path: Path) -> None:
         """Function span includes full definition."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", """let add x y = x + y
 """)
@@ -261,7 +261,7 @@ class TestOCamlAnalyzeFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
         """Returns skipped result when tree-sitter-ocaml not available."""
-        from hypergumbo.analyze import ocaml
+        from hypergumbo_lang_common import ocaml
 
         # Mock tree-sitter-ocaml as unavailable
         monkeypatch.setattr(ocaml, "is_ocaml_tree_sitter_available", lambda: False)
@@ -282,7 +282,7 @@ class TestOCamlSignatureExtraction:
 
     def test_simple_function_signature(self, tmp_path: Path) -> None:
         """Extract signature from simple let binding with params."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", "let add x y = x + y")
         result = analyze_ocaml(tmp_path)
@@ -292,7 +292,7 @@ class TestOCamlSignatureExtraction:
 
     def test_single_param(self, tmp_path: Path) -> None:
         """Extract signature from function with single param."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", "let double x = x * 2")
         result = analyze_ocaml(tmp_path)
@@ -302,7 +302,7 @@ class TestOCamlSignatureExtraction:
 
     def test_no_params_value(self, tmp_path: Path) -> None:
         """Value binding (no params) should have no signature."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "main.ml", "let x = 42")
         result = analyze_ocaml(tmp_path)
@@ -316,7 +316,7 @@ class TestOCamlModuleAliases:
 
     def test_extracts_module_alias(self, tmp_path: Path) -> None:
         """Extracts module alias from 'module L = List' statement."""
-        from hypergumbo.analyze.ocaml import _extract_module_aliases
+        from hypergumbo_lang_common.ocaml import _extract_module_aliases
 
         import tree_sitter
         import tree_sitter_ocaml
@@ -345,7 +345,7 @@ let main () = L.length []
 
     def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
         """Qualified call resolution uses module alias for path hint."""
-        from hypergumbo.analyze.ocaml import analyze_ocaml
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
 
         make_ocaml_file(tmp_path, "Main.ml", """
 module L = List

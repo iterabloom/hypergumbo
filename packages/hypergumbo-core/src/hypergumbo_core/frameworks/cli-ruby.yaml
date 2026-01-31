@@ -1,0 +1,86 @@
+# CLI entrypoint patterns - Ruby (ADR-0003)
+#
+# Patterns for detecting command-line interface entrypoints:
+# Thor, GLI, OptionParser.
+
+id: cli-ruby
+language: ruby
+
+patterns:
+  # ==================== THOR PATTERNS ====================
+  # Thor base class
+  - concept: command
+    base_class: "^Thor$"
+
+  # Thor desc (command description)
+  - concept: command
+    decorator: "^desc$"
+
+  # Thor method_option
+  - concept: option
+    decorator: "^method_option$"
+
+  # Thor class_option
+  - concept: option
+    decorator: "^class_option$"
+
+  # Thor option (alias)
+  - concept: option
+    decorator: "^option$"
+
+  # Thor subcommand
+  - concept: command
+    decorator: "^subcommand$"
+
+  # Thor namespace
+  - concept: command
+    decorator: "^namespace$"
+
+  # ==================== GLI PATTERNS ====================
+  # GLI command
+  - concept: command
+    decorator: "^command$"
+
+  # GLI flag
+  - concept: option
+    decorator: "^flag$"
+
+  # GLI switch
+  - concept: option
+    decorator: "^switch$"
+
+  # GLI arg
+  - concept: argument
+    decorator: "^arg$"
+
+  # GLI desc
+  - concept: command
+    decorator: "^desc$"
+
+  # GLI action
+  - concept: command
+    decorator: "^action$"
+
+  # ==================== OPTIONPARSER PATTERNS ====================
+  # OptionParser.new
+  - concept: entrypoint
+    decorator: "^OptionParser\\.new$"
+
+  # OptionParser on
+  - concept: option
+    decorator: "^on$"
+
+  # OptionParser parse
+  - concept: entrypoint
+    decorator: "^parse!?$"
+
+  # ==================== DRY-CLI PATTERNS ====================
+  # Dry::CLI command
+  - concept: command
+    base_class: "^Dry::CLI::Command$"
+
+  # Dry::CLI register
+  - concept: command
+    decorator: "^register$"
+
+linkers: []

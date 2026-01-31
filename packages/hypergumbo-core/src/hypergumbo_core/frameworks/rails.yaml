@@ -1,0 +1,128 @@
+# Ruby on Rails framework patterns (ADR-0003 v1.0.x + v1.1.x)
+#
+# Matches Rails conventions for controllers, models, jobs, mailers, and more.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Definition-based patterns (v1.0.x): Match base_class, symbol_kind for inheritance
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
+
+id: rails
+language: ruby
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing DSL
+
+  # Rails HTTP method routes - get '/path', post '/path', etc.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|head|options)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # Rails resource routes - resources :users, resource :profile
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^resources?$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:RESOURCES"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Keep symbol_kind pattern for backwards compatibility with symbols
+  # created directly by the Ruby analyzer
+  - concept: route
+    symbol_kind: "^route$"
+
+  # Controllers - inherit from ApplicationController or ActionController::Base
+  - concept: controller
+    base_class: "^ApplicationController$"
+
+  - concept: controller
+    base_class: "^ActionController::Base$"
+
+  - concept: controller
+    base_class: "^ActionController::API$"
+
+  # Models - inherit from ApplicationRecord or ActiveRecord::Base
+  - concept: model
+    base_class: "^ApplicationRecord$"
+
+  - concept: model
+    base_class: "^ActiveRecord::Base$"
+
+  # Jobs - inherit from ApplicationJob or ActiveJob::Base
+  - concept: task
+    base_class: "^ApplicationJob$"
+
+  - concept: task
+    base_class: "^ActiveJob::Base$"
+
+  # Mailers - inherit from ApplicationMailer or ActionMailer::Base
+  - concept: mailer
+    base_class: "^ApplicationMailer$"
+
+  - concept: mailer
+    base_class: "^ActionMailer::Base$"
+
+  # Channels (Action Cable) - inherit from ApplicationCable::Channel
+  - concept: websocket_handler
+    base_class: "^ApplicationCable::Channel$"
+
+  - concept: websocket_handler
+    base_class: "^ActionCable::Channel::Base$"
+
+  # Connections (Action Cable) - inherit from ApplicationCable::Connection
+  - concept: websocket_connection
+    base_class: "^ApplicationCable::Connection$"
+
+  - concept: websocket_connection
+    base_class: "^ActionCable::Connection::Base$"
+
+  # Serializers (ActiveModelSerializers)
+  - concept: serializer
+    base_class: "^ActiveModel::Serializer$"
+
+  - concept: serializer
+    base_class: "^ApplicationSerializer$"
+
+  # Form objects
+  - concept: form
+    base_class: "^ActiveModel::Model$"
+
+  # Validators
+  - concept: validator
+    base_class: "^ActiveModel::Validator$"
+
+  - concept: validator
+    base_class: "^ActiveModel::EachValidator$"
+
+  # Services (common Rails pattern - no specific base class)
+  # Service objects typically don't have a standard base class
+
+  # Policies (Pundit authorization)
+  - concept: policy
+    base_class: "^ApplicationPolicy$"
+
+  # Decorators (Draper)
+  - concept: decorator
+    base_class: "^Draper::Decorator$"
+
+  - concept: decorator
+    base_class: "^ApplicationDecorator$"
+
+  # Sidekiq workers (common with Rails)
+  - concept: task
+    base_class: "^Sidekiq::Worker$"
+
+  # Rake tasks are not classes, so can't be matched here
+
+linkers:
+  - http
+  - websocket
+  - database_query

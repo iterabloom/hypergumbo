@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import rst as rst_module
-from hypergumbo.analyze.rst import (
+from hypergumbo_lang_common import rst as rst_module
+from hypergumbo_lang_common.rst import (
     RSTAnalysisResult,
     analyze_rst,
     find_rst_files,

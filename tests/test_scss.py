@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import scss as scss_module
-from hypergumbo.analyze.scss import (
+from hypergumbo_lang_common import scss as scss_module
+from hypergumbo_lang_common.scss import (
     ScssAnalysisResult,
     analyze_scss,
     find_scss_files,

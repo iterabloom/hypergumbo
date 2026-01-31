@@ -7,7 +7,7 @@ Tests verify that the analyzer correctly extracts:
 - Directive definitions
 """
 
-from hypergumbo.analyze.graphql import (
+from hypergumbo_lang_common.graphql import (
     PASS_ID,
     PASS_VERSION,
     GraphQLAnalysisResult,
@@ -244,7 +244,7 @@ def test_span_information(tmp_path):
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.graphql import is_graphql_tree_sitter_available
+    from hypergumbo_lang_common.graphql import is_graphql_tree_sitter_available
 
     # The function should return a boolean
     result = is_graphql_tree_sitter_available()

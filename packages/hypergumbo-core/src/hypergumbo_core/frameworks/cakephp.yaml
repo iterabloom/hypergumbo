@@ -1,0 +1,112 @@
+# CakePHP framework patterns (ADR-0003 v1.1.x)
+#
+# CakePHP is a PHP rapid application development framework.
+# Controllers extend Controller or AppController.
+# Models use Table (for database) and Entity (for data objects).
+# Routes defined in config/routes.php using $routes->connect().
+
+id: cakephp
+language: php
+
+patterns:
+  # Controller base class
+  - concept: controller
+    base_class: "^(App)?Controller$"
+
+  # Table model (database layer)
+  - concept: model
+    base_class: "^Table$"
+
+  # Entity (data object)
+  - concept: entity
+    base_class: "^Entity$"
+
+  # Route connect
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->connect$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.url"
+
+  # Route scope (group)
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->scope$"
+
+  # Route prefix
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->prefix$"
+
+  # Middleware interface
+  - concept: middleware
+    base_class: "^MiddlewareInterface$"
+
+  # Middleware queue
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^\\$middlewareQueue->add$"
+
+  # Component (controller add-ons)
+  - concept: component
+    base_class: "^Component$"
+
+  # Behavior (model add-ons)
+  - concept: behavior
+    base_class: "^Behavior$"
+
+  # Helper (view add-ons)
+  - concept: helper
+    base_class: "^Helper$"
+
+  # Shell command (CLI)
+  - concept: command
+    base_class: "^Shell$"
+
+  # Console command (newer CLI)
+  - concept: command
+    base_class: "^Command$"
+
+  # Migration
+  - concept: migration
+    base_class: "^Migration$"
+
+  # Seed
+  - concept: seeder
+    base_class: "^Seeder$"
+
+  # Cell (view component)
+  - concept: view_component
+    base_class: "^Cell$"
+
+  # Form (form handler)
+  - concept: form
+    base_class: "^Form$"
+
+  # Plugin
+  - concept: plugin
+    base_class: "^Plugin$"
+
+  # Event listener
+  - concept: event_listener
+    base_class: "^EventListenerInterface$"
+
+  # Mailer
+  - concept: mailer
+    base_class: "^Mailer$"
+
+  # Fixture (test data)
+  - concept: fixture
+    base_class: "^(Fixture|TestFixture)$"
+
+  # Test case
+  - concept: test
+    base_class: "^(TestCase|IntegrationTestCase)$"
+
+linkers:
+  - http

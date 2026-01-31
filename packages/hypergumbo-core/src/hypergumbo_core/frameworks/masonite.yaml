@@ -1,0 +1,90 @@
+# Masonite framework patterns (ADR-0003 v1.1.x)
+#
+# Masonite is a modern Python framework with Laravel-inspired routing.
+# Routes use string-based controller references: 'ControllerName@method'
+
+id: masonite
+language: python
+
+patterns:
+  # Controller class detection (inherits Controller)
+  - concept: controller
+    base_class: "^Controller$"
+
+  # Route patterns - Route.get('/path', 'Controller@method')
+  # Usage-based patterns for call-based routing
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^Route\\.(get|post|put|patch|delete|options|head|any)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.url"
+      method: "name_suffix"
+
+  # Resource routes - Route.resource('/users', 'UserController')
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^Route\\.resource$"
+      position: "^args\\[0\\]$"
+
+  # API resource routes
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^Route\\.api$"
+      position: "^args\\[0\\]$"
+
+  # Route groups - Route.group([...], prefix='/api')
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^Route\\.group$"
+
+  # Middleware application - .middleware('auth', 'verified')
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "\\.middleware$"
+
+  # Masonite ORM model (inherits Model)
+  - concept: model
+    base_class: "^Model$"
+
+  # Service providers (inherits Provider)
+  - concept: service_provider
+    base_class: "^Provider$"
+
+  # Command classes (inherits Command)
+  - concept: command
+    base_class: "^Command$"
+
+  # Mail classes (inherits Mailable)
+  - concept: mailable
+    base_class: "^Mailable$"
+
+  # Event classes
+  - concept: event
+    base_class: "^(Event|Listener)$"
+
+  # Queue jobs (inherits Job)
+  - concept: job
+    base_class: "^(Job|ShouldQueue)$"
+
+  # Broadcast channels
+  - concept: broadcast
+    base_class: "^BroadcastController$"
+
+  # Validation classes (inherits Validator)
+  - concept: validator
+    base_class: "^Validator$"
+
+  # Guard/Auth
+  - concept: auth
+    usage:
+      kind: "^call$"
+      name: "^Auth\\."
+
+linkers:
+  - http

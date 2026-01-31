@@ -1,0 +1,150 @@
+# http4s framework patterns (ADR-0003 v1.1.x)
+#
+# http4s is a purely functional HTTP library for Scala.
+# Routes use pattern matching DSL: case GET -> Root / "path" => ...
+# Core abstraction: HttpRoutes[F] as Kleisli[OptionT[F, *], Request[F], Response[F]]
+
+id: http4s
+language: scala
+
+patterns:
+  # HttpRoutes DSL entry point
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^HttpRoutes$"
+
+  # HttpRoutes.of for route definitions
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^HttpRoutes\\.of$"
+
+  # Router composition with <+>
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^<\\+>$"
+
+  # BlazeServerBuilder for server setup
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^BlazeServerBuilder$"
+
+  # EmberServerBuilder (newer alternative)
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^EmberServerBuilder$"
+
+  # BlazeClientBuilder for HTTP client
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^BlazeClientBuilder$"
+
+  # EmberClientBuilder (newer client)
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^EmberClientBuilder$"
+
+  # Middleware for request/response transformation
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^Middleware$"
+
+  # Logger middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^Logger$"
+
+  # Authentication middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^AuthMiddleware$"
+
+  # CORS middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^CORS$"
+
+  # GZip middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^GZip$"
+
+  # EntityDecoder for request body parsing
+  - concept: decoder
+    usage:
+      kind: "^call$"
+      name: "^EntityDecoder$"
+
+  # EntityEncoder for response body encoding
+  - concept: encoder
+    usage:
+      kind: "^call$"
+      name: "^EntityEncoder$"
+
+  # jsonOf for JSON decoding
+  - concept: decoder
+    usage:
+      kind: "^call$"
+      name: "^jsonOf$"
+
+  # StaticFile for serving static files
+  - concept: static_handler
+    usage:
+      kind: "^call$"
+      name: "^StaticFile$"
+
+  # WebSocketBuilder for WebSocket support
+  - concept: websocket
+    usage:
+      kind: "^call$"
+      name: "^WebSocketBuilder$"
+
+  # Server-Sent Events
+  - concept: sse_handler
+    usage:
+      kind: "^call$"
+      name: "^ServerSentEvents$"
+
+  # Query parameter matchers
+  - concept: param_matcher
+    usage:
+      kind: "^call$"
+      name: "^QueryParamDecoderMatcher$"
+
+  # Optional query parameter matchers
+  - concept: param_matcher
+    usage:
+      kind: "^call$"
+      name: "^OptionalQueryParamDecoderMatcher$"
+
+  # Path variable matchers
+  - concept: param_matcher
+    usage:
+      kind: "^call$"
+      name: "^(IntVar|LongVar|UUIDVar)$"
+
+  # Dsl trait for request/response helpers
+  - concept: dsl
+    base_class: "^Http4sDsl$"
+
+  # IOApp for application entry point
+  - concept: application
+    base_class: "^IOApp$"
+
+  # Server trait implementation
+  - concept: server
+    base_class: "^Server$"
+
+linkers:
+  - http

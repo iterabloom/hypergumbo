@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.framework_patterns import (
+from hypergumbo_core.framework_patterns import (
     clear_pattern_cache,
     enrich_symbols,
     load_framework_patterns,
 )
-from hypergumbo.ir import Span, Symbol
+from hypergumbo_core.ir import Span, Symbol
 
 
 class TestFastAPIPatternLoading:

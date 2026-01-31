@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from hypergumbo.cli import run_behavior_map
+from hypergumbo_core.cli import run_behavior_map
 
 
 def test_detects_script_src_tag(tmp_path: Path) -> None:

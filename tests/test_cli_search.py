@@ -2,8 +2,8 @@
 import json
 from pathlib import Path
 
-from hypergumbo.schema import SCHEMA_VERSION
-from hypergumbo.cli import cmd_search, main
+from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.cli import cmd_search, main
 
 
 class FakeArgs:

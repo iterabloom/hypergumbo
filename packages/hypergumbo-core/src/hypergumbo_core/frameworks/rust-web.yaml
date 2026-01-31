@@ -1,0 +1,139 @@
+# Rust Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
+#
+# Matches common Rust web frameworks: Actix-web, Axum, Rocket, Warp.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Definition-based patterns (v1.0.x): Match annotations for Actix-web, Rocket
+# Usage-based patterns (v1.1.x): Match call-based routing for Axum
+
+id: rust-web
+language: rust
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for Axum call-based routing
+
+  # Axum route handlers - .route("/path", get(handler))
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^route\\.(get|post|put|patch|delete|head|options|trace)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Actix-web route attributes (both short form #[get] and qualified #[actix_web::get])
+  - concept: route
+    annotation: "^(actix_web::)?get$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?post$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?put$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?delete$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?patch$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?head$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?options$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(actix_web::)?trace$"
+    extract_path: "args[0]"
+
+  # Actix-web route macro (generic)
+  - concept: route
+    annotation: "^(actix_web::)?route$"
+    extract_path: "args[0]"
+
+  # Rocket route attributes (both short form and qualified)
+  - concept: route
+    annotation: "^(rocket::)?get$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(rocket::)?post$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(rocket::)?put$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(rocket::)?delete$"
+    extract_path: "args[0]"
+
+  - concept: route
+    annotation: "^(rocket::)?patch$"
+    extract_path: "args[0]"
+
+  # Rocket generic route
+  - concept: route
+    annotation: "^(rocket::)?route$"
+    extract_path: "args[0]"
+
+  # Axum middleware
+  - concept: middleware
+    annotation: "^axum::middleware::from_fn$"
+
+  - concept: middleware
+    annotation: "^tower::ServiceExt"
+
+  # Actix-web middleware
+  - concept: middleware
+    annotation: "^actix_web::middleware::"
+
+  # Diesel ORM models
+  - concept: model
+    annotation: "^diesel::.*Insertable$"
+
+  - concept: model
+    annotation: "^diesel::.*Queryable$"
+
+  - concept: model
+    annotation: "^diesel::.*Identifiable$"
+
+  # SeaORM models
+  - concept: model
+    annotation: "^sea_orm::entity::.*Entity$"
+
+  - concept: model
+    annotation: "^sea_orm::DeriveEntityModel$"
+
+  # SQLx query patterns
+  - concept: repository
+    annotation: "^sqlx::query$"
+
+  - concept: repository
+    annotation: "^sqlx::query_as$"
+
+  # Tokio async tasks
+  - concept: task
+    annotation: "^tokio::spawn$"
+
+  - concept: task
+    annotation: "^tokio::task::spawn$"
+
+  # Actix background tasks
+  - concept: task
+    annotation: "^actix_rt::spawn$"
+
+linkers:
+  - http
+  - database_query

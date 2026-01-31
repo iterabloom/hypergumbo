@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from hypergumbo.schema import SCHEMA_VERSION
-from hypergumbo.cli import cmd_test_coverage, main
+from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.cli import cmd_test_coverage, main
 
 
 class FakeArgs:

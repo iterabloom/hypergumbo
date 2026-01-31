@@ -7,8 +7,8 @@ symbols equal priority regardless of supply chain tier.
 import pytest
 from pathlib import Path
 
-from hypergumbo.cli import build_parser
-from hypergumbo.sketch import generate_sketch
+from hypergumbo_core.cli import build_parser
+from hypergumbo_core.sketch import generate_sketch
 
 
 class TestNoFirstPartyPriorityParser:

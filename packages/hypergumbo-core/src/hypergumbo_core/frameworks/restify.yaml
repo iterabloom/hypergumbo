@@ -1,0 +1,197 @@
+# Restify framework patterns (ADR-0003 v1.1.x)
+#
+# Restify is a Node.js REST API framework focused on building correct
+# REST web services. Similar to Express but optimized for REST.
+# Routes: server.get('/path', handler), server.post('/path', handler)
+
+id: restify
+language: javascript
+
+patterns:
+  # Server creation
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^restify\\.createServer$"
+
+  # GET route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.del$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # HEAD route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.head$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "HEAD"
+      path: "metadata.url"
+
+  # OPTIONS route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^server\\.opts$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "OPTIONS"
+      path: "metadata.url"
+
+  # Pre-handler (runs before routing)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^server\\.pre$"
+
+  # Use middleware (runs after routing)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^server\\.use$"
+
+  # Body parser plugins
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.(bodyParser|jsonBodyParser|urlEncodedBodyParser)$"
+
+  # Query parser plugin
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.queryParser$"
+
+  # Authorization plugin
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.authorizationParser$"
+
+  # CORS plugin
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.(CORS|cors)$"
+
+  # Throttle plugin
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.throttle$"
+
+  # Request logger plugin
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.requestLogger$"
+
+  # Full response plugin
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.fullResponse$"
+
+  # Accept parser
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.acceptParser$"
+
+  # Date parser
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.dateParser$"
+
+  # Gzip response
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^restify\\.plugins\\.gzipResponse$"
+
+  # Error handling
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^server\\.on$"
+      position: "^args\\[0\\]$"
+
+  # Server listen
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^server\\.listen$"
+
+  # Server close
+  - concept: lifecycle
+    usage:
+      kind: "^call$"
+      name: "^server\\.close$"
+
+  # HttpClient
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^restify\\.createClient$"
+
+  # JSON client
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^restify\\.createJsonClient$"
+
+  # String client
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^restify\\.createStringClient$"
+
+linkers:
+  - http

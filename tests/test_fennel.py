@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.fennel import (
+from hypergumbo_lang_extended1.fennel import (
     analyze_fennel,
     find_fennel_files,
     is_fennel_tree_sitter_available,
@@ -84,7 +84,7 @@ class TestIsFennelTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.fennel as fennel_module
+        import hypergumbo_lang_extended1.fennel as fennel_module
         with patch.object(fennel_module, "is_fennel_tree_sitter_available", return_value=False):
             assert fennel_module.is_fennel_tree_sitter_available() is False
 
@@ -94,7 +94,7 @@ class TestAnalyzeFennel:
 
     def test_skips_when_unavailable(self, fennel_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.fennel as fennel_module
+        import hypergumbo_lang_extended1.fennel as fennel_module
 
         with patch.object(fennel_module, "is_fennel_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

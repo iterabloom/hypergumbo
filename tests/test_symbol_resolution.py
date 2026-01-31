@@ -1,11 +1,11 @@
 """Tests for the shared SymbolResolver module."""
 
 import pytest
-from hypergumbo.symbol_resolution import (
+from hypergumbo_core.symbol_resolution import (
     SymbolResolver, LookupResult, lookup_symbol,
     NameResolver, ListNameResolver, lookup_name,
 )
-from hypergumbo.ir import Symbol, Span
+from hypergumbo_core.ir import Symbol, Span
 
 
 def make_symbol(name: str, path: str, module: str) -> Symbol:

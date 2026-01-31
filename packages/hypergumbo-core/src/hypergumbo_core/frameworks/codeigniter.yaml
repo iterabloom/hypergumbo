@@ -1,0 +1,182 @@
+# CodeIgniter framework patterns (ADR-0003 v1.1.x)
+#
+# CodeIgniter is a lightweight PHP MVC framework.
+# Controllers extend BaseController (CI4) or CI_Controller (CI3).
+# Routes defined in app/Config/Routes.php using $routes->get(), etc.
+
+id: codeigniter
+language: php
+
+patterns:
+  # BaseController (CI4)
+  - concept: controller
+    base_class: "^BaseController$"
+
+  # CI_Controller (CI3 legacy)
+  - concept: controller
+    base_class: "^CI_Controller$"
+
+  # ResourceController for REST APIs
+  - concept: controller
+    base_class: "^ResourceController$"
+
+  # Model base class (CI4)
+  - concept: model
+    base_class: "^Model$"
+
+  # CI_Model (CI3 legacy)
+  - concept: model
+    base_class: "^CI_Model$"
+
+  # Entity for data objects
+  - concept: entity
+    base_class: "^Entity$"
+
+  # GET route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # Match multiple methods
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->match$"
+      position: "^args\\[0\\]$"
+
+  # Add route (any method)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->add$"
+      position: "^args\\[0\\]$"
+
+  # Resource routes (CRUD)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->resource$"
+      position: "^args\\[0\\]$"
+
+  # Presenter routes
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->presenter$"
+      position: "^args\\[0\\]$"
+
+  # Route group
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->group$"
+
+  # Filter for middleware
+  - concept: middleware
+    base_class: "^FilterInterface$"
+
+  # Filter registration
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^\\$routes->filter$"
+
+  # Before/After filters on routes
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^->filter$"
+
+  # Migration
+  - concept: migration
+    base_class: "^Migration$"
+
+  # Seeder
+  - concept: seeder
+    base_class: "^Seeder$"
+
+  # Validation rules
+  - concept: validation
+    base_class: "^Validation$"
+
+  # Command for CLI
+  - concept: command
+    base_class: "^BaseCommand$"
+
+  # Config class
+  - concept: config
+    base_class: "^BaseConfig$"
+
+  # Service registration
+  - concept: service
+    base_class: "^BaseService$"
+
+  # View cell
+  - concept: view_component
+    base_class: "^Cell$"
+
+  # Library
+  - concept: library
+    usage:
+      kind: "^call$"
+      name: "^\\$this->load->library$"
+
+  # Helper
+  - concept: helper
+    usage:
+      kind: "^call$"
+      name: "^(helper|\\$this->load->helper)$"
+
+  # View loading
+  - concept: view
+    usage:
+      kind: "^call$"
+      name: "^(view|\\$this->load->view)$"
+
+linkers:
+  - http

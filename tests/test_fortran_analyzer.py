@@ -9,7 +9,7 @@ Tests verify that the analyzer correctly extracts:
 - Use statements (imports)
 """
 
-from hypergumbo.analyze.fortran import (
+from hypergumbo_lang_common.fortran import (
     PASS_ID,
     PASS_VERSION,
     FortranAnalysisResult,
@@ -213,7 +213,7 @@ end program test
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.fortran import is_fortran_tree_sitter_available
+    from hypergumbo_lang_common.fortran import is_fortran_tree_sitter_available
 
     # The function should return a boolean
     result = is_fortran_tree_sitter_available()
@@ -298,7 +298,7 @@ class TestFortranImportAliases:
 
     def test_extracts_use_alias(self, tmp_path):
         """Tracks use ... only: alias => original as alias mapping."""
-        from hypergumbo.analyze.fortran import _extract_use_aliases
+        from hypergumbo_lang_common.fortran import _extract_use_aliases
         import tree_sitter
         import tree_sitter_fortran
 
@@ -368,7 +368,7 @@ class TestFortranSignatureExtraction:
 
     def test_function_with_result_signature(self, tmp_path):
         """Extracts signature from a function with result variable."""
-        from hypergumbo.analyze.fortran import analyze_fortran_files
+        from hypergumbo_lang_common.fortran import analyze_fortran_files
 
         (tmp_path / "calculator.f90").write_text("""
 function add(x, y) result(z)
@@ -384,7 +384,7 @@ end function add
 
     def test_subroutine_signature(self, tmp_path):
         """Extracts signature from subroutine (no return type)."""
-        from hypergumbo.analyze.fortran import analyze_fortran_files
+        from hypergumbo_lang_common.fortran import analyze_fortran_files
 
         (tmp_path / "logger.f90").write_text("""
 subroutine log_message(message)
@@ -399,7 +399,7 @@ end subroutine log_message
 
     def test_function_no_params_signature(self, tmp_path):
         """Extracts signature from a function with no parameters."""
-        from hypergumbo.analyze.fortran import analyze_fortran_files
+        from hypergumbo_lang_common.fortran import analyze_fortran_files
 
         (tmp_path / "getter.f90").write_text("""
 function get_zero() result(z)

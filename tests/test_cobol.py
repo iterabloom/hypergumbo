@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.analyze.cobol import analyze_cobol
+from hypergumbo_lang_extended1.cobol import analyze_cobol
 
 
 class TestAnalyzeCOBOL:
@@ -238,7 +238,7 @@ class TestAnalyzeCOBOLFallback:
         (tmp_path / "test.cob").write_text("IDENTIFICATION DIVISION.")
 
         # Temporarily make it unavailable by mocking
-        import hypergumbo.analyze.cobol as cobol_mod
+        import hypergumbo_lang_extended1.cobol as cobol_mod
 
         original_func = cobol_mod.is_cobol_tree_sitter_available
 

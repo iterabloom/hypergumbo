@@ -1,6 +1,6 @@
 """Tests for limits tracking."""
 
-from hypergumbo.limits import Limits, FailedFile
+from hypergumbo_core.limits import Limits, FailedFile
 
 
 class TestLimits:

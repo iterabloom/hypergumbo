@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.framework_patterns import (
+from hypergumbo_core.framework_patterns import (
     DeferredResolutionStats,
     FrameworkPatternDef,
     Pattern,
@@ -23,7 +23,7 @@ from hypergumbo.framework_patterns import (
     match_usage_patterns,
     resolve_deferred_symbol_refs,
 )
-from hypergumbo.ir import Span, Symbol, UsageContext
+from hypergumbo_core.ir import Span, Symbol, UsageContext
 
 
 class TestPattern:
@@ -726,7 +726,7 @@ linkers:
 
         # Mock the frameworks directory to use our temp dir
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             result = load_framework_patterns("test_fw")
@@ -859,7 +859,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             enriched = enrich_symbols([symbol], {"test_fw"})
@@ -916,7 +916,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             enriched = enrich_symbols([symbol], {"pydantic"})
@@ -951,7 +951,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             enriched = enrich_symbols([symbol], {"test_fw"})
@@ -991,7 +991,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             enriched = enrich_symbols([symbol], {"test_fw"})
@@ -1041,7 +1041,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             enriched = enrich_symbols([symbol], {"test_fw"})
@@ -1105,7 +1105,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             enriched = enrich_symbols([symbol, symbol_no_meta], {"test_fw"})
@@ -2209,7 +2209,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2248,7 +2248,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2286,7 +2286,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2327,7 +2327,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2368,7 +2368,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2409,7 +2409,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2450,7 +2450,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -2490,7 +2490,7 @@ patterns:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.get_frameworks_dir",
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
             return_value=tmp_path,
         ):
             pattern_def = load_framework_patterns("custom_fw")
@@ -5723,7 +5723,7 @@ class TestJavaAnalyzerIntegration:
         3. enrich_symbols populates both concepts AND legacy fields
         4. The deprecated analyzer code is NOT needed for this to work
         """
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "UserController.java"
         java_file.write_text("""
@@ -5765,7 +5765,7 @@ public class UserController {
 
     def test_spring_all_methods_via_yaml(self, tmp_path: Path) -> None:
         """All HTTP method mappings work through YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "ResourceController.java"
         java_file.write_text("""
@@ -5809,7 +5809,7 @@ public class ResourceController {
 
     def test_spring_controller_via_yaml(self, tmp_path: Path) -> None:
         """Spring @RestController is enriched with controller concept."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "ApiController.java"
         java_file.write_text("""
@@ -6305,7 +6305,7 @@ class TestEnrichSymbolsWithUsageContexts:
             return pattern_def if fw_id == "test-django" else None
 
         with patch(
-            "hypergumbo.framework_patterns.load_framework_patterns",
+            "hypergumbo_core.framework_patterns.load_framework_patterns",
             side_effect=mock_load,
         ):
             enriched = enrich_symbols(
@@ -6358,7 +6358,7 @@ class TestEnrichSymbolsWithUsageContexts:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.load_framework_patterns",
+            "hypergumbo_core.framework_patterns.load_framework_patterns",
             return_value=pattern_def,
         ):
             enriched = enrich_symbols(
@@ -6406,7 +6406,7 @@ class TestEnrichSymbolsWithUsageContexts:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.load_framework_patterns",
+            "hypergumbo_core.framework_patterns.load_framework_patterns",
             return_value=pattern_def,
         ):
             enriched = enrich_symbols(
@@ -6454,7 +6454,7 @@ class TestEnrichSymbolsWithUsageContexts:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.load_framework_patterns",
+            "hypergumbo_core.framework_patterns.load_framework_patterns",
             return_value=pattern_def,
         ):
             enriched = enrich_symbols(
@@ -6518,7 +6518,7 @@ class TestEnrichSymbolsWithUsageContexts:
         )
 
         with patch(
-            "hypergumbo.framework_patterns.load_framework_patterns",
+            "hypergumbo_core.framework_patterns.load_framework_patterns",
             return_value=pattern_def,
         ):
             enriched = enrich_symbols(

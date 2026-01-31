@@ -9,7 +9,7 @@ class TestFindScalaFiles:
 
     def test_finds_scala_files(self, tmp_path: Path) -> None:
         """Finds .scala files."""
-        from hypergumbo.analyze.scala import find_scala_files
+        from hypergumbo_lang_mainstream.scala import find_scala_files
 
         (tmp_path / "Main.scala").write_text("object Main { def main(args: Array[String]): Unit = {} }")
         (tmp_path / "Utils.scala").write_text("class Utils {}")
@@ -26,7 +26,7 @@ class TestScalaTreeSitterAvailability:
 
     def test_is_scala_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-scala is available."""
-        from hypergumbo.analyze.scala import is_scala_tree_sitter_available
+        from hypergumbo_lang_mainstream.scala import is_scala_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -34,7 +34,7 @@ class TestScalaTreeSitterAvailability:
 
     def test_is_scala_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.scala import is_scala_tree_sitter_available
+        from hypergumbo_lang_mainstream.scala import is_scala_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestScalaTreeSitterAvailability:
 
     def test_is_scala_tree_sitter_available_no_scala(self) -> None:
         """Returns False when tree-sitter is available but scala grammar is not."""
-        from hypergumbo.analyze.scala import is_scala_tree_sitter_available
+        from hypergumbo_lang_mainstream.scala import is_scala_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeScalaFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-scala unavailable."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "test.scala").write_text("object Test {}")
 
-        with patch("hypergumbo.analyze.scala.is_scala_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.scala.is_scala_tree_sitter_available", return_value=False):
             result = analyze_scala(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestScalaFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts Scala function declarations."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Main.scala"
         scala_file.write_text("""
@@ -103,7 +103,7 @@ class TestScalaClassExtraction:
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts class declarations."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Models.scala"
         scala_file.write_text("""
@@ -130,7 +130,7 @@ class TestScalaObjectExtraction:
 
     def test_extracts_object(self, tmp_path: Path) -> None:
         """Extracts object declarations."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Singleton.scala"
         scala_file.write_text("""
@@ -159,7 +159,7 @@ class TestScalaTraitExtraction:
 
     def test_extracts_trait(self, tmp_path: Path) -> None:
         """Extracts trait declarations."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Traits.scala"
         scala_file.write_text("""
@@ -186,7 +186,7 @@ class TestScalaFunctionCalls:
 
     def test_detects_function_call(self, tmp_path: Path) -> None:
         """Detects calls to functions in same file."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Utils.scala"
         scala_file.write_text("""
@@ -223,7 +223,7 @@ class TestScalaLambdaCallAttribution:
 
         The call to helper() should be attributed to processItems.
         """
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Test.scala"
         scala_file.write_text("""
@@ -274,7 +274,7 @@ object Test {
 
     def test_call_inside_map_lambda_attributed(self, tmp_path: Path) -> None:
         """Calls inside map lambda are attributed to enclosing function."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Test.scala"
         scala_file.write_text("""
@@ -318,7 +318,7 @@ class TestScalaImports:
 
     def test_detects_import_statement(self, tmp_path: Path) -> None:
         """Detects import statements."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "Main.scala"
         scala_file.write_text("""
@@ -344,11 +344,11 @@ class TestScalaEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "test.scala").write_text("object Test {}")
 
-        with patch("hypergumbo.analyze.scala.is_scala_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.scala.is_scala_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_scala": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_scala"]
@@ -361,7 +361,7 @@ class TestScalaEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "empty.scala").write_text("// Just a comment\n")
 
@@ -372,7 +372,7 @@ class TestScalaEdgeCases:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Helper.scala").write_text("""
 def greet(name: String): String = {
@@ -397,7 +397,7 @@ class TestScalaMethodExtraction:
 
     def test_extracts_class_methods(self, tmp_path: Path) -> None:
         """Extracts methods defined inside classes."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         scala_file = tmp_path / "User.scala"
         scala_file.write_text("""
@@ -425,11 +425,11 @@ class TestScalaFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.scala import (
+        from hypergumbo_lang_mainstream.scala import (
             _extract_symbols_from_file,
             is_scala_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_scala_tree_sitter_available():
             pytest.skip("tree-sitter-scala not available")
@@ -451,11 +451,11 @@ class TestScalaFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.scala import (
+        from hypergumbo_lang_mainstream.scala import (
             _extract_edges_from_file,
             is_scala_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_scala_tree_sitter_available():
             pytest.skip("tree-sitter-scala not available")
@@ -481,7 +481,7 @@ class TestImportHintsExtraction:
 
     def test_extracts_simple_import(self, tmp_path: Path) -> None:
         """Extracts simple import using last component."""
-        from hypergumbo.analyze.scala import (
+        from hypergumbo_lang_mainstream.scala import (
             _extract_import_hints,
             is_scala_tree_sitter_available,
         )
@@ -517,7 +517,7 @@ object Main {
 
     def test_extracts_import_selectors(self, tmp_path: Path) -> None:
         """Extracts multiple imports from selector syntax."""
-        from hypergumbo.analyze.scala import (
+        from hypergumbo_lang_mainstream.scala import (
             _extract_import_hints,
             is_scala_tree_sitter_available,
         )
@@ -553,7 +553,7 @@ object Main {
 
     def test_extracts_renamed_import(self, tmp_path: Path) -> None:
         """Extracts renamed import with alias."""
-        from hypergumbo.analyze.scala import (
+        from hypergumbo_lang_mainstream.scala import (
             _extract_import_hints,
             is_scala_tree_sitter_available,
         )
@@ -593,7 +593,7 @@ class TestScalaHelperFunctions:
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.scala import (
+        from hypergumbo_lang_mainstream.scala import (
             _find_child_by_type,
             is_scala_tree_sitter_available,
         )
@@ -623,7 +623,7 @@ class TestScalaInheritanceEdges:
 
     def test_class_extends_class_has_base_classes(self, tmp_path: Path) -> None:
         """Class extending another class has base_classes metadata."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Models.scala").write_text("""
 class BaseModel {
@@ -647,7 +647,7 @@ class User extends BaseModel {
 
     def test_class_with_trait_has_base_classes(self, tmp_path: Path) -> None:
         """Class with mixed-in traits has base_classes including traits."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Models.scala").write_text("""
 trait Serializable {
@@ -678,7 +678,7 @@ class User extends Serializable with Comparable {
 
     def test_trait_extends_trait_has_base_classes(self, tmp_path: Path) -> None:
         """Trait extending another trait has base_classes."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Traits.scala").write_text("""
 trait Entity {
@@ -702,7 +702,7 @@ trait Persistable extends Entity {
 
     def test_generic_base_class_strips_type_params(self, tmp_path: Path) -> None:
         """Generic base class has type params stripped in base_classes."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Repository.scala").write_text("""
 class Repository[T] {
@@ -729,7 +729,7 @@ class User
 
     def test_class_without_extends_has_no_base_classes(self, tmp_path: Path) -> None:
         """Class without extends clause has no base_classes metadata."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Simple.scala").write_text("""
 class SimpleClass {
@@ -749,9 +749,9 @@ class SimpleClass {
 
     def test_linker_creates_extends_edge(self, tmp_path: Path) -> None:
         """Inheritance linker creates extends edge from base_classes."""
-        from hypergumbo.analyze.scala import analyze_scala
-        from hypergumbo.linkers.inheritance import link_inheritance
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         (tmp_path / "Models.scala").write_text("""
 class BaseModel {
@@ -783,7 +783,7 @@ class TestScalaSignatureExtraction:
 
     def test_basic_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from a basic method."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Calculator.scala").write_text("""
 class Calculator {
@@ -797,7 +797,7 @@ class Calculator {
 
     def test_unit_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from Unit method (omits Unit)."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Logger.scala").write_text("""
 class Logger {
@@ -811,7 +811,7 @@ class Logger {
 
     def test_no_params_signature(self, tmp_path: Path) -> None:
         """Extracts signature from method with no parameters."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Counter.scala").write_text("""
 class Counter {
@@ -825,7 +825,7 @@ class Counter {
 
     def test_trait_abstract_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from abstract method in trait."""
-        from hypergumbo.analyze.scala import analyze_scala
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "Drawable.scala").write_text("""
 trait Drawable {

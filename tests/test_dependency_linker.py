@@ -5,8 +5,8 @@ Tests that the linker correctly connects:
 - pyproject.toml dependencies to Python imports
 """
 
-from hypergumbo.ir import Edge, Span, Symbol
-from hypergumbo.linkers.dependency import (
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.linkers.dependency import (
     PASS_ID,
     DependencyLinkResult,
     link_dependencies,

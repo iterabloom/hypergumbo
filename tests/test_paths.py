@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from hypergumbo.paths import (
+from hypergumbo_core.paths import (
     normalize_path,
     to_relative_path,
     paths_match,

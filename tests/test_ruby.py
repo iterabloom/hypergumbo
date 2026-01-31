@@ -9,7 +9,7 @@ class TestFindRubyFiles:
 
     def test_finds_ruby_files(self, tmp_path: Path) -> None:
         """Finds .rb files."""
-        from hypergumbo.analyze.ruby import find_ruby_files
+        from hypergumbo_lang_mainstream.ruby import find_ruby_files
 
         (tmp_path / "app.rb").write_text("class App; end")
         (tmp_path / "config.rb").write_text("module Config; end")
@@ -26,7 +26,7 @@ class TestRubyTreeSitterAvailability:
 
     def test_is_ruby_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-ruby is available."""
-        from hypergumbo.analyze.ruby import is_ruby_tree_sitter_available
+        from hypergumbo_lang_mainstream.ruby import is_ruby_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -34,7 +34,7 @@ class TestRubyTreeSitterAvailability:
 
     def test_is_ruby_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.ruby import is_ruby_tree_sitter_available
+        from hypergumbo_lang_mainstream.ruby import is_ruby_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestRubyTreeSitterAvailability:
 
     def test_is_ruby_tree_sitter_available_no_ruby(self) -> None:
         """Returns False when tree-sitter is available but ruby grammar is not."""
-        from hypergumbo.analyze.ruby import is_ruby_tree_sitter_available
+        from hypergumbo_lang_mainstream.ruby import is_ruby_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeRubyFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-ruby unavailable."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "test.rb").write_text("class Test; end")
 
-        with patch("hypergumbo.analyze.ruby.is_ruby_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.ruby.is_ruby_tree_sitter_available", return_value=False):
             result = analyze_ruby(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestRubyMethodExtraction:
 
     def test_extracts_method(self, tmp_path: Path) -> None:
         """Extracts Ruby method definitions."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "app.rb"
         rb_file.write_text("""
@@ -103,7 +103,7 @@ class TestRubyClassExtraction:
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts class declarations."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
@@ -136,7 +136,7 @@ class TestRubyInheritanceEdges:
 
     def test_extracts_base_class_metadata(self, tmp_path: Path) -> None:
         """Extracts base_classes metadata for class with superclass."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
@@ -160,7 +160,7 @@ end
 
     def test_creates_extends_edge(self, tmp_path: Path) -> None:
         """Creates extends edge from class to its superclass."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
@@ -189,7 +189,7 @@ end
 
     def test_no_edge_for_external_superclass(self, tmp_path: Path) -> None:
         """No edge created when superclass is not in analyzed codebase."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
@@ -213,7 +213,7 @@ end
 
     def test_qualified_name_matches_simple_name(self, tmp_path: Path) -> None:
         """Edge created when qualified superclass matches a simple class name."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
@@ -245,7 +245,7 @@ end
 
     def test_no_metadata_for_class_without_superclass(self, tmp_path: Path) -> None:
         """Class without superclass has no base_classes metadata."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
@@ -268,7 +268,7 @@ class TestRubyModuleExtraction:
 
     def test_extracts_module(self, tmp_path: Path) -> None:
         """Extracts module declarations."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "utils.rb"
         rb_file.write_text("""
@@ -300,7 +300,7 @@ class TestRubyMethodCalls:
 
     def test_detects_method_call(self, tmp_path: Path) -> None:
         """Detects calls to methods in same file."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "utils.rb"
         rb_file.write_text("""
@@ -326,7 +326,7 @@ end
         E.g., logger method calling Postal.logger should NOT create logger -> logger edge.
         The analyzer should detect that the receiver is different (Postal vs self).
         """
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "inspector.rb"
         rb_file.write_text("""
@@ -356,7 +356,7 @@ end
 
     def test_bare_method_call_cross_file(self, tmp_path: Path) -> None:
         """Bare method call (no parens) to method in another file is resolved."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         # Define a method in one file
         (tmp_path / "helper.rb").write_text("""
@@ -388,7 +388,7 @@ class TestRubyRequires:
 
     def test_detects_require_statement(self, tmp_path: Path) -> None:
         """Detects require statements."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "main.rb"
         rb_file.write_text("""
@@ -413,11 +413,11 @@ class TestRubyEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "test.rb").write_text("class Test; end")
 
-        with patch("hypergumbo.analyze.ruby.is_ruby_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.ruby.is_ruby_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_ruby": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_ruby"]
@@ -430,7 +430,7 @@ class TestRubyEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         # Create a file with only comments
         (tmp_path / "empty.rb").write_text("# Just a comment\n\n")
@@ -442,7 +442,7 @@ class TestRubyEdgeCases:
 
     def test_cross_file_method_call(self, tmp_path: Path) -> None:
         """Detects method calls across files."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         # File 1: defines helper
         (tmp_path / "helper.rb").write_text("""
@@ -472,7 +472,7 @@ class TestRubyInstanceMethods:
 
     def test_extracts_instance_methods(self, tmp_path: Path) -> None:
         """Extracts instance methods from classes."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "user.rb"
         rb_file.write_text("""
@@ -506,11 +506,11 @@ class TestRubyFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.ruby import (
+        from hypergumbo_lang_mainstream.ruby import (
             _extract_symbols_from_file,
             is_ruby_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_ruby_tree_sitter_available():
             pytest.skip("tree-sitter-ruby not available")
@@ -532,11 +532,11 @@ class TestRubyFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.ruby import (
+        from hypergumbo_lang_mainstream.ruby import (
             _extract_edges_from_file,
             is_ruby_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_ruby_tree_sitter_available():
             pytest.skip("tree-sitter-ruby not available")
@@ -562,7 +562,7 @@ class TestRubyModuleMethods:
 
     def test_extracts_module_method(self, tmp_path: Path) -> None:
         """Extracts methods defined inside modules (not classes)."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "helpers.rb"
         rb_file.write_text("""
@@ -591,7 +591,7 @@ class TestRubyExplicitCalls:
 
     def test_detects_explicit_call_local(self, tmp_path: Path) -> None:
         """Detects method calls with arguments to local methods."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "app.rb"
         rb_file.write_text("""
@@ -612,7 +612,7 @@ end
 
     def test_detects_explicit_call_global(self, tmp_path: Path) -> None:
         """Detects method calls with arguments to global methods."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         # File 1: defines format
         (tmp_path / "formatter.rb").write_text("""
@@ -640,7 +640,7 @@ class TestRubyHelperFunctions:
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.ruby import (
+        from hypergumbo_lang_mainstream.ruby import (
             _find_child_by_type,
             is_ruby_tree_sitter_available,
         )
@@ -667,7 +667,7 @@ class TestRequireHintsExtraction:
 
     def test_extracts_require_hints(self, tmp_path: Path) -> None:
         """Extracts require paths and converts to PascalCase class names."""
-        from hypergumbo.analyze.ruby import (
+        from hypergumbo_lang_mainstream.ruby import (
             _extract_require_hints,
             is_ruby_tree_sitter_available,
         )
@@ -705,7 +705,7 @@ end
 
     def test_extracts_require_with_rb_extension(self, tmp_path: Path) -> None:
         """Strips .rb extension from require paths."""
-        from hypergumbo.analyze.ruby import (
+        from hypergumbo_lang_mainstream.ruby import (
             _extract_require_hints,
             is_ruby_tree_sitter_available,
         )
@@ -739,7 +739,7 @@ class TestRubySignatureExtraction:
 
     def test_positional_params(self, tmp_path: Path) -> None:
         """Extracts signature with positional parameters."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "calc.rb").write_text("""
 def add(x, y)
@@ -753,7 +753,7 @@ end
 
     def test_optional_params(self, tmp_path: Path) -> None:
         """Extracts signature with optional parameters (default values)."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "greeter.rb").write_text("""
 def greet(name, greeting = "Hello")
@@ -767,7 +767,7 @@ end
 
     def test_keyword_params(self, tmp_path: Path) -> None:
         """Extracts signature with keyword parameters."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "server.rb").write_text("""
 def configure(host:, port: 8080)
@@ -782,7 +782,7 @@ end
 
     def test_splat_and_block_params(self, tmp_path: Path) -> None:
         """Extracts signature with splat and block parameters."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "handler.rb").write_text("""
 def process(*args, **kwargs, &block)
@@ -796,7 +796,7 @@ end
 
     def test_no_params(self, tmp_path: Path) -> None:
         """Extracts signature for method with no parameters."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "simple.rb").write_text("""
 def answer
@@ -814,7 +814,7 @@ class TestSinatraUsageContext:
 
     def test_sinatra_get_with_block(self, tmp_path: Path) -> None:
         """Detects Sinatra get route with do block."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "app.rb").write_text("""
 require 'sinatra'
@@ -833,7 +833,7 @@ end
 
     def test_sinatra_post_with_block(self, tmp_path: Path) -> None:
         """Detects Sinatra post route with block."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "app.rb").write_text("""
 post '/users' do
@@ -848,7 +848,7 @@ end
 
     def test_sinatra_multiple_routes(self, tmp_path: Path) -> None:
         """Detects multiple Sinatra routes."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "app.rb").write_text("""
 get '/' do
@@ -875,7 +875,7 @@ class TestRailsUsageContext:
 
     def test_rails_route_with_to_option(self, tmp_path: Path) -> None:
         """Detects Rails get route with to: 'controller#action' option."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -892,7 +892,7 @@ end
 
     def test_rails_resources_route(self, tmp_path: Path) -> None:
         """Detects Rails resources :users macro."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -909,7 +909,7 @@ end
 
     def test_rails_resource_singular(self, tmp_path: Path) -> None:
         """Detects Rails resource :profile (singular) macro."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -926,7 +926,7 @@ end
 
     def test_rails_post_route_with_controller_action(self, tmp_path: Path) -> None:
         """Detects Rails post route with controller#action."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -944,7 +944,7 @@ class TestRailsRouteSymbols:
 
     def test_route_symbols_created_for_http_methods(self, tmp_path: Path) -> None:
         """Route DSL calls create Symbol objects with kind='route'."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -976,7 +976,7 @@ end
         INV-006 improvement: Instead of single RESOURCES symbol, emit all
         7 RESTful routes to enable route-handler linking for all actions.
         """
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -1023,7 +1023,7 @@ end
 
         resource :profile creates routes without :id param and no index.
         """
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -1053,7 +1053,7 @@ end
 
     def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
         """Route symbols include controller_action in metadata when specified."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "routes.rb").write_text("""
 Rails.application.routes.draw do
@@ -1086,7 +1086,7 @@ class TestRubyBlockCallAttribution:
 
         The call to helper() should be attributed to process, not lost.
         """
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "app.rb"
         rb_file.write_text("""
@@ -1128,7 +1128,7 @@ end
 
         Ruby allows both do...end and {...} block syntax.
         """
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "app.rb"
         rb_file.write_text("""
@@ -1164,7 +1164,7 @@ end
 
     def test_nested_blocks_attributed_to_outer_method(self, tmp_path: Path) -> None:
         """Calls inside nested blocks are attributed to the outermost method."""
-        from hypergumbo.analyze.ruby import analyze_ruby
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "app.rb"
         rb_file.write_text("""

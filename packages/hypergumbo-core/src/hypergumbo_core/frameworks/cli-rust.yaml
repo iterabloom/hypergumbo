@@ -1,0 +1,53 @@
+# CLI entrypoint patterns - Rust (ADR-0003)
+#
+# Patterns for detecting command-line interface entrypoints:
+# clap, structopt, argh.
+
+id: cli-rust
+language: rust
+
+patterns:
+  # ==================== CLAP PATTERNS ====================
+  # clap Parser derive macro
+  - concept: command
+    annotation: "^Parser$"
+
+  # clap Args derive macro
+  - concept: command
+    annotation: "^Args$"
+
+  # clap Subcommand derive macro
+  - concept: command
+    annotation: "^Subcommand$"
+
+  # clap ValueEnum derive macro
+  - concept: schema
+    annotation: "^ValueEnum$"
+
+  # clap command! macro
+  - concept: command
+    decorator: "^command!$"
+
+  # clap arg! macro
+  - concept: argument
+    decorator: "^arg!$"
+
+  # clap Command::new
+  - concept: command
+    decorator: "^Command::new$"
+
+  # ==================== STRUCTOPT PATTERNS (LEGACY) ====================
+  # structopt derive macro
+  - concept: command
+    annotation: "^StructOpt$"
+
+  # ==================== ARGH PATTERNS ====================
+  # argh FromArgs derive
+  - concept: command
+    annotation: "^FromArgs$"
+
+  # argh Subcommand derive
+  - concept: command
+    annotation: "^argh::Subcommand$"
+
+linkers: []

@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import twig as twig_module
-from hypergumbo.analyze.twig import (
+from hypergumbo_lang_extended1 import twig as twig_module
+from hypergumbo_lang_extended1.twig import (
     TwigAnalysisResult,
     analyze_twig,
     find_twig_files,

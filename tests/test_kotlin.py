@@ -9,7 +9,7 @@ class TestFindKotlinFiles:
 
     def test_finds_kotlin_files(self, tmp_path: Path) -> None:
         """Finds .kt files."""
-        from hypergumbo.analyze.kotlin import find_kotlin_files
+        from hypergumbo_lang_mainstream.kotlin import find_kotlin_files
 
         (tmp_path / "Main.kt").write_text("fun main() {}")
         (tmp_path / "Utils.kt").write_text("class Utils {}")
@@ -26,7 +26,7 @@ class TestKotlinTreeSitterAvailability:
 
     def test_is_kotlin_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-kotlin is available."""
-        from hypergumbo.analyze.kotlin import is_kotlin_tree_sitter_available
+        from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -34,7 +34,7 @@ class TestKotlinTreeSitterAvailability:
 
     def test_is_kotlin_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.kotlin import is_kotlin_tree_sitter_available
+        from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestKotlinTreeSitterAvailability:
 
     def test_is_kotlin_tree_sitter_available_no_kotlin(self) -> None:
         """Returns False when tree-sitter is available but kotlin grammar is not."""
-        from hypergumbo.analyze.kotlin import is_kotlin_tree_sitter_available
+        from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeKotlinFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-kotlin unavailable."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         (tmp_path / "test.kt").write_text("fun test() {}")
 
-        with patch("hypergumbo.analyze.kotlin.is_kotlin_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.kotlin.is_kotlin_tree_sitter_available", return_value=False):
             result = analyze_kotlin(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestKotlinFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts Kotlin function declarations."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Main.kt"
         kt_file.write_text("""
@@ -103,7 +103,7 @@ class TestKotlinClassExtraction:
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts class declarations."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -130,7 +130,7 @@ class TestKotlinObjectExtraction:
 
     def test_extracts_object(self, tmp_path: Path) -> None:
         """Extracts object declarations."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Singleton.kt"
         kt_file.write_text("""
@@ -159,7 +159,7 @@ class TestKotlinInterfaceExtraction:
 
     def test_extracts_interface(self, tmp_path: Path) -> None:
         """Extracts interface declarations."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Interfaces.kt"
         kt_file.write_text("""
@@ -186,7 +186,7 @@ class TestKotlinInheritanceEdges:
 
     def test_extracts_base_class_metadata(self, tmp_path: Path) -> None:
         """Extracts base_classes metadata for class with superclass."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -208,7 +208,7 @@ class User : BaseModel() {
 
     def test_extracts_interface_implementation(self, tmp_path: Path) -> None:
         """Extracts base_classes metadata for class implementing interface."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -230,7 +230,7 @@ class Circle : Drawable {
 
     def test_extracts_multiple_inheritance(self, tmp_path: Path) -> None:
         """Extracts all base classes for class extending class and interfaces."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -265,7 +265,7 @@ class Widget : BaseModel(), Drawable, Clickable {
 
     def test_creates_extends_edge(self, tmp_path: Path) -> None:
         """Creates extends edge from class to its superclass."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -292,7 +292,7 @@ class User : BaseModel() {
 
     def test_creates_implements_edge_for_interface(self, tmp_path: Path) -> None:
         """Creates implements edge from class to interface."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -319,7 +319,7 @@ class Circle : Drawable {
 
     def test_no_edge_for_external_superclass(self, tmp_path: Path) -> None:
         """No edge created when superclass is not in analyzed codebase."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Models.kt"
         kt_file.write_text("""
@@ -345,7 +345,7 @@ class TestKotlinFunctionCalls:
 
     def test_detects_function_call(self, tmp_path: Path) -> None:
         """Detects calls to functions in same file."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Utils.kt"
         kt_file.write_text("""
@@ -370,7 +370,7 @@ class TestKotlinImports:
 
     def test_detects_import_statement(self, tmp_path: Path) -> None:
         """Detects import statements."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Main.kt"
         kt_file.write_text("""
@@ -394,11 +394,11 @@ class TestKotlinEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         (tmp_path / "test.kt").write_text("fun test() {}")
 
-        with patch("hypergumbo.analyze.kotlin.is_kotlin_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.kotlin.is_kotlin_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_kotlin": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_kotlin"]
@@ -411,7 +411,7 @@ class TestKotlinEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         (tmp_path / "empty.kt").write_text("// Just a comment\n")
 
@@ -422,7 +422,7 @@ class TestKotlinEdgeCases:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         (tmp_path / "Helper.kt").write_text("""
 fun greet(name: String): String {
@@ -447,7 +447,7 @@ class TestKotlinMethodExtraction:
 
     def test_extracts_class_methods(self, tmp_path: Path) -> None:
         """Extracts methods defined inside classes."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "User.kt"
         kt_file.write_text("""
@@ -475,11 +475,11 @@ class TestKotlinFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.kotlin import (
+        from hypergumbo_lang_mainstream.kotlin import (
             _extract_symbols_from_file,
             is_kotlin_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_kotlin_tree_sitter_available():
             pytest.skip("tree-sitter-kotlin not available")
@@ -501,11 +501,11 @@ class TestKotlinFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.kotlin import (
+        from hypergumbo_lang_mainstream.kotlin import (
             _extract_edges_from_file,
             is_kotlin_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_kotlin_tree_sitter_available():
             pytest.skip("tree-sitter-kotlin not available")
@@ -531,7 +531,7 @@ class TestKotlinNavigationCalls:
 
     def test_detects_method_call_on_object(self, tmp_path: Path) -> None:
         """Detects method calls via navigation suffix."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Main.kt"
         kt_file.write_text("""
@@ -558,7 +558,7 @@ class TestKotlinHelperFunctions:
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.kotlin import (
+        from hypergumbo_lang_mainstream.kotlin import (
             _find_child_by_type,
             is_kotlin_tree_sitter_available,
         )
@@ -584,7 +584,7 @@ class TestKotlinObjectMethodCalls:
 
     def test_object_method_call_resolved(self, tmp_path: Path) -> None:
         """Object method calls are resolved to target symbols."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Service.kt"
         kt_file.write_text("""
@@ -637,7 +637,7 @@ class TestKotlinVariableTypeInference:
         self, tmp_path: Path
     ) -> None:
         """Variable method calls resolved via constructor-based type inference."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -685,7 +685,7 @@ fun main() {
 
     def test_parameter_type_inference(self, tmp_path: Path) -> None:
         """Function parameter types should enable method call resolution."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -752,7 +752,7 @@ class TestKotlinThisMethodCalls:
 
     def test_this_method_call_resolved(self, tmp_path: Path) -> None:
         """this.method() calls are resolved to enclosing class methods."""
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Service.kt"
         kt_file.write_text("""
@@ -803,11 +803,11 @@ class TestKotlinImportExtraction:
 
     def test_imports_extracted_to_file_analysis(self, tmp_path: Path) -> None:
         """Import statements are extracted and tracked in FileAnalysis."""
-        from hypergumbo.analyze.kotlin import (
+        from hypergumbo_lang_mainstream.kotlin import (
             _extract_symbols_from_file,
             is_kotlin_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_kotlin_tree_sitter_available():
             pytest.skip("tree-sitter-kotlin not available")
@@ -845,13 +845,13 @@ fun main() {
         imports dict is actually used during resolution by checking the confidence
         level (path_hint matches get higher confidence).
         """
-        from hypergumbo.analyze.kotlin import (
+        from hypergumbo_lang_mainstream.kotlin import (
             _extract_edges_from_file,
             _extract_symbols_from_file,
             is_kotlin_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
-        from hypergumbo.symbol_resolution import NameResolver
+        from hypergumbo_core.ir import AnalysisRun
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_kotlin_tree_sitter_available():
             pytest.skip("tree-sitter-kotlin not available")
@@ -916,7 +916,7 @@ class TestKotlinLambdaCallAttribution:
 
         The call to helper() should be attributed to main, not lost.
         """
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -963,7 +963,7 @@ fun main() {
 
         The call to doWork() should be attributed to caller.
         """
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Callback.kt"
         kt_file.write_text("""
@@ -1013,7 +1013,7 @@ fun caller() {
                 }
             }
         """
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Nested.kt"
         kt_file.write_text("""
@@ -1058,7 +1058,7 @@ fun outer() {
         Top-level property initializers run at object creation time, not inside
         any specific function. These calls should not be attributed.
         """
-        from hypergumbo.analyze.kotlin import analyze_kotlin
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "TopLevel.kt"
         kt_file.write_text("""

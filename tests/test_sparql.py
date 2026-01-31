@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import sparql as sparql_module
-from hypergumbo.analyze.sparql import (
+from hypergumbo_lang_extended1 import sparql as sparql_module
+from hypergumbo_lang_extended1.sparql import (
     SPARQLAnalysisResult,
     analyze_sparql,
     find_sparql_files,

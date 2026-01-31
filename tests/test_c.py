@@ -9,7 +9,7 @@ class TestFindCFiles:
 
     def test_finds_c_files(self, tmp_path: Path) -> None:
         """Finds .c and .h files."""
-        from hypergumbo.analyze.c import find_c_files
+        from hypergumbo_lang_mainstream.c import find_c_files
 
         (tmp_path / "main.c").write_text("int main() { return 0; }")
         (tmp_path / "utils.h").write_text("void helper();")
@@ -28,7 +28,7 @@ class TestCTreeSitterAvailability:
 
     def test_is_c_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-c is available."""
-        from hypergumbo.analyze.c import is_c_tree_sitter_available
+        from hypergumbo_lang_mainstream.c import is_c_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -36,7 +36,7 @@ class TestCTreeSitterAvailability:
 
     def test_is_c_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.c import is_c_tree_sitter_available
+        from hypergumbo_lang_mainstream.c import is_c_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -44,7 +44,7 @@ class TestCTreeSitterAvailability:
 
     def test_is_c_tree_sitter_available_no_c_grammar(self) -> None:
         """Returns False when tree-sitter-c is not available."""
-        from hypergumbo.analyze.c import is_c_tree_sitter_available
+        from hypergumbo_lang_mainstream.c import is_c_tree_sitter_available
 
         def mock_find_spec(name: str):
             if name == "tree_sitter":
@@ -60,11 +60,11 @@ class TestAnalyzeCFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-c unavailable."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         (tmp_path / "test.c").write_text("int main() { return 0; }")
 
-        with patch("hypergumbo.analyze.c.is_c_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.c.is_c_tree_sitter_available", return_value=False):
             result = analyze_c(tmp_path)
 
         assert result.skipped is True
@@ -76,7 +76,7 @@ class TestCFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts C function declarations."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "functions.c"
         c_file.write_text("""
@@ -99,7 +99,7 @@ void greet(const char* name) {
 
     def test_extracts_struct(self, tmp_path: Path) -> None:
         """Extracts C struct declarations."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "types.h"
         c_file.write_text("""
@@ -127,7 +127,7 @@ struct Rectangle {
 
     def test_extracts_typedef(self, tmp_path: Path) -> None:
         """Extracts C typedef declarations."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "types.h"
         c_file.write_text("""
@@ -146,7 +146,7 @@ typedef struct {
 
     def test_extracts_enum(self, tmp_path: Path) -> None:
         """Extracts C enum declarations."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "types.h"
         c_file.write_text("""
@@ -167,7 +167,7 @@ enum Color {
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles C file with no functions/structs."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "empty.c"
         c_file.write_text("// Just a comment")
@@ -184,7 +184,7 @@ class TestCCallEdges:
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between C functions."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "calls.c"
         c_file.write_text("""
@@ -216,7 +216,7 @@ class TestCCrossFileResolution:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Resolves function calls across files."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         (tmp_path / "helpers.c").write_text("""
 int helper() {
@@ -252,7 +252,7 @@ class TestCJNIPatterns:
 
     def test_detects_jni_export(self, tmp_path: Path) -> None:
         """Detects JNI export function patterns."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "jni_impl.c"
         c_file.write_text("""
@@ -286,7 +286,7 @@ class TestCAnalysisRun:
 
     def test_tracks_files_analyzed(self, tmp_path: Path) -> None:
         """Tracks number of files analyzed."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         (tmp_path / "a.c").write_text("void a() {}")
         (tmp_path / "b.c").write_text("void b() {}")
@@ -300,7 +300,7 @@ class TestCAnalysisRun:
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         """Handles repo with no C files."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         (tmp_path / "app.js").write_text("const x = 1;")
 
@@ -316,7 +316,7 @@ class TestCEdgeCases:
 
     def test_find_name_in_children_no_name(self) -> None:
         """Returns None when node has no identifier child."""
-        from hypergumbo.analyze.c import _find_identifier_in_children
+        from hypergumbo_lang_mainstream.c import _find_identifier_in_children
 
         mock_child = MagicMock()
         mock_child.type = "other"
@@ -329,7 +329,7 @@ class TestCEdgeCases:
 
     def test_get_c_parser_import_error(self) -> None:
         """Returns None when tree-sitter-c is not available."""
-        from hypergumbo.analyze.c import _get_c_parser
+        from hypergumbo_lang_mainstream.c import _get_c_parser
 
         with patch.dict(sys.modules, {
             "tree_sitter": None,
@@ -340,15 +340,15 @@ class TestCEdgeCases:
 
     def test_analyze_c_file_parser_unavailable(self, tmp_path: Path) -> None:
         """Returns failure when parser is unavailable."""
-        from hypergumbo.analyze.c import _analyze_c_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.c import _analyze_c_file
+        from hypergumbo_core.ir import AnalysisRun
 
         c_file = tmp_path / "test.c"
         c_file.write_text("int main() { return 0; }")
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
-        with patch("hypergumbo.analyze.c._get_c_parser", return_value=None):
+        with patch("hypergumbo_lang_mainstream.c._get_c_parser", return_value=None):
             symbols, edges, success = _analyze_c_file(c_file, run)
 
         assert success is False
@@ -356,8 +356,8 @@ class TestCEdgeCases:
 
     def test_analyze_c_file_read_error(self, tmp_path: Path) -> None:
         """Returns failure when file cannot be read."""
-        from hypergumbo.analyze.c import _analyze_c_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.c import _analyze_c_file
+        from hypergumbo_core.ir import AnalysisRun
 
         c_file = tmp_path / "missing.c"
         # Don't create the file
@@ -370,7 +370,7 @@ class TestCEdgeCases:
 
     def test_c_file_skipped_increments_counter(self, tmp_path: Path) -> None:
         """C files that fail to read increment skipped counter."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "test.c"
         c_file.write_text("int main() { return 0; }")
@@ -390,16 +390,16 @@ class TestCEdgeCases:
 
     def test_analyze_c_parser_none_after_check(self, tmp_path: Path) -> None:
         """analyze_c handles case where parser is None after availability check."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "test.c"
         c_file.write_text("int main() { return 0; }")
 
         with patch(
-            "hypergumbo.analyze.c.is_c_tree_sitter_available",
+            "hypergumbo_lang_mainstream.c.is_c_tree_sitter_available",
             return_value=True,
         ), patch(
-            "hypergumbo.analyze.c._get_c_parser",
+            "hypergumbo_lang_mainstream.c._get_c_parser",
             return_value=None,
         ):
             result = analyze_c(tmp_path)
@@ -414,7 +414,7 @@ class TestCFunctionDeclarations:
 
     def test_handles_function_declarations(self, tmp_path: Path) -> None:
         """Handles function declarations (prototypes) vs definitions."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "proto.h"
         c_file.write_text("""
@@ -432,7 +432,7 @@ void process(void);
 
     def test_handles_static_functions(self, tmp_path: Path) -> None:
         """Handles static function definitions."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "static.c"
         c_file.write_text("""
@@ -460,7 +460,7 @@ int main() {
         definition in impl.c (which has outgoing calls), not the
         declaration in header.h (which has none).
         """
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         # Header with declaration
         header = tmp_path / "header.h"
@@ -522,7 +522,7 @@ class TestCPointerAndComplexTypes:
 
     def test_handles_function_pointers(self, tmp_path: Path) -> None:
         """Handles functions with pointer parameters."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "pointers.c"
         c_file.write_text("""
@@ -541,7 +541,7 @@ void process(int* arr, size_t len) {
 
     def test_handles_typedef_struct(self, tmp_path: Path) -> None:
         """Handles typedef struct pattern."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "types.h"
         c_file.write_text("""
@@ -564,7 +564,7 @@ class TestCIncludeEdges:
 
     def test_detects_include_edges(self, tmp_path: Path) -> None:
         """Detects #include directive edges."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         (tmp_path / "utils.h").write_text("void helper();")
         (tmp_path / "main.c").write_text("""
@@ -590,7 +590,7 @@ class TestCPointerReturnTypes:
 
     def test_handles_pointer_return_type(self, tmp_path: Path) -> None:
         """Handles functions returning pointers."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "pointers.c"
         c_file.write_text("""
@@ -617,7 +617,7 @@ class TestCGetFunctionNameEdgeCases:
 
     def test_get_function_name_with_pointer_declarator(self) -> None:
         """Tests pointer declarator path in _get_function_name."""
-        from hypergumbo.analyze.c import _get_function_name, _get_c_parser
+        from hypergumbo_lang_mainstream.c import _get_function_name, _get_c_parser
 
         parser = _get_c_parser()
         assert parser is not None
@@ -639,7 +639,7 @@ class TestCGetFunctionNameEdgeCases:
 
     def test_get_function_name_no_match(self) -> None:
         """Tests when no name can be found."""
-        from hypergumbo.analyze.c import _get_function_name
+        from hypergumbo_lang_mainstream.c import _get_function_name
 
         # Create a mock node with no matching children
         mock_child = MagicMock()
@@ -658,8 +658,8 @@ class TestCAnalyzeFileSuccess:
 
     def test_analyze_c_file_success(self, tmp_path: Path) -> None:
         """_analyze_c_file returns symbols and edges on success."""
-        from hypergumbo.analyze.c import _analyze_c_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.c import _analyze_c_file
+        from hypergumbo_core.ir import AnalysisRun
 
         c_file = tmp_path / "test.c"
         c_file.write_text("""
@@ -689,7 +689,7 @@ class TestCSignatureExtraction:
 
     def test_basic_function_signature(self, tmp_path: Path) -> None:
         """Basic function with parameters extracts signature."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "math.c"
         c_file.write_text("int add(int x, int y) { return x + y; }")
@@ -702,7 +702,7 @@ class TestCSignatureExtraction:
 
     def test_void_function_signature(self, tmp_path: Path) -> None:
         """Void return type function extracts signature without return type."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "util.c"
         c_file.write_text("void process(int count) { /* work */ }")
@@ -716,7 +716,7 @@ class TestCSignatureExtraction:
 
     def test_pointer_parameter_signature(self, tmp_path: Path) -> None:
         """Pointer parameters appear in signature."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "str.c"
         c_file.write_text("int strlen(const char* str) { return 0; }")
@@ -730,7 +730,7 @@ class TestCSignatureExtraction:
 
     def test_pointer_return_type_signature(self, tmp_path: Path) -> None:
         """Pointer return type appears in signature."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "alloc.c"
         c_file.write_text("char* strdup(const char* s) { return 0; }")
@@ -744,7 +744,7 @@ class TestCSignatureExtraction:
 
     def test_empty_params_signature(self, tmp_path: Path) -> None:
         """Function with no parameters has empty parens."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "main.c"
         c_file.write_text("int main() { return 0; }")
@@ -757,7 +757,7 @@ class TestCSignatureExtraction:
 
     def test_declaration_signature(self, tmp_path: Path) -> None:
         """Function declaration (prototype) extracts signature."""
-        from hypergumbo.analyze.c import analyze_c
+        from hypergumbo_lang_mainstream.c import analyze_c
 
         h_file = tmp_path / "util.h"
         h_file.write_text("void process(int x, int y);")

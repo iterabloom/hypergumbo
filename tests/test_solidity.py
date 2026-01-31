@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.analyze.solidity import (
+from hypergumbo_lang_extended1.solidity import (
     analyze_solidity,
     find_solidity_files,
     is_solidity_tree_sitter_available,
@@ -259,7 +259,7 @@ class TestSolidityAnalysisWithoutTreeSitter:
 
     def test_returns_skipped_when_unavailable(self, temp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Returns skipped result when tree-sitter not available."""
-        import hypergumbo.analyze.solidity as sol_module
+        import hypergumbo_lang_extended1.solidity as sol_module
         monkeypatch.setattr(sol_module, "is_solidity_tree_sitter_available", lambda: False)
 
         (temp_repo / "Token.sol").write_text("contract Token {}")
@@ -272,7 +272,7 @@ class TestSolidityAnalysisWithoutTreeSitter:
     def test_tree_sitter_check_tree_sitter_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Returns False when tree_sitter module is missing."""
         import importlib.util
-        import hypergumbo.analyze.solidity as sol_module
+        import hypergumbo_lang_extended1.solidity as sol_module
 
         original_find_spec = importlib.util.find_spec
 
@@ -290,7 +290,7 @@ class TestSolidityAnalysisWithoutTreeSitter:
     def test_tree_sitter_check_solidity_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Returns False when tree_sitter_solidity module is missing."""
         import importlib.util
-        import hypergumbo.analyze.solidity as sol_module
+        import hypergumbo_lang_extended1.solidity as sol_module
 
         original_find_spec = importlib.util.find_spec
 
@@ -311,8 +311,8 @@ class TestSolidityEdgeCases:
 
     def test_handles_unreadable_file_symbols(self, temp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Gracefully handles files that cannot be read during symbol extraction."""
-        from hypergumbo.analyze.solidity import _extract_symbols_from_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_extended1.solidity import _extract_symbols_from_file
+        from hypergumbo_core.ir import AnalysisRun
         import tree_sitter
         import tree_sitter_solidity
         import warnings
@@ -338,8 +338,8 @@ class TestSolidityEdgeCases:
 
     def test_handles_unreadable_file_edges(self, temp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Gracefully handles files that cannot be read during edge extraction."""
-        from hypergumbo.analyze.solidity import _extract_edges_from_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_extended1.solidity import _extract_edges_from_file
+        from hypergumbo_core.ir import AnalysisRun
         import tree_sitter
         import tree_sitter_solidity
         import warnings
@@ -365,7 +365,7 @@ class TestSolidityEdgeCases:
 
     def test_find_child_by_type_returns_none(self, temp_repo: Path) -> None:
         """_find_child_by_type returns None when child type not found."""
-        from hypergumbo.analyze.solidity import _find_child_by_type
+        from hypergumbo_lang_extended1.solidity import _find_child_by_type
         import tree_sitter
         import tree_sitter_solidity
         import warnings

@@ -14,14 +14,14 @@ This allows code navigation tools to show "this interface method is implemented 
 
 import pytest
 
-from hypergumbo.ir import Edge, Span, Symbol
-from hypergumbo.linkers.type_hierarchy import (
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.linkers.type_hierarchy import (
     link_type_hierarchy,
     build_inheritance_maps,
     find_implementing_methods,
     PASS_ID,
 )
-from hypergumbo.linkers.registry import LinkerContext
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestBuildInheritanceMaps:
@@ -488,17 +488,17 @@ class TestHelperFunctions:
 
     def test_get_method_short_name_ruby_style(self) -> None:
         """Ruby-style Class#method extracts method name."""
-        from hypergumbo.linkers.type_hierarchy import _get_method_short_name
+        from hypergumbo_core.linkers.type_hierarchy import _get_method_short_name
         assert _get_method_short_name("UsersController#index") == "index"
 
     def test_get_method_short_name_plain(self) -> None:
         """Plain method name without separators returns unchanged."""
-        from hypergumbo.linkers.type_hierarchy import _get_method_short_name
+        from hypergumbo_core.linkers.type_hierarchy import _get_method_short_name
         assert _get_method_short_name("myMethod") == "myMethod"
 
     def test_get_class_name_from_meta(self) -> None:
         """Class name extracted from meta.class field."""
-        from hypergumbo.linkers.type_hierarchy import _get_class_name_from_method
+        from hypergumbo_core.linkers.type_hierarchy import _get_class_name_from_method
 
         method = Symbol(
             id="test:method",
@@ -515,7 +515,7 @@ class TestHelperFunctions:
 
     def test_get_class_name_from_ruby_qualified_name(self) -> None:
         """Class name extracted from Ruby-style qualified name."""
-        from hypergumbo.linkers.type_hierarchy import _get_class_name_from_method
+        from hypergumbo_core.linkers.type_hierarchy import _get_class_name_from_method
 
         method = Symbol(
             id="ruby:test:method",
@@ -531,7 +531,7 @@ class TestHelperFunctions:
 
     def test_get_class_name_returns_none_for_unqualified(self) -> None:
         """Returns None when class name cannot be determined."""
-        from hypergumbo.linkers.type_hierarchy import _get_class_name_from_method
+        from hypergumbo_core.linkers.type_hierarchy import _get_class_name_from_method
 
         method = Symbol(
             id="test:method",
@@ -619,10 +619,10 @@ class TestEdgeCases:
         """Linker entry point is callable via registry."""
         import importlib
 
-        from hypergumbo.linkers.registry import run_linker
+        from hypergumbo_core.linkers.registry import run_linker
         # Re-import the linker module to force re-registration
         # (needed when registry is cleared by other tests)
-        import hypergumbo.linkers.type_hierarchy as th_module
+        import hypergumbo_core.linkers.type_hierarchy as th_module
         importlib.reload(th_module)
 
         ctx = LinkerContext(
@@ -728,10 +728,10 @@ class TestLinkerRegistration:
         """Type hierarchy linker is registered with correct metadata."""
         import importlib
 
-        from hypergumbo.linkers.registry import get_linker
+        from hypergumbo_core.linkers.registry import get_linker
         # Re-import the linker module to force re-registration
         # (needed when registry is cleared by other tests)
-        import hypergumbo.linkers.type_hierarchy as th_module
+        import hypergumbo_core.linkers.type_hierarchy as th_module
         importlib.reload(th_module)
 
         linker = get_linker("type_hierarchy")

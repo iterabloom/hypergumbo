@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.gleam import (
+from hypergumbo_lang_extended1.gleam import (
     analyze_gleam,
     find_gleam_files,
     is_gleam_tree_sitter_available,
@@ -101,7 +101,7 @@ class TestIsGleamTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.gleam as gleam_module
+        import hypergumbo_lang_extended1.gleam as gleam_module
         with patch.object(gleam_module, "is_gleam_tree_sitter_available", return_value=False):
             assert gleam_module.is_gleam_tree_sitter_available() is False
 
@@ -111,7 +111,7 @@ class TestAnalyzeGleam:
 
     def test_skips_when_unavailable(self, gleam_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.gleam as gleam_module
+        import hypergumbo_lang_extended1.gleam as gleam_module
 
         with patch.object(gleam_module, "is_gleam_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

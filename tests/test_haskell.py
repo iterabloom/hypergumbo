@@ -30,7 +30,7 @@ class TestHaskellAnalyzerAvailability:
 
     def test_is_haskell_tree_sitter_available(self) -> None:
         """Check if tree-sitter-haskell is detected."""
-        from hypergumbo.analyze.haskell import is_haskell_tree_sitter_available
+        from hypergumbo_lang_common.haskell import is_haskell_tree_sitter_available
 
         # Should be True since we installed tree-sitter-haskell
         assert is_haskell_tree_sitter_available() is True
@@ -41,7 +41,7 @@ class TestHaskellFunctionDetection:
 
     def test_detect_function_with_signature(self, tmp_path: Path) -> None:
         """Detect function with type signature."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 add :: Int -> Int -> Int
@@ -59,7 +59,7 @@ add x y = x + y
 
     def test_detect_function_without_signature(self, tmp_path: Path) -> None:
         """Detect function without type signature."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 greet name = "Hello " ++ name
@@ -74,7 +74,7 @@ greet name = "Hello " ++ name
 
     def test_detect_main_function(self, tmp_path: Path) -> None:
         """Detect main function with do block."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 main :: IO ()
@@ -95,7 +95,7 @@ class TestHaskellDataTypeDetection:
 
     def test_detect_simple_data_type(self, tmp_path: Path) -> None:
         """Detect simple data type definition."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Types.hs", """
 data Color = Red | Green | Blue
@@ -110,7 +110,7 @@ data Color = Red | Green | Blue
 
     def test_detect_record_data_type(self, tmp_path: Path) -> None:
         """Detect record data type with fields."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Types.hs", """
 data Person = Person { name :: String, age :: Int }
@@ -129,7 +129,7 @@ class TestHaskellTypeClassDetection:
 
     def test_detect_type_class(self, tmp_path: Path) -> None:
         """Detect type class definition."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Classes.hs", """
 class Printable a where
@@ -145,7 +145,7 @@ class Printable a where
 
     def test_detect_instance(self, tmp_path: Path) -> None:
         """Detect type class instance."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Instances.hs", """
 data Person = Person { name :: String }
@@ -171,7 +171,7 @@ class TestHaskellImportEdges:
 
     def test_detect_simple_import(self, tmp_path: Path) -> None:
         """Detect simple import statement."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 import Data.List
@@ -187,7 +187,7 @@ main = print (sort [3, 1, 2])
 
     def test_detect_qualified_import(self, tmp_path: Path) -> None:
         """Detect qualified import statement."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 import qualified Data.Map as M
@@ -207,7 +207,7 @@ class TestHaskellCallEdges:
 
     def test_detect_function_call(self, tmp_path: Path) -> None:
         """Detect function call edges."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 greet name = "Hello " ++ name
@@ -228,7 +228,7 @@ class TestHaskellCrossFileResolution:
 
     def test_cross_file_call(self, tmp_path: Path) -> None:
         """Calls to functions in other files are resolved."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Utils.hs", """
 module Utils where
@@ -259,7 +259,7 @@ class TestHaskellEdgeCases:
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Empty Haskell file produces no symbols."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Empty.hs", "")
 
@@ -272,7 +272,7 @@ class TestHaskellEdgeCases:
 
     def test_syntax_error_file(self, tmp_path: Path) -> None:
         """File with syntax error is handled gracefully."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Bad.hs", """
 foo x =
@@ -286,7 +286,7 @@ foo x =
 
     def test_no_haskell_files(self, tmp_path: Path) -> None:
         """Directory with no Haskell files returns empty result."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "main.py", "print('hello')")
 
@@ -302,7 +302,7 @@ class TestHaskellSpanAccuracy:
 
     def test_function_span(self, tmp_path: Path) -> None:
         """Function span includes full definition."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """add x y = x + y
 """)
@@ -320,7 +320,7 @@ class TestHaskellAnalyzeFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
         """Returns skipped result when tree-sitter-haskell not available."""
-        from hypergumbo.analyze import haskell
+        from hypergumbo_lang_common import haskell
 
         # Mock tree-sitter-haskell as unavailable
         monkeypatch.setattr(haskell, "is_haskell_tree_sitter_available", lambda: False)
@@ -341,7 +341,7 @@ class TestHaskellSignatureExtraction:
 
     def test_simple_type_signature(self, tmp_path: Path) -> None:
         """Extract type signature from function with type annotation."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 add :: Int -> Int -> Int
@@ -354,7 +354,7 @@ add x y = x + y
 
     def test_io_type_signature(self, tmp_path: Path) -> None:
         """Extract type signature with IO monad."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 greet :: String -> IO ()
@@ -367,7 +367,7 @@ greet name = putStrLn name
 
     def test_no_signature(self, tmp_path: Path) -> None:
         """Function without type signature has None signature."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 helper x = x + 1
@@ -383,7 +383,7 @@ class TestHaskellImportAliases:
 
     def test_extracts_import_alias(self, tmp_path: Path) -> None:
         """Extracts import alias from 'import qualified as' statement."""
-        from hypergumbo.analyze.haskell import _extract_import_aliases
+        from hypergumbo_lang_common.haskell import _extract_import_aliases
 
         import tree_sitter
         import tree_sitter_haskell
@@ -414,7 +414,7 @@ main = print "hello"
 
     def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
         """Qualified call resolution uses import alias for path hint."""
-        from hypergumbo.analyze.haskell import analyze_haskell
+        from hypergumbo_lang_common.haskell import analyze_haskell
 
         make_haskell_file(tmp_path, "Main.hs", """
 module Main where

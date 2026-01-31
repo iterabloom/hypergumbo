@@ -6,14 +6,14 @@ using metadata like controller_action (Rails), view_name (Django), etc.
 
 import pytest
 
-from hypergumbo.ir import Edge, Span, Symbol
-from hypergumbo.linkers.route_handler import (
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.linkers.route_handler import (
     link_routes_to_handlers,
     link_route_handler,
     _check_routes_available,
     PASS_ID,
 )
-from hypergumbo.linkers.registry import LinkerContext
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestRouteHandlerLinker:

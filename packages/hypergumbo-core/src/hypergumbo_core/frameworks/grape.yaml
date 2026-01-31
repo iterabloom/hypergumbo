@@ -1,0 +1,77 @@
+# Grape framework patterns (ADR-0003)
+#
+# Grape is a Ruby REST-like API framework. APIs are defined as
+# classes inheriting from Grape::API with route DSL methods.
+
+id: grape
+language: ruby
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Grape route DSL
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|patch|delete|options|head)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Grape API class
+  - concept: controller
+    base_class: "^Grape::API$"
+
+  # Grape API::Instance
+  - concept: controller
+    base_class: "^Grape::API::Instance$"
+
+  # Grape route methods
+  - concept: route
+    decorator: "^(get|post|put|patch|delete|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name"
+
+  # Grape resource/namespace grouping
+  - concept: route
+    decorator: "^(resource|resources|namespace|group|segment)$"
+
+  # Grape route_param
+  - concept: route
+    decorator: "^route_param$"
+
+  # Grape helpers
+  - concept: helper
+    decorator: "^helpers$"
+
+  # Grape before/after filters
+  - concept: middleware
+    decorator: "^(before|after|before_validation|after_validation)$"
+
+  # Grape rescue_from (error handling)
+  - concept: error_handler
+    decorator: "^rescue_from$"
+
+  # Grape params validation
+  - concept: validation
+    decorator: "^params$"
+
+  # Grape formatters
+  - concept: middleware
+    decorator: "^(format|formatter|content_type)$"
+
+  # Grape authentication
+  - concept: auth
+    decorator: "^(http_basic|http_digest)$"
+
+  # Grape entity (serialization)
+  - concept: serializer
+    base_class: "^Grape::Entity$"
+
+  # Grape desc (documentation)
+  - concept: documentation
+    decorator: "^desc$"
+
+linkers:
+  - http

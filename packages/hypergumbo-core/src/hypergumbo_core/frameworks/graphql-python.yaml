@@ -1,0 +1,105 @@
+# GraphQL Python patterns (ADR-0003)
+#
+# Patterns for Python GraphQL libraries: Strawberry, Ariadne, Graphene.
+
+id: graphql-python
+language: python
+
+patterns:
+  # ==================== STRAWBERRY PATTERNS ====================
+  # Strawberry query decorator
+  - concept: graphql_resolver
+    decorator: "^strawberry\\.query$"
+
+  # Strawberry mutation decorator
+  - concept: graphql_resolver
+    decorator: "^strawberry\\.mutation$"
+
+  # Strawberry subscription decorator
+  - concept: graphql_resolver
+    decorator: "^strawberry\\.subscription$"
+
+  # Strawberry field decorator
+  - concept: graphql_resolver
+    decorator: "^strawberry\\.field$"
+
+  # Strawberry type decorator
+  - concept: graphql_schema
+    decorator: "^strawberry\\.type$"
+
+  # Strawberry input decorator
+  - concept: graphql_schema
+    decorator: "^strawberry\\.input$"
+
+  # Strawberry enum decorator
+  - concept: graphql_schema
+    decorator: "^strawberry\\.enum$"
+
+  # Strawberry interface decorator
+  - concept: graphql_schema
+    decorator: "^strawberry\\.interface$"
+
+  # Strawberry union
+  - concept: graphql_schema
+    decorator: "^strawberry\\.union$"
+
+  # Strawberry scalar
+  - concept: graphql_schema
+    decorator: "^strawberry\\.scalar$"
+
+  # ==================== ARIADNE PATTERNS ====================
+  # Ariadne query field resolver
+  - concept: graphql_resolver
+    decorator: "^query\\.field$"
+
+  # Ariadne mutation field resolver
+  - concept: graphql_resolver
+    decorator: "^mutation\\.field$"
+
+  # Ariadne subscription source/field
+  - concept: graphql_resolver
+    decorator: "^subscription\\.(source|field)$"
+
+  # Ariadne type resolver
+  - concept: graphql_resolver
+    decorator: "^(query_type|mutation_type|subscription_type)\\.field$"
+
+  # Ariadne schema creation
+  - concept: graphql_schema
+    decorator: "^make_executable_schema$"
+
+  # ==================== GRAPHENE PATTERNS ====================
+  # Graphene resolver prefix (resolve_field_name)
+  - concept: graphql_resolver
+    name_pattern: "^resolve_"
+
+  # Graphene ObjectType
+  - concept: graphql_schema
+    base_class: "^ObjectType$"
+
+  # Graphene InputObjectType
+  - concept: graphql_schema
+    base_class: "^InputObjectType$"
+
+  # Graphene Mutation
+  - concept: graphql_resolver
+    base_class: "^Mutation$"
+
+  # Graphene Query (typically a class)
+  - concept: graphql_resolver
+    base_class: "^Query$"
+
+  # Graphene Subscription
+  - concept: graphql_resolver
+    base_class: "^Subscription$"
+
+  # Graphene fields
+  - concept: graphql_schema
+    base_class: "^(Field|InputField|List|NonNull|Argument)$"
+
+  # Graphene relay
+  - concept: graphql_schema
+    base_class: "^(Node|Connection|ConnectionField)$"
+
+linkers:
+  - graphql_resolver

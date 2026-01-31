@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import hlsl as hlsl_module
-from hypergumbo.analyze.hlsl import (
+from hypergumbo_lang_common import hlsl as hlsl_module
+from hypergumbo_lang_common.hlsl import (
     analyze_hlsl,
     find_hlsl_files,
     is_hlsl_tree_sitter_available,

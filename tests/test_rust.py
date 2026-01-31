@@ -9,7 +9,7 @@ class TestFindRustFiles:
 
     def test_finds_rust_files(self, tmp_path: Path) -> None:
         """Finds .rs files."""
-        from hypergumbo.analyze.rust import find_rust_files
+        from hypergumbo_lang_mainstream.rust import find_rust_files
 
         (tmp_path / "main.rs").write_text("fn main() {}")
         (tmp_path / "lib.rs").write_text("pub mod utils;")
@@ -26,7 +26,7 @@ class TestRustTreeSitterAvailability:
 
     def test_is_rust_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-rust is available."""
-        from hypergumbo.analyze.rust import is_rust_tree_sitter_available
+        from hypergumbo_lang_mainstream.rust import is_rust_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -34,7 +34,7 @@ class TestRustTreeSitterAvailability:
 
     def test_is_rust_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.rust import is_rust_tree_sitter_available
+        from hypergumbo_lang_mainstream.rust import is_rust_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestRustTreeSitterAvailability:
 
     def test_is_rust_tree_sitter_available_no_rust(self) -> None:
         """Returns False when tree-sitter is available but rust grammar is not."""
-        from hypergumbo.analyze.rust import is_rust_tree_sitter_available
+        from hypergumbo_lang_mainstream.rust import is_rust_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeRustFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-rust unavailable."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "test.rs").write_text("fn test() {}")
 
-        with patch("hypergumbo.analyze.rust.is_rust_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.rust.is_rust_tree_sitter_available", return_value=False):
             result = analyze_rust(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestRustFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts Rust function declarations."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -99,7 +99,7 @@ fn helper(x: i32) -> i32 {
 
     def test_extracts_pub_function(self, tmp_path: Path) -> None:
         """Extracts public function declarations."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "lib.rs"
         rs_file.write_text("""
@@ -124,7 +124,7 @@ class TestRustStructExtraction:
 
     def test_extracts_struct(self, tmp_path: Path) -> None:
         """Extracts struct declarations."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "models.rs"
         rs_file.write_text("""
@@ -152,7 +152,7 @@ class TestRustEnumExtraction:
 
     def test_extracts_enum(self, tmp_path: Path) -> None:
         """Extracts enum declarations."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "types.rs"
         rs_file.write_text("""
@@ -183,7 +183,7 @@ class TestRustImplExtraction:
 
     def test_extracts_impl_methods(self, tmp_path: Path) -> None:
         """Extracts methods from impl blocks."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "user.rs"
         rs_file.write_text("""
@@ -217,7 +217,7 @@ class TestRustTraitExtraction:
 
     def test_extracts_trait(self, tmp_path: Path) -> None:
         """Extracts trait declarations."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "traits.rs"
         rs_file.write_text("""
@@ -247,7 +247,7 @@ class TestRustFunctionCalls:
 
     def test_detects_function_call(self, tmp_path: Path) -> None:
         """Detects calls to functions in same file."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "utils.rs"
         rs_file.write_text("""
@@ -273,7 +273,7 @@ class TestRustImports:
 
     def test_detects_use_statement(self, tmp_path: Path) -> None:
         """Detects use statements."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -294,7 +294,7 @@ fn main() {
 
     def test_use_aliases_extracted(self, tmp_path: Path) -> None:
         """Use statement aliases are extracted for disambiguation."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_use_aliases,
             is_rust_tree_sitter_available,
         )
@@ -332,7 +332,7 @@ fn main() {
 
     def test_extracts_simple_use(self, tmp_path: Path) -> None:
         """Extracts simple use statements without qualified path."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_use_aliases,
             is_rust_tree_sitter_available,
         )
@@ -366,7 +366,7 @@ fn main() {
 
     def test_extracts_use_as_alias(self, tmp_path: Path) -> None:
         """Extracts 'use foo::bar as baz;' aliased use statements."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_use_aliases,
             is_rust_tree_sitter_available,
         )
@@ -413,11 +413,11 @@ class TestRustEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "test.rs").write_text("fn test() {}")
 
-        with patch("hypergumbo.analyze.rust.is_rust_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.rust.is_rust_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_rust": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_rust"]
@@ -430,7 +430,7 @@ class TestRustEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         # Create a file with only comments
         (tmp_path / "empty.rs").write_text("// Just a comment\n\n")
@@ -443,7 +443,7 @@ class TestRustEdgeCases:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         # File 1: defines helper
         (tmp_path / "helper.rs").write_text("""
@@ -473,7 +473,7 @@ class TestRustCallPatterns:
 
     def test_method_call_without_field(self, tmp_path: Path) -> None:
         """Handles method calls where field extraction fails gracefully."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "calls.rs"
         # Create code with various call patterns
@@ -498,11 +498,11 @@ fn bar() {}
 
     def test_edge_extraction_field_expr_no_field(self, tmp_path: Path) -> None:
         """Tests field_expression without field child (defensive branch)."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun, Symbol, Span
+        from hypergumbo_core.ir import AnalysisRun, Symbol, Span
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -543,7 +543,7 @@ fn caller() {
 
         local_symbols = {"caller": caller_symbol}
 
-        import hypergumbo.analyze.rust as rust_module
+        import hypergumbo_lang_mainstream.rust as rust_module
         original_func = rust_module._find_child_by_field
         rust_module._find_child_by_field = mock_find_child_by_field
         try:
@@ -556,11 +556,11 @@ fn caller() {
 
     def test_edge_extraction_scoped_without_name(self, tmp_path: Path) -> None:
         """Tests scoped_identifier fallback branch (defensive branch)."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun, Symbol, Span
+        from hypergumbo_core.ir import AnalysisRun, Symbol, Span
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -600,7 +600,7 @@ fn caller() {
 
         local_symbols = {"caller": caller_symbol}
 
-        import hypergumbo.analyze.rust as rust_module
+        import hypergumbo_lang_mainstream.rust as rust_module
         original_func = rust_module._find_child_by_field
         rust_module._find_child_by_field = mock_find_child_by_field
         try:
@@ -613,7 +613,7 @@ fn caller() {
 
     def test_scoped_identifier_call(self, tmp_path: Path) -> None:
         """Detects calls using scoped identifiers."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "scoped.rs"
         rs_file.write_text("""
@@ -645,11 +645,11 @@ class TestRustFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_symbols_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -671,11 +671,11 @@ class TestRustFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.rust import (
+        from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -716,7 +716,7 @@ class TestReexportResolution:
 
         The call edge from caller -> helper should be created.
         """
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         # Create project structure
         src = tmp_path / "src"
@@ -784,7 +784,7 @@ class TestRustSignatureExtraction:
 
     def test_extracts_simple_signature(self, tmp_path: Path) -> None:
         """Extracts signature with simple parameter types."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -801,7 +801,7 @@ fn add(x: i32, y: i32) -> i32 {
 
     def test_extracts_signature_with_no_return(self, tmp_path: Path) -> None:
         """Extracts signature for function with no return type."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -818,7 +818,7 @@ fn print_hello(name: String) {
 
     def test_extracts_signature_with_no_params(self, tmp_path: Path) -> None:
         """Extracts signature for function with no parameters."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -835,7 +835,7 @@ fn get_answer() -> i32 {
 
     def test_extracts_signature_with_self(self, tmp_path: Path) -> None:
         """Extracts signature for method with &self."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -864,7 +864,7 @@ impl Counter {
 
     def test_extracts_signature_with_complex_types(self, tmp_path: Path) -> None:
         """Extracts signature with complex generic types."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -883,7 +883,7 @@ fn get_items() -> Vec<String> {
 
     def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
         """Symbol.to_dict() includes the signature field."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -912,7 +912,7 @@ class TestRustAnnotationExtraction:
 
     def test_extracts_function_annotations(self, tmp_path: Path) -> None:
         """Extracts attributes from functions."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -937,7 +937,7 @@ fn test_something() {
 
     def test_extracts_struct_annotations(self, tmp_path: Path) -> None:
         """Extracts derive attributes from structs."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -963,7 +963,7 @@ struct User {
 
     def test_extracts_actix_web_annotations(self, tmp_path: Path) -> None:
         """Extracts Actix-web route attributes for YAML pattern matching."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1003,7 +1003,7 @@ async fn create_user() -> String {
 
     def test_extracts_qualified_annotations(self, tmp_path: Path) -> None:
         """Extracts fully qualified attribute names like actix_web::get."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1027,7 +1027,7 @@ async fn api_handler() -> String {
 
     def test_extracts_named_annotation_args(self, tmp_path: Path) -> None:
         """Extracts named arguments from annotations like #[derive(Serialize)]."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1052,7 +1052,7 @@ fn get_name() -> String {
 
     def test_function_without_annotations(self, tmp_path: Path) -> None:
         """Functions without annotations have no meta or empty annotations."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1074,7 +1074,7 @@ class TestAxumUsageContext:
 
     def test_axum_simple_route(self, tmp_path: Path) -> None:
         """Detects simple Axum .route() calls."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1101,7 +1101,7 @@ pub fn routes() -> Router {
 
     def test_axum_chained_handlers(self, tmp_path: Path) -> None:
         """Detects chained HTTP methods like get(h1).post(h2)."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1124,7 +1124,7 @@ pub fn routes() -> Router {
 
     def test_axum_handler_resolution(self, tmp_path: Path) -> None:
         """Handler symbol references are resolved."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text('''
@@ -1165,7 +1165,7 @@ class TestRustClosureCallAttribution:
 
         The call to helper() should be attributed to process, not lost.
         """
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "main.rs"
         rs_file.write_text("""
@@ -1208,7 +1208,7 @@ fn process() {
 
     def test_call_inside_map_closure_attributed(self, tmp_path: Path) -> None:
         """Calls inside map closures are attributed to enclosing function."""
-        from hypergumbo.analyze.rust import analyze_rust
+        from hypergumbo_lang_mainstream.rust import analyze_rust
 
         rs_file = tmp_path / "lib.rs"
         rs_file.write_text("""

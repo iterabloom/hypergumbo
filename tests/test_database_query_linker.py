@@ -3,7 +3,7 @@
 from pathlib import Path
 from textwrap import dedent
 
-from hypergumbo.linkers.database_query import (
+from hypergumbo_core.linkers.database_query import (
     _extract_tables_from_query,
     _detect_query_type,
     _scan_python_queries,
@@ -11,7 +11,7 @@ from hypergumbo.linkers.database_query import (
     _scan_java_queries,
     link_database_queries,
 )
-from hypergumbo.ir import Symbol, Span
+from hypergumbo_core.ir import Symbol, Span
 
 
 class TestTableExtraction:

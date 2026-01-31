@@ -1,0 +1,48 @@
+# Library export detection (ADR-0003 v1.3.x)
+#
+# Detects exports from library entry point files (index.ts, index.js, etc.)
+# that define the public API surface of a library.
+#
+# Libraries differ from applications:
+# - Applications have main() functions, HTTP routes, CLI commands
+# - Libraries have exports that form their public API
+#
+# This pattern matches UsageContext records for exports from index files,
+# marking the exported symbols as library entry points. Confidence is
+# lower than framework routes (0.75 vs 0.95) because:
+# - Libraries may have many exports, not all equally important
+# - Index files may re-export internal utilities
+# - The "main" export is often more important than named exports
+#
+# Detection strategy:
+# - Match exports from index.ts, index.js, index.mjs, index.cjs, index.jsx, index.tsx
+# - Default exports get slightly higher priority in the label
+# - Named exports are also detected as entry points
+
+id: library-exports
+language: multi
+
+patterns:
+  # Default exports from index files
+  # Usage: export default class Hls { ... }
+  # Context: kind="library_export", context_name="export.default"
+  - concept: library_export
+    usage:
+      kind: "^library_export$"
+      name: "^export\\.default$"
+    extract:
+      export_name: "metadata.export_name"
+      is_default: "literal:true"
+
+  # Named exports from index files
+  # Usage: export function doSomething() { ... }
+  # Context: kind="library_export", context_name="export.<name>"
+  - concept: library_export
+    usage:
+      kind: "^library_export$"
+      name: "^export\\."
+    extract:
+      export_name: "metadata.export_name"
+      is_default: "literal:false"
+
+linkers: []

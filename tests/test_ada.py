@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import ada as ada_module
-from hypergumbo.analyze.ada import (
+from hypergumbo_lang_extended1 import ada as ada_module
+from hypergumbo_lang_extended1.ada import (
     analyze_ada,
     find_ada_files,
     is_ada_tree_sitter_available,
@@ -393,7 +393,7 @@ class TestAdaPackageRenames:
 
     def test_extracts_package_renames(self, temp_repo: Path) -> None:
         """Extracts package renaming declarations."""
-        from hypergumbo.analyze.ada import _extract_package_renames
+        from hypergumbo_lang_extended1.ada import _extract_package_renames
 
         from tree_sitter_language_pack import get_parser
 

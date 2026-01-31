@@ -7,7 +7,7 @@ Tests verify that the analyzer correctly extracts:
 - Array of tables (e.g., [[bin]])
 """
 
-from hypergumbo.analyze.toml_config import (
+from hypergumbo_lang_mainstream.toml_config import (
     PASS_ID,
     PASS_VERSION,
     TomlAnalysisResult,
@@ -233,7 +233,7 @@ name = "test"
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.toml_config import is_toml_tree_sitter_available
+    from hypergumbo_lang_mainstream.toml_config import is_toml_tree_sitter_available
 
     # The function should return a boolean
     result = is_toml_tree_sitter_available()

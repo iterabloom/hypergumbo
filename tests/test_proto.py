@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import proto as proto_module
-from hypergumbo.analyze.proto import (
+from hypergumbo_lang_common import proto as proto_module
+from hypergumbo_lang_common.proto import (
     analyze_proto,
     find_proto_files,
     is_proto_tree_sitter_available,

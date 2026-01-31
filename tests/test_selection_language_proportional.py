@@ -1,7 +1,7 @@
 """Tests for the selection.language_proportional module."""
 
-from hypergumbo.ir import Symbol, Span
-from hypergumbo.selection.language_proportional import (
+from hypergumbo_core.ir import Symbol, Span
+from hypergumbo_core.selection.language_proportional import (
     group_symbols_by_language,
     group_files_by_language,
     allocate_language_budget,

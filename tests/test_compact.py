@@ -5,9 +5,9 @@ summarization for LLM-friendly output.
 """
 import pytest
 
-from hypergumbo.schema import SCHEMA_VERSION
-from hypergumbo.ir import Symbol, Edge, Span
-from hypergumbo.compact import (
+from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.ir import Symbol, Edge, Span
+from hypergumbo_core.compact import (
     tokenize_name,
     extract_path_pattern,
     compute_word_frequencies,
@@ -1617,7 +1617,7 @@ class TestUnionFind:
 
     def test_init_single_element(self):
         """Each element starts in its own component."""
-        from hypergumbo.compact import UnionFind
+        from hypergumbo_core.compact import UnionFind
 
         uf = UnionFind(["a", "b", "c"])
         assert uf.find("a") != uf.find("b")
@@ -1627,7 +1627,7 @@ class TestUnionFind:
 
     def test_union_merges_components(self):
         """Union merges two components."""
-        from hypergumbo.compact import UnionFind
+        from hypergumbo_core.compact import UnionFind
 
         uf = UnionFind(["a", "b", "c"])
         uf.union("a", "b")
@@ -1638,7 +1638,7 @@ class TestUnionFind:
 
     def test_union_chain(self):
         """Chained unions form single component."""
-        from hypergumbo.compact import UnionFind
+        from hypergumbo_core.compact import UnionFind
 
         uf = UnionFind(["a", "b", "c", "d"])
         uf.union("a", "b")
@@ -1649,7 +1649,7 @@ class TestUnionFind:
 
     def test_largest_component_size(self):
         """Tracks largest component correctly."""
-        from hypergumbo.compact import UnionFind
+        from hypergumbo_core.compact import UnionFind
 
         uf = UnionFind(["a", "b", "c", "d", "e"])
         assert uf.largest_component_size() == 1  # All singletons
@@ -1665,7 +1665,7 @@ class TestUnionFind:
 
     def test_add_element(self):
         """Can add elements after initialization."""
-        from hypergumbo.compact import UnionFind
+        from hypergumbo_core.compact import UnionFind
 
         uf = UnionFind(["a"])
         uf.add("b")
@@ -1679,7 +1679,7 @@ class TestConnectivityAwareSelection:
 
     def test_bridges_preferred_over_leaves(self):
         """Nodes that bridge components are selected before leaves."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         # Graph: A -- B -- C -- D
         #             |
@@ -1720,7 +1720,7 @@ class TestConnectivityAwareSelection:
 
     def test_component_merge_scoring(self):
         """Merging larger components scores higher than merging smaller ones."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         # Two clusters:
         # Cluster 1: A-B-C (size 3)
@@ -1767,7 +1767,7 @@ class TestConnectivityAwareSelection:
 
     def test_empty_seed_builds_from_centrality(self):
         """With empty seed, falls back to centrality for initial selection."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         sym_a = make_symbol("a")
         sym_b = make_symbol("b")  # Hub
@@ -1793,7 +1793,7 @@ class TestConnectivityAwareSelection:
 
     def test_respects_max_additional_budget(self):
         """Stops after max_additional nodes are added."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         symbols = [make_symbol(f"s{i}") for i in range(10)]
         # Chain: s0 - s1 - s2 - ... - s9
@@ -1810,7 +1810,7 @@ class TestConnectivityAwareSelection:
 
     def test_disconnected_seeds_get_connected(self):
         """Previously-disconnected seeds become connected."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         # Django-like scenario: multiple entrypoints with shared utilities
         cmd1 = make_symbol("Command1", kind="class")
@@ -1846,7 +1846,7 @@ class TestConnectivityAwareSelection:
 
     def test_returns_induced_subgraph_edges(self):
         """Result includes only edges where both endpoints are selected."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         sym_a = make_symbol("a")
         sym_b = make_symbol("b")
@@ -1871,7 +1871,7 @@ class TestConnectivityAwareSelection:
 
     def test_frontier_expands_via_incoming_edges(self):
         """Frontier includes nodes that have incoming edges to selected nodes."""
-        from hypergumbo.compact import select_by_connectivity
+        from hypergumbo_core.compact import select_by_connectivity
 
         # Graph: A <- B <- C (B calls A, C calls B)
         # Seed with {A}, then B should be added (A's caller)
@@ -1908,7 +1908,7 @@ class TestSelectByConnectivityIntegration:
 
     def test_compact_with_connectivity_produces_edges(self):
         """Compact mode with connectivity selection produces non-zero edges."""
-        from hypergumbo.compact import (
+        from hypergumbo_core.compact import (
             format_compact_behavior_map,
             CompactConfig,
         )

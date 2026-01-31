@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from hypergumbo.cli import run_behavior_map
+from hypergumbo_core.cli import run_behavior_map
 
 
 def test_detects_python_language(tmp_path: Path) -> None:
@@ -1208,7 +1208,7 @@ def test_detects_ethersjs_framework(tmp_path: Path) -> None:
 
 def test_extra_excludes_filters_files(tmp_path: Path) -> None:
     """Extra excludes should filter out files from language detection."""
-    from hypergumbo.profile import detect_profile
+    from hypergumbo_core.profile import detect_profile
 
     # Create Python files
     (tmp_path / "app.py").write_text("def main():\n    pass\n")
@@ -1305,7 +1305,7 @@ def test_detects_both_foundry_and_hardhat(tmp_path: Path) -> None:
 
 def test_count_loc_with_max_file_size(tmp_path: Path) -> None:
     """Should skip files larger than max_file_size when specified."""
-    from hypergumbo.profile import _count_loc
+    from hypergumbo_core.profile import _count_loc
 
     # Create a small file - should be counted regardless
     small_file = tmp_path / "small.py"
@@ -1329,7 +1329,7 @@ def test_count_loc_with_max_file_size(tmp_path: Path) -> None:
 
 def test_detect_languages_with_max_file_size(tmp_path: Path) -> None:
     """_detect_languages should respect max_file_size for LOC counting."""
-    from hypergumbo.profile import _detect_languages
+    from hypergumbo_core.profile import _detect_languages
 
     # Create a small Python file
     (tmp_path / "small.py").write_text("print('hi')\n")
@@ -1454,7 +1454,7 @@ dependencies = ["django"]
 
 def test_find_manifest_files_helper(tmp_path: Path) -> None:
     """Test the _find_manifest_files helper directly."""
-    from hypergumbo.profile import _find_manifest_files
+    from hypergumbo_core.profile import _find_manifest_files
 
     # Create files at various depths
     (tmp_path / "pyproject.toml").write_text("root")

@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import ini as ini_module
-from hypergumbo.analyze.ini import (
+from hypergumbo_lang_mainstream import ini as ini_module
+from hypergumbo_lang_mainstream.ini import (
     IniAnalysisResult,
     analyze_ini,
     find_ini_files,

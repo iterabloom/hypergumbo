@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import elm as elm_module
-from hypergumbo.analyze.elm import analyze_elm
+from hypergumbo_lang_common import elm as elm_module
+from hypergumbo_lang_common.elm import analyze_elm
 
 
 def make_elm_file(tmp: Path, name: str, content: str) -> Path:
@@ -354,7 +354,7 @@ class TestElmImportAliases:
 
     def test_extracts_import_alias(self, tmp_path: Path) -> None:
         """Extracts import alias from 'import ... as' statement."""
-        from hypergumbo.analyze.elm import _extract_import_aliases
+        from hypergumbo_lang_common.elm import _extract_import_aliases
 
         from tree_sitter_language_pack import get_parser
 

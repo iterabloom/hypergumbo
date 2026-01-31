@@ -1,0 +1,102 @@
+# Go Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
+#
+# Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http, go-restful.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# Definition-based patterns (v1.0.x): Match base_class for GORM, gRPC, etc.
+# Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
+
+id: go-web
+language: go
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
+
+  # Gin/Echo framework - r.GET("/path", handler), e.POST("/path", handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "\\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # Fiber/Chi framework - app.Get("/path", handler), r.Post("/path", handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "\\.(Get|Post|Put|Delete|Patch|Options|Head)$"
+      position: "^args\\[last\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # go-restful framework - ws.Route(ws.GET("/path").To(handler))
+  # The handler is specified in the .To() call, not as a direct argument
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "\\.To$"
+      position: "^args\\[0\\]$"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Note: These decorator patterns are kept for backwards compatibility but
+  # the primary route detection now uses UsageContext patterns above.
+
+  # net/http - HandleFunc
+  - concept: route
+    decorator: "^http\\.HandleFunc$"
+
+  - concept: route
+    decorator: "^(mux|router)\\.(Handle|HandleFunc)$"
+
+  # Middleware patterns
+  - concept: middleware
+    decorator: "^(c|ctx|r|router|e|echo|app)\\.(Use|Middleware)$"
+
+  # Gin middleware
+  - concept: middleware
+    decorator: "^gin\\.(Logger|Recovery|BasicAuth)$"
+
+  # Echo middleware
+  - concept: middleware
+    decorator: "^echo\\.middleware\\."
+
+  # go-restful WebService (Kubernetes-style API frameworks)
+  - concept: web_service
+    base_class: "^restful\\.WebService$"
+
+  # GORM models (ORM)
+  - concept: model
+    base_class: "^gorm\\.Model$"
+
+  # GORM database operations
+  - concept: repository
+    decorator: "^db\\.(Create|First|Find|Save|Delete|Update|Where)$"
+
+  # Go context handling
+  - concept: middleware
+    decorator: "^context\\.(WithValue|WithCancel|WithDeadline|WithTimeout)$"
+
+  # gRPC service definitions
+  - concept: grpc_service
+    base_class: "^.*Server$"
+
+  # gRPC client definitions
+  - concept: grpc_client
+    base_class: "^.*Client$"
+
+  # Worker/background task patterns (using goroutines with common names)
+  - concept: task
+    decorator: "^go\\s+"
+
+  # Cron jobs (robfig/cron)
+  - concept: scheduled_task
+    decorator: "^c\\.(AddFunc|Schedule)$"
+
+linkers:
+  - http
+  - grpc
+  - database_query

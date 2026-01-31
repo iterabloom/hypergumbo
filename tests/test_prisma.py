@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.prisma import (
+from hypergumbo_lang_extended1.prisma import (
     analyze_prisma,
     find_prisma_files,
     is_prisma_tree_sitter_available,
@@ -112,9 +112,9 @@ class TestIsPrismaTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        with patch("hypergumbo.analyze.prisma.is_prisma_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_extended1.prisma.is_prisma_tree_sitter_available", return_value=False):
             # Direct test
-            from hypergumbo.analyze import prisma as prisma_module
+            from hypergumbo_lang_extended1 import prisma as prisma_module
             with patch.object(prisma_module, "is_prisma_tree_sitter_available", return_value=False):
                 assert prisma_module.is_prisma_tree_sitter_available() is False
 
@@ -124,7 +124,7 @@ class TestAnalyzePrisma:
 
     def test_skips_when_unavailable(self, prisma_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.prisma as prisma_module
+        import hypergumbo_lang_extended1.prisma as prisma_module
 
         with patch.object(prisma_module, "is_prisma_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

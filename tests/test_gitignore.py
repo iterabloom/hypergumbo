@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import gitignore as gitignore_module
-from hypergumbo.analyze.gitignore import (
+from hypergumbo_lang_mainstream import gitignore as gitignore_module
+from hypergumbo_lang_mainstream.gitignore import (
     GitignoreAnalysisResult,
     analyze_gitignore,
     find_gitignore_files,

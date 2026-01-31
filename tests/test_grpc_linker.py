@@ -7,7 +7,7 @@ class TestGrpcLinkerBasics:
 
     def test_linker_returns_result(self, tmp_path: Path) -> None:
         """Linker returns a result object."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         result = link_grpc(tmp_path)
 
@@ -22,7 +22,7 @@ class TestGrpcPythonPatterns:
 
     def test_detects_python_servicer_implementation(self, tmp_path: Path) -> None:
         """Detects Python gRPC servicer implementations."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         python_file = tmp_path / "server.py"
         python_file.write_text('''
@@ -46,7 +46,7 @@ class UserServiceServicer(user_pb2_grpc.UserServiceServicer):
 
     def test_detects_python_stub_usage(self, tmp_path: Path) -> None:
         """Detects Python gRPC stub (client) usage."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         python_file = tmp_path / "client.py"
         python_file.write_text('''
@@ -67,7 +67,7 @@ response = stub.GetUser(user_pb2.GetUserRequest(id=1))
 
     def test_detects_python_server_registration(self, tmp_path: Path) -> None:
         """Detects Python gRPC server.add_generic_rpc_handlers or add_*_to_server."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         python_file = tmp_path / "main.py"
         python_file.write_text('''
@@ -96,7 +96,7 @@ class TestGrpcGoPatterns:
 
     def test_detects_go_server_implementation(self, tmp_path: Path) -> None:
         """Detects Go gRPC server implementations."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         go_file = tmp_path / "server.go"
         go_file.write_text('''
@@ -121,7 +121,7 @@ func (s *userServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.U
 
     def test_detects_go_client_creation(self, tmp_path: Path) -> None:
         """Detects Go gRPC client creation."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         go_file = tmp_path / "client.go"
         go_file.write_text('''
@@ -144,7 +144,7 @@ func main() {
 
     def test_detects_go_server_registration(self, tmp_path: Path) -> None:
         """Detects Go gRPC RegisterXxxServer calls."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         go_file = tmp_path / "main.go"
         go_file.write_text('''
@@ -174,7 +174,7 @@ class TestGrpcEdgeCreation:
 
     def test_creates_edges_between_client_and_server(self, tmp_path: Path) -> None:
         """Creates edges linking clients to servers by service name."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         # Server file
         server_file = tmp_path / "server.py"
@@ -201,7 +201,7 @@ class TestGrpcJavaPatterns:
 
     def test_detects_java_service_implementation(self, tmp_path: Path) -> None:
         """Detects Java gRPC service implementations."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         java_file = tmp_path / "UserServiceImpl.java"
         java_file.write_text('''
@@ -224,7 +224,7 @@ public class UserServiceImpl extends UserServiceGrpc.UserServiceImplBase {
 
     def test_detects_java_stub_usage(self, tmp_path: Path) -> None:
         """Detects Java gRPC stub usage."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         java_file = tmp_path / "Client.java"
         java_file.write_text('''
@@ -251,7 +251,7 @@ class TestGrpcTypeScriptPatterns:
 
     def test_detects_grpc_js_client(self, tmp_path: Path) -> None:
         """Detects gRPC-web or grpc-js client usage."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         ts_file = tmp_path / "client.ts"
         ts_file.write_text('''
@@ -278,7 +278,7 @@ class TestGrpcProtoFileDetection:
 
     def test_detects_proto_service_definitions(self, tmp_path: Path) -> None:
         """Detects service definitions in .proto files."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         proto_file = tmp_path / "user.proto"
         proto_file.write_text('''
@@ -314,7 +314,7 @@ class TestGrpcSymbolProperties:
 
     def test_symbols_have_correct_properties(self, tmp_path: Path) -> None:
         """Symbols have correct origin."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         proto_file = tmp_path / "test.proto"
         proto_file.write_text('''
@@ -334,7 +334,7 @@ class TestGrpcEdgeProperties:
 
     def test_edges_have_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         server_file = tmp_path / "server.py"
         server_file.write_text('class FooServiceServicer(foo_pb2_grpc.FooServiceServicer): pass')
@@ -354,7 +354,7 @@ class TestGrpcEmptyProject:
 
     def test_handles_project_without_grpc(self, tmp_path: Path) -> None:
         """Handles projects without any gRPC code."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         python_file = tmp_path / "app.py"
         python_file.write_text('print("Hello, world!")')
@@ -371,7 +371,7 @@ class TestGrpcGeneratedFileDetection:
 
     def test_detects_python_pb2_grpc_files(self, tmp_path: Path) -> None:
         """Detects Python gRPC generated files."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         # Create a generated file
         pb2_grpc_file = tmp_path / "user_pb2_grpc.py"
@@ -398,7 +398,7 @@ class TestGrpcTypeScriptFalsePositives:
 
     def test_filters_common_false_positives(self, tmp_path: Path) -> None:
         """Filters out common false positive client names."""
-        from hypergumbo.linkers.grpc import link_grpc
+        from hypergumbo_core.linkers.grpc import link_grpc
 
         ts_file = tmp_path / "client.ts"
         ts_file.write_text('''
@@ -429,7 +429,7 @@ class TestGrpcNormalizeServiceName:
 
     def test_normalizes_names_without_suffix(self, tmp_path: Path) -> None:
         """Handles names without common suffixes."""
-        from hypergumbo.linkers.grpc import _normalize_service_name
+        from hypergumbo_core.linkers.grpc import _normalize_service_name
 
         # Names without standard suffixes should return unchanged
         assert _normalize_service_name("User") == "User"
@@ -438,7 +438,7 @@ class TestGrpcNormalizeServiceName:
 
     def test_normalizes_names_with_suffix(self, tmp_path: Path) -> None:
         """Removes common gRPC suffixes for matching."""
-        from hypergumbo.linkers.grpc import _normalize_service_name
+        from hypergumbo_core.linkers.grpc import _normalize_service_name
 
         # Names with standard suffixes should have them removed
         assert _normalize_service_name("UserService") == "User"
@@ -453,8 +453,8 @@ class TestGrpcLinkerRequirements:
 
     def test_count_proto_files(self, tmp_path: Path) -> None:
         """Counts .proto files in the repository."""
-        from hypergumbo.linkers.grpc import _count_proto_files
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.grpc import _count_proto_files
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         # Create some proto files
         (tmp_path / "user.proto").write_text("service UserService {}")
@@ -468,9 +468,9 @@ class TestGrpcLinkerRequirements:
 
     def test_count_grpc_patterns_go_registration(self, tmp_path: Path) -> None:
         """Counts Go gRPC registration patterns in symbols."""
-        from hypergumbo.ir import Span, Symbol
-        from hypergumbo.linkers.grpc import _count_grpc_patterns_in_symbols
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import _count_grpc_patterns_in_symbols
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         go_sym = Symbol(
             id="go:test.go:1-10:RegisterUserServer:function",
@@ -489,9 +489,9 @@ class TestGrpcLinkerRequirements:
 
     def test_count_grpc_patterns_python_servicer(self, tmp_path: Path) -> None:
         """Counts Python gRPC servicer patterns in symbols."""
-        from hypergumbo.ir import Span, Symbol
-        from hypergumbo.linkers.grpc import _count_grpc_patterns_in_symbols
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import _count_grpc_patterns_in_symbols
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         py_sym = Symbol(
             id="python:test.py:1-10:UserServiceServicer:class",
@@ -510,9 +510,9 @@ class TestGrpcLinkerRequirements:
 
     def test_count_grpc_patterns_java_impl_base(self, tmp_path: Path) -> None:
         """Counts Java gRPC ImplBase patterns in symbols."""
-        from hypergumbo.ir import Span, Symbol
-        from hypergumbo.linkers.grpc import _count_grpc_patterns_in_symbols
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import _count_grpc_patterns_in_symbols
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         java_sym = Symbol(
             id="java:Test.java:1-10:UserServiceImpl:class",
@@ -537,8 +537,8 @@ class TestGrpcLinkerRegistration:
     def test_linker_is_registered(self) -> None:
         """gRPC linker is registered with the registry."""
         # Import the module to trigger registration
-        import hypergumbo.linkers.grpc
-        from hypergumbo.linkers.registry import get_linker
+        import hypergumbo_core.linkers.grpc
+        from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("grpc")
         assert linker is not None
@@ -547,8 +547,8 @@ class TestGrpcLinkerRegistration:
 
     def test_grpc_linker_returns_result(self, tmp_path: Path) -> None:
         """grpc_linker function returns LinkerResult."""
-        from hypergumbo.linkers.grpc import grpc_linker
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.grpc import grpc_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         ctx = LinkerContext(repo_root=tmp_path)
         result = grpc_linker(ctx)
@@ -563,9 +563,9 @@ class TestGrpcUnresolvedEdgeResolution:
 
     def test_resolves_unresolved_register_server_edge(self, tmp_path: Path) -> None:
         """Resolves unresolved edges to RegisterXxxServer functions."""
-        from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
-        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+        from hypergumbo_core.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         # Create an unresolved edge from Go analyzer
         unresolved_edge = Edge.create(
@@ -607,9 +607,9 @@ class TestGrpcUnresolvedEdgeResolution:
 
     def test_ignores_non_grpc_unresolved_edges(self, tmp_path: Path) -> None:
         """Ignores unresolved edges that don't match gRPC patterns."""
-        from hypergumbo.ir import AnalysisRun, Edge
-        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import AnalysisRun, Edge
+        from hypergumbo_core.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         # Create an unresolved edge that's NOT a gRPC pattern
         unresolved_edge = Edge.create(
@@ -636,9 +636,9 @@ class TestGrpcUnresolvedEdgeResolution:
 
     def test_prefers_package_matching_candidate(self, tmp_path: Path) -> None:
         """Prefers symbol whose path matches the package hint."""
-        from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
-        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+        from hypergumbo_core.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         # The package hint contains 'checkout/pb' which should match path
         unresolved_edge = Edge.create(
@@ -689,9 +689,9 @@ class TestGrpcUnresolvedEdgeResolution:
 
     def test_resolves_using_ctx_symbols(self, tmp_path: Path) -> None:
         """_resolve_unresolved_grpc_edges also looks up symbols from ctx.symbols."""
-        from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol
-        from hypergumbo.linkers.grpc import _resolve_unresolved_grpc_edges
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+        from hypergumbo_core.linkers.grpc import _resolve_unresolved_grpc_edges
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         # Create an unresolved edge from Go analyzer
         unresolved_edge = Edge.create(

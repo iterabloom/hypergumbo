@@ -8,7 +8,7 @@ Tests verify that the analyzer correctly extracts:
 - Always blocks
 """
 
-from hypergumbo.analyze.verilog import (
+from hypergumbo_lang_extended1.verilog import (
     PASS_ID,
     PASS_VERSION,
     VerilogAnalysisResult,
@@ -155,7 +155,7 @@ endmodule
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.verilog import is_verilog_tree_sitter_available
+    from hypergumbo_lang_extended1.verilog import is_verilog_tree_sitter_available
 
     # The function should return a boolean
     result = is_verilog_tree_sitter_available()

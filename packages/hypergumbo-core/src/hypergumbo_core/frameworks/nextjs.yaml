@@ -1,0 +1,86 @@
+# Next.js framework patterns (ADR-0003 v1.1.x)
+#
+# Matches Next.js file-based routing patterns.
+# Symbols matching these patterns get enriched with concept metadata.
+#
+# File-based patterns (v1.1.x): Match exports in pages/ and app/ directories
+# Next.js uses file system as the router - pages/about.js → /about
+
+id: nextjs
+language: javascript
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for file-based routing
+
+  # Default exports in pages/ or app/ directories become page components
+  - concept: route
+    usage:
+      kind: "^export$"
+      name: "^export\\.default$"
+      position: "^file$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:GET"
+
+  # Named exports for data fetching (getServerSideProps, getStaticProps, etc.)
+  - concept: data_fetcher
+    usage:
+      kind: "^export$"
+      name: "^export\\.(getServerSideProps|getStaticProps|getStaticPaths)$"
+      position: "^file$"
+    extract:
+      path: "metadata.route_path"
+
+  # App Router data fetching (generateStaticParams, generateMetadata)
+  - concept: data_fetcher
+    usage:
+      kind: "^export$"
+      name: "^export\\.(generateStaticParams|generateMetadata)$"
+      position: "^file$"
+    extract:
+      path: "metadata.route_path"
+
+  # API routes (pages/api/* or app/*/route.ts)
+  - concept: api_route
+    usage:
+      kind: "^export$"
+      name: "^export\\.default$"
+      position: "^file$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # React component patterns that indicate Next.js pages
+
+  # getServerSideProps - Server-side data fetching
+  - concept: data_fetcher
+    symbol_name: "^getServerSideProps$"
+
+  # getStaticProps - Static generation
+  - concept: data_fetcher
+    symbol_name: "^getStaticProps$"
+
+  # getStaticPaths - Dynamic route static generation
+  - concept: data_fetcher
+    symbol_name: "^getStaticPaths$"
+
+  # App Router: generateStaticParams
+  - concept: data_fetcher
+    symbol_name: "^generateStaticParams$"
+
+  # App Router: generateMetadata
+  - concept: metadata_generator
+    symbol_name: "^generateMetadata$"
+
+  # Middleware (middleware.ts)
+  - concept: middleware
+    symbol_name: "^middleware$"
+
+  # API route handlers (App Router)
+  - concept: api_handler
+    symbol_name: "^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$"
+
+linkers:
+  - http

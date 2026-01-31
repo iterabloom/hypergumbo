@@ -1,7 +1,7 @@
 """Tests for JNI linker."""
 from pathlib import Path
 
-from hypergumbo.ir import AnalysisRun, Symbol, Span
+from hypergumbo_core.ir import AnalysisRun, Symbol, Span
 
 
 class TestJniNamingConvention:
@@ -9,7 +9,7 @@ class TestJniNamingConvention:
 
     def test_parse_jni_function_name_simple(self) -> None:
         """Parses simple JNI function name."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         result = parse_jni_function_name("Java_com_example_MyClass_processData")
 
@@ -20,7 +20,7 @@ class TestJniNamingConvention:
 
     def test_parse_jni_function_name_no_package(self) -> None:
         """Parses JNI function with no package."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         result = parse_jni_function_name("Java_MyClass_doSomething")
 
@@ -31,7 +31,7 @@ class TestJniNamingConvention:
 
     def test_parse_jni_function_name_deep_package(self) -> None:
         """Parses JNI function with deep package hierarchy."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         result = parse_jni_function_name("Java_org_apache_guacamole_net_Client_connect")
 
@@ -42,7 +42,7 @@ class TestJniNamingConvention:
 
     def test_parse_jni_function_name_not_jni(self) -> None:
         """Returns None for non-JNI function names."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         assert parse_jni_function_name("main") is None
         assert parse_jni_function_name("process_data") is None
@@ -51,7 +51,7 @@ class TestJniNamingConvention:
 
     def test_parse_jni_function_name_with_overload(self) -> None:
         """Parses JNI function with overload suffix."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # JNI uses __ followed by signature for overloaded methods
         result = parse_jni_function_name("Java_com_example_MyClass_process__I")
@@ -117,7 +117,7 @@ class TestJniLinker:
 
     def test_links_java_native_to_c_jni(self) -> None:
         """Links Java native method to C JNI function."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol("MyClass.processData", "method", is_native=True),
@@ -136,7 +136,7 @@ class TestJniLinker:
 
     def test_links_with_package(self) -> None:
         """Links Java native method with package to C JNI function."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol(
@@ -158,7 +158,7 @@ class TestJniLinker:
 
     def test_links_via_modifiers_field(self) -> None:
         """Links Java native method detected via modifiers field (not meta.is_native)."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol(
@@ -182,7 +182,7 @@ class TestJniLinker:
 
     def test_no_link_for_non_native_method(self) -> None:
         """Does not link non-native Java methods."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol("MyClass.processData", "method", is_native=False),
@@ -197,7 +197,7 @@ class TestJniLinker:
 
     def test_no_link_for_missing_c_function(self) -> None:
         """Does not create edge when C function is missing."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol("MyClass.processData", "method", is_native=True),
@@ -212,7 +212,7 @@ class TestJniLinker:
 
     def test_links_multiple_native_methods(self) -> None:
         """Links multiple native methods to their implementations."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol("Native.processData", "method", is_native=True),
@@ -234,7 +234,7 @@ class TestJniLinker:
 
     def test_result_includes_run_metadata(self) -> None:
         """Result includes analysis run metadata."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol("MyClass.processData", "method", is_native=True),
@@ -250,7 +250,7 @@ class TestJniLinker:
 
     def test_edge_confidence(self) -> None:
         """Edge has appropriate confidence level."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         java_symbols = [
             self._make_java_symbol("MyClass.processData", "method", is_native=True),
@@ -270,9 +270,9 @@ class TestJniLinkerWithAnalyzers:
 
     def test_links_analyzed_files(self, tmp_path: Path) -> None:
         """Links symbols from actual Java and C analysis."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.analyze.c import analyze_c
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_lang_mainstream.c import analyze_c
+        from hypergumbo_core.linkers.jni import link_jni
 
         # Create Java file with native method
         java_file = tmp_path / "Native.java"
@@ -325,8 +325,8 @@ class TestJniLinkerRegistry:
     def test_jni_linker_registered(self) -> None:
         """JNI linker is registered in the linker registry."""
         # Import the jni module to trigger registration
-        import hypergumbo.linkers.jni
-        from hypergumbo.linkers.registry import get_linker
+        import hypergumbo_core.linkers.jni
+        from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("jni")
         assert linker is not None
@@ -336,8 +336,8 @@ class TestJniLinkerRegistry:
 
     def test_jni_linker_has_requirements(self) -> None:
         """JNI linker declares its requirements."""
-        import hypergumbo.linkers.jni
-        from hypergumbo.linkers.registry import get_linker
+        import hypergumbo_core.linkers.jni
+        from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("jni")
         assert linker is not None
@@ -349,9 +349,9 @@ class TestJniLinkerRegistry:
 
     def test_jni_linker_via_registry(self) -> None:
         """JNI linker works via registry dispatch."""
-        import hypergumbo.linkers.jni
+        import hypergumbo_core.linkers.jni
         from pathlib import Path
-        from hypergumbo.linkers.registry import LinkerContext, run_linker
+        from hypergumbo_core.linkers.registry import LinkerContext, run_linker
 
         # Create symbols
         run = AnalysisRun.create(pass_id="test", version="test")
@@ -389,9 +389,9 @@ class TestJniLinkerRegistry:
 
     def test_jni_requirements_check_with_matching_symbols(self) -> None:
         """JNI requirements report as met when matching symbols exist."""
-        import hypergumbo.linkers.jni
+        import hypergumbo_core.linkers.jni
         from pathlib import Path
-        from hypergumbo.linkers.registry import LinkerContext, check_linker_requirements
+        from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
@@ -435,9 +435,9 @@ class TestJniLinkerRegistry:
 
     def test_jni_requirements_check_missing_java_native(self) -> None:
         """JNI requirements report unmet when Java native methods missing."""
-        import hypergumbo.linkers.jni
+        import hypergumbo_core.linkers.jni
         from pathlib import Path
-        from hypergumbo.linkers.registry import LinkerContext, check_linker_requirements
+        from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
@@ -483,7 +483,7 @@ class TestJniLinkerEdgeCases:
 
     def test_empty_symbol_lists(self) -> None:
         """Handles empty symbol lists."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         result = link_jni([], [])
 
@@ -492,7 +492,7 @@ class TestJniLinkerEdgeCases:
 
     def test_only_java_symbols(self) -> None:
         """Handles case with only Java symbols."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         run = AnalysisRun.create(pass_id="test", version="test")
         java_symbols = [
@@ -515,7 +515,7 @@ class TestJniLinkerEdgeCases:
 
     def test_only_c_symbols(self) -> None:
         """Handles case with only C symbols."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         run = AnalysisRun.create(pass_id="test", version="test")
         c_symbols = [
@@ -537,7 +537,7 @@ class TestJniLinkerEdgeCases:
 
     def test_underscore_in_class_name(self) -> None:
         """Handles underscores in class names (encoded as _1)."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # JNI encodes _ as _1 in names
         result = parse_jni_function_name("Java_com_example_My_1Class_process")
@@ -548,7 +548,7 @@ class TestJniLinkerEdgeCases:
 
     def test_single_part_after_java_prefix(self) -> None:
         """Returns None for single part after Java_ prefix."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # Only one part after Java_ - not valid JNI
         result = parse_jni_function_name("Java_onlyOneWord")
@@ -557,7 +557,7 @@ class TestJniLinkerEdgeCases:
 
     def test_non_c_symbols_ignored(self) -> None:
         """Non-C symbols are ignored in lookup."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
@@ -597,7 +597,7 @@ class TestJniLinkerEdgeCases:
 
     def test_non_java_symbols_ignored(self) -> None:
         """Non-Java symbols are ignored when linking."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
@@ -636,7 +636,7 @@ class TestJniLinkerEdgeCases:
 
     def test_underscore_encoding_full_path(self) -> None:
         """Tests the full underscore encoding path with _1 sequences."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # Multiple underscores in class name: My__Class (two underscores)
         # Encoded as: My_1_1Class
@@ -648,7 +648,7 @@ class TestJniLinkerEdgeCases:
 
     def test_underscore_at_end_of_parts(self) -> None:
         """Tests underscore encoding when _1 is at end of parts list."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # Class name with underscore: My_Class
         # Encoded as: My_1Class
@@ -660,7 +660,7 @@ class TestJniLinkerEdgeCases:
 
     def test_non_function_kind_ignored(self) -> None:
         """Non-function C symbols are ignored."""
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
@@ -699,7 +699,7 @@ class TestJniLinkerEdgeCases:
 
     def test_consecutive_underscores(self) -> None:
         """Tests consecutive underscore encoding (multiple _1 in a row)."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # Three consecutive underscores in class name: My___Class
         # Encoded as: My_1_1_1Class
@@ -712,7 +712,7 @@ class TestJniLinkerEdgeCases:
 
     def test_decoded_parts_too_few(self) -> None:
         """Tests when decoded parts result in fewer than 2 elements."""
-        from hypergumbo.linkers.jni import parse_jni_function_name
+        from hypergumbo_core.linkers.jni import parse_jni_function_name
 
         # Edge case: after decoding _1 sequences, we might end up with
         # a single part. This tests that edge case.
@@ -727,7 +727,7 @@ class TestJniLinkerEdgeCases:
         This is critical for Android NDK projects which commonly use .cpp files
         for JNI implementations.
         """
-        from hypergumbo.linkers.jni import link_jni
+        from hypergumbo_core.linkers.jni import link_jni
 
         run = AnalysisRun.create(pass_id="test", version="test")
 

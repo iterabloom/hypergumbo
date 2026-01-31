@@ -3,7 +3,7 @@
 from pathlib import Path
 from textwrap import dedent
 
-from hypergumbo.linkers.event_sourcing import (
+from hypergumbo_core.linkers.event_sourcing import (
     _scan_javascript_events,
     _scan_python_events,
     _scan_java_events,

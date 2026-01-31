@@ -4,9 +4,9 @@ Tests that BFS traversal respects supply chain tier boundaries,
 stopping at nodes with tier > max_tier.
 """
 
-from hypergumbo.ir import Symbol, Edge, Span
-from hypergumbo.slice import slice_graph, SliceQuery
-from hypergumbo.cli import build_parser
+from hypergumbo_core.ir import Symbol, Edge, Span
+from hypergumbo_core.slice import slice_graph, SliceQuery
+from hypergumbo_core.cli import build_parser
 
 
 def make_symbol(

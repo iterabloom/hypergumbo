@@ -1,0 +1,46 @@
+# Bottle framework patterns (ADR-0003)
+#
+# Bottle is a fast, simple Python micro-framework similar to Flask.
+# Matches Bottle route decorators and plugin patterns.
+
+id: bottle
+language: python
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Bottle 0.13+ shortcut routes - @app.get("/path"), @app.post("/path"), etc.
+  - concept: route
+    decorator: "^(app|bottle)\\.(get|post|put|delete|patch|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Classic Bottle route - @app.route("/path"), @app.route("/path", method="GET")
+  - concept: route
+    decorator: "^(app|bottle)\\.route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.method"
+
+  # Static route - @route('/path') without app prefix
+  - concept: route
+    decorator: "^route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.method"
+
+  # Shortcut routes without app prefix
+  - concept: route
+    decorator: "^(get|post|put|delete|patch)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name"
+
+  # Bottle hooks - @app.hook('before_request')
+  - concept: middleware
+    decorator: "^(app|bottle)\\.hook$"
+
+  # Bottle error handler - @app.error(404)
+  - concept: error_handler
+    decorator: "^(app|bottle)\\.error$"
+
+  # Bottle plugins
+  - concept: middleware
+    decorator: "^(app|bottle)\\.install$"

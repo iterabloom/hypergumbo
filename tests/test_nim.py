@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import nim as nim_module
-from hypergumbo.analyze.nim import (
+from hypergumbo_lang_extended1 import nim as nim_module
+from hypergumbo_lang_extended1.nim import (
     analyze_nim,
     find_nim_files,
     is_nim_tree_sitter_available,
@@ -267,7 +267,7 @@ class TestNimImportAliases:
 
     def test_extracts_import_alias(self, temp_repo: Path) -> None:
         """Extracts import alias from 'import as' statement."""
-        from hypergumbo.analyze.nim import _extract_import_aliases
+        from hypergumbo_lang_extended1.nim import _extract_import_aliases
         from tree_sitter_language_pack import get_parser
 
         parser = get_parser("nim")

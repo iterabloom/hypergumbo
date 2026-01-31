@@ -13,7 +13,7 @@ class TestPhoenixPatternDetection:
 
     def test_detect_broadcast_pattern(self) -> None:
         """Detects broadcast!/broadcast message sending."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.RoomChannel do
@@ -34,7 +34,7 @@ end
 
     def test_detect_endpoint_broadcast(self) -> None:
         """Detects Endpoint.broadcast! pattern."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.UserController do
@@ -53,7 +53,7 @@ end
 
     def test_detect_push_pattern(self) -> None:
         """Detects push/3 message sending."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.RoomChannel do
@@ -71,7 +71,7 @@ end
 
     def test_detect_handle_in_pattern(self) -> None:
         """Detects handle_in message receiving."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.RoomChannel do
@@ -89,7 +89,7 @@ end
 
     def test_detect_multiple_handle_in(self) -> None:
         """Detects multiple handle_in clauses."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.RoomChannel do
@@ -113,7 +113,7 @@ end
 
     def test_non_elixir_returns_empty(self) -> None:
         """Returns empty for non-Elixir code."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 def broadcast(socket, event):
@@ -125,7 +125,7 @@ def broadcast(socket, event):
 
     def test_no_patterns_in_regular_code(self) -> None:
         """Returns empty for code without Phoenix patterns."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.Math do
@@ -138,7 +138,7 @@ end
 
     def test_endpoint_broadcast_not_double_counted(self) -> None:
         """Endpoint.broadcast! is not double-matched by socket pattern."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 MyApp.Endpoint.broadcast!("room:lobby", "new_event", %{data: 1})
@@ -153,7 +153,7 @@ MyApp.Endpoint.broadcast!("room:lobby", "new_event", %{data: 1})
 
     def test_endpoint_broadcast_with_socket_arg_not_double_counted(self) -> None:
         """Weird Endpoint.broadcast!(socket, ...) pattern not double-matched."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         # Edge case: someone writes Endpoint.broadcast!(socket, event) which would
         # match both endpoint pattern (failing to capture topic/event) and socket pattern.
@@ -173,7 +173,7 @@ class TestPhoenixLinker:
 
     def test_links_broadcast_to_handle_in(self, tmp_path: Path) -> None:
         """Links broadcast! to handle_in on same event."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         # Controller that broadcasts
         controller = tmp_path / "user_controller.ex"
@@ -207,7 +207,7 @@ end
 
     def test_links_push_to_client(self, tmp_path: Path) -> None:
         """Creates edges for push patterns."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         channel = tmp_path / "room_channel.ex"
         channel.write_text("""
@@ -228,7 +228,7 @@ end
 
     def test_no_elixir_files(self, tmp_path: Path) -> None:
         """Handles directory with no Elixir files."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         (tmp_path / "app.js").write_text("console.log('hello');")
 
@@ -239,7 +239,7 @@ end
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Handles empty directory."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         result = link_phoenix_ipc(tmp_path)
 
@@ -252,7 +252,7 @@ class TestPhoenixEventMatching:
 
     def test_exact_event_match(self, tmp_path: Path) -> None:
         """Matches exact event names."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         (tmp_path / "channel.ex").write_text("""
 defmodule MyApp.RoomChannel do
@@ -270,7 +270,7 @@ end
 
     def test_no_match_different_events(self, tmp_path: Path) -> None:
         """Does not link different event names."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         (tmp_path / "send.ex").write_text("""
 defmodule MyApp.Sender do
@@ -298,7 +298,7 @@ class TestPhoenixLinkerMetadata:
 
     def test_run_has_pass_id(self, tmp_path: Path) -> None:
         """Run has correct pass ID."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         result = link_phoenix_ipc(tmp_path)
 
@@ -307,7 +307,7 @@ class TestPhoenixLinkerMetadata:
 
     def test_run_tracks_files(self, tmp_path: Path) -> None:
         """Run tracks files analyzed."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         (tmp_path / "a.ex").write_text("defmodule A, do: nil")
         (tmp_path / "b.exs").write_text("defmodule B, do: nil")
@@ -319,7 +319,7 @@ class TestPhoenixLinkerMetadata:
 
     def test_edge_has_event_in_meta(self, tmp_path: Path) -> None:
         """Created edges include event name in metadata."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         (tmp_path / "channel.ex").write_text("""
 defmodule MyApp.RoomChannel do
@@ -343,7 +343,7 @@ class TestPhoenixTopicHandling:
 
     def test_topic_extraction(self) -> None:
         """Extracts topic from broadcast patterns."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 MyApp.Endpoint.broadcast!("users:123", "update", %{})
@@ -356,7 +356,7 @@ MyApp.Endpoint.broadcast!("users:123", "update", %{})
 
     def test_broadcast_from_socket(self) -> None:
         """Handles broadcast from socket (topic from socket)."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 broadcast!(socket, "new_msg", %{body: "hello"})
@@ -373,7 +373,7 @@ class TestPhoenixEdgeCases:
 
     def test_file_read_error(self, tmp_path: Path) -> None:
         """Handles file read errors gracefully."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         ex_file = tmp_path / "test.ex"
         ex_file.write_text("broadcast!(socket, \"test\", %{})")
@@ -395,7 +395,7 @@ class TestPhoenixEdgeCases:
 
     def test_multiple_patterns_in_file(self, tmp_path: Path) -> None:
         """Handles multiple Phoenix patterns in single file."""
-        from hypergumbo.linkers.phoenix_ipc import link_phoenix_ipc
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
 
         (tmp_path / "multi.ex").write_text("""
 defmodule MyApp.MultiChannel do
@@ -415,7 +415,7 @@ class TestPhoenixLiveView:
 
     def test_detect_liveview_handle_event(self) -> None:
         """Detects LiveView handle_event pattern."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.CounterLive do
@@ -434,7 +434,7 @@ end
 
     def test_detect_push_event(self) -> None:
         """Detects push_event pattern in LiveView."""
-        from hypergumbo.linkers.phoenix_ipc import detect_phoenix_patterns
+        from hypergumbo_core.linkers.phoenix_ipc import detect_phoenix_patterns
 
         source = b"""
 defmodule MyApp.FormLive do
@@ -455,8 +455,8 @@ class TestPhoenixIPCLinkerRegistered:
 
     def test_phoenix_ipc_linker_returns_result(self, tmp_path: Path) -> None:
         """phoenix_ipc_linker function returns LinkerResult."""
-        from hypergumbo.linkers.phoenix_ipc import phoenix_ipc_linker
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.phoenix_ipc import phoenix_ipc_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         ctx = LinkerContext(repo_root=tmp_path)
         result = phoenix_ipc_linker(ctx)

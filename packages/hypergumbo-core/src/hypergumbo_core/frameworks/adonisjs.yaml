@@ -1,0 +1,114 @@
+# AdonisJS framework patterns (ADR-0003 v1.1.x)
+#
+# AdonisJS is a full-featured Node.js framework with Laravel-inspired patterns.
+# Supports both file-based routing and decorator-based routing (Girouette).
+
+id: adonisjs
+language: javascript
+
+patterns:
+  # Controller class detection (by naming convention or inheritance)
+  - concept: controller
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*Controller$"
+    symbol_kind: "^class$"
+
+  # Girouette decorator-based routing
+  - concept: route
+    decorator: "^@?(Get|Post|Put|Patch|Delete|Any|Head|Options)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_name"
+
+  # Resource routes - @Resource('/users')
+  - concept: route
+    decorator: "^@?Resource$"
+    extract_path: "args[0]"
+
+  # Middleware decorators
+  - concept: middleware
+    decorator: "^@?Middleware$"
+
+  # Group middleware
+  - concept: middleware
+    decorator: "^@?GroupMiddleware$"
+
+  # Route groups
+  - concept: route_group
+    decorator: "^@?Group$"
+
+  # Route model binding
+  - concept: model_binding
+    decorator: "^@?bind$"
+
+  # Dependency injection
+  - concept: dependency_injection
+    decorator: "^@?inject$"
+
+  # Models (Lucid ORM)
+  - concept: model
+    base_class: "^BaseModel$"
+
+  # Validators
+  - concept: validator
+    base_class: "^BaseValidator$"
+
+  # Mailers
+  - concept: mailable
+    base_class: "^BaseMail$"
+
+  # Events
+  - concept: event
+    base_class: "^Event$"
+
+  # Listeners
+  - concept: listener
+    base_class: "^Listener$"
+
+  # Commands (CLI)
+  - concept: command
+    base_class: "^BaseCommand$"
+
+  # Exception handlers
+  - concept: error_handler
+    base_class: "^ExceptionHandler$"
+
+  # Seeders
+  - concept: seeder
+    base_class: "^BaseSeeder$"
+
+  # Jobs/Queues
+  - concept: job
+    base_class: "^Job$"
+
+  # Providers
+  - concept: service_provider
+    base_class: "^(ApplicationProvider|AppProvider)$"
+
+  # Auth guards
+  - concept: auth
+    base_class: "^(SessionGuard|TokenGuard|BasicAuthGuard)$"
+
+  # Usage-based patterns for call-based routing
+  # Route.get('/path', handler), Route.post('/path', handler)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^Route\\.(get|post|put|patch|delete|any|resource)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.url"
+      method: "name_suffix"
+
+  # Middleware registration via .middleware()
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "\\.middleware$"
+
+  # Route groups via Route.group()
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^Route\\.group$"
+
+linkers:
+  - http

@@ -6,7 +6,7 @@ Tests verify that the analyzer correctly extracts:
 - composer.json: PHP dependencies
 """
 
-from hypergumbo.analyze.json_config import (
+from hypergumbo_lang_mainstream.json_config import (
     PASS_ID,
     PASS_VERSION,
     JSONAnalysisResult,

@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.zig import (
+from hypergumbo_lang_extended1.zig import (
     analyze_zig,
     find_zig_files,
     is_zig_tree_sitter_available,
@@ -260,9 +260,9 @@ class TestZigImportAliases:
 
     def test_extracts_import_alias(self, tmp_path: Path) -> None:
         """Tracks const name = @import('module') as alias."""
-        from hypergumbo.analyze.zig import _extract_edges_from_tree
-        from hypergumbo.ir import AnalysisRun
-        from hypergumbo.symbol_resolution import NameResolver
+        from hypergumbo_lang_extended1.zig import _extract_edges_from_tree
+        from hypergumbo_core.ir import AnalysisRun
+        from hypergumbo_core.symbol_resolution import NameResolver
         import tree_sitter
         import tree_sitter_zig
 
@@ -322,7 +322,7 @@ class TestZigGracefulDegradation:
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
         with patch(
-            "hypergumbo.analyze.zig.is_zig_tree_sitter_available",
+            "hypergumbo_lang_extended1.zig.is_zig_tree_sitter_available",
             return_value=False,
         ):
             import warnings

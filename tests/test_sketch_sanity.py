@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.sketch import generate_sketch, ConfigExtractionMode
+from hypergumbo_core.sketch import generate_sketch, ConfigExtractionMode
 
 
 def make_stylized_repo(

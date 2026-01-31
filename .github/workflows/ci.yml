@@ -57,9 +57,9 @@ jobs:
           pip install --upgrade pip
           pip install ruff bandit
       - name: Run Ruff (linting)
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ packages/*/src/ 2>/dev/null || ruff check src/ tests/
       - name: Run Bandit (security)
-        run: bandit -r src/ -c pyproject.toml
+        run: bandit -r src/ packages/*/src/ -c pyproject.toml 2>/dev/null || bandit -r src/ -c pyproject.toml
 
 
   dco:
@@ -116,7 +116,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e .[dev]
+          # Install from packages if available, otherwise legacy
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo[dev]"
+          else
+            pip install -e .[dev]
+          fi
       - name: Verify schema.json is up-to-date
         run: ./scripts/generate-schema --check
       - name: Verify ARCHITECTURE.md is up-to-date
@@ -133,10 +138,15 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
-      - name: Install core dependencies
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e .[dev]
+          # Install from packages if available, otherwise legacy
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo[dev]"
+          else
+            pip install -e .[dev]
+          fi
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Check for sentence-transformers
@@ -152,7 +162,12 @@ jobs:
           fi
       - name: Run tests with coverage
         run: |
-          pytest -n 2 --cov=src --cov-report=term | tee coverage-output.txt
+          # Run tests against src/ directory (legacy) or packages/*/src (new)
+          if [ -d "packages/hypergumbo-core" ]; then
+            pytest -n 2 --cov=src --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term | tee coverage-output.txt
+          else
+            pytest -n 2 --cov=src --cov-report=term | tee coverage-output.txt
+          fi
       - name: Update coverage badge
         if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
         run: |

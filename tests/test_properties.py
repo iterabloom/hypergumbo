@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import properties as properties_module
-from hypergumbo.analyze.properties import (
+from hypergumbo_lang_mainstream import properties as properties_module
+from hypergumbo_lang_mainstream.properties import (
     PropertiesAnalysisResult,
     analyze_properties,
     find_properties_files,

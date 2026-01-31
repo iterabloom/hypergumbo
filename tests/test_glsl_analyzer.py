@@ -7,7 +7,7 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
-from hypergumbo.analyze.glsl import (
+from hypergumbo_lang_common.glsl import (
     PASS_ID,
     PASS_VERSION,
     GLSLAnalysisResult,
@@ -197,7 +197,7 @@ def test_span_information(tmp_path):
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.glsl import is_glsl_tree_sitter_available
+    from hypergumbo_lang_common.glsl import is_glsl_tree_sitter_available
 
     # The function should return a boolean
     result = is_glsl_tree_sitter_available()

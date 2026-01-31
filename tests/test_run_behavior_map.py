@@ -1,7 +1,7 @@
 import json
 
-from hypergumbo.cli import run_behavior_map
-from hypergumbo.schema import SCHEMA_VERSION
+from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.schema import SCHEMA_VERSION
 
 
 def test_run_behavior_map_writes_behavior_map_json(tmp_path):

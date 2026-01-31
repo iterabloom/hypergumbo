@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.ir import Span, Symbol
-from hypergumbo.linkers.openapi import (
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.linkers.openapi import (
     OpenApiOperation,
     _count_openapi_files,
     _get_route_symbols,
@@ -19,7 +19,7 @@ from hypergumbo.linkers.openapi import (
     link_openapi,
     openapi_linker,
 )
-from hypergumbo.linkers.registry import LinkerContext
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestOpenApiSpecDetection:
@@ -617,7 +617,7 @@ class TestYamlFallback:
             # Force re-import to trigger ImportError path
             import importlib
 
-            import hypergumbo.linkers.openapi as openapi_module
+            import hypergumbo_core.linkers.openapi as openapi_module
 
             importlib.reload(openapi_module)
             result = openapi_module._load_yaml(json_content)
@@ -634,7 +634,7 @@ class TestYamlFallback:
         with patch.dict("sys.modules", {"yaml": None}):
             import importlib
 
-            import hypergumbo.linkers.openapi as openapi_module
+            import hypergumbo_core.linkers.openapi as openapi_module
 
             importlib.reload(openapi_module)
             result = openapi_module._load_yaml(invalid_content)

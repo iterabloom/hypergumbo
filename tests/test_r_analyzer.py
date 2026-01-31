@@ -7,7 +7,7 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
-from hypergumbo.analyze.r_lang import (
+from hypergumbo_lang_common.r_lang import (
     PASS_ID,
     PASS_VERSION,
     RAnalysisResult,
@@ -228,7 +228,7 @@ my_func <- function(data) {
 
     def test_extracts_loaded_packages(self, tmp_path):
         """Tracks packages loaded via library() for path hints."""
-        from hypergumbo.analyze.r_lang import _extract_loaded_packages
+        from hypergumbo_lang_common.r_lang import _extract_loaded_packages
         from tree_sitter_language_pack import get_parser
 
         source = b"""
@@ -247,7 +247,7 @@ require(tidyr)
 
     def test_extracts_loaded_packages_string_syntax(self, tmp_path):
         """Tracks packages loaded with string syntax: library("pkg")."""
-        from hypergumbo.analyze.r_lang import _extract_loaded_packages
+        from hypergumbo_lang_common.r_lang import _extract_loaded_packages
         from tree_sitter_language_pack import get_parser
 
         source = b'''

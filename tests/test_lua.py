@@ -29,7 +29,7 @@ class TestLuaAnalyzerAvailability:
 
     def test_is_lua_tree_sitter_available(self) -> None:
         """Check if tree-sitter-lua is detected."""
-        from hypergumbo.analyze.lua import is_lua_tree_sitter_available
+        from hypergumbo_lang_mainstream.lua import is_lua_tree_sitter_available
 
         # Should be True since we installed tree-sitter-lua
         assert is_lua_tree_sitter_available() is True
@@ -40,7 +40,7 @@ class TestLuaFunctionDetection:
 
     def test_detect_global_function(self, tmp_path: Path) -> None:
         """Detect global function definition."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 function hello(name)
@@ -59,7 +59,7 @@ end
 
     def test_detect_local_function(self, tmp_path: Path) -> None:
         """Detect local function definition."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 local function greet(msg)
@@ -76,7 +76,7 @@ end
 
     def test_detect_method_function(self, tmp_path: Path) -> None:
         """Detect method-style function (Table:method)."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 local MyClass = {}
@@ -106,7 +106,7 @@ class TestLuaCallEdges:
 
     def test_detect_function_call(self, tmp_path: Path) -> None:
         """Detect function call edges."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 function greet()
@@ -127,7 +127,7 @@ end
 
     def test_detect_method_call(self, tmp_path: Path) -> None:
         """Detect method call edges (obj:method())."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 local MyClass = {}
@@ -155,7 +155,7 @@ class TestLuaImportEdges:
 
     def test_detect_require_with_parens(self, tmp_path: Path) -> None:
         """Detect require('module') statements."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 local json = require('json')
@@ -176,7 +176,7 @@ end
 
     def test_detect_require_without_parens(self, tmp_path: Path) -> None:
         """Detect require 'module' statements (no parentheses)."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 local lfs = require 'lfs'
@@ -194,7 +194,7 @@ class TestLuaCrossFileResolution:
 
     def test_cross_file_call(self, tmp_path: Path) -> None:
         """Calls to functions in other files are resolved."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "utils.lua", """
 function helper()
@@ -225,7 +225,7 @@ class TestLuaEdgeCases:
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Empty Lua file produces no symbols."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "empty.lua", "")
 
@@ -238,7 +238,7 @@ class TestLuaEdgeCases:
 
     def test_syntax_error_file(self, tmp_path: Path) -> None:
         """File with syntax error is handled gracefully."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "bad.lua", """
 function broken(
@@ -252,7 +252,7 @@ function broken(
 
     def test_nested_functions(self, tmp_path: Path) -> None:
         """Nested function definitions are detected."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "nested.lua", """
 function outer()
@@ -274,7 +274,7 @@ end
 
     def test_no_lua_files(self, tmp_path: Path) -> None:
         """Directory with no Lua files returns empty result."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.py", "print('hello')")
 
@@ -290,7 +290,7 @@ class TestLuaSpanAccuracy:
 
     def test_function_span(self, tmp_path: Path) -> None:
         """Function span includes full definition."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """function hello()
     print("hi")
@@ -311,7 +311,7 @@ class TestLuaAnalyzeFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
         """Returns skipped result when tree-sitter-lua not available."""
-        from hypergumbo.analyze import lua
+        from hypergumbo_lang_mainstream import lua
 
         # Mock tree-sitter-lua as unavailable
         monkeypatch.setattr(lua, "is_lua_tree_sitter_available", lambda: False)
@@ -332,7 +332,7 @@ class TestLuaSignatureExtraction:
 
     def test_positional_params(self, tmp_path: Path) -> None:
         """Extracts signature with positional parameters."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(
             tmp_path,
@@ -350,7 +350,7 @@ end
 
     def test_no_params_function(self, tmp_path: Path) -> None:
         """Extracts signature for function with no parameters."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(
             tmp_path,
@@ -368,7 +368,7 @@ end
 
     def test_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from method-style functions."""
-        from hypergumbo.analyze.lua import analyze_lua
+        from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(
             tmp_path,

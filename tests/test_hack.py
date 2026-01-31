@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import hack as hack_module
-from hypergumbo.analyze.hack import (
+from hypergumbo_lang_extended1 import hack as hack_module
+from hypergumbo_lang_extended1.hack import (
     HackAnalysisResult,
     analyze_hack,
     find_hack_files,

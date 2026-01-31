@@ -2,7 +2,7 @@ import logging
 import pytest
 
 from hypergumbo import __version__
-from hypergumbo.cli import build_parser, main
+from hypergumbo_core.cli import build_parser, main
 
 
 def test_version_flag_prints_version_and_exits(capsys):

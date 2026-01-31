@@ -1,0 +1,57 @@
+# Sanic framework patterns (ADR-0003)
+#
+# Sanic is an async Python web framework built for speed.
+# It supports async/await syntax and has a similar API to Flask.
+# Symbols matching these patterns get enriched with concept metadata.
+# See: https://sanic.dev/
+
+id: sanic
+language: python
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Sanic shortcut routes - @app.get("/path"), @app.post("/path"), etc.
+  - concept: route
+    decorator: "^(app|sanic|blueprint|bp)\\.(get|post|put|delete|patch|options|head)$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+
+  # Classic Sanic route - @app.route("/path"), @app.route("/path", methods=["GET"])
+  - concept: route
+    decorator: "^(app|sanic|blueprint|bp)\\.route$"
+    extract_path: "args[0]"
+    extract_method: "kwargs.methods"
+
+  # WebSocket handlers - @app.websocket("/path")
+  - concept: websocket_handler
+    decorator: "^(app|sanic|blueprint|bp)\\.websocket$"
+    extract_path: "args[0]"
+
+  # Middleware decorators - @app.on_request, @app.on_response
+  - concept: middleware
+    decorator: "^(app|sanic|blueprint|bp)\\.(on_request|on_response|middleware)$"
+
+  # Error handlers - @app.exception(NotFound)
+  - concept: error_handler
+    decorator: "^(app|sanic|blueprint|bp)\\.exception$"
+
+  # Server lifecycle hooks
+  - concept: lifecycle_hook
+    decorator: "^(app|sanic)\\.(before_server_start|after_server_start|before_server_stop|after_server_stop)$"
+
+  # Listener decorators (alternative lifecycle hooks)
+  - concept: lifecycle_hook
+    decorator: "^(app|sanic)\\.listener$"
+
+  # Signal handlers - @app.signal("http.lifecycle.request")
+  - concept: event_handler
+    decorator: "^(app|sanic)\\.signal$"
+
+  # Static file serving - @app.static("/path", "/local/path")
+  - concept: static_files
+    decorator: "^(app|sanic|blueprint|bp)\\.static$"
+
+linkers:
+  - http
+  - websocket

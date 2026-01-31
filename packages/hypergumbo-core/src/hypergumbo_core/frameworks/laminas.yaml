@@ -1,0 +1,125 @@
+# Laminas framework patterns (ADR-0003 v1.1.x)
+#
+# Laminas (formerly Zend Framework) is a PHP enterprise component library.
+# Controllers extend AbstractActionController or AbstractRestfulController.
+# Uses PSR-15 middleware, forms, validators, and filters.
+# Component-based architecture with modules, service managers, and event system.
+
+id: laminas
+language: php
+
+patterns:
+  # MVC Action Controller
+  - concept: controller
+    base_class: "^AbstractActionController$"
+
+  # RESTful Controller
+  - concept: controller
+    base_class: "^AbstractRestfulController$"
+
+  # Console Controller
+  - concept: command
+    base_class: "^AbstractConsoleController$"
+
+  # Form
+  - concept: form
+    base_class: "^Form$"
+
+  # Fieldset
+  - concept: form
+    base_class: "^Fieldset$"
+
+  # Input filter
+  - concept: validation
+    base_class: "^InputFilter$"
+
+  # Validator interface
+  - concept: validator
+    base_class: "^ValidatorInterface$"
+
+  # Filter interface
+  - concept: filter
+    base_class: "^FilterInterface$"
+
+  # Middleware (PSR-15)
+  - concept: middleware
+    base_class: "^MiddlewareInterface$"
+
+  # Request handler (PSR-15)
+  - concept: handler
+    base_class: "^RequestHandlerInterface$"
+
+  # Table gateway (data layer)
+  - concept: model
+    base_class: "^(Abstract)?TableGateway$"
+
+  # Hydrator
+  - concept: hydrator
+    base_class: "^(AbstractHydrator|HydratorInterface)$"
+
+  # Module class
+  - concept: module
+    base_class: "^Module$"
+
+  # Event listener
+  - concept: event_listener
+    base_class: "^(ListenerAggregateInterface|AbstractListenerAggregate)$"
+
+  # Service factory
+  - concept: factory
+    base_class: "^FactoryInterface$"
+
+  # View helper
+  - concept: helper
+    base_class: "^AbstractHelper$"
+
+  # Controller plugin
+  - concept: plugin
+    base_class: "^AbstractPlugin$"
+
+  # Strategy (hydrator)
+  - concept: strategy
+    base_class: "^StrategyInterface$"
+
+  # Paginator adapter
+  - concept: paginator
+    base_class: "^AdapterInterface$"
+
+  # Authentication adapter
+  - concept: authentication
+    base_class: "^(AuthenticationServiceInterface|AdapterInterface)$"
+
+  # Authorization
+  - concept: authorization
+    base_class: "^(Acl|Rbac)$"
+
+  # Cache adapter
+  - concept: cache
+    base_class: "^(StorageInterface|AbstractAdapter)$"
+
+  # Session container
+  - concept: session
+    base_class: "^(Container|SessionManager)$"
+
+  # Mail message
+  - concept: mailer
+    base_class: "^(Message|Transport)$"
+
+  # Logger
+  - concept: logger
+    base_class: "^(Logger|WriterInterface)$"
+
+  # Router
+  - concept: router
+    base_class: "^(RouteInterface|TreeRouteStack)$"
+
+  # View model
+  - concept: view
+    base_class: "^(ViewModel|JsonModel|FeedModel)$"
+
+  # Test case
+  - concept: test
+    base_class: "^(TestCase|AbstractHttpControllerTestCase)$"
+
+linkers:
+  - http

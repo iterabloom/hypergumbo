@@ -1,0 +1,132 @@
+#!/bin/bash
+# smart-test: Run only tests affected by changed files
+#
+# Uses hypergumbo's reverse slice to find tests that depend on changed files.
+# Falls back to full test suite when:
+#   - No stable hypergumbo installed
+#   - Core infrastructure files changed (sketch.py, slice.py, etc.)
+#   - No changes detected (runs all tests as sanity check)
+#
+# Usage:
+#   ./scripts/smart-test           # Run affected tests
+#   ./scripts/smart-test --full    # Run all tests
+#   ./scripts/smart-test --verbose # Show selection reasoning
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Parse args
+FULL_RUN=false
+VERBOSE=false
+for arg in "$@"; do
+    case $arg in
+        --full) FULL_RUN=true ;;
+        --verbose) VERBOSE=true ;;
+    esac
+done
+
+# Files that trigger full test suite when changed
+CORE_INFRA_FILES=(
+    "src/hypergumbo/sketch.py"
+    "src/hypergumbo/slice.py"
+    "src/hypergumbo/cli.py"
+    "src/hypergumbo/ir.py"
+    "src/hypergumbo/analyze/all_analyzers.py"
+    "src/hypergumbo/analyze/base.py"
+    "src/hypergumbo/linkers/registry.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/sketch.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/slice.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/cli.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/ir.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py"
+    "packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py"
+)
+
+log() {
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[smart-test] $*" >&2
+    fi
+}
+
+run_full_suite() {
+    log "Running full test suite..."
+    exec pytest -n auto --cov=src --cov-fail-under=100 "$@"
+}
+
+if [[ "$FULL_RUN" == "true" ]]; then
+    run_full_suite
+fi
+
+# Check for stable hypergumbo installation
+STABLE_HG=""
+if command -v hypergumbo &> /dev/null; then
+    STABLE_HG="hypergumbo"
+elif [[ -x "$HOME/.local/bin/hypergumbo" ]]; then
+    STABLE_HG="$HOME/.local/bin/hypergumbo"
+fi
+
+if [[ -z "$STABLE_HG" ]]; then
+    log "No stable hypergumbo found, falling back to full suite"
+    run_full_suite
+fi
+
+# Get changed files since merge-base with dev
+BASE_BRANCH="${BASE_BRANCH:-origin/dev}"
+MERGE_BASE=$(git merge-base HEAD "$BASE_BRANCH" 2>/dev/null || echo "HEAD~1")
+CHANGED_FILES=$(git diff --name-only "$MERGE_BASE"..HEAD 2>/dev/null || echo "")
+
+if [[ -z "$CHANGED_FILES" ]]; then
+    log "No changed files detected, running full suite"
+    run_full_suite
+fi
+
+# Check if any core infra files changed
+for core_file in "${CORE_INFRA_FILES[@]}"; do
+    if echo "$CHANGED_FILES" | grep -qF "$core_file"; then
+        log "Core file changed: $core_file - running full suite"
+        run_full_suite
+    fi
+done
+
+# Write changed files to temp file for slice query
+CHANGED_FILE_LIST=$(mktemp)
+echo "$CHANGED_FILES" > "$CHANGED_FILE_LIST"
+trap "rm -f $CHANGED_FILE_LIST" EXIT
+
+log "Changed files:"
+if [[ "$VERBOSE" == "true" ]]; then
+    cat "$CHANGED_FILE_LIST" >&2
+fi
+
+# Use hypergumbo slice to find affected tests
+AFFECTED_TESTS_FILE=$(mktemp)
+trap "rm -f $CHANGED_FILE_LIST $AFFECTED_TESTS_FILE" EXIT
+
+log "Running reverse slice to find affected tests..."
+if ! $STABLE_HG slice --reverse --files "$CHANGED_FILE_LIST" --output "$AFFECTED_TESTS_FILE" 2>/dev/null; then
+    log "Slice failed, falling back to full suite"
+    run_full_suite
+fi
+
+# Filter to only test files
+AFFECTED_TESTS=$(grep -E '^tests/.*\.py$' "$AFFECTED_TESTS_FILE" 2>/dev/null || echo "")
+
+if [[ -z "$AFFECTED_TESTS" ]]; then
+    log "No test files in slice result, running full suite"
+    run_full_suite
+fi
+
+# Count affected tests
+TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
+log "Found $TEST_COUNT affected test files"
+
+if [[ "$VERBOSE" == "true" ]]; then
+    echo "$AFFECTED_TESTS" >&2
+fi
+
+# Run only affected tests
+echo "Running $TEST_COUNT affected test files (use --full for complete suite)"
+exec pytest $AFFECTED_TESTS --cov=src "$@"

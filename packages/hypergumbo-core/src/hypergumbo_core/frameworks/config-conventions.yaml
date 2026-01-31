@@ -1,0 +1,144 @@
+# Configuration file convention patterns
+#
+# These patterns add concept metadata to symbols from config file analyzers
+# (json_config.py, xml_config.py, toml_config.py). This enables dependency
+# symbols to participate in concept-based features.
+#
+# Note: Dependencies are not typically entrypoints, but having concepts
+# enables consistent filtering and future concept-driven features.
+
+id: config-conventions
+language: multi
+
+patterns:
+  # ====== NPM/Node.js (json_config.py) ======
+  # NPM dependencies
+  - concept: npm_dependency
+    symbol_kind: "^dependency$"
+    language: "^json$"
+
+  # NPM dev dependencies
+  - concept: npm_dev_dependency
+    symbol_kind: "^devDependency$"
+    language: "^json$"
+
+  # NPM scripts are potential entry points (npm run <script>)
+  - concept: npm_script
+    symbol_kind: "^script$"
+    language: "^json$"
+
+  # NPM bin entries are CLI entry points (executables installed globally)
+  - concept: npm_bin
+    symbol_kind: "^bin$"
+    language: "^json$"
+
+  # Package definition
+  - concept: package_definition
+    symbol_kind: "^package$"
+    language: "^json$"
+
+  # TypeScript project references
+  - concept: typescript_reference
+    symbol_kind: "^reference$"
+    language: "^json$"
+
+  # TypeScript config
+  - concept: typescript_config
+    symbol_kind: "^tsconfig$"
+    language: "^json$"
+
+  # Composer (PHP) packages
+  - concept: composer_dependency
+    symbol_kind: "^composer_package$"
+    language: "^json$"
+
+  # ====== Maven/Android (xml_config.py) ======
+  # Maven dependencies
+  - concept: maven_dependency
+    symbol_kind: "^dependency$"
+    language: "^xml$"
+
+  # Maven modules
+  - concept: maven_module
+    symbol_kind: "^module$"
+    language: "^xml$"
+
+  # Android permissions
+  - concept: android_permission
+    symbol_kind: "^permission$"
+    language: "^xml$"
+
+  # Android activities (potential entry points)
+  - concept: android_component
+    symbol_kind: "^activity$"
+    language: "^xml$"
+
+  # Android services
+  - concept: android_component
+    symbol_kind: "^service$"
+    language: "^xml$"
+
+  # Android receivers
+  - concept: android_component
+    symbol_kind: "^receiver$"
+    language: "^xml$"
+
+  # Android providers
+  - concept: android_component
+    symbol_kind: "^provider$"
+    language: "^xml$"
+
+  # ====== Cargo/Rust (toml_config.py) ======
+  # Cargo dependencies
+  - concept: cargo_dependency
+    symbol_kind: "^dependency$"
+    language: "^toml$"
+
+  # Cargo dev dependencies
+  - concept: cargo_dev_dependency
+    symbol_kind: "^dev-dependency$"
+    language: "^toml$"
+
+  # Cargo build dependencies
+  - concept: cargo_build_dependency
+    symbol_kind: "^build-dependency$"
+    language: "^toml$"
+
+  # Cargo package definition
+  - concept: cargo_package
+    symbol_kind: "^package$"
+    language: "^toml$"
+
+  # Cargo workspace member
+  - concept: cargo_workspace_member
+    symbol_kind: "^workspace-member$"
+    language: "^toml$"
+
+  # Cargo binary target (analyzer creates kind="binary" for [[bin]] sections)
+  - concept: cargo_binary
+    symbol_kind: "^binary$"
+    language: "^toml$"
+
+  # Cargo library target
+  - concept: cargo_library
+    symbol_kind: "^lib$"
+    language: "^toml$"
+
+  # Python (pyproject.toml) console scripts - CLI entry points
+  # [project.scripts] defines executables installed with the package
+  - concept: pyproject_script
+    symbol_kind: "^script$"
+    language: "^toml$"
+
+  # Poetry (Python) dependencies
+  - concept: poetry_dependency
+    symbol_kind: "^dependency$"
+    language: "^toml$"
+
+  # Poetry dev dependencies
+  - concept: poetry_dev_dependency
+    symbol_kind: "^dev-dependency$"
+    language: "^toml$"
+
+linkers:
+  - dependency

@@ -1,0 +1,43 @@
+# Android framework patterns (ADR-0003 v1.1.x)
+#
+# Matches Android lifecycle methods as entrypoints.
+# Uses parent_base_class + method_name pattern matching to identify
+# lifecycle hooks in Activity, Application, Fragment, and Service classes.
+
+id: android
+language: [java, kotlin]
+
+patterns:
+  # Activity lifecycle hooks - UI entry points
+  # These methods are called by the Android framework when an Activity starts
+  - concept: lifecycle_hook
+    parent_base_class: "^(Activity|NativeActivity|AppCompatActivity|FragmentActivity|ComponentActivity|ListActivity|PreferenceActivity)$"
+    method_name: "^onCreate$"
+
+  # Application lifecycle hooks - App initialization entry points
+  # Called when the Application class is created (before any Activity)
+  - concept: lifecycle_hook
+    parent_base_class: "^(Application|MultiDexApplication)$"
+    method_name: "^onCreate$"
+
+  # Fragment lifecycle hooks
+  - concept: lifecycle_hook
+    parent_base_class: "^Fragment$"
+    method_name: "^(onCreate|onCreateView|onViewCreated)$"
+
+  # Service lifecycle hooks - Background service entry points
+  - concept: lifecycle_hook
+    parent_base_class: "^(Service|IntentService|JobService)$"
+    method_name: "^(onCreate|onStartCommand|onBind)$"
+
+  # BroadcastReceiver entry point
+  - concept: lifecycle_hook
+    parent_base_class: "^BroadcastReceiver$"
+    method_name: "^onReceive$"
+
+  # ContentProvider entry point
+  - concept: lifecycle_hook
+    parent_base_class: "^ContentProvider$"
+    method_name: "^onCreate$"
+
+linkers: []

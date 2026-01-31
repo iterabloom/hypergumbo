@@ -17,8 +17,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import clojure as clojure_module
-from hypergumbo.analyze.clojure import analyze_clojure
+from hypergumbo_lang_common import clojure as clojure_module
+from hypergumbo_lang_common.clojure import analyze_clojure
 
 
 def make_clj_file(tmp: Path, name: str, content: str) -> Path:

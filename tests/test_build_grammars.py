@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from hypergumbo.build_grammars import (
+from hypergumbo_core.build_grammars import (
     GrammarSpec,
     SOURCE_GRAMMARS,
     _generate_binding_c,
@@ -117,7 +117,7 @@ class TestBuildGrammar:
         )
 
         with patch(
-            "hypergumbo.build_grammars._run_command",
+            "hypergumbo_core.build_grammars._run_command",
             side_effect=FileNotFoundError("git not found"),
         ):
             result = build_grammar(spec, tmp_path, quiet=True)
@@ -133,7 +133,7 @@ class TestBuildGrammar:
         )
 
         with patch(
-            "hypergumbo.build_grammars._run_command",
+            "hypergumbo_core.build_grammars._run_command",
             side_effect=subprocess.CalledProcessError(1, "git"),
         ):
             result = build_grammar(spec, tmp_path, quiet=True)
@@ -164,7 +164,7 @@ class TestBuildGrammar:
                 raise subprocess.CalledProcessError(1, "pip")
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo.build_grammars._run_command", side_effect=mock_run_command):
+        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
             result = build_grammar(spec, tmp_path, quiet=True)
             assert result is False
 
@@ -189,7 +189,7 @@ class TestBuildGrammar:
             commands_run.append(cmd)
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo.build_grammars._run_command", side_effect=mock_run_command):
+        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
             build_grammar(spec, tmp_path, quiet=True)
 
         # Should have run git pull, not git clone
@@ -223,7 +223,7 @@ class TestBuildGrammar:
             # pip install succeeds
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo.build_grammars._run_command", side_effect=mock_run_command):
+        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
             result = build_grammar(spec, tmp_path, quiet=True)
 
         # Should still succeed despite pull failure
@@ -252,7 +252,7 @@ class TestBuildGrammar:
         def mock_run_command(cmd, cwd=None, quiet=False):
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo.build_grammars._run_command", side_effect=mock_run_command):
+        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
             result = build_grammar(spec, tmp_path, quiet=True)
 
         # Old file should be gone
@@ -268,7 +268,7 @@ class TestBuildAllGrammars:
     def test_build_all_grammars_returns_results(self, tmp_path: Path) -> None:
         """Test that build_all_grammars returns results for all grammars."""
         with patch(
-            "hypergumbo.build_grammars.build_grammar",
+            "hypergumbo_core.build_grammars.build_grammar",
             return_value=True,
         ):
             results = build_all_grammars(build_dir=tmp_path, quiet=True)
@@ -283,7 +283,7 @@ class TestBuildAllGrammars:
         def mock_build(spec, build_dir, quiet=False):
             return spec.name != "wolfram"  # wolfram fails
 
-        with patch("hypergumbo.build_grammars.build_grammar", side_effect=mock_build):
+        with patch("hypergumbo_core.build_grammars.build_grammar", side_effect=mock_build):
             results = build_all_grammars(build_dir=tmp_path, quiet=True)
 
         assert results["lean"] is True
@@ -291,7 +291,7 @@ class TestBuildAllGrammars:
 
     def test_build_all_grammars_uses_temp_dir(self) -> None:
         """Test that build_all_grammars uses temp dir by default."""
-        with patch("hypergumbo.build_grammars.build_grammar", return_value=True):
+        with patch("hypergumbo_core.build_grammars.build_grammar", return_value=True):
             results = build_all_grammars(quiet=True)
 
         assert len(results) == len(SOURCE_GRAMMARS)
@@ -325,7 +325,7 @@ class TestCliIntegration:
 
     def test_build_grammars_check_command(self) -> None:
         """Test the build-grammars --check CLI command."""
-        from hypergumbo.cli import main
+        from hypergumbo_core.cli import main
 
         # Should succeed since grammars are built
         result = main(["build-grammars", "--check"])
@@ -333,13 +333,13 @@ class TestCliIntegration:
 
     def test_build_grammars_check_when_missing(self) -> None:
         """Test build-grammars --check when grammars missing."""
-        from hypergumbo.cli import cmd_build_grammars
+        from hypergumbo_core.cli import cmd_build_grammars
         import argparse
 
         args = argparse.Namespace(check=True, quiet=False)
 
         with patch(
-            "hypergumbo.cli.check_grammar_availability",
+            "hypergumbo_core.cli.check_grammar_availability",
             return_value={"lean": False, "wolfram": True},
         ):
             result = cmd_build_grammars(args)
@@ -347,13 +347,13 @@ class TestCliIntegration:
 
     def test_build_grammars_build_success(self) -> None:
         """Test build-grammars command success."""
-        from hypergumbo.cli import cmd_build_grammars
+        from hypergumbo_core.cli import cmd_build_grammars
         import argparse
 
         args = argparse.Namespace(check=False, quiet=True)
 
         with patch(
-            "hypergumbo.cli.build_all_grammars",
+            "hypergumbo_core.cli.build_all_grammars",
             return_value={"lean": True, "wolfram": True},
         ):
             result = cmd_build_grammars(args)
@@ -361,13 +361,13 @@ class TestCliIntegration:
 
     def test_build_grammars_build_failure(self) -> None:
         """Test build-grammars command failure."""
-        from hypergumbo.cli import cmd_build_grammars
+        from hypergumbo_core.cli import cmd_build_grammars
         import argparse
 
         args = argparse.Namespace(check=False, quiet=False)
 
         with patch(
-            "hypergumbo.cli.build_all_grammars",
+            "hypergumbo_core.cli.build_all_grammars",
             return_value={"lean": True, "wolfram": False},
         ):
             result = cmd_build_grammars(args)

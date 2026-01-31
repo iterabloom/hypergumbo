@@ -1,7 +1,7 @@
 """Tests for the discovery module."""
 from pathlib import Path
 
-from hypergumbo.discovery import DEFAULT_EXCLUDES, find_files, is_excluded
+from hypergumbo_core.discovery import DEFAULT_EXCLUDES, find_files, is_excluded
 
 
 def test_is_excluded_with_default_patterns(tmp_path: Path) -> None:

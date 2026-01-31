@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import capnp as capnp_module
-from hypergumbo.analyze.capnp import (
+from hypergumbo_lang_extended1 import capnp as capnp_module
+from hypergumbo_lang_extended1.capnp import (
     analyze_capnp,
     find_capnp_files,
     is_capnp_tree_sitter_available,

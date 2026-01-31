@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo.linkers.websocket import (
+from hypergumbo_core.linkers.websocket import (
     find_js_ts_files,
     find_python_files,
     _detect_patterns,
@@ -279,7 +279,7 @@ socket.on('event-line-5', handler);
         """Test the fallback path in get_line_number for defensive coverage."""
         # This test exercises the fallback return len(lines) in get_line_number
         # which is defensive code for edge cases where char_pos exceeds line_starts
-        import hypergumbo.linkers.websocket as ws_module
+        import hypergumbo_core.linkers.websocket as ws_module
 
         file = tmp_path / "test.js"
         file.write_text("x")  # Single char file
@@ -822,7 +822,7 @@ async def handler(websocket):
     def test_get_line_number_fallback(self, tmp_path: Path) -> None:
         """Test the fallback path in get_line_number for edge cases."""
         # This test exercises the fallback return len(lines) in get_line_number
-        import hypergumbo.linkers.websocket as ws_module
+        import hypergumbo_core.linkers.websocket as ws_module
 
         file = tmp_path / "test.py"
         file.write_text("x")  # Single char file
@@ -1004,7 +1004,7 @@ class TestVariableEventPatterns:
 
     def test_detect_variable_emit_event(self, tmp_path: Path) -> None:
         """Detects socket.emit with variable event name."""
-        from hypergumbo.linkers.websocket import _detect_patterns
+        from hypergumbo_core.linkers.websocket import _detect_patterns
 
         js_file = tmp_path / "sender.js"
         js_file.write_text("""
@@ -1019,7 +1019,7 @@ socket.emit(EVENT_NAME, { user: 'test' });
 
     def test_detect_variable_on_event(self, tmp_path: Path) -> None:
         """Detects socket.on with variable event name."""
-        from hypergumbo.linkers.websocket import _detect_patterns
+        from hypergumbo_core.linkers.websocket import _detect_patterns
 
         js_file = tmp_path / "receiver.js"
         js_file.write_text("""
@@ -1036,7 +1036,7 @@ socket.on(LOGIN_EVENT, (data) => {
 
     def test_detect_attribute_access_event(self, tmp_path: Path) -> None:
         """Detects event with attribute access like config.event."""
-        from hypergumbo.linkers.websocket import _detect_patterns
+        from hypergumbo_core.linkers.websocket import _detect_patterns
 
         js_file = tmp_path / "sender.js"
         js_file.write_text("""
@@ -1050,7 +1050,7 @@ io.emit(config.eventName, { data: 'test' });
 
     def test_literal_event_has_literal_type(self, tmp_path: Path) -> None:
         """Verifies literal events have event_type='literal'."""
-        from hypergumbo.linkers.websocket import _detect_patterns
+        from hypergumbo_core.linkers.websocket import _detect_patterns
 
         js_file = tmp_path / "sender.js"
         js_file.write_text("""
@@ -1105,7 +1105,7 @@ io.on('connection', handler);
 
     def test_django_channels_variable_event(self, tmp_path: Path) -> None:
         """Detects Django Channels with variable channel name."""
-        from hypergumbo.linkers.websocket import _detect_python_patterns
+        from hypergumbo_core.linkers.websocket import _detect_python_patterns
 
         py_file = tmp_path / "consumer.py"
         py_file.write_text("""

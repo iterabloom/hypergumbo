@@ -1,0 +1,97 @@
+# Akka HTTP patterns for Scala (ADR-0003)
+#
+# Akka HTTP is a toolkit for building HTTP-based services in Scala.
+# It uses a DSL-based routing system with path/method directives.
+#
+# Pattern types:
+# - Definition-based: Match route directives and method handlers
+# - Usage-based: Match DSL call patterns
+
+id: akka-http
+language: scala
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # Akka HTTP routing DSL - path("users") { get { ... } }
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|delete|patch|head|options)$"
+      position: "^args\\[last\\]$"
+    extract:
+      method: "metadata.http_method"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # HTTP method directives
+  - concept: route
+    decorator: "^(get|post|put|delete|patch|head|options)$"
+    extract_method: "decorator_name"
+
+  # Path directives
+  - concept: route
+    decorator: "^(path|pathPrefix|pathEnd|pathSuffix|pathSuffixTest)$"
+    extract_path: "args[0]"
+
+  # Parameter extraction
+  - concept: middleware
+    decorator: "^(parameter|parameters|formField|formFields)$"
+
+  # Entity handling
+  - concept: middleware
+    decorator: "^(entity|handleWith)$"
+
+  # Response completion
+  - concept: response
+    decorator: "^(complete|reject|redirect|failWith)$"
+
+  # WebSocket handling
+  - concept: websocket_handler
+    decorator: "^handleWebSocketMessages$"
+
+  # Server binding
+  - concept: entrypoint
+    decorator: "^Http\\(\\)\\.newServerAt$"
+
+  # Route concatenation (~)
+  - concept: route
+    decorator: "^concat$"
+
+  # Authentication directives
+  - concept: auth
+    decorator: "^(authenticateBasic|authenticateOAuth2|authorize)$"
+
+  # Caching directives
+  - concept: cache
+    decorator: "^(cache|cacheConditionFailed)$"
+
+  # CORS directives
+  - concept: middleware
+    decorator: "^cors$"
+
+  # File serving
+  - concept: static_file
+    decorator: "^(getFromFile|getFromResource|getFromDirectory|getFromBrowseableDirectory)$"
+
+  # Exception handling
+  - concept: error_handler
+    decorator: "^(handleExceptions|handleRejections)$"
+
+  # Timeout handling
+  - concept: middleware
+    decorator: "^(withRequestTimeout|withRequestTimeoutResponse)$"
+
+  # Marshalling
+  - concept: middleware
+    decorator: "^(as|toStrictEntity)$"
+
+  # Akka Streams integration
+  - concept: streaming
+    decorator: "^(Source|Flow|Sink)\\.(single|apply|fromIterator)$"
+
+  # Akka Actor integration
+  - concept: actor
+    decorator: "^(ask|tell|ActorRef)$"
+
+linkers:
+  - http
+  - websocket

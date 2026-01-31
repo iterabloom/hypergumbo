@@ -5,8 +5,8 @@ thoughtful output ordering across hypergumbo modes.
 """
 import pytest
 
-from hypergumbo.ir import Symbol, Edge, Span
-from hypergumbo.ranking import (
+from hypergumbo_core.ir import Symbol, Edge, Span
+from hypergumbo_core.ranking import (
     compute_centrality,
     apply_tier_weights,
     apply_test_weights,

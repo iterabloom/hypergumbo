@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import vue as vue_module
-from hypergumbo.analyze.vue import (
+from hypergumbo_lang_common import vue as vue_module
+from hypergumbo_lang_common.vue import (
     VueAnalysisResult,
     analyze_vue,
     find_vue_files,

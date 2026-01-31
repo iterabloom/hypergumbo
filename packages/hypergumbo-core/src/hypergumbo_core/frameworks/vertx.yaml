@@ -1,0 +1,168 @@
+# Vert.x framework patterns (ADR-0003 v1.1.x)
+#
+# Vert.x is a reactive toolkit for the JVM (Java, Kotlin, Groovy).
+# Routes use Router: router.get("/path").handler(ctx -> {...})
+# Core abstraction: Verticle for deployment units, EventBus for messaging.
+
+id: vertx
+language: java
+
+patterns:
+  # Router for HTTP routing
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^Router\\.router$"
+
+  # Route definition methods
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^router\\.(get|post|put|delete|patch|head|options|route)$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.url"
+
+  # Route handler
+  - concept: handler
+    usage:
+      kind: "^call$"
+      name: "\\.handler$"
+
+  # Blocking handler
+  - concept: handler
+    usage:
+      kind: "^call$"
+      name: "\\.blockingHandler$"
+
+  # Failure handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "\\.failureHandler$"
+
+  # Verticle base class
+  - concept: verticle
+    base_class: "^AbstractVerticle$"
+
+  # HTTP Verticle
+  - concept: verticle
+    base_class: "^(Verticle|HttpVerticle)$"
+
+  # EventBus consumer
+  - concept: event_consumer
+    usage:
+      kind: "^call$"
+      name: "^eventBus\\.(consumer|localConsumer)$"
+
+  # EventBus publisher
+  - concept: event_publisher
+    usage:
+      kind: "^call$"
+      name: "^eventBus\\.(send|publish|request)$"
+
+  # WebSocket handler
+  - concept: websocket
+    usage:
+      kind: "^call$"
+      name: "^(webSocketHandler|textMessageHandler|binaryMessageHandler)$"
+
+  # SockJS handler
+  - concept: websocket
+    usage:
+      kind: "^call$"
+      name: "^SockJSHandler\\.create$"
+
+  # Static handler
+  - concept: static_handler
+    usage:
+      kind: "^call$"
+      name: "^StaticHandler\\.create$"
+
+  # Template handler
+  - concept: template_handler
+    usage:
+      kind: "^call$"
+      name: "^TemplateHandler\\.create$"
+
+  # Body handler
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^BodyHandler\\.create$"
+
+  # Session handler
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^SessionHandler\\.create$"
+
+  # CORS handler
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^CorsHandler\\.create$"
+
+  # Auth handler
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^(AuthHandler|JWTAuthHandler|BasicAuthHandler|OAuth2AuthHandler)\\.create$"
+
+  # Error handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^ErrorHandler\\.create$"
+
+  # Timeout handler
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^TimeoutHandler\\.create$"
+
+  # Logger handler
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^LoggerHandler\\.create$"
+
+  # HTTP server
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^vertx\\.createHttpServer$"
+
+  # HTTP client
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^vertx\\.createHttpClient$"
+
+  # Web client
+  - concept: client
+    usage:
+      kind: "^call$"
+      name: "^WebClient\\.create$"
+
+  # Deploy verticle
+  - concept: deployment
+    usage:
+      kind: "^call$"
+      name: "^vertx\\.(deployVerticle|deploy)$"
+
+  # Vert.x Web API Contract
+  - concept: api_contract
+    usage:
+      kind: "^call$"
+      name: "^RouterBuilder\\.(create|createBuilder)$"
+
+  # Circuit breaker
+  - concept: circuit_breaker
+    usage:
+      kind: "^call$"
+      name: "^CircuitBreaker\\.create$"
+
+linkers:
+  - http
+  - event-sourcing

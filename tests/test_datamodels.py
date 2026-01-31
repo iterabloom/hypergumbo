@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from hypergumbo.datamodels import (
+from hypergumbo_core.datamodels import (
     DataModel,
     DataModelKind,
     detect_datamodels,
@@ -12,7 +12,7 @@ from hypergumbo.datamodels import (
     _detect_from_base_classes,
     _detect_from_naming,
 )
-from hypergumbo.ir import Symbol, Edge, Span
+from hypergumbo_core.ir import Symbol, Edge, Span
 
 
 def _make_class_symbol(

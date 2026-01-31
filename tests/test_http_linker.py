@@ -3,8 +3,8 @@
 from pathlib import Path
 from textwrap import dedent
 
-from hypergumbo.ir import Span, Symbol
-from hypergumbo.linkers.http import (
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.linkers.http import (
     _extract_path_from_url,
     _match_route_pattern,
     _scan_javascript_file,
@@ -751,7 +751,7 @@ class TestConceptMetadataSupport:
 
     def test_get_route_info_from_symbol_without_meta(self):
         """_get_route_info_from_concept handles symbols with meta=None."""
-        from hypergumbo.linkers.http import _get_route_info_from_concept
+        from hypergumbo_core.linkers.http import _get_route_info_from_concept
 
         symbol = Symbol(
             id="test::func",
@@ -769,8 +769,8 @@ class TestConceptMetadataSupport:
 
     def test_get_route_symbols_includes_concept_routes(self, tmp_path):
         """_get_route_symbols finds symbols with route concepts."""
-        from hypergumbo.linkers.http import _get_route_symbols
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.http import _get_route_symbols
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         concept_route = Symbol(
             id="main.py::handler::function",
@@ -851,7 +851,7 @@ class TestConceptMetadataSupport:
 
     def test_get_route_info_direct_metadata_fallback(self):
         """_get_route_info_from_concept falls back to direct meta fields."""
-        from hypergumbo.linkers.http import _get_route_info_from_concept
+        from hypergumbo_core.linkers.http import _get_route_info_from_concept
 
         # Symbol with direct metadata, no concepts
         symbol = Symbol(

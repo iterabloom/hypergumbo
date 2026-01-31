@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.v_lang import (
+from hypergumbo_lang_extended1.v_lang import (
     analyze_v,
     find_v_files,
     is_v_tree_sitter_available,
@@ -117,7 +117,7 @@ class TestIsVTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.v_lang as v_module
+        import hypergumbo_lang_extended1.v_lang as v_module
         with patch.object(v_module, "is_v_tree_sitter_available", return_value=False):
             assert v_module.is_v_tree_sitter_available() is False
 
@@ -127,7 +127,7 @@ class TestAnalyzeV:
 
     def test_skips_when_unavailable(self, v_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.v_lang as v_module
+        import hypergumbo_lang_extended1.v_lang as v_module
 
         with patch.object(v_module, "is_v_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

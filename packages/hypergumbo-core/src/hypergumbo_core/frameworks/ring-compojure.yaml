@@ -1,0 +1,155 @@
+# Ring/Compojure framework patterns (ADR-0003 v1.1.x)
+#
+# Ring is the Clojure HTTP server abstraction (like Rack/WSGI).
+# Compojure is a routing library built on Ring.
+# Middleware are functions that wrap handlers.
+# Routes are defined with macros like GET, POST, PUT, DELETE, PATCH.
+
+id: ring-compojure
+language: clojure
+
+patterns:
+  # Compojure defroutes macro
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^defroutes$"
+
+  # Compojure routes combinator
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^routes$"
+
+  # GET route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^GET$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^POST$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^PUT$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^DELETE$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^PATCH$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # HEAD route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^HEAD$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "HEAD"
+      path: "metadata.url"
+
+  # OPTIONS route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^OPTIONS$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "OPTIONS"
+      path: "metadata.url"
+
+  # ANY route (matches all methods)
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^ANY$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.url"
+
+  # Compojure context (route group with prefix)
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^context$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.url"
+
+  # Ring middleware (wrap-* pattern)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^wrap-.*$"
+
+  # Ring middleware defaults
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^wrap-defaults$"
+
+  # Compojure not-found handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^not-found$"
+
+  # Ring response helpers
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(response|redirect|not-found|bad-request|created|status)$"
+
+  # Ring request destructuring
+  - concept: request
+    usage:
+      kind: "^call$"
+      name: "^(request-url|content-type|content-length)$"
+
+  # Component lifecycle
+  - concept: lifecycle
+    usage:
+      kind: "^call$"
+      name: "^(start|stop|component)$"
+
+  # Mount state management
+  - concept: state
+    usage:
+      kind: "^call$"
+      name: "^defstate$"
+
+linkers:
+  - http

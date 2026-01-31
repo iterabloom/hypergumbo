@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import gdscript as gdscript_module
-from hypergumbo.analyze.gdscript import (
+from hypergumbo_lang_extended1 import gdscript as gdscript_module
+from hypergumbo_lang_extended1.gdscript import (
     analyze_gdscript,
     find_gdscript_files,
     is_gdscript_tree_sitter_available,

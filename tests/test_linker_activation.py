@@ -8,20 +8,20 @@ Linkers have different activation conditions:
 from pathlib import Path
 
 # Import linker modules to register them (side-effect imports)
-import hypergumbo.linkers.database_query
-import hypergumbo.linkers.dependency
-import hypergumbo.linkers.event_sourcing
-import hypergumbo.linkers.graphql
-import hypergumbo.linkers.graphql_resolver
-import hypergumbo.linkers.grpc
-import hypergumbo.linkers.http
-import hypergumbo.linkers.ipc
-import hypergumbo.linkers.jni
-import hypergumbo.linkers.message_queue
-import hypergumbo.linkers.phoenix_ipc
-import hypergumbo.linkers.swift_objc
-import hypergumbo.linkers.websocket
-from hypergumbo.linkers.registry import (
+import hypergumbo_core.linkers.database_query
+import hypergumbo_core.linkers.dependency
+import hypergumbo_core.linkers.event_sourcing
+import hypergumbo_core.linkers.graphql
+import hypergumbo_core.linkers.graphql_resolver
+import hypergumbo_core.linkers.grpc
+import hypergumbo_core.linkers.http
+import hypergumbo_core.linkers.ipc
+import hypergumbo_core.linkers.jni
+import hypergumbo_core.linkers.message_queue
+import hypergumbo_core.linkers.phoenix_ipc
+import hypergumbo_core.linkers.swift_objc
+import hypergumbo_core.linkers.websocket
+from hypergumbo_core.linkers.registry import (
     LinkerActivation,
     LinkerContext,
     RegisteredLinker,

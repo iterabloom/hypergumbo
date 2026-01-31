@@ -8,7 +8,7 @@ class TestJuliaHelpers:
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo.analyze.julia import _find_child_by_type
+        from hypergumbo_lang_common.julia import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
@@ -24,7 +24,7 @@ class TestFindJuliaFiles:
 
     def test_finds_julia_files(self, tmp_path: Path) -> None:
         """Finds .jl files."""
-        from hypergumbo.analyze.julia import find_julia_files
+        from hypergumbo_lang_common.julia import find_julia_files
 
         (tmp_path / "Main.jl").write_text("function main() end")
         (tmp_path / "Utils.jl").write_text("module Utils end")
@@ -41,7 +41,7 @@ class TestJuliaTreeSitterAvailability:
 
     def test_is_julia_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-julia is available."""
-        from hypergumbo.analyze.julia import is_julia_tree_sitter_available
+        from hypergumbo_lang_common.julia import is_julia_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -49,7 +49,7 @@ class TestJuliaTreeSitterAvailability:
 
     def test_is_julia_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.julia import is_julia_tree_sitter_available
+        from hypergumbo_lang_common.julia import is_julia_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -57,7 +57,7 @@ class TestJuliaTreeSitterAvailability:
 
     def test_is_julia_tree_sitter_available_no_julia(self) -> None:
         """Returns False when tree-sitter is available but julia grammar is not."""
-        from hypergumbo.analyze.julia import is_julia_tree_sitter_available
+        from hypergumbo_lang_common.julia import is_julia_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -73,11 +73,11 @@ class TestAnalyzeJuliaFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-julia unavailable."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         (tmp_path / "test.jl").write_text("function test() end")
 
-        with patch("hypergumbo.analyze.julia.is_julia_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_common.julia.is_julia_tree_sitter_available", return_value=False):
             result = analyze_julia(tmp_path)
 
         assert result.skipped is True
@@ -89,7 +89,7 @@ class TestJuliaModuleExtraction:
 
     def test_extracts_module(self, tmp_path: Path) -> None:
         """Extracts module declarations."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "MyModule.jl"
         julia_file.write_text("""
@@ -116,7 +116,7 @@ class TestJuliaFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts function declarations."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Utils.jl"
         julia_file.write_text("""
@@ -139,7 +139,7 @@ end
 
     def test_extracts_short_form_function(self, tmp_path: Path) -> None:
         """Extracts short-form function definitions (f(x) = expr)."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Short.jl"
         julia_file.write_text("""
@@ -161,7 +161,7 @@ class TestJuliaStructExtraction:
 
     def test_extracts_struct(self, tmp_path: Path) -> None:
         """Extracts struct declarations."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Types.jl"
         julia_file.write_text("""
@@ -189,7 +189,7 @@ class TestJuliaAbstractTypeExtraction:
 
     def test_extracts_abstract_type(self, tmp_path: Path) -> None:
         """Extracts abstract type declarations."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Abstract.jl"
         julia_file.write_text("""
@@ -211,7 +211,7 @@ class TestJuliaMacroExtraction:
 
     def test_extracts_macro(self, tmp_path: Path) -> None:
         """Extracts macro declarations."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Macros.jl"
         julia_file.write_text("""
@@ -238,7 +238,7 @@ class TestJuliaImportEdges:
 
     def test_extracts_imports(self, tmp_path: Path) -> None:
         """Extracts import statements as edges."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Main.jl"
         julia_file.write_text("""
@@ -262,7 +262,7 @@ class TestJuliaCallEdges:
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between functions."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Main.jl"
         julia_file.write_text("""
@@ -283,7 +283,7 @@ end
 
     def test_extracts_cross_file_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between functions in different files."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         helper_file = tmp_path / "Helper.jl"
         helper_file.write_text("""
@@ -315,7 +315,7 @@ class TestJuliaSymbolProperties:
 
     def test_symbol_has_correct_span(self, tmp_path: Path) -> None:
         """Symbols have correct line number spans."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Test.jl"
         julia_file.write_text("""function test()
@@ -338,7 +338,7 @@ class TestJuliaEdgeProperties:
 
     def test_edge_has_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Test.jl"
         julia_file.write_text("""
@@ -359,7 +359,7 @@ class TestJuliaEmptyFile:
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty Julia files gracefully."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Empty.jl"
         julia_file.write_text("")
@@ -371,7 +371,7 @@ class TestJuliaEmptyFile:
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Comments.jl"
         julia_file.write_text("""
@@ -391,12 +391,12 @@ class TestJuliaParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load Julia parser."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "test.jl"
         julia_file.write_text("function test() end")
 
-        with patch("hypergumbo.analyze.julia.is_julia_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_common.julia.is_julia_tree_sitter_available", return_value=True):
             with patch("tree_sitter_julia.language", side_effect=Exception("Parser error")):
                 result = analyze_julia(tmp_path)
 
@@ -409,7 +409,7 @@ class TestJuliaConstExtraction:
 
     def test_extracts_const(self, tmp_path: Path) -> None:
         """Extracts const declarations."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         julia_file = tmp_path / "Constants.jl"
         julia_file.write_text("""
@@ -431,7 +431,7 @@ class TestJuliaSignatureExtraction:
 
     def test_typed_function_with_return_type(self, tmp_path: Path) -> None:
         """Extracts signature from function with typed params and return type."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         (tmp_path / "Calculator.jl").write_text("""
 function add(x::Int, y::Int)::Int
@@ -445,7 +445,7 @@ end
 
     def test_typed_function_no_return_type(self, tmp_path: Path) -> None:
         """Extracts signature from function without return type."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         (tmp_path / "Logger.jl").write_text("""
 function log(message::String)
@@ -459,7 +459,7 @@ end
 
     def test_short_form_function(self, tmp_path: Path) -> None:
         """Extracts signature from short-form function."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         (tmp_path / "Math.jl").write_text("""
 double(x) = x * 2
@@ -475,7 +475,7 @@ class TestJuliaImportAliases:
 
     def test_extracts_import_alias(self, tmp_path: Path) -> None:
         """Extracts import alias from 'import as' statement."""
-        from hypergumbo.analyze.julia import _extract_import_aliases
+        from hypergumbo_lang_common.julia import _extract_import_aliases
         import tree_sitter
         import tree_sitter_julia
 
@@ -505,7 +505,7 @@ end
 
     def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
         """Qualified call resolution uses import alias for path hint."""
-        from hypergumbo.analyze.julia import analyze_julia
+        from hypergumbo_lang_common.julia import analyze_julia
 
         (tmp_path / "main.jl").write_text("""
 import Pkg as P

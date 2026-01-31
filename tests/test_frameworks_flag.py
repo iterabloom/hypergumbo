@@ -9,8 +9,8 @@ The --frameworks flag controls which frameworks hypergumbo checks for:
 import json
 from pathlib import Path
 
-from hypergumbo.cli import run_behavior_map
-from hypergumbo.profile import FrameworkMode, resolve_frameworks
+from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.profile import FrameworkMode, resolve_frameworks
 
 
 class TestFrameworksFlagParsing:

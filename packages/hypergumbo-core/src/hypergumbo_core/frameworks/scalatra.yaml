@@ -1,0 +1,170 @@
+# Scalatra framework patterns (ADR-0003 v1.1.x)
+#
+# Scalatra is a Sinatra-like web framework for Scala.
+# Routes use DSL methods: get("/path") { handler }, post("/path") { handler }
+# Servlets extend ScalatraServlet or ScalatraFilter.
+
+id: scalatra
+language: scala
+
+patterns:
+  # ScalatraServlet base class
+  - concept: servlet
+    base_class: "^ScalatraServlet$"
+
+  # ScalatraFilter base class
+  - concept: filter
+    base_class: "^ScalatraFilter$"
+
+  # ScalatraBase for shared functionality
+  - concept: servlet
+    base_class: "^ScalatraBase$"
+
+  # GET route handler - get("/path") { ... }
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # HEAD route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^head$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "HEAD"
+      path: "metadata.url"
+
+  # OPTIONS route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^options$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "OPTIONS"
+      path: "metadata.url"
+
+  # Before filter (middleware)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^before$"
+
+  # After filter (middleware)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^after$"
+
+  # Error handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^error$"
+
+  # Not found handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^notFound$"
+
+  # Method not allowed handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^methodNotAllowed$"
+
+  # Halt processing
+  - concept: halt
+    usage:
+      kind: "^call$"
+      name: "^halt$"
+
+  # Pass to next matching route
+  - concept: pass
+    usage:
+      kind: "^call$"
+      name: "^pass$"
+
+  # Redirect
+  - concept: redirect
+    usage:
+      kind: "^call$"
+      name: "^redirect$"
+
+  # JSON support trait
+  - concept: json_support
+    base_class: "^JacksonJsonSupport$"
+
+  # JSON support trait (alternative)
+  - concept: json_support
+    base_class: "^NativeJsonSupport$"
+
+  # File upload support
+  - concept: file_upload
+    base_class: "^FileUploadSupport$"
+
+  # Flash map support
+  - concept: flash
+    base_class: "^FlashMapSupport$"
+
+  # Atmosphere support (websockets)
+  - concept: websocket
+    base_class: "^AtmosphereSupport$"
+
+  # Swagger support
+  - concept: api_doc
+    base_class: "^SwaggerSupport$"
+
+  # CORS support
+  - concept: cors
+    base_class: "^CorsSupport$"
+
+linkers:
+  - http

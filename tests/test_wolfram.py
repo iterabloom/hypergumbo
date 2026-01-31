@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze.wolfram import analyze_wolfram, is_wolfram_tree_sitter_available
+from hypergumbo_lang_extended1.wolfram import analyze_wolfram, is_wolfram_tree_sitter_available
 
 
 def make_wolfram_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -147,7 +147,7 @@ class TestWolframAnalyzerWhenUnavailable:
 
     def test_analyze_wolfram_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Analyzer returns skipped result when tree-sitter-wolfram not available."""
-        from hypergumbo.analyze import wolfram as wolfram_module
+        from hypergumbo_lang_extended1 import wolfram as wolfram_module
 
         # Create a Wolfram file
         make_wolfram_file(tmp_path, "Example.wl", "x = 42")

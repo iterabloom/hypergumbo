@@ -8,7 +8,7 @@ Tests verify that the analyzer correctly extracts:
 - Multi-stage build dependencies (COPY --from)
 """
 
-from hypergumbo.analyze.dockerfile import (
+from hypergumbo_lang_mainstream.dockerfile import (
     PASS_ID,
     PASS_VERSION,
     DockerfileAnalysisResult,
@@ -211,7 +211,7 @@ CMD ["python"]
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.dockerfile import is_dockerfile_tree_sitter_available
+    from hypergumbo_lang_mainstream.dockerfile import is_dockerfile_tree_sitter_available
 
     # The function should return a boolean
     result = is_dockerfile_tree_sitter_available()

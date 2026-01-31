@@ -8,7 +8,7 @@ Tests verify that the analyzer correctly extracts:
 - @font-face declarations
 """
 
-from hypergumbo.analyze.css import (
+from hypergumbo_lang_mainstream.css import (
     PASS_ID,
     PASS_VERSION,
     CSSAnalysisResult,
@@ -196,7 +196,7 @@ def test_span_information(tmp_path):
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.css import is_css_tree_sitter_available
+    from hypergumbo_lang_mainstream.css import is_css_tree_sitter_available
 
     # The function should return a boolean
     result = is_css_tree_sitter_available()

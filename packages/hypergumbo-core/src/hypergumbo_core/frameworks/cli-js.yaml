@@ -1,0 +1,89 @@
+# CLI entrypoint patterns - JavaScript/TypeScript (ADR-0003)
+#
+# Patterns for detecting command-line interface entrypoints:
+# Commander.js, yargs, oclif, Inquirer, CAC.
+
+id: cli-js
+language: javascript
+
+patterns:
+  # ==================== COMMANDER.JS PATTERNS ====================
+  # Commander command definition
+  - concept: command
+    decorator: "^(program|commander)\\.command$"
+
+  # Commander action handler
+  - concept: command
+    decorator: "^(program|commander)\\.action$"
+
+  # Commander option
+  - concept: option
+    decorator: "^(program|commander)\\.option$"
+
+  # Commander argument
+  - concept: argument
+    decorator: "^(program|commander)\\.argument$"
+
+  # Commander version
+  - concept: command
+    decorator: "^(program|commander)\\.version$"
+
+  # ==================== YARGS PATTERNS ====================
+  # yargs command
+  - concept: command
+    decorator: "^yargs\\.command$"
+
+  # yargs commandDir
+  - concept: command
+    decorator: "^yargs\\.commandDir$"
+
+  # yargs option
+  - concept: option
+    decorator: "^yargs\\.option$"
+
+  # yargs positional
+  - concept: argument
+    decorator: "^yargs\\.positional$"
+
+  # ==================== OCLIF PATTERNS ====================
+  # oclif Command class
+  - concept: command
+    base_class: "^Command$"
+
+  # oclif flags
+  - concept: option
+    decorator: "^Flags\\.(string|boolean|integer)$"
+
+  # ==================== CAC PATTERNS ====================
+  # CAC command
+  - concept: command
+    decorator: "^(cli|cac)\\.command$"
+
+  # CAC option
+  - concept: option
+    decorator: "^(cli|cac)\\.option$"
+
+  # ==================== INQUIRER PATTERNS ====================
+  # Inquirer prompt
+  - concept: command
+    decorator: "^inquirer\\.prompt$"
+
+  # ==================== VORPAL PATTERNS ====================
+  # Vorpal command
+  - concept: command
+    decorator: "^vorpal\\.command$"
+
+  # Vorpal action
+  - concept: command
+    decorator: "^vorpal\\.action$"
+
+  # ==================== GLUEGUN PATTERNS ====================
+  # Gluegun command module
+  - concept: command
+    base_class: "^GluegunCommand$"
+
+  # Gluegun toolbox
+  - concept: command
+    decorator: "^toolbox\\.(print|prompt|filesystem)$"
+
+linkers: []

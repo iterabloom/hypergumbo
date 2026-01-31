@@ -1,7 +1,7 @@
 """Tests for catalog module and command."""
 from unittest.mock import patch
 
-from hypergumbo.catalog import (
+from hypergumbo_core.catalog import (
     Pass,
     Catalog,
     get_default_catalog,
@@ -151,7 +151,7 @@ class TestCatalogCompleteness:
 
     def test_catalog_includes_all_language_analyzers(self) -> None:
         """Catalog includes passes for all languages in profile.py."""
-        from hypergumbo.catalog import get_default_catalog
+        from hypergumbo_core.catalog import get_default_catalog
 
         catalog = get_default_catalog()
         pass_ids = {p.id for p in catalog.passes}
@@ -241,21 +241,21 @@ class TestSuggestedPasses:
 
     def test_suggest_passes_for_python(self) -> None:
         """Suggests Python pass for Python language."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         suggested = suggest_passes_for_languages({"python"})
         assert any("python" in p.id for p in suggested)
 
     def test_suggest_passes_for_javascript(self) -> None:
         """Suggests JS pass for JavaScript language."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         suggested = suggest_passes_for_languages({"javascript"})
         assert any("javascript" in p.id for p in suggested)
 
     def test_suggest_passes_for_multi_language(self) -> None:
         """Suggests multiple passes for multiple languages."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         suggested = suggest_passes_for_languages({"python", "rust"})
         pass_ids = [p.id for p in suggested]
@@ -264,14 +264,14 @@ class TestSuggestedPasses:
 
     def test_suggest_passes_empty_languages(self) -> None:
         """Returns empty list for empty language set."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         suggested = suggest_passes_for_languages(set())
         assert suggested == []
 
     def test_suggest_passes_excludes_config_languages(self) -> None:
         """Config-only languages don't suggest passes."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         # JSON, YAML, and markdown are config/doc formats
         suggested = suggest_passes_for_languages({"json", "yaml", "markdown"})
@@ -279,7 +279,7 @@ class TestSuggestedPasses:
 
     def test_suggest_passes_filters_config_from_mixed(self) -> None:
         """Config languages filtered from mixed set."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         # Mix of code and config languages
         suggested = suggest_passes_for_languages({"python", "json", "yaml"})
@@ -292,7 +292,7 @@ class TestSuggestedPasses:
 
     def test_suggest_passes_for_dockerfile(self) -> None:
         """Suggests Dockerfile pass."""
-        from hypergumbo.catalog import suggest_passes_for_languages
+        from hypergumbo_core.catalog import suggest_passes_for_languages
 
         suggested = suggest_passes_for_languages({"dockerfile"})
         assert any("dockerfile" in p.id for p in suggested)

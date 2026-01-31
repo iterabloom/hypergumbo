@@ -9,7 +9,7 @@ Tests verify that the analyzer correctly extracts:
 - Foreign key references (as edges)
 """
 
-from hypergumbo.analyze.sql import (
+from hypergumbo_lang_mainstream.sql import (
     PASS_ID,
     PASS_VERSION,
     SQLAnalysisResult,
@@ -241,7 +241,7 @@ def test_span_information(tmp_path):
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     # This test verifies the skip logic exists
-    from hypergumbo.analyze.sql import is_sql_tree_sitter_available
+    from hypergumbo_lang_mainstream.sql import is_sql_tree_sitter_available
 
     # The function should return a boolean
     result = is_sql_tree_sitter_available()

@@ -1,0 +1,66 @@
+# Falcon framework patterns (ADR-0003)
+#
+# Falcon is a bare-metal Python web API framework for building
+# high-performance microservices and app backends.
+#
+# Unlike Flask/FastAPI, Falcon uses resource classes with responder methods
+# (on_get, on_post, etc.) rather than route decorators.
+# Routes are registered via app.add_route('/path', resource).
+#
+# See: https://falcon.readthedocs.io/
+
+id: falcon
+language: python
+
+patterns:
+  # ==================== METHOD-BASED PATTERNS (Responders) ====================
+  # Falcon responder methods - on_get, on_post, etc.
+  # These methods handle HTTP requests for a resource.
+
+  - concept: route_handler
+    symbol_name: "^on_get$"
+    symbol_kind: "^method$"
+
+  - concept: route_handler
+    symbol_name: "^on_post$"
+    symbol_kind: "^method$"
+
+  - concept: route_handler
+    symbol_name: "^on_put$"
+    symbol_kind: "^method$"
+
+  - concept: route_handler
+    symbol_name: "^on_delete$"
+    symbol_kind: "^method$"
+
+  - concept: route_handler
+    symbol_name: "^on_patch$"
+    symbol_kind: "^method$"
+
+  - concept: route_handler
+    symbol_name: "^on_head$"
+    symbol_kind: "^method$"
+
+  - concept: route_handler
+    symbol_name: "^on_options$"
+    symbol_kind: "^method$"
+
+  # WebSocket responder
+  - concept: websocket_handler
+    symbol_name: "^on_websocket$"
+    symbol_kind: "^method$"
+
+  # ==================== DECORATOR-BASED PATTERNS ====================
+
+  # Before/after hooks - @falcon.before(hook_func), @falcon.after(hook_func)
+  - concept: middleware
+    decorator: "^falcon\\.(before|after)$"
+
+  # ==================== CLASS-BASED PATTERNS ====================
+
+  # Resource base class (optional, but common)
+  - concept: controller
+    base_class: "^Resource$"
+
+linkers:
+  - http
