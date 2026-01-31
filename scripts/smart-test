@@ -170,17 +170,17 @@ CHANGED_FILE_LIST=$(mktemp)
 echo "$CHANGED_FILES" > "$CHANGED_FILE_LIST"
 trap "rm -f $CHANGED_FILE_LIST" EXIT
 
-# Use hypergumbo slice to find affected tests
-log "Running reverse slice to find affected tests..."
+# Use hypergumbo slice --files to find dependent files
+log "Running reverse slice to find affected files..."
 SLICE_OUTPUT=$(mktemp)
 trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT" EXIT
 
-if ! $STABLE_HG slice --reverse --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>/dev/null; then
+if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>/dev/null; then
     run_full_suite "slice command failed"
 fi
 
 # Filter to only test files in package directories
-AFFECTED_TESTS=$(grep -E '^packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | sort -u || echo "")
+AFFECTED_TESTS=$(grep -E 'packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | sort -u || echo "")
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
     run_full_suite "no test files in slice result"
