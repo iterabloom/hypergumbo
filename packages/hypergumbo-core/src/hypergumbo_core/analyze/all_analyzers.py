@@ -109,7 +109,7 @@ def get_analyzers() -> list[AnalyzerSpec]:
     return _cached_analyzers
 
 
-def clear_analyzer_cache() -> None:
+def clear_analyzer_cache() -> None:  # pragma: no cover
     """Clear the analyzer cache (useful for testing)."""
     global _cached_analyzers
     _cached_analyzers = None

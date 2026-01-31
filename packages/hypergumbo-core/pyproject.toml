@@ -62,6 +62,8 @@ filterwarnings = [
 [tool.coverage.run]
 omit = [
     "*/sketch_embeddings.py",
+    "*/_embedding_data.py",
+    "*/__main__.py",
 ]
 
 [tool.ruff]

@@ -16,6 +16,8 @@ filterwarnings = [
 # Omit optional modules that require extra dependencies
 omit = [
     "*/sketch_embeddings.py",  # Requires sentence-transformers
+    "*/_embedding_data.py",    # Generated embedding data
+    "*/__main__.py",           # Entry point
 ]
 
 [tool.ruff]
